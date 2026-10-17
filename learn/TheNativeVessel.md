@@ -32,6 +32,20 @@ The packaged app normally boots its Brain; a source checkout keeps that Brain le
 
 That distinction mattered during this guide's own read. The installed shell had been staged the day before and reported its Brain child not ready, while the saved plane endpoint still answered. I built a replacement with the newer Brain revision, kept the previous app as a dated backup, and opened the same saved plane without re-entering its credential. The cockpit then streamed activity and showed a real Tasks snapshot. It also said **agent os degraded** and could not draw the Observatory graph. Replacing the bundle corrected the stale shell; it did not manufacture a clean bill of health for every source.
 
+## Moving seat folders
+
+**System → This installation** shows where this copy of the shell keeps its seats. That placement
+belongs to the machine running the shell, even when the connected plane runs elsewhere. **Review
+move** shows the current and proposed folders and every seat's disposition before **Move seats and
+relaunch** records consent. A changed plan needs a fresh review; opening System alone never moves
+anything.
+
+The next boot copies and checks the homes before changing their bindings and the recorded root.
+This takes time and free space. The original folders are archived after the placement commits and
+remain available while the destination is checked. System reports a held move or an unfinished
+archive even when the Fleet child cannot start. A placement marked committed is only that: each
+peer still needs to resume and verify its own memory, settings and session at the destination.
+
 ## Closing the window is a different intent from quitting
 
 When the tray is available, closing the primary cockpit hides it. **Open Cockpit** restores the same window and its worker-backed UI identity. Popup windows keep their normal close behavior. **Quit** is the action that drains the child processes the harness owns. The tray displays a coarse lifecycle projection; it is not a second health service and cannot certify each Fleet source. This is why the cockpit's own roster, activity, task, and connection words remain necessary after the shell says it is running.

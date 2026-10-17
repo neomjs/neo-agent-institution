@@ -3,7 +3,7 @@ import TurnRowComponent from './TurnRowComponent.mjs';
 
 /**
  * The drill register: one session's authored turn records through the buffered grid — the depth
- * below {@link AgentOS.view.fleet.memories.SummaryGrid}, same #40/#41 pattern (#44).
+ * below {@link AgentOS.view.fleet.memories.SummaryGrid}, on the same pattern.
  *
  * @summary A headerless single-component-column grid of pooled
  * {@link AgentOS.view.fleet.memories.TurnRowComponent} cells. Derives nothing (turn rows carry no
@@ -37,8 +37,27 @@ class TurnGrid extends RowsGrid {
          * @member {Number} rowHeight=104
          * @reactive
          */
-        rowHeight: 104
+        rowHeight: 104,
+        /**
+         * The drill's target identity — handed to every cell bag so a turn record whose wire row
+         * carried no identity field still renders its authoring identity. The drill's target
+         * stands in for an absent field; it is not a per-turn fact. Written by the pane per
+         * adopted drill envelope.
+         * @member {String|null} target=null
+         */
+        target: null
     }
+
+    /**
+     * = {@link #rowHeight}, the card lattice the rail returns to.
+     * @member {Number} cardRowHeight=104
+     */
+    cardRowHeight = 104
+    /**
+     * The rail's lattice — meta line and one line of prose (`.is-rail .fm-memories-turn-cell`).
+     * @member {Number} railRowHeight=64
+     */
+    railRowHeight = 64
 
     /**
      * @summary One headerless component column: the designed turn row IS the cell. The factory
@@ -46,7 +65,9 @@ class TurnGrid extends RowsGrid {
      * {@link AgentOS.view.fleet.memories.TurnRowComponent}).
      */
     onConstructed() {
-        this.columns = [{
+        const me = this;
+
+        me.columns = [{
             dataField: 'response',
             flex     : 1,
             component: ({record}) => ({
@@ -57,6 +78,7 @@ class TurnGrid extends RowsGrid {
                     miniSummary    : record.miniSummary,
                     prompt         : record.prompt,
                     response       : record.response,
+                    target         : me.target,
                     timestamp      : record.timestamp
                 }
             })

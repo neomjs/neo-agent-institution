@@ -1,0 +1,51 @@
+/* Configuration's Participation group, drawn like the Seat group beside it (SeatModelContainer.scss): the seat's
+   participation in the design read's words, then the one plane-host command that fits it, in the mono voice, with
+   where it runs and Copy on the shared chip skin (Chips.scss). The cockpit writes no participation, so the group has
+   no other action. */
+.fm-participation {
+    background   : var(--fm-panel);
+    border       : 1px solid var(--fm-line);
+    border-radius: 8px;
+    color        : var(--fm-ink);
+    font         : var(--fm-text-body);
+    gap          : var(--fm-space-2);
+    padding      : var(--fm-space-3);
+
+    .fm-participation-heading {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-participation-line {
+        overflow-wrap: anywhere;
+    }
+
+    .fm-participation-command {
+        background   : var(--fm-panel-2);
+        border-radius: 4px;
+        font-family  : var(--fm-font-mono);
+        overflow-wrap: anywhere;
+        padding      : var(--fm-space-1) var(--fm-space-2);
+    }
+
+    .fm-participation-foot {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-participation-place {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+    }
+
+    .fm-participation-field {
+        border        : none;
+        height        : 1px;
+        opacity       : 0;
+        padding       : 0;
+        pointer-events: none;
+        position      : absolute;
+        width         : 1px;
+    }
+}

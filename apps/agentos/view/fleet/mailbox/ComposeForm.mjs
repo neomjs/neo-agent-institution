@@ -88,6 +88,13 @@ class OperatorComposeForm extends FormContainer {
          */
         composeOutcome_: null,
         /**
+         * The MESSAGE id this message answers, set by {@link #replyTo}: sent as `inReplyTo` and named
+         * on the reply line above the recipients. `null` = a new message.
+         * @member {String|null} inReplyTo_=null
+         * @reactive
+         */
+        inReplyTo_: null,
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
@@ -96,6 +103,13 @@ class OperatorComposeForm extends FormContainer {
          * @member {Object[]} items
          */
         items: [{
+            // what this message answers, while it answers one
+            ntype    : 'component',
+            cls      : ['fm-operator-compose-reply'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'compose-reply'
+        }, {
             ntype : 'container',
             cls   : ['fm-operator-compose-recipients'],
             flex  : 'none',
@@ -226,6 +240,12 @@ class OperatorComposeForm extends FormContainer {
      * @private
      */
     #syncingSelection = false
+    /**
+     * The subject of the message being answered, for the reply line.
+     * @member {String} #replySubject=''
+     * @private
+     */
+    #replySubject = ''
 
     /**
      * @summary Bind the recipient chips + broadcast rule to the list's selection lifecycle, and
@@ -358,8 +378,54 @@ class OperatorComposeForm extends FormContainer {
                 subject       : values.subject,
                 body          : values.body,
                 priority      : values.priority || 'high',
-                wakeSuppressed: !values.wake
+                wakeSuppressed: !values.wake,
+                ...(me.inReplyTo ? {inReplyTo: me.inReplyTo} : {})
             }
+        })
+    }
+
+    /**
+     * @summary Prefill a reply: the sender as the one recipient, `Re:` before the subject, and the
+     * answered message as `inReplyTo`. A sender the roster does not list stays unselected, so the send
+     * waits for a recipient the operator picks.
+     * @param {Object} data
+     * @param {String} data.inReplyTo The answered MESSAGE id
+     * @param {String} data.subject   The answered subject
+     * @param {String} data.to        The answered sender, `@`-form
+     */
+    replyTo({inReplyTo, subject, to}) {
+        const
+            me     = this,
+            list   = me.getReference('compose-recipients'),
+            model  = list?.selectionModel,
+            record = list?.store.get(to),
+            text   = String(subject || '');
+
+        me.#replySubject = text;
+        me.inReplyTo     = inReplyTo;
+
+        if (model) {
+            model.deselectAll(true);
+            record && model.select(record);
+            me.onRecipientSelectionChange()
+        }
+
+        me.getReference('compose-subject').value = (/^re:/i.test(text) ? text : `Re: ${text}`).slice(0, 200);
+        me.composeOutcome = null
+    }
+
+    /**
+     * Triggered after the answered message changed — the reply line names it, or hides.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetInReplyTo(value, oldValue) {
+        if (!this.isConstructed) return;
+
+        this.getReference('compose-reply').set({
+            hidden: !value,
+            text  : value ? `Reply to: ${this.#replySubject || '(no subject)'}` : null
         })
     }
 

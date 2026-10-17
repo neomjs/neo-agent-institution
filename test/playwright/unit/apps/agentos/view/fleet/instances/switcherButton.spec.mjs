@@ -270,5 +270,39 @@ test.describe('InstanceSwitcher — framework button + Store-backed menu (#17367
 
         switcher.destroy();
         store.destroy()
+    });
+
+    test('partial-feed guidance appends the source summary to the limited trigger and bound menu row title, and clears when guidance clears (#706)', async () => {
+        const store    = makeStore();
+        const switcher = Neo.create(InstanceSwitcher, {
+            activityGuidance: {summary: 'PR lanes unavailable · mailbox available'},
+            appName,
+            boundProfileId  : localId,
+            instanceState   : 'limited',
+            instanceStore   : store
+        });
+        const menu = await waitForMenu(switcher);
+
+        menu.createItems(true);
+
+        const rows     = () => menu.vdom.cn.filter(item => item.role === 'menuitemradio'),
+              boundRow = () => rows().find(item => item['data-profile-id'] === localId),
+              otherRow = () => rows().find(item => item['data-profile-id'] === cloudId);
+
+        expect(switcher.getVdomRoot()['aria-label']).toBe('Instance: local — degraded: PR lanes unavailable · mailbox available');
+        expect(switcher.getVdomRoot().title).toBe('local — degraded: PR lanes unavailable · mailbox available');
+        expect(boundRow().title).toBe('local — degraded: PR lanes unavailable · mailbox available');
+        expect(otherRow().title, 'non-bound rows keep their canonical endpoint title').toBe(store.get(cloudId).canonicalEndpoint);
+
+        // Clearing guidance restores the bare state word on the trigger and the endpoint on the bound row
+        switcher.activityGuidance = {summary: null};
+
+        expect(switcher.getVdomRoot()['aria-label']).toBe('Instance: local — degraded');
+        expect(switcher.getVdomRoot().title).toBe('local — degraded');
+        expect(boundRow().title).toBe(store.get(localId).canonicalEndpoint);
+
+        switcher.destroy();
+        store.destroy()
     })
 });
+

@@ -89,6 +89,43 @@
         padding-left: 15px;
     }
 
+    /* the Seat row: the harness family in words and, for a Claude Desktop seat, its first-launch
+       step, on the same text column as the name and the handle */
+    .fm-detail-seat {
+        padding-left: 15px;
+        margin-top  : 4px;
+        gap         : 2px;
+    }
+
+    .fm-detail-seat-family {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-detail-seat-launch {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink);
+    }
+
+    /* the session's folder verdict: a short line that still ellipsizes at the narrowest width (the
+       Repository pane holds the whole words), only its state word coloured, the attention token for
+       the wrong folder the operator acts on */
+    .fm-detail-seat-folder {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+
+        .fm-detail-seat-folder-state {
+            color: var(--fm-ink-dim);
+
+            &.is-wrong {
+                color: var(--fm-state-wedged);
+            }
+        }
+    }
+
     /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
        pane's own freshness-pill vocabulary — the three prior languages (italic telltale prose,
        coloured source lines, a dangling producer suffix) collapsed into it. Grid-locked columns:
@@ -112,7 +149,8 @@
     }
 
 
-    .fm-detail-panes {
+    .fm-detail-panes,
+    .fm-detail-config {
         gap     : var(--fm-space-2);
         overflow: auto;
     }
@@ -149,22 +187,188 @@
     }
 
     /* the repository pane's two lines from the roster row: the slug in the inspector's mono voice,
-       the clone path beneath it, each eliding on its own line at rail widths */
-    .fm-detail-pane-repo .fm-detail-pane-body {
-        display: grid;
-        gap    : 2px;
+       eliding at rail widths, and the WHOLE clone path beneath it, wrapping, never elided, with its
+       Copy action under it. The field the action copies from is present but unseen and
+       unreachable, the Observatory's idiom */
+    .fm-detail-pane-repo {
+        position: relative;
+
+        .fm-detail-pane-body,
+        .fm-detail-repo-facts,
+        .fm-detail-repo-skip-actions {
+            display: grid;
+            gap    : 2px;
+        }
     }
 
-    .fm-detail-repo-slug,
-    .fm-detail-repo-path {
+    .fm-detail-repo-slug {
+        color        : var(--fm-ink);
+        font-family  : var(--fm-font-mono);
         overflow     : hidden;
         text-overflow: ellipsis;
         white-space  : nowrap;
     }
 
-    .fm-detail-repo-slug {
-        color      : var(--fm-ink);
+    .fm-detail-repo-path {
+        min-width : 0;
+        word-break: break-all;
+    }
+
+    /* a desktop session outside the launch's folder: the whole words, wrapping, folders broken
+       anywhere rather than elided; the wrong folder the operator acts on takes the attention token */
+    .fm-detail-repo-session {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        padding-top  : var(--fm-space-1);
+
+        &.is-wrong {
+            color: var(--fm-state-wedged);
+        }
+    }
+
+    /* each checkout's preparation at the latest start: a quiet head naming which start, then the
+       Repositories card's rows, read-only. Here they keep the pane's voice: detail on the row, micro on
+       the reason, the pane's 2px rhythm, and no pointer or hover ink, since a row does nothing */
+    .fm-detail-repo-prep-head {
+        font       : var(--fm-text-micro);
+        padding-top: var(--fm-space-1);
+    }
+
+    .fm-detail-pane-repo .fm-repository-list.neo-list {
+        --list-container-list-color: var(--fm-ink-dim);
+
+        /* a list scrolls its own box; here the pane grows with its rows instead */
+        display : grid;
+        gap     : 2px;
+        overflow: visible;
+
+        .neo-list-item {
+            color  : inherit;
+            cursor : default;
+            font   : var(--fm-text-detail);
+            gap    : 2px var(--fm-space-2);
+            padding: 0;
+        }
+
+        .fm-repo-slug {
+            font       : inherit;
+            font-family: var(--fm-font-mono);
+        }
+
+        .fm-repo-reason {
+            font: var(--fm-text-micro);
+        }
+    }
+
+    /* the live Start's Skip: a quiet button (the Repositories card's Remove idiom) with its consequence
+       beneath it, read before the click, then the Fleet's answer in the pane's own voice */
+    .fm-detail-repo-skip {
+        background   : var(--fm-panel-2);
+        border       : 1px solid var(--fm-line);
+        border-radius: 6px;
+        color        : var(--fm-ink);
+        cursor       : pointer;
+        font         : var(--fm-text-detail);
+        justify-self : start;
+        margin-top   : var(--fm-space-1);
+        padding      : 2px var(--fm-space-2);
+
+        &:hover:not([disabled]) {
+            border-color: var(--fm-ink-dim);
+        }
+
+        &[disabled] {
+            color : var(--fm-ink-dim);
+            cursor: default;
+        }
+    }
+
+    .fm-detail-repo-skip-note,
+    .fm-detail-repo-skip-status {
+        font         : var(--fm-text-detail);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+    }
+
+    .fm-detail-repo-skip-status {
+        color: var(--fm-ink);
+    }
+
+    .fm-detail-repo-copy {
+        align-self: flex-start;
+    }
+
+    .fm-detail-repo-field {
+        border        : none;
+        height        : 1px;
+        opacity       : 0;
+        padding       : 0;
+        pointer-events: none;
+        position      : absolute;
+        width         : 1px;
+    }
+
+    /* the pull requests pane: one list row per held pull request, its reference (an anchor to the
+       forge, in the inspector's mono voice), its title when the producer carries one, and its line
+       in the chip's words; all wrap at rail widths, so the default placement reads every row in
+       full. The rows inform, so the list's row skin (padding, hover, pointer, nowrap) stays off.
+       The thought stream pane's list shares the skin: one row per recent turn, the same rules. */
+    .fm-detail-pr-list.neo-list,
+    .fm-detail-turn-list.neo-list {
+        --list-container-list-color        : var(--fm-ink-dim);
+        --list-item-background-color       : transparent;
+        --list-item-background-color-active: transparent;
+        --list-item-background-color-hover : transparent;
+
+        background: transparent;
+        display   : grid;
+        gap       : var(--fm-space-1);
+
+        .neo-list-item {
+            cursor     : default;
+            padding    : 0;
+            white-space: normal;
+        }
+    }
+
+    .fm-detail-pr {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-pr-ref {
+        color          : var(--fm-ink);
+        font-family    : var(--fm-font-mono);
+        overflow-wrap  : anywhere;
+        text-decoration: none;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
+    }
+
+    .fm-detail-pr-title {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
+    }
+
+    /* the thought stream pane's row: the meta line (the turn's age, and the word for a weaker summary)
+       in the inspector's mono voice over the derived summary, which wraps whole */
+    .fm-detail-turn {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-turn-meta {
         font-family: var(--fm-font-mono);
+    }
+
+    .fm-detail-turn-summary {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
     }
 
     /* the freshness ledger chip: a mono pill whose tone states the observation

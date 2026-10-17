@@ -44,6 +44,15 @@ test.describe('AgentOS OperatorMailbox — the operator mailbox surface (#15377)
         box.destroy()
     });
 
+    test('the selected all-mail chip can explicitly return an older reading window to the first page', () => {
+        const box = createBox({record: {agentIdentityNodeId: '@tobiu', githubUsername: 'tobiu'}}), requests = [];
+        box.on('inboxPageRequest', data => requests.push(data.offset));
+        box.onAllMailClick();
+        expect(box.view).toBe('all');
+        expect(requests).toEqual([0]);
+        box.destroy()
+    });
+
     test('relays the compose intent to the owner — re-sourced to the container, not the form', () => {
         const box = createBox();
 
@@ -278,6 +287,69 @@ test.describe('AgentOS OperatorMailbox — the operator mailbox surface (#15377)
 
         expect(marker.hidden).toBe(false);
         expect(marker.text).toContain('@neo-opus-vega');
+
+        box.destroy()
+    });
+});
+
+test.describe('AgentOS OperatorMailbox — the own-inbox entry (#551)', () => {
+    let OperatorMailbox;
+
+    const createBox = cfg => Neo.create(OperatorMailbox, {appName, ...cfg});
+
+    test.beforeAll(async () => {
+        OperatorMailbox = (await import('../../../../../../../../apps/agentos/view/fleet/mailbox/OperatorContainer.mjs')).default
+    });
+
+    test('its inbox pane renders the own entry, and the owner-written read and outcome pass straight through', () => {
+        const box = createBox(), pane = box.getReference('operator-inbox-pane');
+
+        expect(pane.detailEntry).toBe('own');
+
+        box.messageRead   = {messageId: 'MESSAGE:q1', state: 'loading'};
+        box.actionOutcome = {messageId: 'MESSAGE:q1', action: 'resolve', state: 'pending'};
+
+        expect(pane.messageRead).toEqual({messageId: 'MESSAGE:q1', state: 'loading'});
+        expect(pane.actionOutcome).toEqual({messageId: 'MESSAGE:q1', action: 'resolve', state: 'pending'});
+
+        box.destroy()
+    });
+
+    test('relays the open message\'s read, mark-read and resolve intents to the owner', () => {
+        const fired = [],
+              box   = createBox({listeners: {
+                  markReadRequest: data => fired.push(['markReadRequest', data.messageId]),
+                  messageOpen    : data => fired.push(['messageOpen', data.messageId]),
+                  resolveRequest : data => fired.push(['resolveRequest', data.messageId, data.expectedCurrentState])
+              }}),
+              pane  = box.getReference('operator-inbox-pane');
+
+        pane.fire('messageOpen',     {messageId: 'MESSAGE:q1'});
+        pane.fire('markReadRequest', {messageId: 'MESSAGE:q1'});
+        pane.fire('resolveRequest',  {expectedCurrentState: 'InputRequired', messageId: 'MESSAGE:q1'});
+
+        expect(fired).toEqual([
+            ['messageOpen',     'MESSAGE:q1'],
+            ['markReadRequest', 'MESSAGE:q1'],
+            ['resolveRequest',  'MESSAGE:q1', 'InputRequired']
+        ]);
+
+        box.destroy()
+    });
+
+    test('Reply opens the compose reveal for the sender with Re: and inReplyTo, and folding it drops the reply', () => {
+        const box  = createBox({recipientOptions: [{id: '@neo-gpt', name: 'Euclid'}, {id: 'AGENT:*', name: 'All agents'}]}),
+              form = box.getReference('operator-compose-form');
+
+        box.getReference('operator-inbox-pane').fire('replyRequest', {messageId: 'MESSAGE:q1', subject: '[question] x', to: '@neo-gpt'});
+
+        expect(box.composeOpen).toBe(true);
+        expect(form.hidden).toBe(false);
+        expect(form.inReplyTo).toBe('MESSAGE:q1');
+        expect(form.getReference('compose-subject').value).toBe('Re: [question] x');
+
+        box.composeOpen = false;
+        expect(form.inReplyTo, 'a folded form answers nothing').toBe(null);
 
         box.destroy()
     });

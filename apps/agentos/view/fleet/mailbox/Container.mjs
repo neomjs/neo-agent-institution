@@ -1,7 +1,10 @@
 import AgentMailboxStore from '../../../store/AgentMailbox.mjs';
+import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container         from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import MailboxGrid       from './Grid.mjs';
+import DetailContainer   from './DetailContainer.mjs';
 import AgentFreshness    from '../../../util/AgentFreshness.mjs';
+import Splitter          from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 
 /**
  * @summary Is this payload the mirror adapter's own envelope?
@@ -25,6 +28,23 @@ function isRecognizedMirrorEnvelope(snapshot) {
 }
 
 /**
+ * @summary Is this the open-questions read's own answer?
+ *
+ * The Fleet's `fleetOwnQuestions` answers `{state, reason, count, rows, page}`: `ok` with the complete count, or
+ * `unavailable` with its reason. Anything else is not that read, and the open view renders nothing from it.
+ * @param {Object} answer Candidate payload.
+ * @returns {Boolean}
+ * @private
+ */
+function isRecognizedQuestionsAnswer(answer) {
+    return Boolean(answer)
+        && (answer.state === 'ok' || answer.state === 'unavailable')
+        && Array.isArray(answer.rows)
+        && typeof answer.page === 'object' && answer.page !== null
+        && (answer.count === null || Number.isSafeInteger(answer.count))
+}
+
+/**
  * @summary Is this a real page window?
  *
  * The bounds render as fact beside the rows ("51–60"), and the steps derive their offsets from them.
@@ -44,6 +64,13 @@ function isRecognizedPage(page) {
 }
 
 /**
+ * How many windows in a row the open questions ask for themselves when a landed window showed no row: enough to
+ * pass a run of rows the graph cannot project, never a walk through the inbox.
+ * @type {Number}
+ */
+const EMPTY_WINDOWS = 3;
+
+/**
  * The mailbox mirror pane — the S1 view half: a read-only, viewer-admitted mirror of ONE subject's
  * ACTIVE A2A inbox, rendered from one Fleet mailbox-mirror adapter snapshot. Subject-generic by
  * construction: today its one host is the south pane's {@link AgentOS.view.fleet.mailbox.OperatorContainer}
@@ -51,13 +78,16 @@ function isRecognizedPage(page) {
  * host when the S5 Fleet grants/admission layer lands (viewer ingress is already live; the policy
  * ledger holds the mirror read at awaiting-s5).
  *
- * **Read-only is structural.** The pane renders zero mutation affordances — no mark-read, no
- * archive, no reply (the graduated record's MUST-NOT: operator-side mark-read would mutate the
- * agent's own turn-start signal and swallow peer handoffs). The single interaction is
- * thread-collapse toggling — pure display-state navigation on the view-owned `threadCollapsed`
- * record field, never a data write. The pane's host label stays COUNTLESS by design: an
- * unread-count badge would imply operator-side read tracking that deliberately does not exist
- * (the no-markRead MUST-NOT's quiet sibling); per-row `status` is the honest fact instead.
+ * **Read-only unless the host owns the inbox.** By default the pane renders zero mutation
+ * affordances — no mark-read, no archive, no reply (the graduated record's MUST-NOT: operator-side
+ * mark-read would mutate the agent's own turn-start signal and swallow peer handoffs). Selecting a
+ * row opens its {@link AgentOS.view.fleet.mailbox.DetailContainer} beside the list, the way the
+ * Memories pane reads a record beside its own (a narrow pane stacks the two); the detail reads and
+ * never writes. The one host that owns its inbox declares `detailEntry: 'own'` (the operator's own
+ * inbox), and only there the detail renders `Mark read` · `Reply` · `Resolve`. Thread-collapse
+ * toggling stays pure display state on the view-owned `threadCollapsed` field. The pane's host label
+ * stays COUNTLESS by design: an unread-count badge would imply operator-side read tracking that
+ * deliberately does not exist; per-row `status` is the honest fact instead.
  *
  * **Four mutually exclusive honest states** (never a fake success):
  *  - `unobserved` — no snapshot injected yet: the feed is not wired; says so.
@@ -65,6 +95,12 @@ function isRecognizedPage(page) {
  *    grant for the subject: a NAMED denial (viewer + subject), never an empty-success.
  *  - `degraded` — the source failed for a non-admission reason: the honest reason line.
  *  - `empty` — wired, admitted, zero active rows: an explicit empty state.
+ *
+ * **The open view.** The host that owns its inbox can switch the list to `view: 'open'`: the viewer's open
+ * questions from the owner-written `questions` read, in the read's own order (highest priority, then oldest), each
+ * on its own row: no sorter re-sorts them and no thread collapses one away. Its states are its own: not read yet,
+ * `your questions could not be read · <reason>`, or `nothing waits for your word`. Reading a message never removes
+ * a row; only the Task's transition or expiry does.
  *
  * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the buffered
  * `grid.Container` with one pooled {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered
@@ -74,7 +110,8 @@ function isRecognizedPage(page) {
  * No paging chrome exists anywhere on the surface (operator direction 2026-08-28): the window
  * scrolls, and its honest end is the only end. Pane-grain freshness reuses the S1 `agentFreshness`
  * closed vocabulary (fresh / stale / lost / `unobserved` as the fail-closed degrade tier) against
- * the snapshot's `capability.capturedAt`, so the cockpit speaks ONE freshness language.
+ * the snapshot's `capability.capturedAt` (in the open view, its read's `capturedAt`), so the cockpit speaks
+ * ONE freshness language.
  *
  * The pane owns its {@link AgentOS.store.AgentMailbox} instance (created with the pane, destroyed
  * with it) — a leaf list owns a local store; no per-view `state.Provider`. The hosting wiring
@@ -121,6 +158,45 @@ class MailboxPane extends Container {
          */
         now_: null,
         /**
+         * The owner's latest read failed; retained rows are stale even inside their TTL.
+         * @member {Boolean} readFailed_=false
+         * @reactive
+         */
+        readFailed_: false,
+        /**
+         * Which entry the open message's detail renders ({@link AgentOS.view.fleet.mailbox.DetailContainer#entry}):
+         * `observer` is read-only; the host that owns its inbox sets `own`.
+         * @member {'own'|'observer'} detailEntry_='observer'
+         * @reactive
+         */
+        detailEntry_: 'observer',
+        /**
+         * The owner's body read of the open message, passed to the detail. Owner-written, never fetched here.
+         * @member {Object|null} messageRead_=null
+         * @reactive
+         */
+        messageRead_: null,
+        /**
+         * The owner's settled action on the open message, passed to the detail. Owner-written.
+         * @member {Object|null} actionOutcome_=null
+         * @reactive
+         */
+        actionOutcome_: null,
+        /**
+         * Which list the pane shows: `all` mail from the mirror `snapshot`, or the viewer's `open` questions from
+         * the owner-written `questions` read. Only a host that owns its inbox switches it.
+         * @member {'all'|'open'} view_='all'
+         * @reactive
+         */
+        view_: 'all',
+        /**
+         * The owner's open-questions read (`fleetOwnQuestions`): `{state, reason, count, rows, page, capturedAt}`.
+         * `null` = not read yet. Owner-written, never fetched here.
+         * @member {Object|null} questions_=null
+         * @reactive
+         */
+        questions_: null,
+        /**
          * The mailbox mirror's honest live cadence (ms) — the freshness window the snapshot's
          * `capturedAt` is judged against. Tunable, not contractual.
          * @member {Number} freshnessTtl=60000
@@ -160,13 +236,42 @@ class MailboxPane extends Container {
             cls      : ['fm-mailbox-state'],
             reference: 'mailbox-state'
         }, {
-            // the rows body IS the buffered grid: one pooled RowComponent per rendered
-            // row, thread collapse delegated inside the grid itself — this pane keeps the honest
-            // states, the admission gate and the snapshot projection, and hands the grid its store
-            module   : MailboxGrid,
+            // the open questions' continuation once the pane's own asks stopped short of the read's end
+            module   : Button,
+            cls      : ['fm-mailbox-read-on'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'mailbox-read-on',
+            text     : 'read on',
+            ui       : 'ghost'
+        }, {
+            // the list beside the open message: two shares and one, the engine's Splitter between
+            ntype    : 'container',
+            cls      : ['fm-mailbox-body'],
             flex     : 1,
             hidden   : true,
-            reference: 'mailbox-rows'
+            layout   : {ntype: 'hbox', align: 'stretch'},
+            reference: 'mailbox-body',
+            items    : [{
+                // the rows body IS the buffered grid: one pooled RowComponent per rendered
+                // row, thread collapse delegated inside the grid itself — this pane keeps the honest
+                // states, the admission gate and the snapshot projection, and hands the grid its store
+                module   : MailboxGrid,
+                flex     : 2,
+                hidden   : true,
+                reference: 'mailbox-rows'
+            }, {
+                module      : Splitter,
+                cls         : ['fm-mailbox-splitter'],
+                hidden      : true,
+                reference   : 'mailbox-splitter',
+                resizeTarget: 'previous'
+            }, {
+                module   : DetailContainer,
+                flex     : 1,
+                hidden   : true,
+                reference: 'mailbox-detail'
+            }]
         }]
     }
 
@@ -176,9 +281,16 @@ class MailboxPane extends Container {
      */
     store = null
     /**
+     * The open questions' windows landed in a row without a row to show: the bound of the pane's own asks
+     * ({@link EMPTY_WINDOWS}). A window that brings a row starts it over, and so does a switch of list.
+     * @member {Number} emptyWindows=0
+     * @protected
+     */
+    emptyWindows = 0
+    /**
      * The offset of the window this pane has requested and not yet received, `null` otherwise —
-     * the one-request-in-flight gate of {@link #onScrollEdge}. Cleared by every landed snapshot
-     * ({@link #afterSetSnapshot}), whatever its offset.
+     * the one-request-in-flight gate of {@link #onScrollEdge} and of the open questions' own ask. Cleared by every
+     * landed snapshot ({@link #afterSetSnapshot}), whatever its offset.
      * @member {Number|null} pendingOffset=null
      * @protected
      */
@@ -191,6 +303,19 @@ class MailboxPane extends Container {
      * @protected
      */
     projectedFingerprint = null
+    /**
+     * The list whose rows the grid holds (`all` | `open`), `null` while it holds none.
+     * @member {String|null} projectedView=null
+     * @protected
+     */
+    projectedView = null
+    /**
+     * The open message's id: the grid's selection, kept here so the detail follows the message
+     * across re-projections and closes when a refresh no longer lists it.
+     * @member {String|null} selectedMessageId=null
+     * @protected
+     */
+    selectedMessageId = null
 
     /**
      * @summary Create the pane-owned store, then render the initial (honest) state.
@@ -202,7 +327,7 @@ class MailboxPane extends Container {
         let me       = this,
             rowsGrid = me.getReference('mailbox-rows');
 
-        me.store = Neo.create(AgentMailboxStore);
+        me.store = Neo.create(AgentMailboxStore, {sorters: AgentMailboxStore.sortersOf(me.view)});
 
         // the grid renders what this pane projects: injected store (autoDestroyStore: false on the
         // grid — this pane stays the owner), refresh driven by applySnapshot() per projection
@@ -210,8 +335,141 @@ class MailboxPane extends Container {
 
         // the next window is asked for when the operator reaches the loaded end, never before
         rowsGrid.on('scrollEdge', me.onScrollEdge, me);
+        me.getReference('mailbox-read-on').set({handler: 'onReadOnClick', handlerScope: me});
+        rowsGrid.on({deselect: me.onRowDeselect, select: me.onRowSelect, scope: me});
+
+        // the detail's intents leave through this pane (fire stamps the pane as their source); its host
+        // relays them to the owner
+        me.getReference('mailbox-detail').on({
+            markReadRequest: data => me.fire('markReadRequest', {...data}),
+            replyRequest   : data => me.fire('replyRequest',    {...data}),
+            resolveRequest : data => me.fire('resolveRequest',  {...data})
+        });
 
         me.applySnapshot()
+    }
+
+    /**
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetActionOutcome(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetDetailEntry(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetMessageRead(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * Triggered after the owner's open-questions read landed: it answers the window request in flight.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetQuestions(value, oldValue) {
+        this.pendingOffset = null;
+        this.isConstructed && this.applySnapshot()
+    }
+
+    /**
+     * Triggered after the list switched: the other list's window request no longer applies.
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetView(value, oldValue) {
+        this.emptyWindows  = 0;
+        this.pendingOffset = null;
+        // the open questions keep their read's order (priority, then age); all mail reads newest first
+        this.store && (this.store.sorters = AgentMailboxStore.sortersOf(value));
+        this.isConstructed && this.applySnapshot()
+    }
+
+    /**
+     * @summary The answer the list in view renders: the open-questions read, or the mirror snapshot.
+     * @returns {Object|null}
+     */
+    get listSource() {
+        return this.view === 'open' ? this.questions : this.snapshot
+    }
+
+    /**
+     * @summary A row was selected: its detail opens, and the host is asked for the body. A retracted
+     * message has none to ask for.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onRowSelect({record}) {
+        const me = this;
+
+        me.selectedMessageId = record.messageId;
+        me.applyDetail();
+
+        record.status === 'retracted' || me.fire('messageOpen', {messageId: record.messageId})
+    }
+
+    /**
+     * @summary The selected row was deselected (clicked again): the detail closes.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onRowDeselect({record}) {
+        if (record?.messageId === this.selectedMessageId) {
+            this.selectedMessageId = null;
+            this.applyDetail()
+        }
+    }
+
+    /**
+     * @summary Hand the detail the open message as the store holds it now, or close it when nothing is
+     * open or the pane shows no rows.
+     * @protected
+     */
+    applyDetail() {
+        const
+            me     = this,
+            detail = me.getReference('mailbox-detail'),
+            record = me.getPaneState() === 'rows' && me.selectedMessageId ? me.store.get(me.selectedMessageId) : null;
+
+        me.getReference('mailbox-splitter').hidden = !record;
+
+        detail.set({
+            entry         : me.detailEntry,
+            hidden        : !record,
+            outcome       : me.actionOutcome,
+            read          : me.messageRead,
+            row           : record ? me.rowOf(record) : null,
+            // the open view's read carries no admission block; its viewer is the owner's bound identity
+            viewerIdentity: me.snapshot?.admission?.viewerIdentity ?? me.record?.githubUsername ?? null
+        })
+    }
+
+    /**
+     * @summary The plain row the detail renders, from a store record.
+     * @param {Object} record
+     * @returns {Object}
+     * @protected
+     */
+    rowOf(record) {
+        const {from, messageId, priority, relatedTickets, sentAt, status, subject, taskState} = record;
+
+        return {from, messageId, priority, relatedTickets, sentAt, status, subject, taskState}
     }
 
     /**
@@ -256,7 +514,41 @@ class MailboxPane extends Container {
      * @protected
      */
     afterSetNow(value, oldValue) {
-        this.isConstructed && this.applySnapshot()
+        this.isConstructed && this.applyFreshness()
+    }
+
+    /**
+     * @summary Reclassify retained data after the owner's read outcome changes.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetReadFailed(value, oldValue) {
+        this.isConstructed && this.applyFreshness()
+    }
+
+    /**
+     * @summary Age the held observation without projecting rows or issuing a page intent.
+     * @protected
+     */
+    applyFreshness() {
+        const source = this.listSource,
+              observedAt = this.view === 'open' ? source?.capturedAt : source?.capability?.capturedAt,
+              ledger = source ? {freshnessTtl: this.freshnessTtl, observedAt, stale: this.readFailed} : null,
+              {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(ledger, this.now ?? Date.now()));
+
+        this.getReference('mailbox-freshness').set({cls, text: label})
+    }
+
+    /**
+     * @summary Whether an automatic first-window replacement can leave the reading window intact.
+     * An extended corpus stays held until an explicit first-page intent; a pending page or a
+     * scrolled grid likewise defers replacement. The read owner checks again when its answer lands.
+     * @returns {Boolean}
+     */
+    canRefreshFirstPage() {
+        return this.pendingOffset === null && !(this.listSource?.page?.offset > 0) &&
+            !(this.getReference('mailbox-rows').body?.scrollTop > 0)
     }
 
     /**
@@ -272,6 +564,8 @@ class MailboxPane extends Container {
      */
     getPaneState() {
         const snapshot = this.snapshot;
+
+        if (this.view === 'open') return this.getQuestionsState();
 
         if (!snapshot) return 'unobserved';
 
@@ -318,6 +612,23 @@ class MailboxPane extends Container {
     }
 
     /**
+     * @summary Classify the open-questions read: not read yet or unrecognized → `unobserved`, `unavailable` →
+     * `degraded` (its reason, never an empty list), and a complete `ok` read by its count → `empty` for a complete
+     * zero, otherwise `rows`: a page can show none of the questions the count holds.
+     * @returns {String} 'unobserved' | 'degraded' | 'empty' | 'rows'
+     * @protected
+     */
+    getQuestionsState() {
+        const answer = this.questions;
+
+        if (!isRecognizedQuestionsAnswer(answer)) return 'unobserved';
+        if (answer.state === 'unavailable')       return 'degraded';
+        if (!isRecognizedPage(answer.page) || !Number.isSafeInteger(answer.count)) return 'unobserved';
+
+        return answer.count === 0 ? 'empty' : 'rows'
+    }
+
+    /**
      * @summary Does the snapshot's admitted subject match the resident this pane is showing?
      *
      * The possession guard clears the snapshot on re-seat and the read is generation-latched, but
@@ -355,24 +666,13 @@ class MailboxPane extends Container {
      */
     applySnapshot() {
         let me           = this,
-            snapshot     = me.snapshot,
+            source       = me.listSource,
             state        = me.getPaneState(),
             rows         = state === 'rows',
             stateCmp     = me.getReference('mailbox-state'),
-            rowsGrid     = me.getReference('mailbox-rows'),
-            now          = me.now ?? Date.now(),
-            ledger       = snapshot ? {freshnessTtl: me.freshnessTtl, observedAt: snapshot.capability?.capturedAt} : null,
-            {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(ledger, now));
+            rowsGrid     = me.getReference('mailbox-rows');
 
-        me.getReference('mailbox-freshness').set({cls, text: label});
-
-        stateCmp.set({
-            cls   : ['fm-mailbox-state', `is-${state}`],
-            hidden: rows,
-            text  : rows ? '' : me.getStateText(state)
-        });
-
-        rowsGrid.hidden = !rows;
+        me.applyFreshness();
 
         // Projection: the FIRST window replaces wholesale; a follow-up window (offset > 0) extends
         // the held corpus — the accumulation half of the no-paging contract (the buffered surface
@@ -382,21 +682,78 @@ class MailboxPane extends Container {
         // gate is explicit and pane-owned. Both branches ride the grid's ONE data path
         // (`applyBags`): fresh windows arrive collapsed, an extension re-projects the held rows
         // (their live `threadCollapsed` state included) plus the new window in one set.
-        const fingerprint = rows ? JSON.stringify([snapshot.page?.offset ?? 0, snapshot.rows]) : null;
+        // A window extends only the list it belongs to: after a switch, a held follow-up window replaces the
+        // other list's rows until the first window of its own lands.
+        const fingerprint = rows ? JSON.stringify([me.view, source.page?.offset ?? 0, source.rows]) : null;
 
         if (fingerprint !== me.projectedFingerprint) {
             const
-                extend    = rows && snapshot.page?.offset > 0,
-                projected = rows ? snapshot.rows.map(row => ({...row, threadCollapsed: true})) : [];
+                extend    = rows && source.page?.offset > 0 && me.projectedView === me.view,
+                // a thread never hides an open question: the open view lists each one on its own row
+                projected = rows ? source.rows.map(row => me.view === 'open' ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [];
 
-            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected);
-            me.projectedFingerprint = fingerprint
+            rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected, {continuation: extend});
+            me.projectedFingerprint = fingerprint;
+            me.projectedView        = rows ? me.view : null;
+            me.emptyWindows         = rows && !projected.length ? me.emptyWindows + 1 : 0
         }
 
-        // Nothing is requested from here. A landed window is projected and that is all; the next
-        // window is the operator's to reach ({@link #onScrollEdge}). This pass used to request the
-        // next window itself while `page.hasMore` held, and a boot walked the whole inbox through
-        // the Memory Core, 173 pages in three minutes, starving every other read on it.
+        // The next window is the operator's to reach ({@link #onScrollEdge}); this pass once asked for it while
+        // `page.hasMore` held, and a boot walked the whole inbox, 173 pages in three minutes. One window is the
+        // exception: open questions that showed no row answered no gesture, and the edge cannot ask again while the
+        // visible rows stay the same, so the pane asks itself, {@link EMPTY_WINDOWS} in a row at most, past a run of
+        // rows the graph cannot project.
+        if (me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null && me.emptyWindows <= EMPTY_WINDOWS) {
+            me.pendingOffset = source.page.offset + source.page.limit;
+            me.fire('pageRequest', {offset: me.pendingOffset, source: me})
+        }
+
+        // a count the grid shows none of says so, never "nothing waits"; where the pane's own asks stopped short of the
+        // read's end, the line says what the read showed and `read on` continues from the served cursor
+        const
+            shown   = rows && me.store.getCount() > 0,
+            stopped = me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null,
+            line    = stopped ? (shown ? 'more' : 'stopped') : shown ? null : !rows ? state : me.pendingOffset === null ? 'unshown' : 'unobserved';
+
+        stateCmp.set({cls: ['fm-mailbox-state', `is-${line ?? state}`], hidden: !line, text: line ? me.getStateText(line) : ''});
+        me.getReference('mailbox-read-on').hidden = !stopped;
+
+        // the body leaves the layout with its rows, so a state line keeps the room it had alone
+        me.getReference('mailbox-body').hidden = !shown;
+        rowsGrid.hidden = !shown;
+
+        // The pane owns the message key; the grid selects the fresh record each projection creates.
+        if (me.selectedMessageId) {
+            const record = me.store.get(me.selectedMessageId),
+                  model  = rowsGrid.view.rowSelectionModel;
+
+            if (record) {
+                const id = rowsGrid.view.getRecordId(record);
+
+                model.isSelectedRow(id) || model.selectRow(id)
+            } else {
+                model.deselectAllRows();
+                me.selectedMessageId = null
+            }
+        }
+
+        me.applyDetail()
+    }
+
+    /**
+     * @summary The operator reads on past the windows the pane's own asks could not show: the next window from the
+     * served cursor, and a new run of {@link EMPTY_WINDOWS} asks behind it.
+     * @protected
+     */
+    onReadOnClick() {
+        const me = this, page = me.listSource?.page;
+
+        if (page?.hasMore && me.pendingOffset === null) {
+            me.emptyWindows  = 0;
+            me.pendingOffset = page.offset + page.limit;
+            me.fire('pageRequest', {offset: me.pendingOffset, source: me});
+            me.applySnapshot()
+        }
     }
 
     /**
@@ -417,7 +774,7 @@ class MailboxPane extends Container {
      */
     onScrollEdge(data) {
         let me   = this,
-            page = me.snapshot?.page;
+            page = me.listSource?.page;
 
         if (me.getPaneState() !== 'rows' || !page?.hasMore || me.pendingOffset !== null) {
             return
@@ -437,7 +794,9 @@ class MailboxPane extends Container {
      * subject) — all of which arrive as `admission.state: 'unavailable'`. Saying "source degraded"
      * would blame Memory Core for a refusal the adapter made, so the line states only what this
      * view actually knows — no rows, and the reason verbatim from the owner.
-     * @param {String} state From {@link #getPaneState} (never 'rows' here).
+     * @param {String} state From {@link #getPaneState} (never 'rows' here), `unshown` (open questions counted that no
+     *     window could show), or `stopped` / `more` (the pane's own asks stopped short of the read's end, with no row
+     *     or with rows in view).
      * @returns {String}
      * @protected
      */
@@ -445,6 +804,23 @@ class MailboxPane extends Container {
         const
             snapshot = this.snapshot,
             subject  = snapshot?.admission?.subjectAgentId || this.record?.agentId || 'this agent';
+
+        if (this.view === 'open') {
+            switch (state) {
+                case 'degraded':
+                    return `your questions could not be read · ${this.questions.reason || 'source unavailable'}`;
+                case 'empty':
+                    return 'nothing waits for your word';
+                case 'unshown':
+                    return `${this.questions.count.toLocaleString('en-US')} open · none can be shown here`;
+                case 'stopped':
+                    return `${this.questions.count.toLocaleString('en-US')} open · the ones read so far cannot be shown`;
+                case 'more':
+                    return `${this.questions.count.toLocaleString('en-US')} open · more follow`;
+                default:
+                    return 'your open questions have not been read'
+            }
+        }
 
         switch (state) {
             case 'denied':

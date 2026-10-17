@@ -170,17 +170,35 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
 
     test('the merge queue\'s rows key each PR by repo and number; an unavailable or absent answer has none', () => {
         expect(OpenWorkRead.mergeRows(answer())).toEqual([{id: 'neomjs/neo#2', number: 2, repo: 'neomjs/neo'}]);
+        expect(OpenWorkRead.mergeRows({...answer(), awaitingMerge: [{repo: 'neomjs/neo', number: 3, title: 'The queue names its rows'}]}), 'a row keeps its producer\'s title')
+            .toEqual([{id: 'neomjs/neo#3', number: 3, repo: 'neomjs/neo', title: 'The queue names its rows'}]);
         expect(OpenWorkRead.mergeRows({...answer(), state: 'unavailable'}), 'a blind queue keeps no rows').toEqual([]);
         expect(OpenWorkRead.mergeRows(null)).toEqual([])
     });
 
-    test('every admitted answer reaches its three surfaces: the provider block, the merge queue Store, each roster record', async () => {
+    test('the questions axis is its source\'s: the wire\'s own block, `unsupported` while the wire carries none, silent for an answer nobody gave', () => {
+        const
+            blank       = {count: null, reason: null, state: null},
+            unsupported = {count: null, reason: 'questions are not listed yet', state: 'unsupported'};
+
+        expect(OpenWorkRead.questions(answer()), 'this wire lists no one\'s open Tasks yet').toEqual(unsupported);
+        expect(OpenWorkRead.questions({...answer(), questions: {count: 2, reason: null, state: 'ok'}}), 'a wire that carries the axis is read as given')
+            .toEqual({count: 2, reason: null, state: 'ok'});
+        expect(OpenWorkRead.questions({...answer(), questions: {reason: 'Memory Core refused the read', state: 'unavailable'}}))
+            .toEqual({count: null, reason: 'Memory Core refused the read', state: 'unavailable'});
+        expect(OpenWorkRead.questions(OpenWorkRead.unavailable('producer down')), 'a producer\'s own unavailable still carries no questions').toEqual(unsupported);
+        expect(OpenWorkRead.questions(null)).toEqual(blank);
+        expect(OpenWorkRead.questions(OpenWorkRead.unavailable('fleet open-work verb not wired', 'not-wired'))).toEqual(blank);
+        expect(OpenWorkRead.questions(OpenWorkRead.unavailable('fleet open-work read failed', 'unanswered'))).toEqual(blank)
+    });
+
+    test('every admitted answer reaches its three surfaces: the provider blocks, the merge queue Store, each roster record', async () => {
         const
             StateProvider      = (await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default,
             FleetAwaitingMerge = (await import('../../../../../../../../apps/agentos/store/FleetAwaitingMerge.mjs')).default,
             FleetRoster        = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default,
             provider           = Neo.create(StateProvider, {
-                data  : {openWork: {coverage: null, observedAt: null, reason: null, state: null}},
+                data  : {openWork: {coverage: null, observedAt: null, reason: null, state: null}, questions: {count: null, reason: null, state: null}},
                 stores: {
                     fleetAwaitingMerge: {module: FleetAwaitingMerge},
                     fleetRoster       : {module: FleetRoster, data: [
@@ -206,18 +224,27 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
             }, 'instance-a');
 
             expect(provider.getData('openWork')).toEqual({coverage: 'complete', observedAt, reason: null, state: 'ok'});
+            expect(provider.getData('questions')).toEqual({count: null, reason: 'questions are not listed yet', state: 'unsupported'});
             expect(queue.count).toBe(1);
             expect(queue.get('neomjs/neo-agent-brain#794').number).toBe(794);
             expect(roster.get('neo-opus-ada').openWork).toEqual({count: 1, worst: 'red', stale: false, observedAt});
             expect(roster.get('neo-gpt').openWork, 'a PR the seat reviews while its author holds it is not the reviewer\'s').toBeNull();
+
+            // the detail's rows ride the same write: the held row, and an answered seat holding nothing
+            expect(roster.get('neo-opus-ada').openWorkHeld).toEqual({
+                rows: [{id: 'neomjs/neo#1', kind: 'red', number: 1, observedAt: null, repo: 'neomjs/neo', role: 'author', stale: false, title: null}], stale: false, observedAt
+            });
+            expect(roster.get('neo-gpt').openWorkHeld).toEqual({rows: [], stale: false, observedAt});
 
             // another profile's read retires the answer, and with it everything the answer put on screen
             setFleetBridge({profileId: 'instance-b', fleetOpenWork: () => new Promise(() => {})});
             host.loadOpenWork();
 
             expect(provider.getData('openWork')).toEqual({coverage: null, observedAt: null, reason: null, state: null});
+            expect(provider.getData('questions'), 'the questions axis retires with its answer').toEqual({count: null, reason: null, state: null});
             expect(queue.count).toBe(0);
-            expect(roster.get('neo-opus-ada').openWork).toBeNull()
+            expect(roster.get('neo-opus-ada').openWork).toBeNull();
+            expect(roster.get('neo-opus-ada').openWorkHeld, 'no answer is not an empty answer').toBeNull()
         } finally {
             clearFleetBridge();
             provider.destroy()
@@ -235,8 +262,11 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
         }, null);
 
         expect(host.mapRosterRow({id: 'neo-gpt', githubUsername: 'neo-gpt'}).openWork).toEqual({count: 1, worst: 'review-due', stale: false, observedAt: '2026-10-03T08:00:00.000Z'});
+        expect(host.mapRosterRow({id: 'neo-gpt', githubUsername: 'neo-gpt'}).openWorkHeld.rows.map(row => row.number)).toEqual([7]);
         expect(host.mapRosterRow({id: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}).openWork).toBeNull();
-        expect(host.mapRosterRow({id: 'no-login'}).openWork, 'no identity, no claim').toBeNull()
+        expect(host.mapRosterRow({id: 'neo-opus-ada', githubUsername: 'neo-opus-ada'}).openWorkHeld.rows).toEqual([]);
+        expect(host.mapRosterRow({id: 'no-login'}).openWork, 'no identity, no claim').toBeNull();
+        expect(host.mapRosterRow({id: 'no-login'}).openWorkHeld).toBeNull()
     });
 
     test('a card a view filter hides reappears with the answer given while it was hidden, both ways', async () => {
@@ -261,6 +291,7 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
             answer({'@neo-gpt': {authored: [], reviewing: [{repo: 'neomjs/neo', number: 7, observedAt, holder: {role: 'reviewer', ids: ['@neo-gpt']}}]}});
 
             expect(host.lastLiveRows.find(row => row.agentId === 'neo-gpt').openWork, 'a re-apply of the last live roster keeps the answer').toEqual(held);
+            expect(host.lastLiveRows.find(row => row.agentId === 'neo-gpt').openWorkHeld.rows.map(row => row.number)).toEqual([7]);
             expect(host.lastLiveRows.find(row => row.agentId === 'neo-opus-ada').openWork).toBeNull();
 
             roster.filters = [];

@@ -14,6 +14,9 @@ import Store               from '../../../node_modules/neo.mjs/src/data/Store.mj
  * No `url`: this store is NEVER fetched. The Fleet mailbox read adapter (the S1 Brain half) is the
  * only data source, and its viewer-admission + read-only + active-inbox boundaries live on that
  * seam — the store is presentation plumbing over the adapter's immutable rows, newest first.
+ *
+ * The pane's open view lists the operator's open questions in their read's own order (priority, then age), so it
+ * clears the sorter while it shows them ({@link #sortersOf}).
  */
 class AgentMailbox extends Store {
     static config = {
@@ -40,10 +43,17 @@ class AgentMailbox extends Store {
          * collapse is a display grouping the view applies OVER this order, never a re-sort.
          * @member {Object[]} sorters
          */
-        sorters: [{
-            direction: 'DESC',
-            property : 'sentAt'
-        }]
+        sorters: AgentMailbox.sortersOf('all')
+    }
+
+    /**
+     * @summary The sorters a list reads in: all mail newest first; the open questions none, because their read
+     * already orders them and a sorter would undo it.
+     * @param {'all'|'open'} view
+     * @returns {Object[]} Fresh sorter configs
+     */
+    static sortersOf(view) {
+        return view === 'open' ? [] : [{direction: 'DESC', property: 'sentAt'}]
     }
 }
 

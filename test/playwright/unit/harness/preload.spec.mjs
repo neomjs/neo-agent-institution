@@ -134,10 +134,15 @@ test.describe('Electron harness preload capability', () => {
     test('exposes exactly the named promise capabilities and no raw transport or secret facts', async () => {
         const
             {exposed, invokes} = await loadPreload(),
-            request            = {method: 'listAgents', params: {}};
+            request            = {method: 'listAgents', params: {}},
+            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
+            mainSource         = await readFile(mainPath, 'utf8'),
+            smokeKeys          = mainSource.match(/expectedShellKeys\s*=\s*\[([^\]]+)\]/);
 
         expect(exposed.name).toBe('neoShell');
-        expect(Object.keys(exposed.value).sort()).toEqual(['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane']);
+        expect(Object.keys(exposed.value).sort()).toEqual(expectedShellKeys);
+        expect(smokeKeys, 'packaged smoke declares its independent shell capability list').not.toBeNull();
+        expect(smokeKeys[1].split(',').map(key => key.trim().replace(/^'|'$/g, ''))).toEqual(expectedShellKeys);
         expect(exposed.value.shellVersion).toBe('42.0.0');
         expect(exposed.value).not.toHaveProperty('bearerToken');
         expect(exposed.value).not.toHaveProperty('defineFleetAgent');
@@ -156,6 +161,9 @@ test.describe('Electron harness preload capability', () => {
         await exposed.value.planeStatus();
         await exposed.value.attachPlane({planeBase: 'http://127.0.0.1:3102'});
         await exposed.value.verifyPlane();
+        await exposed.value.seatRootStatus();
+        await exposed.value.seatRootPlan();
+        await exposed.value.seatRootConsent({fingerprint: 'reviewed-plan'});
 
         // The setup six: each crosses its own named channel with the named fields only; the
         // credential call carries the step id, never a value — main's window is the input surface.
@@ -172,6 +180,9 @@ test.describe('Electron harness preload capability', () => {
             ['shell-plane-status'],
             ['shell-plane-attach', {planeBase: 'http://127.0.0.1:3102'}],
             ['shell-plane-verify'],
+            ['shell-seat-root-status'],
+            ['shell-seat-root-plan'],
+            ['shell-seat-root-consent', {fingerprint: 'reviewed-plan'}],
             ['shell-setup-evaluate', {target: null}],
             ['shell-setup-probe'],
             ['shell-setup-presets'],

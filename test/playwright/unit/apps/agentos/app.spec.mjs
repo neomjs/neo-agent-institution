@@ -108,6 +108,70 @@ test.describe('AgentOS packaged Fleet window routing', () => {
         }
     });
 
+    test('joining shell windows retain the current entry-owned bridge and a cleared slot gets a new one', async () => {
+        const {onStart} = await import('../../../../../apps/agentos/app.mjs');
+        const previous = {fleet: globalThis.AgentOS?.fleet, app: Neo.app, url: Neo.config.url};
+
+        try {
+            delete globalThis.AgentOS.fleet;
+            Neo.config.url = {href: 'app://neo/apps/agentos/index.html', search: ''};
+            Neo.app = () => {};
+            onStart();
+            const first = globalThis.AgentOS.fleet.registryBridge;
+            onStart();
+            expect(globalThis.AgentOS.fleet.registryBridge).toBe(first);
+            delete globalThis.AgentOS.fleet.registryBridge;
+            onStart();
+            expect(globalThis.AgentOS.fleet.registryBridge).not.toBe(first)
+            const rebound = globalThis.AgentOS.fleet.registryBridge;
+            globalThis.AgentOS.fleet.registryBridge = {credentialIngress: 'shell'};
+            onStart();
+            expect(globalThis.AgentOS.fleet.registryBridge).not.toBe(rebound);
+            expect(typeof globalThis.AgentOS.fleet.registryBridge.fleetRoster).toBe('function')
+        } finally {
+            globalThis.AgentOS.fleet = previous.fleet;
+            Neo.app = previous.app;
+            Neo.config.url = previous.url
+        }
+    });
+
+    test('a fresh shell boot refreshes the pre-registration route after all previous windows retired', async () => {
+        const {onStart} = await import('../../../../../apps/agentos/app.mjs');
+        const {createFleetWireResponse, FLEET_WIRE_RESPONSE_STATES} = await import('neo-agent-brain/fleet-contract');
+        const previous = {fleet: globalThis.AgentOS?.fleet, app: Neo.app, url: Neo.config.url,
+            boot: Neo.bootingWindowId, request: Neo.Main.fleetRequest};
+        const windows = [];
+
+        try {
+            delete globalThis.AgentOS.fleet;
+            Neo.config.url = {href: 'app://neo/apps/agentos/index.html', search: ''};
+            Neo.app = () => {};
+            Neo.Main.fleetRequest = ({windowId}) => {
+                windows.push(windowId);
+                return createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: []})
+            };
+            Neo.bootingWindowId = 'retired-shell';
+            Neo.apps['retired-shell'] = {};
+            onStart();
+            const bridge = globalThis.AgentOS.fleet.registryBridge;
+            await bridge.listAgents();
+            delete Neo.apps['retired-shell'];
+            Neo.bootingWindowId = 'fresh-shell';
+            Neo.apps['fresh-shell'] = {};
+            onStart();
+            await bridge.listAgents();
+            expect(windows).toEqual(['retired-shell', 'fresh-shell'])
+        } finally {
+            delete Neo.apps['retired-shell'];
+            delete Neo.apps['fresh-shell'];
+            globalThis.AgentOS.fleet = previous.fleet;
+            Neo.app = previous.app;
+            Neo.config.url = previous.url;
+            Neo.bootingWindowId = previous.boot;
+            Neo.Main.fleetRequest = previous.request
+        }
+    });
+
     test('the browser heal refuses to establish after its expected bridge loses authority', async () => {
         const {healBrowserFleetSession} = await import('../../../../../apps/agentos/app.mjs');
 

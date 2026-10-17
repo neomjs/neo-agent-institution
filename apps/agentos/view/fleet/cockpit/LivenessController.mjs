@@ -1,12 +1,14 @@
-import ViewerWakeController from './ViewerWakeController.mjs';
-import BrainHealthRead      from '../../../util/BrainHealthRead.mjs';
-import DeploymentStateRead  from '../../../util/DeploymentStateRead.mjs';
-import FleetAdmission       from '../../../util/FleetAdmission.mjs';
-import LivenessCadence      from '../../../util/LivenessCadence.mjs';
-import PlaneCredentialCheck from '../../../util/PlaneCredentialCheck.mjs';
-import RosterRow            from '../../../util/RosterRow.mjs';
-import SourceHealth         from '../../../util/SourceHealth.mjs';
-import TargetBinding        from '../../../util/TargetBinding.mjs';
+import ViewerWakeController        from './ViewerWakeController.mjs';
+import ActivityObserver            from '../../../util/ActivityObserver.mjs';
+import BrainHealthRead             from '../../../util/BrainHealthRead.mjs';
+import DeploymentStateRead         from '../../../util/DeploymentStateRead.mjs';
+import FleetAdmission              from '../../../util/FleetAdmission.mjs';
+import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
+import LivenessCadence             from '../../../util/LivenessCadence.mjs';
+import PlaneCredentialCheck        from '../../../util/PlaneCredentialCheck.mjs';
+import RosterRow                   from '../../../util/RosterRow.mjs';
+import SourceHealth                from '../../../util/SourceHealth.mjs';
+import TargetBinding               from '../../../util/TargetBinding.mjs';
 
 const
     /**
@@ -182,16 +184,50 @@ class LivenessController extends ViewerWakeController {
      */
     activityProfileId = null
     /**
-     * @summary Re-poll the roster once a lifecycle intent genuinely changed runtime state — and
-     * never on a rejected/timeout outcome, whose honest reason render must stand.
-     * @param {Promise<Boolean>} settledOk
+     * @summary Re-poll the roster once a lifecycle intent settled in a way the roster can read
+     * ({@link AgentOS.util.FleetLifecycleIntentAdapter.rosterMayRead}): a runtime change, or a
+     * refusal whose recorded cause the card then words. Never on a timeout, whose outcome is unknown.
+     * @param {Promise<Boolean>} settled
+     * @param {Function} [isCurrent] Recheck the operation's target after waiting.
      * @returns {Promise<*>}
      * @protected
      */
-    async refreshRosterOnSettle(settledOk) {
-        if (await settledOk) {
+    async refreshRosterOnSettle(settled, isCurrent=() => true) {
+        if (await settled && !this.isDestroyed && isCurrent()) {
             return this.loadRoster()
         }
+    }
+
+    /**
+     * @summary Bind a lifecycle round-trip to its roster record and profile. A UI timeout returns
+     * promptly; its later answer still reconciles and re-polls while that same attempt is current.
+     * @param {Object} intent The card or batch lifecycle intent.
+     * @param {Object} record Its provider-owned roster record.
+     * @returns {Promise<Object>} Adapter result; a timeout's settlement includes the late re-poll.
+     */
+    async requestFleetLifecycle(intent, record) {
+        const
+            me        = this,
+            bridge    = me.bridge,
+            profileId = me.bridgeProfileId,
+            store     = me.resolveFleetRosterStore(),
+            agentId   = record.agentId,
+            isCurrent = () => !me.isDestroyed && me.bridgeProfileId === profileId &&
+                (!store || (me.resolveFleetRosterStore() === store &&
+                    (store.get(agentId) ?? store.allItems?.get(agentId)) === record)),
+            result      = await FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(intent, record, {bridge, isCurrent});
+
+        if (result.settlement) {
+            result.settlement = result.settlement.then(async answer => {
+                await me.refreshRosterOnSettle(Promise.resolve(FleetLifecycleIntentAdapter.rosterMayRead(answer)), answer.isCurrent);
+                return answer
+            }).catch(error => {
+                console.error('FleetCockpit: late lifecycle reconciliation failed', FleetLifecycleIntentAdapter.sanitizeControlReason(error?.message));
+                return {ok: false, status: 'rejected', isCurrent: () => false}
+            })
+        }
+
+        return result
     }
 
     /**
@@ -225,7 +261,9 @@ class LivenessController extends ViewerWakeController {
      * events survive, otherwise stale, preserving the adapter's own reason. An answered `not-wired`
      * retains its cause (a reachable
      * server with an unconfigured source is not an unreachable server), a torn answer keeps the
-     * cold surface silent. All state writes land on the provider; the banner renders itself.
+     * cold surface silent. All state writes land on the provider; the banner renders itself. An
+     * observer mode sends its selector ({@link AgentOS.util.ActivityObserver}), and its degraded answer
+     * always admits, so an A2A half that admitted nothing empties the expansion instead of staling it.
      * @protected
      */
     async loadActivity() {
@@ -236,13 +274,14 @@ class LivenessController extends ViewerWakeController {
             {bridge}   = me,
             provider   = me.component.getStateProvider(),
             generation = ++me.streamReadGeneration,
-            profileId  = bridge?.profileId ?? null;
+            profileId  = bridge?.profileId ?? null,
+            selector   = ActivityObserver.selectorOf(me);
 
         if (!store || typeof bridge?.fleetActivity !== 'function') {
             // no bridge/verb IS the cold truth; a never-wired surface's retained answered cause
             // must not outlive the bridge that answered it
             me.publishConnection('stream', {data: provider?.getData('streamAdapterState') === 'cold'
-                ? {streamDegradedReason: null} : {}});
+                ? {activityGuidance: FleetAdmission.blankActivityGuidance(), streamDegradedReason: null} : {}});
             return
         }
 
@@ -255,8 +294,8 @@ class LivenessController extends ViewerWakeController {
             // invoked INSIDE the chain: a synchronous throw becomes a rejection of the tracked
             // promise, so the reject path owns the slot release (two sync throws would otherwise
             // consume the cap and suppress this surface forever)
-            const {capability, counts, events} = await me.boundedRead(
-                Promise.resolve().then(() => bridge.fleetActivity()),
+            const {a2a, capability, counts, events} = await me.boundedRead(
+                Promise.resolve().then(() => selector ? bridge.fleetActivity({observer: selector}) : bridge.fleetActivity()),
                 () => { me.streamReadInFlight-- }
             ) ?? {};
 
@@ -267,19 +306,21 @@ class LivenessController extends ViewerWakeController {
             }
 
             if (capability?.state === 'wired') {
-                me.admitActivity({counts, events, profileId})
+                me.admitActivity({a2a, capability, counts, events, profileId, selector})
             } else if (capability?.state === 'degraded') {
                 const partialEvents = FleetAdmission.partialActivityEvents(events);
-                if (partialEvents.length) {
-                    me.admitActivity({counts, events: partialEvents, profileId, partial: true,
+                if (partialEvents.length || selector) {
+                    me.admitActivity({a2a, capability, counts, events: partialEvents, profileId, partial: true, selector,
                         reason: me.toSafeDegradedReason(capability.reason)});
                     return
                 }
+                const guidance = FleetAdmission.blankActivityGuidance();
                 me.publishConnection('stream', {data: {
+                    activityGuidance    : guidance,
                     streamAdapterState  : 'stale',
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
                 }});
-                stream && (stream.adapterState = 'stale')
+                stream && (stream.adapterState = 'stale', stream.guidance = guidance)
             } else if (capability) {
                 if (me.activityWired) {
                     me.degradeWiredSurface('stream', capability.reason ?? 'Activity source unavailable', stream);
@@ -288,10 +329,11 @@ class LivenessController extends ViewerWakeController {
                 // the producer ANSWERED not-wired: no events land (the feed stays cold) but an
                 // answer is not silence — retain the cause
                 me.publishConnection('stream', {data: {
+                    activityGuidance    : FleetAdmission.blankActivityGuidance(),
                     streamDegradedReason: me.toSafeDegradedReason(capability.reason)
                 }})
             } else {
-                me.publishConnection('stream')
+                me.publishConnection('stream', {data: me.activityWired ? {} : {activityGuidance: FleetAdmission.blankActivityGuidance()}})
             }
             // NO capability (torn/absent answer): the feed stays cold AND no reason — we learned
             // nothing, the banner falls back to generic copy rather than inventing a cause
@@ -329,14 +371,19 @@ class LivenessController extends ViewerWakeController {
             return
         }
 
-        TargetBinding.retireRoster(me, {store, grid, profileId});
+        TargetBinding.retireRoster(me, {store, grid, profileId}) && me.onRosterRetired();
+
+        const initialShellRead = generation === 1 && !me.rosterWired && bridge.credentialIngress === 'shell',
+              livenessGeneration = me.livenessGeneration + (me.livenessTimerId === null ? 1 : 0);
+        let read;
 
         try {
             me.publishConnection('grid', {pending: true});
             me.gridReadInFlight++;
+            read = Promise.resolve().then(() => bridge.fleetRoster());
 
             const {capabilities, rows} = await me.boundedRead(
-                Promise.resolve().then(() => bridge.fleetRoster()),
+                read,
                 () => { me.gridReadInFlight-- }
             ) ?? {};
 
@@ -358,9 +405,33 @@ class LivenessController extends ViewerWakeController {
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
                 me.degradeWiredSurface('grid', error, grid);
+                if (initialShellRead && error?.fleetConnectionState === 'timeout') {
+                    me.recoverInitialRoster(read, {bridge, generation, livenessGeneration, profileId})
+                }
                 PlaneCredentialCheck.ask(me, error?.fleetConnectionState)
             }
         }
+    }
+
+    /**
+     * @summary A valid late initial shell answer wakes one fresh read; its expired rows stay discarded.
+     * The next read consumes the initial generation, so a second timeout cannot loop. The captured
+     * lifetime includes the first start, which follows the construction-time roster request.
+     * @param {Promise} read The original wire read, still owning its in-flight slot until settlement.
+     * @param {Object} authority Captured bridge, read generation, expected lifetime and profile.
+     * @protected
+     */
+    recoverInitialRoster(read, {bridge, generation, livenessGeneration, profileId}) {
+        read.then(answer => {
+            const me = this;
+
+            if (!Array.isArray(answer?.rows) || me.isDestroyed || me.rosterWired || me.livenessHidden ||
+                generation !== me.gridReadGeneration || me.bridge !== bridge ||
+                (bridge.profileId ?? null) !== profileId || me.livenessTimerId === null ||
+                me.livenessGeneration !== livenessGeneration || me.gridReadInFlight >= me.component.maxReadsInFlight) return;
+
+            return me.loadRoster()
+        }, () => {})
     }
 
     /**
@@ -384,8 +455,24 @@ class LivenessController extends ViewerWakeController {
      */
     admitRoster(answer) {
         FleetAdmission.admitRoster(this, answer);
-        PlaneCredentialCheck.settle(this)
+        PlaneCredentialCheck.settle(this);
+        this.onRosterSettled()
     }
+
+    /**
+     * @summary The roster settled: called once per admitted roster, after its records landed. The
+     * batch layer reads the fleet button's plan here (`FleetBatchController`); this layer adds nothing.
+     * @protected
+     */
+    onRosterSettled() {}
+
+    /**
+     * @summary The roster was retired for another target: the bridge in hand belongs to a profile
+     * other than the rows the store held, and the store emptied. The batch layer drops an armed stop
+     * here; this layer adds nothing.
+     * @protected
+     */
+    onRosterRetired() {}
 
     /**
      * @summary The Brain-health read owner's pull — the daemon surface on the liveness cadence.
@@ -438,13 +525,17 @@ class LivenessController extends ViewerWakeController {
 
         if (!provider) return;
 
-        const state = provider.getData(stateKey) === 'cold' ? 'cold' : 'stale';
+        const
+            state    = provider.getData(stateKey) === 'cold' ? 'cold' : 'stale',
+            guidance = surface === 'stream' ? FleetAdmission.blankActivityGuidance() : null;
         this.publishConnection(surface, {error, data: {
+            ...(guidance ? {activityGuidance: guidance} : {}),
             [stateKey]: state,
             // this surface's cause on this surface's field — never a shared slot a sibling clears
             [causeKey]: state === 'cold' ? null : this.toSafeDegradedReason(error)
         }});
 
+        consumer && guidance && (consumer.guidance = guidance);
         consumer && state === 'stale' && (consumer.adapterState = 'stale')
     }
 
@@ -679,7 +770,9 @@ class LivenessController extends ViewerWakeController {
             me      = this,
             cockpit = me.component;
 
-        if (me.livenessHidden) return;
+        if (me.livenessHidden || me.isDestroyed) return;
+
+        cockpit.getOperatorMailboxPane()?.set({now});
 
         const {launch, dueAt} = LivenessCadence.plan(me.livenessSchedule, {
             cap      : cockpit.maxReadsInFlight,
@@ -786,7 +879,8 @@ class LivenessController extends ViewerWakeController {
         cockpit.getWakeRoutesPane()?.onRefreshClick();
 
         me.loadTasks();
-        me.loadOpenWork()
+        me.loadOpenWork();
+        me.loadRecentTurns()
     }
 
     /**

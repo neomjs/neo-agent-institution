@@ -48,6 +48,12 @@ class InstanceSwitcher extends Button {
          */
         cls: ['fm-instance-switcher', 'fm-instance-trigger'],
         /**
+         * Partial-feed guidance derived from `capability.slots`, bound from the Viewport provider.
+         * @member {Object|null} activityGuidance_=null
+         * @reactive
+         */
+        activityGuidance_: null,
+        /**
          * The profileId of the currently bound instance, mirrored from the published bridge.
          * @member {String|null} boundProfileId_=null
          * @reactive
@@ -105,6 +111,17 @@ class InstanceSwitcher extends Button {
         }
 
         me.updateSwitcher()
+    }
+
+    /**
+     * @summary Partial-feed guidance updates the trigger and, when open, the bound menu row's title.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetActivityGuidance(value, oldValue) {
+        this.updateSwitcher();
+        this.menuList?.refreshBoundRows(this.boundProfileId)
     }
 
     /**
@@ -277,6 +294,8 @@ class InstanceSwitcher extends Button {
         let me       = this,
             label    = me.shellCustody ? displayShellLabel(me.shellPlaneBase) : displayInstanceLabel(me.boundRecord),
             word     = Object.hasOwn(INSTANCE_STATE_WORDS, me.instanceState) ? INSTANCE_STATE_WORDS[me.instanceState] : INSTANCE_STATE_WORDS.off,
+            summary  = me.instanceState === 'limited' && typeof me.activityGuidance?.summary === 'string' && me.activityGuidance.summary.trim(),
+            detail   = summary ? `${word}: ${summary}` : word,
             expanded = Boolean(me.menuList && !me.menuList.hidden),
             root     = me.getVdomRoot();
 
@@ -289,8 +308,8 @@ class InstanceSwitcher extends Button {
         Object.assign(root, {
             'aria-haspopup': 'menu',
             'aria-expanded': String(expanded),
-            'aria-label'   : `Instance: ${label} — ${word}`,
-            title          : `${label} — ${word}`
+            'aria-label'   : `Instance: ${label} — ${detail}`,
+            title          : `${label} — ${detail}`
         });
 
         me.update()

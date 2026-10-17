@@ -1,7 +1,7 @@
-import {test, expect} from '@playwright/test';
-import {landAgentDefinitions, landFleetActivity, landFleetOpenWork, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
-import {sampleOpenWork, sampleRoster, sampleTasks} from '../fixture/fleetSample.mjs';
-import {sampleShellInitScript} from '../fixture/setupRecipeSample.mjs';
+import {test, expect}                                                                                                                  from '@playwright/test';
+import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                                        from '../fixture/fleetSample.mjs';
+import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                                         from '../fixture/pinnedSetupHost.mjs';
 
 /**
  * The FM cockpit's visual-regression baselines — the design gate's mechanical guard: pixel
@@ -70,7 +70,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 }))
         ));
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await installFleetHeadMeasure(page)
+        await installBarMeasures(page)
     };
 
     /**
@@ -87,17 +87,34 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-stream-head')).toHaveClass(/is-cold/);
         await page.evaluate(() => document.fonts.ready);
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await installFleetHeadMeasure(page)
+        await installBarMeasures(page)
     };
 
     /**
-     * Installs the fleet head's shared no-clip measure — its geometry, read by the narrow arms below:
-     * a legend that hides its last states says those states do not exist, so every band asserts
-     * scrollWidth inside clientWidth and the last swatch inside the row.
+     * Installs the bar's shared measures, read by the narrow arms below. The fleet head's no-clip
+     * geometry: a legend that hides its last states says those states do not exist, so every band
+     * asserts scrollWidth inside clientWidth and the last swatch inside the row. The banner's lead:
+     * its text, its line, and whether its ellipsis is cutting it (`null` while no lead renders).
      * @param {Object} page
      */
-    const installFleetHeadMeasure = async page => {
+    const installBarMeasures = async page => {
         await page.evaluate(() => {
+            globalThis.__fmMeasureBannerLead = () => {
+                const lead = document.querySelector('.fm-spine-banner-lead');
+
+                if (!lead) return null;
+
+                const style = getComputedStyle(lead),
+                      line  = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5;
+
+                return {
+                    clipped: lead.scrollWidth > lead.clientWidth,
+                    oneLine: style.whiteSpace === 'nowrap' && lead.getBoundingClientRect().height <= line + 1,
+                    text   : lead.textContent,
+                    width  : Math.round(lead.clientWidth)
+                }
+            };
+
             globalThis.__fmMeasureFleetHead = () => {
                 const head     = document.querySelector('.fm-fleet-head'),
                       title    = head.querySelector('.fm-fleet-title'),
@@ -167,7 +184,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     test('the lane claim reads on its card, while a wired empty lane says so', async ({page}) => {
         await bootSettledCockpit(page);
 
-        const laneLine = 'control-plane state synchronization for source-alpha continuation',
+        const laneLine      = 'control-plane state synchronization for source-alpha continuation',
               laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
 
         await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
@@ -210,6 +227,377 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await switchToLightSkin(page);
         await expect(head).toHaveScreenshot('fleet-head-awaiting-merge-light.png');
         await expect(card('Grace')).toHaveScreenshot('fleet-card-open-work-light.png')
+    });
+
+    test('the merge queue opens to rows named by their titles, two lines at most', async ({page}) => {
+        await bootSettledCockpit(page);
+        await landFleetOpenWork(page, sampleOpenWork);
+
+        const menu = page.locator('.fm-awaiting-merge-menu'),
+              refs = menu.locator('.fm-awaiting-merge-ref');
+
+        await page.locator('.fm-fleet-head .fm-awaiting-merge').click();
+        await expect(refs).toHaveText([/^#19499 · feat\(fleet\): a seat records/, 'neomjs/neo-agent-brain #799']);
+
+        // the fixture title needs more than two lines; the row shows two, the height of two untitled rows
+        const [titled, untitled] = await refs.evaluateAll(nodes => nodes.map(node => ({client: node.clientHeight, scroll: node.scrollHeight})));
+
+        expect(titled.scroll).toBeGreaterThan(titled.client);
+        expect(Math.round(titled.client / untitled.client)).toBe(2);
+        await expect(menu).toHaveScreenshot('fleet-head-merge-queue-open.png')
+    });
+
+    test('the optional Stage entry stays inside the open merge queue, with the forge link primary; both skins', async ({page}) => {
+        await page.route('**/apps/agentos/neo-config.json', async route => {
+            const response = await route.fetch(), config = await response.json();
+            await route.fulfill({response, json: {...config, stageLaunchUrl: '/stage/'}})
+        });
+        await bootSettledCockpit(page);
+        await landFleetOpenWork(page, sampleOpenWork);
+
+        const menu = page.locator('.fm-awaiting-merge-menu'),
+            trigger = page.locator('.fm-fleet-head .fm-awaiting-merge'),
+            links = menu.locator('.fm-awaiting-merge-ref'),
+            actions = menu.locator('.fm-stage-open');
+
+        await expect(page.locator('.fm-stage-open')).toHaveCount(0);
+        await trigger.click();
+        await expect(actions).toHaveText(['Open in Stage', 'Open in Stage']);
+        await expect(links).toHaveText([/^#19499 · feat\(fleet\): a seat records/, 'neomjs/neo-agent-brain #799']);
+        await expect(links.nth(0)).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/19499');
+        await expect(links.nth(1)).toHaveAttribute('href', 'https://github.com/neomjs/neo-agent-brain/pull/799');
+        await expect(menu).toHaveScreenshot('fleet-head-merge-queue-stage-enabled.png');
+
+        await page.keyboard.press('Escape');
+        await expect(menu).toBeHidden();
+        await switchToLightSkin(page);
+        await trigger.click();
+        await expect(actions).toHaveText(['Open in Stage', 'Open in Stage']);
+        await expect(menu).toHaveScreenshot('fleet-head-merge-queue-stage-enabled-light.png')
+    });
+
+    test('the Seat group reads derived, declared, the app\'s own, a declaration against what the config reads, and a refused start; the card reads that refusal as its reason; both skins (#559)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            configured = {model: 'gpt-6-luna', reasoningEffort: 'high'},
+            // Sophie's seat, on its monogram: no live avatar joins the suite; no engine tag either, which no
+            // production roster row carries yet, so the refused card names one model
+            roster     = facts => landFleetRoster(page, [...sampleRoster, {
+                ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null, harnessSettings: configured, ...facts
+            }]),
+            define     = facts => landAgentDefinitions(page, sampleDefinitions.map(row => row.id === 'neo-gpt-sophie' ? {...row, ...facts} : row)),
+            card       = name => page.locator('.fm-agent-card', {hasText: name}),
+            detail     = page.locator('.fm-agent-detail:visible').first(),
+            group      = detail.locator('.fm-seat-model'),
+            modelLine  = group.locator('.fm-seat-model-line').first(),
+            settle     = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            },
+            open       = async name => {
+                await card(name).click();
+                await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+                await expect(group).toBeVisible({timeout: 30000})
+            };
+
+        await roster({state: 'off'});
+        await define({});
+        await open('Sophie');
+
+        for (const [facts, line, golden] of [
+            [{},                                             'derived · reads gpt-6-luna (configured on disk)',                                    'seat-model-derived.png'],
+            [configured,                                     'declared gpt-6-luna',                                                                'seat-model-declared.png'],
+            [{model: 'gpt-6-sol', reasoningEffort: 'max'},   'declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start', 'seat-model-differs-stopped.png']
+        ]) {
+            await define(facts);
+            await expect(modelLine).toHaveText(line);
+            await settle();
+            await expect(group, line).toHaveScreenshot(golden)
+        }
+
+        // a running seat reads the same sentence: the harness reads its config when it launches
+        await roster({state: 'ok'});
+        await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+
+        // Desktop leaves its model to the app and offers an effort declaration before the first Start.
+        await open('Ada');
+        await expect(modelLine).toHaveText('set per session in the app · not read back yet');
+        await expect(group.locator('.fm-seat-model-line').nth(1)).toHaveText('app default');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-app.png');
+
+        await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-change').click();
+        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-app-effort.png');
+
+        // a start refused for the declared model: the card's line is the reason, and the row it sends the operator to
+        await define({model: 'gpt-6-astra', reasoningEffort: null});
+        await roster({state: 'off', seatModel: {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'}});
+        await expect(card('Sophie').locator('.fm-card-control-status')).toHaveText('start refused: model gpt-6-astra is not available');
+        await settle();
+        await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused.png');
+
+        await open('Sophie');
+        await expect(modelLine).toHaveText('declared gpt-6-astra · start refused: model gpt-6-astra is not available');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-refused.png');
+
+        await switchToLightSkin(page);
+        await settle();
+        await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused-light.png');
+
+        await define({model: 'gpt-6-sol', reasoningEffort: 'max'});
+        await roster({state: 'off'});
+        await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-differs-stopped-light.png');
+
+        await open('Ada');
+        await group.locator('.fm-seat-model-row').nth(1).locator('.fm-seat-model-change').click();
+        await expect(group.locator('.fm-seat-model-offer .fm-chip')).toHaveText(['Low', 'Medium', 'High', 'Extra', 'Max', 'Use app default']);
+        await settle();
+        await expect(group).toHaveScreenshot('seat-model-app-effort-light.png')
+    });
+
+    test('the Seat group\'s Memory row: no choice recorded reads as that, the choice opens in Add\'s list and names the chosen folder under Details, a recorded consent reads back; both skins (#572)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            source = '/home/operator/.claude/projects/-work/memory',
+            card   = name => page.locator('.fm-agent-card', {hasText: name}),
+            detail = page.locator('.fm-agent-detail:visible').first(),
+            group  = detail.locator('.fm-seat-model'),
+            row    = group.locator('.fm-seat-memory'),
+            line   = row.locator('.fm-seat-model-line'),
+            define = facts => landAgentDefinitions(page, sampleDefinitions.map(row => row.id === 'neo-gpt-sophie' ? {...row, ...facts} : row)),
+            settle = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            },
+            // the choice opens on two candidates; picking one names its folder under Details, opened for the capture
+            choose = async () => {
+                const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${SEAT_MEMORY_DRIVER}?state=candidates&t=${++driverTick}`);
+
+                expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+                await expect(group.locator('.fm-seat-memory-offer')).toBeVisible();
+                await row.locator('.neo-list-item', {hasText: 'Mnemosyne'}).click();
+                await row.locator('.fm-seat-memory-details summary').click();
+                await expect(row.locator('.fm-seat-memory-source')).toHaveText(source)
+            };
+
+        await landFleetRoster(page, [...sampleRoster, {
+            ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null, state: 'off'
+        }]);
+        await define({});
+        await card('Sophie').click();
+        await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+        await expect(group).toBeVisible({timeout: 30000});
+
+        await expect(line).toHaveText('no import choice recorded');
+        // the open choice outgrows the inspector's fold, so it is captured as its own row
+        await choose();
+        await settle();
+        await expect(row).toHaveScreenshot('seat-memory-choice.png');
+
+        // a recorded consent arrives as a new definitions Store: another binding, so the choice folds and the line reads it
+        await define({memoryImport: source});
+        await expect(line).toHaveText(`recorded: import the memory at ${source}`);
+        await expect(group.locator('.fm-seat-memory-change')).toHaveText('Change');
+        await expect(group.locator('.fm-seat-memory-offer')).toBeHidden();
+        await settle();
+        await expect(group).toHaveScreenshot('seat-memory-recorded.png');
+
+        await switchToLightSkin(page);
+        await define({});
+        await choose();
+        await settle();
+        await expect(row).toHaveScreenshot('seat-memory-choice-light.png')
+    });
+
+    test('the Participation group: benched with the operator\'s date and reason, unobserved with the read\'s reason, active with the bench command, and no command on the shell\'s own plan; the benched seat\'s Start closed in the Fleet\'s words; both skins (#568)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            refusal = 'the seat is benched by the operator: its participation is operator_benched',
+            benched = {participationStatus: 'operator_benched', participationReason: 'the preview model behind this chair ended', participationSince: '2026-07-01T00:00:00.000Z', participationRead: {state: 'read'}, launchRefusal: refusal},
+            card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            group   = detail.locator('.fm-participation'),
+            line    = group.locator('.fm-participation-line'),
+            land    = facts => landFleetRoster(page, [...sampleRoster, {
+                ...sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+                agentId: 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null, state: 'off', ...facts
+            }]),
+            plane   = async base => {
+                const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${SHELL_PLANE_DRIVER}?base=${encodeURIComponent(base ?? '')}&t=${++driverTick}`);
+
+                expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true)
+            },
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land(benched);
+        await expect(card.locator('.fm-card-action').first()).toHaveAttribute('title', refusal);
+        await settle();
+        await expect(card).toHaveScreenshot('participation-card-benched.png');
+
+        await card.click();
+        await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+        await expect(line).toHaveText('benched since 2026-07-01 — the preview model behind this chair ended', {timeout: 30000});
+
+        // the shell's own plan names no plane: the group says why it offers no command
+        await expect(group.locator('.fm-participation-place')).toHaveText('No command is offered: this view cannot name where the plane\'s Memory Core runs.');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-own-plan.png');
+
+        // attached to this machine's plane: the command, and where its Memory Core runs
+        await plane('http://127.0.0.1:3102');
+        await expect(group.locator('.fm-participation-command')).toHaveText('node ai/scripts/fleet/participation.mjs activate --identity @neo-gpt-sophie --apply');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-benched.png');
+
+        // a re-read in place: the group re-seats without a restart
+        await land({participationStatus: null, participationRead: {state: 'unread', reason: 'presence unreadable'}, launchRefusal: null});
+        await expect(line).toHaveText('unobserved — presence unreadable');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-unobserved.png');
+
+        await land({participationStatus: 'active', participationRead: {state: 'read'}, launchRefusal: null});
+        await expect(group.locator('.fm-participation-command')).toHaveText('node ai/scripts/fleet/participation.mjs bench --identity @neo-gpt-sophie --reason "<why>" --apply');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-active.png');
+
+        await switchToLightSkin(page);
+        await land(benched);
+        await expect(line).toHaveText('benched since 2026-07-01 — the preview model behind this chair ended');
+        await settle();
+        await expect(group).toHaveScreenshot('participation-benched-light.png')
+    });
+
+    test('a running seat whose working checkout the last start did not prepare reads skills not verified on its card; Detail\'s Repository pane reads each checkout\'s preparation, a long failure whole and parallel installs as this start; both skins (#610)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            npm     = 'npm ci exited 1: npm error code ERESOLVE · npm error ERESOLVE unable to resolve dependency tree · While resolving: neo-agent-brain@0.0.0 · Found: neo.mjs@13.1.0 · Could not resolve dependency: peer neo.mjs@"^13.2.0" from neo-agent-skills@0.1.30',
+            settled = [
+                {repoSlug: 'neomjs/neo',                   state: 'skipped', reason: 'skipped during the install'},
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'failed',  reason: npm},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'installed'}
+            ],
+            // the Start's three installs run in parallel: two still running, one already done
+            live    = [
+                {repoSlug: 'neomjs/neo',                   state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'present'}
+            ],
+            emmy    = sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            // Fleet runs this seat: a wired runtime, so the card reads it working rather than offline. The
+            // repository status stays unwired, so the pane's freshness pill carries no clock into the golden
+            sources = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            land    = facts => landFleetRoster(page, [...sampleRoster, {
+                ...emmy,
+                agentId : 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
+                repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-gpt-sophie/neomjs/neo', sources, ...facts
+            }]),
+            card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            pane    = detail.locator('.fm-detail-pane-repo'),
+            head    = pane.locator('.fm-detail-repo-prep-head'),
+            // a reason wraps whole: neither the pane nor a row is wider than its own box
+            noClip  = () => pane.evaluate(node => [node, ...node.querySelectorAll('.fm-repository-list .neo-list-item, .fm-repo-reason')].every(el => el.scrollWidth <= el.clientWidth + 1)),
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land({state: 'ok', dependencyOutcomes: settled});
+        await expect(card.locator('.fm-card-state')).toHaveText('working');
+        await expect(card.locator('.fm-card-control-status')).toHaveText('skills not verified');
+        await settle();
+        await expect(card).toHaveScreenshot('fleet-card-skills-unverified.png');
+
+        await card.click();
+        await expect(head).toHaveText('Preparation · last start', {timeout: 30000});
+        await expect(pane.locator('.fm-repo-reason').nth(1)).toHaveText(npm);
+        expect(await noClip(), 'the long failure wraps whole inside the pane').toBe(true);
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-preparation.png');
+
+        await land({state: 'off', dependencyOutcomes: live});
+        await expect(head).toHaveText('Preparation · this start');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-preparation-live.png');
+
+        await switchToLightSkin(page);
+        await land({state: 'ok', dependencyOutcomes: settled});
+        await expect(head).toHaveText('Preparation · last start');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-preparation-light.png');
+        await expect(card).toHaveScreenshot('fleet-card-skills-unverified-light.png')
+    });
+
+    test('a Start the Fleet reports installing: the card counts it and its power verb cancels it; the Repository pane offers Skip with its consequence once the wire has the verb; both skins (#616)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            emmy    = sampleRoster.find(row => row.agentId === 'neo-gpt-emmy'),
+            sources = {...emmy.sources, runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}},
+            live    = [
+                {repoSlug: 'neomjs/neo',                   state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'installed'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'installing'}
+            ],
+            land    = () => landFleetRoster(page, [...sampleRoster, {
+                ...emmy,
+                agentId : 'neo-gpt-sophie', githubUsername: 'neo-gpt-sophie', displayName: 'Sophie', avatarUrl: null, engineTag: null,
+                repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-gpt-sophie/neomjs/neo', sources, state: 'off', dependencyOutcomes: live
+            }]),
+            card    = page.locator('.fm-agent-card', {hasText: 'Sophie'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            pane    = detail.locator('.fm-detail-pane-repo'),
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await land();
+        await expect(card.locator('.fm-card-control-status')).toHaveText('start… preparing dependencies (1/3 done)');
+        await expect(card.locator('.fm-card-state')).toHaveText('starting');
+        await expect(card.getByRole('button', {name: 'Cancel start Sophie'})).toBeEnabled();
+        await settle();
+        await expect(card).toHaveScreenshot('fleet-card-preparing.png');
+
+        // the verb arrives with a newer pin; the pane reads the wire when it renders, so the roster lands again
+        const loaded = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${SKIP_WIRE_DRIVER}?t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await card.click();
+        await land();
+        await expect(pane.locator('.fm-detail-repo-skip')).toHaveText('Skip remaining preparation', {timeout: 30000});
+        await expect(pane.locator('.fm-detail-repo-skip-note')).toContainText('The seat launches without waiting');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-skip.png');
+
+        await switchToLightSkin(page);
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-repo-skip-light.png');
+        await expect(card).toHaveScreenshot('fleet-card-preparing-light.png')
     });
 
     test('the activity stream — the chip-row vocabulary against the fixture feed', async ({page}) => {
@@ -258,8 +646,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                             word  = rect(card.querySelector('.fm-card-state'));
 
                       return {
-                          lineHeight    : Math.round(line.height),
-                          members       : [...card.querySelectorAll('.fm-card-state-line > *')]
+                          lineHeight: Math.round(line.height),
+                          members   : [...card.querySelectorAll('.fm-card-state-line > *')]
                               .map(el => ({cls: el.className, box: rect(el)}))
                               .filter(({box}) => box.width > 0 && box.top - line.top < line.height)
                               .map(({cls, box}) => ({cls, pastLine: Math.round(box.right - line.right), underVerbs: Math.round(overlap(box, verbs))})),
@@ -277,9 +665,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 minIdentity   : idents.length ? Math.min(...idents) : 0,
                 head          : globalThis.__fmMeasureFleetHead(),
                 shell         : {
-                    labelInside  : !!label && label.left >= switcher.left && label.right <= switcher.right,
+                    labelInside   : !!label && label.left >= switcher.left && label.right <= switcher.right,
                     labelOverTheme: Math.round(overlap(label, rect(document.querySelector('.agent-theme-button')))),
-                    titleWidth   : title ? Math.round(title.width) : 0
+                    titleWidth    : title ? Math.round(title.width) : 0
                 },
                 cards
             }
@@ -316,6 +704,21 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             }
         }
 
+        const countSegments = await page.locator('.fm-fleet-start-summary').evaluate(element => {
+            const node   = element.firstChild, text = node.textContent;
+            let   offset = 0;
+
+            return text.split(' · ').map(segment => {
+                const range = document.createRange();
+                range.setStart(node, offset);
+                range.setEnd(node, offset + segment.length);
+                offset += segment.length + 3;
+                return {segment, lines: range.getClientRects().length}
+            })
+        });
+
+        expect(countSegments.length).toBeGreaterThan(1);
+        expect(countSegments.every(segment => segment.lines === 1), 'each count and its word stay on one line').toBe(true);
         await expect(page).toHaveScreenshot('cockpit-vessel-314.png')
     });
 
@@ -387,6 +790,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                     title      : banner.getAttribute('title') || '',
                     ariaLabel  : banner.getAttribute('aria-label') || ''
                 } : null,
+                lead          : globalThis.__fmMeasureBannerLead(),
                 startTextShown: startText ? getComputedStyle(startText).display : null,
                 startRight    : start ? Math.round(start.getBoundingClientRect().right) : null,
                 head          : globalThis.__fmMeasureFleetHead()
@@ -402,16 +806,134 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(geometry.barWrap, 'the vessel-narrow wrap rule stays silent above the 570px threshold').toBe('nowrap');
         expect(geometry.banner, 'the spine banner is rendered').not.toBeNull();
         // the designed narrow form: the word retracts (font-size 0 — never mid-word clipping),
-        // the mark stays, and the FULL truth stays one hover away on title + aria
+        // the mark stays, the lead keeps the reason on one visible line, and title + aria repeat it
         expect(geometry.banner.fontSize, 'the state word retracts in the mark regime').toBe('0px');
         expect(geometry.banner.scrollWidth, 'no hidden pressure: the mark never overflows its box').toBeLessThanOrEqual(geometry.banner.clientWidth);
-        expect(geometry.banner.title, 'the full honesty sentence rides the title').toContain('Fleet');
-        expect(geometry.banner.ariaLabel, 'the aria mirror carries the sentence').toContain('Fleet');
+        expect(geometry.lead?.text, 'the reason stays visible beside the mark').toBe('Fleet server offline');
+        expect(geometry.lead.width, 'the lead keeps a line to read').toBeGreaterThan(0);
+        expect(geometry.lead.oneLine, 'the lead never wraps').toBe(true);
+        expect(geometry.banner.title, 'the title repeats the lead').toContain('Fleet server offline');
+        expect(geometry.banner.ariaLabel, 'the aria mirror carries the sentence').toContain('Fleet server offline');
         // the collapse order's last clause: action labels drop to glyphs
         expect(geometry.startTextShown, 'action labels drop to their glyphs').toBe('none');
         expect(geometry.startRight, 'Start fleet stays inside the band').toBeLessThanOrEqual(geometry.viewport);
 
         await expect(page).toHaveScreenshot('cockpit-intermediate-720.png')
+    });
+
+    /**
+     * The four answers a plane gives a shell it refuses, as the shell's lifecycle owner reports a typed
+     * boot refusal: the cause and, as its detail, the plane's address. They are the row 5 walk's provocations.
+     * @type {Object[]}
+     */
+    const PLANE_REFUSAL_FRAMES = [
+        {golden: 'banner-plane-unreachable.png', source: 'plane-unreachable',        word: 'plane unreachable'},
+        {golden: 'banner-pat-refused.png',       source: 'plane-credential-refused', word: 'pat refused'},
+        {golden: 'banner-account-changed.png',   source: 'plane-identity-changed',   word: 'account changed'},
+        {golden: 'banner-not-a-plane.png',       source: 'plane-not-a-plane',        word: 'not a plane'}
+    ];
+
+    /**
+     * The refused plane's address, which only the title may carry.
+     * @type {String}
+     */
+    const REFUSING_PLANE = 'https://plane.neo.test:8443';
+
+    /**
+     * @summary Lands one typed boot refusal and waits for the bar to read it: the pill's word and Connect.
+     * @param {Object} page
+     * @param {String} source The refusal's cause code
+     * @param {String} word The pill's status word for it
+     */
+    const landPlaneRefusal = async (page, source, word) => {
+        await landBrainHealth(page, {cause: {detail: REFUSING_PLANE, observedAt: 0, source}, state: 'degraded'});
+        await expect(page.locator('.fm-spine-banner')).toHaveText(word);
+        await expect(page.locator('.fm-reconnect-button')).toHaveText('Connect')
+    };
+
+    /**
+     * @summary Reads the bar's state block for a refusal: the lead's line and the title and aria that repeat it.
+     * @param {Object} page
+     * @returns {Promise<Object>}
+     */
+    const readRefusal = page => page.evaluate(() => {
+        const banner = document.querySelector('.fm-spine-banner'),
+              wake   = document.querySelector('.fm-viewer-wake'),
+              cut    = el => el ? el.scrollWidth > el.clientWidth : null;
+
+        return {
+            ariaLabel: banner.getAttribute('aria-label') || '',
+            buttons  : [...document.querySelectorAll('.fm-cockpit-bar > .neo-button')].map(el => Math.round(el.getBoundingClientRect().width)),
+            fontSize : getComputedStyle(banner).fontSize,
+            lead     : globalThis.__fmMeasureBannerLead(),
+            pillCut  : cut(banner),
+            title    : banner.getAttribute('title') || '',
+            wakeCut  : cut(wake),
+            wakeFont : wake ? getComputedStyle(wake).fontSize : null,
+            wakeLive : wake ? wake.classList.contains('fm-viewer-wake-live') : null
+        }
+    });
+
+    test('the four plane refusals — the pill names the state, the lead beside it says why and what Connect fixes, the title repeats it with the address; wide, light, and the mark regime (#533)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootColdCockpit(page);
+
+        const bar   = page.locator('.fm-cockpit-bar'),
+              wides = {};
+
+        for (const {golden, source, word} of PLANE_REFUSAL_FRAMES) {
+            await landPlaneRefusal(page, source, word);
+
+            const read = await readRefusal(page);
+
+            expect(read.lead?.text, `${word}: the lead says why, and what connecting fixes`).toMatch(/\bconnect\b/i);
+            expect(read.lead.text, `${word}: the lead carries no address and no code`).not.toMatch(/plane\.neo\.test|plane-[a-z]/);
+            expect(read.lead.oneLine, `${word}: the lead is one line`).toBe(true);
+            expect(read.lead.clipped, `${word}: at the design width the lead reads whole`).toBe(false);
+            expect(read.pillCut, `${word}: the pill keeps its word`).toBe(false);
+            expect(read.title, `${word}: the title repeats the lead`).toContain(read.lead.text);
+            expect(read.title, `${word}: the address rides the title only`).toContain(REFUSING_PLANE);
+            expect(read.ariaLabel, `${word}: the aria mirror is the title`).toBe(read.title);
+
+            wides[source] = read;
+            await expect(bar).toHaveScreenshot(golden)
+        }
+
+        // just above the marks step the lead is the row's slack: it ellipsizes, while the longest pill
+        // word, the wake pill and every button keep their width
+        await page.setViewportSize({width: 821, height: 800});
+        await landPlaneRefusal(page, 'plane-unreachable', 'plane unreachable');
+        await expect.poll(() => readRefusal(page).then(read => read.lead?.clipped), {message: 'the lead ellipsizes first', timeout: 10000}).toBe(true);
+
+        const squeezed = await readRefusal(page);
+
+        expect(squeezed.lead.width, 'the lead keeps a line to read').toBeGreaterThan(0);
+        expect(squeezed.pillCut, 'the pill keeps its word').toBe(false);
+        expect(squeezed.wakeCut, 'the wake pill keeps its word').toBe(false);
+        expect(squeezed.buttons, 'every button keeps its width').toEqual(wides['plane-unreachable'].buttons);
+
+        await page.setViewportSize({width: 1280, height: 800});
+        await landPlaneRefusal(page, 'plane-credential-refused', 'pat refused');
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(bar).toHaveScreenshot('banner-pat-refused-light.png');
+
+        // the mark regime: the fleet pill retracts to its mark and its lead keeps one truncated line;
+        // no non-live state is a bare mark, so a degraded wake chip, which has no lead, keeps its word
+        await page.setViewportSize({width: 720, height: 900});
+        await expect.poll(() => readRefusal(page).then(read => read.fontSize), {message: 'the pill drops to its mark', timeout: 10000}).toBe('0px');
+
+        const narrow = await readRefusal(page);
+
+        expect(narrow.lead?.width, 'the reason keeps a visible line beside the mark').toBeGreaterThan(0);
+        expect(narrow.lead.oneLine, 'the narrow lead never wraps').toBe(true);
+        expect(narrow.title, 'the title still carries the whole sentence').toContain(narrow.lead.text);
+        expect(narrow.wakeLive, 'the fixture wake is degraded').toBe(false);
+        expect(narrow.wakeFont, 'a degraded wake keeps its word in the mark regime').not.toBe('0px');
+        expect(narrow.wakeCut, 'and the word reads whole').toBe(false);
+
+        await expect(bar).toHaveScreenshot('banner-pat-refused-light-720.png')
     });
 
     test('the Review preset at 1280×720 — the fleet head keeps its whole legend when the inspector docks beside it (geometry asserted)', async ({page}) => {
@@ -487,8 +1009,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
             const measure = () => page.evaluate(() => {
                 const
-                    panel    = document.querySelector('.agent-panel-accounts'),
-                    bounds   = panel.getBoundingClientRect(),
+                    panel  = document.querySelector('.agent-panel-accounts'),
+                    bounds = panel.getBoundingClientRect(),
                     // the layout boxes this view owns; the engine's own clipping boxes (a button's
                     // ripple, a hidden field trigger) are deliberate and stay out of the census
                     boxes    = ['.fm-accounts-master', '.fm-accounts-list', '.fm-accounts-detail', '.fm-agent-config-card', '.fm-agent-repos-card', '.fm-add-agent-form']
@@ -589,9 +1111,9 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         return {
             // the layout width — what the pane's own width-query context reads (a scaled ancestor
             // shrinks the painted rect, never this)
-            width  : pane.clientWidth,
-            noClip : pane.scrollWidth <= pane.clientWidth && rows.every(row => row.scrollWidth <= row.clientWidth),
-            spill  : [...pane.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 0.5).length,
+            width : pane.clientWidth,
+            noClip: pane.scrollWidth <= pane.clientWidth && rows.every(row => row.scrollWidth <= row.clientWidth),
+            spill : [...pane.querySelectorAll('*')].filter(el => el.getBoundingClientRect().right > right + 0.5).length,
             // the receipt behind a red: which row overflows its own box, and by how much
             clipped: rows.filter(row => row.scrollWidth > row.clientWidth).map(row => `${row.className}: ${row.scrollWidth} > ${row.clientWidth}`),
             pane   : `${pane.scrollWidth} / ${pane.clientWidth}`
@@ -830,6 +1352,37 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      */
     const GOLDEN_PATH_DRIVER = '../../../../test/playwright/visual/goldenPathEnvelope.driver.mjs';
 
+    /**
+     * The Add agent memory driver, resolved the way {@link GOLDEN_PATH_DRIVER} is.
+     * @type {String}
+     */
+    const ADD_AGENT_MEMORY_DRIVER = '../../../../test/playwright/visual/addAgentMemory.driver.mjs';
+
+    /**
+     * The Seat group's Memory row driver, resolved the way {@link GOLDEN_PATH_DRIVER} is.
+     * @type {String}
+     */
+    const SEAT_MEMORY_DRIVER = '../../../../test/playwright/visual/seatMemory.driver.mjs';
+
+    /**
+     * The shell-plane driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: it attaches the views to a plane.
+     * @type {String}
+     */
+    const SHELL_PLANE_DRIVER = '../../../../test/playwright/visual/shellPlane.driver.mjs';
+
+    /**
+     * The open-questions driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: the operator Mailbox shows its open
+     * questions.
+     * @type {String}
+     */
+    const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
+
+    /**
+     * The Skip-verb driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: it puts the verb a newer pin adds on the wire.
+     * @type {String}
+     */
+    const SKIP_WIRE_DRIVER = '../../../../test/playwright/visual/skipWire.driver.mjs';
+
     let driverTick = 0;
 
     /**
@@ -865,7 +1418,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * short settle follows.
      * @param {Object} page
      * @param {String} state `current|team|truncated|degraded|routeless|unavailable`
-     * @param {RegExp|String} currency The line that envelope must produce
+     * @param {RegExp|String} currency The complete words that envelope must produce (the head keeps them behind Details)
      * @param {String} [select] The qualified id to select
      */
     const feedObservatory = async (page, state, currency, select) => {
@@ -874,14 +1427,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             result = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GRAPH_SCENE_DRIVER}?${query}`);
 
         expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true);
-        await expect(page.locator('.fm-observatory-pane .fm-observatory-currency')).toHaveText(currency);
+        await expect(page.locator('.fm-observatory-pane .fm-observatory-details')).toHaveText(currency);
         await page.waitForTimeout(600)
     };
 
     test('the Observatory pane — a read draws its density wells, the nodes in no well in a faint halo, and the route as an overlay of rank beacons the toggle removes; a selection lights its neighbourhood; a budget cut names the budget; a scene without a route and an unavailable read leave the surface clean; both skins', async ({page}) => {
         const
             pane    = page.locator('.fm-observatory-pane'),
-            toggle  = pane.getByRole('button', {name: 'Golden Path'}),
+            toggle  = pane.getByRole('button', {name: 'Route'}),
             label   = pane.locator('.fm-observatory-selected-label'),
             current = /^Current · captured .+ · 16 nodes · 15 edges · 3 in the halo · complete$/,
             // no tooltip in a shot. The pointer dwells until any pending tooltip has shown, then leaves and
@@ -933,11 +1486,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         const withheld = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=withheld&t=${++driverTick}`);
 
         expect(withheld.success, `the driver loaded: ${JSON.stringify(withheld)}`).toBe(true);
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
-        await expect(toggle, 'the control says so without a hover').toHaveText('Golden Path · withheld');
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(/ · partial, budget 150 nodes \/ 300 edges \/ 32 KiB · route withheld · freshness-sla-breached$/);
+        await expect(toggle, 'the control says so without a hover').toHaveText('Route · withheld');
         await expect(pane).toHaveScreenshot('observatory-pane-withheld-light.png');
         await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${GOLDEN_PATH_DRIVER}?state=current&t=${++driverTick}`);
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ \/ 32 KiB$/);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(/ \/ 32 KiB$/);
 
         await feedObservatory(page, 'degraded', 'Degraded · graph-seam-refused · 16 nodes · 15 edges · 3 in the halo · complete');
         await expect(pane).toHaveScreenshot('observatory-pane-degraded-light.png');
@@ -953,11 +1506,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     test('the Observatory\'s team lens and heat — two checked peers draw their union in hues of their own and the Team list and the rows carry them; the heat brightens what drew attention and greys what it cannot read; nothing moves; both skins', async ({page}) => {
         const
-            pane  = page.locator('.fm-observatory-pane'),
-            peer  = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
-            heat  = pane.getByRole('button', {name: 'Attention'}),
+            pane   = page.locator('.fm-observatory-pane'),
+            peer   = id => pane.locator('.fm-observatory-peer-list .neo-list-item').filter({hasText: id}),
+            heat   = pane.getByRole('button', {name: 'Attention'}),
             lensed = / · lens · 5 nodes · 2 peers$/,
-            rest  = async () => {
+            rest   = async () => {
                 await page.waitForTimeout(300);
                 await page.mouse.move(0, 0);
                 await page.waitForTimeout(500)
@@ -972,14 +1525,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // the operator's direction: Vega's AND Grace's nodes, as one union
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(lensed);
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-lens.png');
 
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
         await heat.click();
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/ · complete · heat · last 3 days · 2 unknown$/);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(/ · complete · heat · last 3 days · 2 unknown$/);
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-heat.png');
 
@@ -992,7 +1545,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await rest();
         await peer('@neo-opus-vega').click();
         await peer('@neo-opus-grace').click();
-        await expect(pane.locator('.fm-observatory-currency')).toHaveText(lensed);
+        await expect(pane.locator('.fm-observatory-details')).toHaveText(lensed);
         await rest();
         await expect(pane).toHaveScreenshot('observatory-pane-lens-light.png');
 
@@ -1019,12 +1572,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
     test('the Observatory offers the team busiest first and every focus has a way back — the head reads in two rows, a click outlines nothing the keys would, Clear and Escape leave a selection and then the lens', async ({page}) => {
         const
-            pane      = page.locator('.fm-observatory-pane'),
-            peers     = pane.locator('.fm-observatory-peer-list .neo-list-item'),
-            node      = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
-            head      = pane.locator('.fm-observatory-peers-head'),
+            pane  = page.locator('.fm-observatory-pane'),
+            peers = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            node  = at => pane.locator('.fm-observatory-node-list .neo-list-item').nth(at),
+            head  = pane.locator('.fm-observatory-peers-head'),
+            // one section opens to the panel's height at a time; its head opens it
+            teamHead  = pane.getByRole('button', {name: /^Team/}),
+            nodesHead = pane.getByRole('button', {name: /^Nodes/}),
             label     = pane.locator('.fm-observatory-selected-label'),
             currency  = pane.locator('.fm-observatory-currency'),
+            details   = pane.locator('.fm-observatory-details'),
             top       = async selector => Math.round((await pane.locator(selector).boundingBox()).y),
             outlineOf = locator => locator.evaluate(el => getComputedStyle(el).outlineStyle);
 
@@ -1053,32 +1610,149 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await peers.filter({hasText: '@a-contributor'}).click();
         await expect(peers, 'unchecked, it leaves Team').toHaveCount(5);
 
+        // View sits first: opening a section never moves the lens controls
+        const viewTop = await top('.fm-observatory-view-row >> nth=0');
+
+        // no box holds the open Team list to a height of its own
+        expect(await pane.locator('.fm-observatory-peer-list').evaluate(el => getComputedStyle(el).maxHeight)).toBe('none');
+
         // a mouse click selects without an outline; the keys move the selection and outline the row they reach
+        await nodesHead.click();
+        await expect(node(0)).toBeVisible();
+        expect(await top('.fm-observatory-view-row >> nth=0')).toBe(viewTop);
         await node(1).click();
-        await expect(label).toHaveText('Golden Path currency on the cockpit');
+        await expect(label).toHaveText('Currency line reads the admission');
         expect(await outlineOf(node(1))).toBe('none');
         await page.keyboard.press('ArrowDown');
-        await expect(label).toHaveText('REM digests the backlog before the next cut');
+        await expect(label).toHaveText('The release notes sweep the merges since the last cut');
         expect(await outlineOf(node(2))).toBe('solid');
 
         // Escape backs out one step at a time: the selection first, then the lens
+        await teamHead.click();
         await peers.first().click();
+        await nodesHead.click();
         await node(1).click();
-        await expect(currency).toHaveText(/ · lens · /);
+        await expect(details).toHaveText(/ · lens · /);
         await page.keyboard.press('Escape');
         await expect(label).toHaveText('No node selected');
-        await expect(currency, 'the lens outlives the selection').toHaveText(/ · lens · /);
+        await expect(details, 'the lens outlives the selection').toHaveText(/ · lens · /);
         await page.keyboard.press('Escape');
-        await expect(currency).not.toHaveText(/lens/);
+        await expect(details).not.toHaveText(/lens/);
 
         // and each has its own Clear
+        await teamHead.click();
         await peers.first().click();
         await head.getByRole('button', {name: 'Clear'}).click();
-        await expect(currency).not.toHaveText(/lens/);
+        await expect(details).not.toHaveText(/lens/);
         await expect(head.getByRole('button', {name: 'Clear'}), 'no lens, nothing to clear').toBeHidden();
+        await nodesHead.click();
         await node(1).click();
+        await pane.getByRole('button', {name: /^Selected node/}).click();
         await pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}).click();
         await expect(label).toHaveText('No node selected')
+    });
+
+    test('the side panel reads a crowded read in full — All lists 161 peers and Nodes 500 rows, the last of each reachable by scrolling, while View holds its place and the other sections stay at their heads; a 90-character title wraps whole on its own row', async ({page}) => {
+        const
+            pane     = page.locator('.fm-observatory-pane'),
+            head     = pane.locator('.fm-observatory-peers-head'),
+            peers    = pane.locator('.fm-observatory-peer-list .neo-list-item'),
+            nodes    = pane.locator('.fm-observatory-node-list .neo-list-item'),
+            viewTop  = async () => Math.round((await pane.locator('.fm-observatory-view-row').first().boundingBox()).y),
+            heightOf = locator => locator.locator('.fm-observatory-row-label').evaluate(label => label.clientHeight);
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'crowded', /^Current · captured .+ · complete$/);
+
+        const top = await viewTop();
+
+        await expect(head.locator('.fm-observatory-side-title')).toHaveText('Team · 13 of 161');
+        await head.getByRole('button', {name: 'All'}).click();
+        await expect(peers).toHaveCount(161);
+        await peers.last().scrollIntoViewIfNeeded();
+        await expect(peers.last(), 'the last peer scrolls into the open section').toBeInViewport();
+        await expect(nodes.first(), 'Nodes stays at its head').toBeHidden();
+        expect(await viewTop()).toBe(top);
+
+        await pane.getByRole('button', {name: /^Nodes/}).click();
+        await expect(nodes).toHaveCount(500);
+        await expect(peers.first(), 'Team folds to its head').toBeHidden();
+        await nodes.last().scrollIntoViewIfNeeded();
+        await expect(nodes.last(), 'the last row scrolls into the open section').toBeInViewport();
+        expect(await viewTop()).toBe(top);
+
+        const
+            long  = nodes.filter({hasText: 'A ninety-character node title'}),
+            short = nodes.filter({has: page.locator('.fm-observatory-row-label', {hasText: /^crowded issue 1$/})});
+
+        await long.scrollIntoViewIfNeeded();
+        expect(await long.locator('.fm-observatory-row-label').evaluate(label => label.scrollHeight > label.clientHeight || label.scrollWidth > label.clientWidth), 'a long title is never clipped').toBe(false);
+        expect(Math.round(await heightOf(long) / await heightOf(short)), 'it takes the lines it needs').toBeGreaterThan(1)
+    });
+
+    test('the side panel is as wide as the operator drags it, between 280 px and half the body, for the session only', async ({page}) => {
+        const
+            pane     = page.locator('.fm-observatory-pane'),
+            side     = pane.locator('.fm-observatory-side'),
+            splitter = pane.locator('.fm-observatory-splitter'),
+            widthOf  = async locator => (await locator.boundingBox()).width,
+            drag     = async dx => {
+                const box = await splitter.boundingBox(),
+                      x   = box.x + box.width / 2,
+                      y   = box.y + box.height / 2;
+
+                await page.mouse.move(x, y);
+                await page.mouse.down();
+                await page.mouse.move(x + dx, y, {steps: 8});
+                await page.mouse.up()
+            };
+
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        expect(await widthOf(side), 'a pane starts at the default').toBe(320);
+
+        await drag(-200);
+        await expect.poll(() => widthOf(side)).toBe(520);
+        await page.mouse.move(0, 0);
+        await expect(pane).toHaveScreenshot('observatory-pane-widened.png');
+        await switchToLightSkin(page);
+        await expect(pane).toHaveScreenshot('observatory-pane-widened-light.png');
+
+        await drag(-2000);
+        const half = (await widthOf(pane.locator('.fm-observatory-body'))) / 2;
+        await expect.poll(async () => Math.abs(await widthOf(side) - half), 'never wider than half the body').toBeLessThanOrEqual(1);
+
+        await drag(2000);
+        await expect.poll(() => widthOf(side), 'never narrower than 280 px').toBe(280);
+
+        // nothing keeps the width: a reload is a new session
+        await bootSettledCockpit(page);
+        await openObservatoryPane(page);
+        expect(await widthOf(side)).toBe(320)
+    });
+
+    test('without a canvas worker the side panel takes the whole body, and no splitter is drawn', async ({page}) => {
+        const
+            pane    = page.locator('.fm-observatory-pane'),
+            widthOf = async selector => (await pane.locator(selector).boundingBox()).width;
+
+        // a host without a canvas worker: the app boots from a neo-config that turns it off
+        await page.route('**/apps/agentos/neo-config.json', async route => {
+            const response = await route.fetch();
+
+            await route.fulfill({response, json: {...await response.json(), useCanvasWorker: false}})
+        });
+        await bootSettledCockpit(page);
+        await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
+        await expect(pane).toBeVisible({timeout: 30000});
+        await feedObservatory(page, 'team', /^Current · captured .+ · complete$/);
+
+        await expect(pane.locator('canvas')).toHaveCount(0);
+        await expect(pane.locator('.fm-observatory-splitter')).toHaveCount(0);
+        expect(Math.abs(await widthOf('.fm-observatory-side') - await widthOf('.fm-observatory-body'))).toBeLessThanOrEqual(1)
     });
 
     /**
@@ -1168,46 +1842,175 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-plane-setup')).toHaveScreenshot('plane-setup-card-light.png')
     });
 
-    test('the setup card\'s Create door — the cold recipe projected on the fixture host: both budgets, three preset cards with their verdicts, eleven rows in two channels, the chrome\'s progress line; both skins', async ({page}) => {
+    test('the setup card\'s Create door — the cold recipe projected on the pinned host: three question blocks on one left edge, the token open; the ledger under Details, the recipe\'s rows in two channels; the chrome\'s progress line; the front at 720 px; both skins', async ({page}) => {
         // the vessel's seam, installed before the app boots: a packaged, unconfigured shell whose
-        // setup channels answer the recipe's cold --json, so the cockpit runs its real mount path
-        await page.addInitScript(sampleShellInitScript());
+        // setup channels reach the real broker over the pinned Brain, so the cockpit runs its real
+        // mount path and every row is the recipe's own answer
+        const run = await pinnedSetupHost({machine: MACHINES.laptop});
+
+        await installPinnedSetupShell(page, run);
         await bootSettledCockpit(page);
 
-        const card = page.locator('.agent-plane-setup');
+        const
+            card     = page.locator('.agent-plane-setup'),
+            expected = (await run.broker.evaluate(TRUSTED, {})).evaluation.steps.map(step => step.status);
 
         await expect(card).toBeVisible({timeout: 15000});
-        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(11);
-        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
-        await expect(page.locator('.agent-setup-progress')).toHaveText('2 of 11 observed ok · next: preset');
+        await expect(card.locator('.fm-setup-ask')).toHaveCount(3);
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/);
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-next/);
+        await expect(card.locator('.fm-setup-steps'), 'the ledger is folded').toHaveCount(0);
+        await expect(page.locator('.agent-setup-progress')).toHaveText(`${expected.filter(status => status === 'ok').length} of ${expected.length} observed ok · next: preset`);
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(300);
 
-        const paint = await page.evaluate(() => {
-            const
-                cs     = el => getComputedStyle(el),
-                rows   = [...document.querySelectorAll('.fm-setup-steps .neo-list-item')],
-                glyphs = rows.map(row => cs(row.querySelector('.fm-setup-step-glyph')).color),
-                words  = rows.map(row => row.querySelector('.fm-setup-step-status').textContent);
+        // what shows, not what the element claims: inside a block every visible line starts on the
+        // same left edge, and no block is clipped behind its hidden overflow
+        const geometry = await page.evaluate(() => {
+            const blocks = [...document.querySelectorAll('.fm-setup-ask')];
 
-            return {glyphs, words, unknownColor: cs(rows[8].querySelector('.fm-setup-step-glyph')).color, dimInk: cs(document.querySelector('.fm-setup-q-key')).color}
+            return {
+                lefts: blocks.map(block => [...block.querySelectorAll('.fm-setup-ask-title, .fm-setup-ask-line, .fm-setup-ask-controls, .fm-setup-ask-help')].filter(el => el.offsetParent).map(el => Math.round(el.getBoundingClientRect().left))),
+                whole: blocks.every(block => block.clientHeight >= block.scrollHeight)
+            }
         });
 
-        // what shows, not what the element claims: every question row holds its content whole
-        // (the engine's column would otherwise shrink a row behind its hidden overflow)
-        expect(await page.evaluate(() => [...document.querySelectorAll('.fm-setup-q, .fm-setup-preset')].every(el => el.clientHeight >= el.scrollHeight)), 'no question row or preset card is clipped').toBe(true);
+        expect(geometry.whole, 'no block is clipped').toBe(true);
+        geometry.lefts.forEach((lefts, index) => expect(new Set(lefts).size, `block ${index} has one left edge: ${lefts.join(', ')}`).toBe(1));
 
-        // law-1: every status survives hue removal — the word carries it beside the glyph
-        expect(paint.words).toEqual(['ok', 'pending', 'pending', 'pending', 'ok', 'pending', 'pending', 'pending', 'unknown', 'unknown', 'unknown']);
+        await expect(card).toHaveScreenshot('setup-card-create.png');
+
+        // Details: the recipe's rows, every status in two channels — the word carries it beside the glyph
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(card.locator('.fm-setup-steps .neo-list-item')).toHaveCount(expected.length);
+
+        const paint = await page.evaluate(() => {
+            const
+                cs   = el => getComputedStyle(el),
+                rows = [...document.querySelectorAll('.fm-setup-steps .neo-list-item')];
+
+            return {
+                words       : rows.map(row => row.querySelector('.fm-setup-step-status').textContent),
+                unknownColor: cs(rows.find(row => row.classList.contains('is-unknown')).querySelector('.fm-setup-step-glyph')).color,
+                dimInk      : cs(document.querySelector('.fm-setup-ask-help')).color
+            }
+        });
+
+        // law-1: every status survives hue removal; the words are the recipe's own statuses
+        expect(paint.words).toEqual(expected);
         // an unknown row is an indicator: the dim ink, never the faint one
         expect(paint.unknownColor).toBe(paint.dimInk);
 
-        await expect(card).toHaveScreenshot('setup-card-create.png');
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(300);
+        await expect(card).toHaveScreenshot('setup-card-create-details.png');
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(card.locator('.fm-setup-steps')).toHaveCount(0);
+
+        // the narrow card: the front keeps one column and nothing scrolls sideways
+        await page.setViewportSize({width: 720, height: 900});
+        await page.waitForTimeout(300);
+        expect(await page.evaluate(() => { const card = document.querySelector('.agent-plane-setup'); return card.scrollWidth <= card.clientWidth }), 'no horizontal overflow at 720 px').toBe(true);
+        await expect(card).toHaveScreenshot('setup-card-create-720.png');
+        await page.setViewportSize({width: 1280, height: 800});
+        await page.waitForTimeout(300);
 
         await switchToLightSkin(page);
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(card).toHaveScreenshot('setup-card-create-light.png')
+    });
+
+    test('the witness row with two exits — re-check is the chip and write again a text link beside it; the first press of write again adds its line under the reason; both skins', async ({page}) => {
+        // the same seam with the real broker behind it: the row's data is the pinned recipe's own
+        const run = await pinnedSetupHost({machine: MACHINES.laptop});
+
+        await installPinnedSetupShell(page, run);
+        await bootSettledCockpit(page);
+
+        const
+            card   = page.locator('.agent-plane-setup'),
+            rows   = card.locator('.fm-setup-steps .neo-list-item'),
+            row    = id => rows.filter({has: page.locator(`.fm-setup-step-id:text-is("${id}")`)}),
+            chip   = (id, verb) => row(id).locator('.fm-setup-step-action', {hasText: verb}),
+            settle = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
+
+        // the front answers one question at a time: the token, then the choice under Other choices,
+        // then the ledger's chips behind Details — the e2e walk's own route
+        await expect(card.locator('.fm-setup-ask-token')).toHaveClass(/is-open/, {timeout: 15000});
+        await card.locator('.fm-setup-credential-button').click();
+        await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-other-choices-toggle').click();
+        await expect(card.locator('.fm-setup-preset')).toHaveCount(3);
+        await card.locator('.fm-setup-preset').first().locator('.fm-setup-preset-choose').click();
+        await card.locator('.fm-setup-details-toggle').click();
+        await expect(row('preset')).toHaveClass(/is-ok/);
+        await expect(row('plane-credential')).toHaveClass(/is-ok/);
+        await chip('provider-key', 'open window').click();
+        await expect(row('provider-key')).toHaveClass(/is-ok/);
+
+        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+            await chip(id, 'run').click();
+            await expect(row(id)).toHaveClass(/is-ok/)
+        }
+
+        // the acknowledgement never arrives and the search finds no row: the Brain names both exits
+        run.world.dropWrite = true;
+        await chip('verify', 'run').click();
+        await chip('verify', 're-check').click();
+        await expect(row('verify').locator('.fm-setup-step-action')).toHaveText(['re-check', 'write again']);
+        await page.evaluate(() => document.fonts.ready);
+
+        // the Brain's order reads as a hierarchy: the first exit keeps the chip's fill and border, the second has neither
+        const paint = await page.evaluate(() => [...document.querySelectorAll('.fm-setup-steps .is-reconcile-required .fm-setup-step-action')].map(el => {
+            const cs = getComputedStyle(el);
+
+            return {filled: cs.backgroundColor !== 'rgba(0, 0, 0, 0)', bordered: cs.borderTopColor !== 'rgba(0, 0, 0, 0)', underlined: cs.textDecorationLine === 'underline'}
+        }));
+
+        expect(paint).toEqual([{filled: true, bordered: true, underlined: false}, {filled: false, bordered: false, underlined: true}]);
+
+        // the door's foot fades under its sticky gradient (`.fm-setup-create::after`): before each
+        // capture the real scroll surface puts the row in its unobscured reading area, and the
+        // boundary is asserted — the row's box clips nothing, the wrapped reason ends inside it, and
+        // the row ends above the fade. The fade itself stays as designed.
+        const inReadingArea = async () => {
+            await row('verify').evaluate(el => el.scrollIntoView({block: 'center'}));
+            await settle();
+
+            const fit = await row('verify').evaluate(el => {
+                const
+                    door   = el.closest('.fm-setup-door'),
+                    fade   = parseFloat(getComputedStyle(door, '::after').height) || 0,
+                    rowBox = el.getBoundingClientRect();
+
+                return {
+                    clipped  : el.scrollHeight - el.clientHeight,
+                    overhang : el.querySelector('.fm-setup-step-reason').getBoundingClientRect().bottom - rowBox.bottom,
+                    clearance: door.getBoundingClientRect().bottom - fade - rowBox.bottom
+                }
+            });
+
+            expect(fit.clipped, 'the row clips nothing').toBe(0);
+            expect(fit.overhang, 'the reason ends inside the row').toBeLessThanOrEqual(0);
+            expect(fit.clearance, 'the row ends above the door\'s fade').toBeGreaterThanOrEqual(0)
+        };
+
+        await inReadingArea();
+        await expect(row('verify')).toHaveScreenshot('setup-row-two-exits.png');
+
+        await chip('verify', 'write again').click();
+        await expect(row('verify').locator('.fm-setup-step-confirm')).toBeVisible();
+        await inReadingArea();
+        await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-confirming.png');
+
+        // another row's click takes the first press back
+        await chip('placement', 're-read').click();
+        await expect(row('verify').locator('.fm-setup-step-confirm')).toHaveCount(0);
+
+        await switchToLightSkin(page);
+        await inReadingArea();
+        await expect(row('verify')).toHaveScreenshot('setup-row-two-exits-light.png')
     });
 
     test('the keeper nav is an icon rail — each tab keeps its label as its accessible name and speaks it as a tooltip to its right, clear of the rail', async ({page}) => {
@@ -1315,17 +2118,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(home.locator('.fm-home-h1')).toHaveText('No word from the team yet');
         await expect(home.locator('.fm-home-h1')).toHaveClass(/is-quiet/);
         await expect(home.locator('.fm-home-plane')).toHaveText('Plane not connected');
-        await expect(home.getByRole('button', {name: 'Connect a plane'})).toBeHidden();
+        await expect(home.getByRole('button', {name: 'Set up your institution'})).toBeHidden();
         await settleField(page, 'none');
         await expect(home).toHaveScreenshot('home-returning-cold.png')
     });
 
-    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the lede in its family, and Connect a plane; both skins', async ({page}) => {
+    test('Home over a live fleet — the team line counts who is up and the plane line is quiet; a packaged shell without a plane gets the product line, the promise in its family, Set up your institution and the quiet Connect door; both skins', async ({page}) => {
         await bootSettledCockpit(page);
 
         const
             home    = await openHome(page),
-            connect = home.getByRole('button', {name: 'Connect a plane'}),
+            connect = home.getByRole('button', {name: 'Set up your institution'}),
             family  = selector => home.locator(selector).evaluate(el => getComputedStyle(el).fontFamily);
 
         await expect(home.locator('.fm-home-h1')).toHaveText(/^\d+ of 11 agents up$/);
@@ -1336,6 +2139,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landShellPlane(page, false);
         await expect(connect).toBeVisible();
+        await expect(home.locator('.fm-home-connect-line'), 'joining stays reachable as the second door, only its verb a link').toHaveText('Joining a team that already runs one?Connect to it');
+        await expect(home.locator('.fm-home-connect')).toHaveText('Connect to it');
         await expect(home.locator('.fm-home-doors')).toBeHidden();
         await expect(home.locator('.fm-home-plane')).toBeHidden();
         // the lede declared no family and inherited the theme's body face, apart from the display line above it
@@ -1353,6 +2158,58 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(connect).toBeHidden();
         await settleField(page, '11', 'light');
         await expect(home).toHaveScreenshot('home-returning-light.png')
+    });
+
+    test('Home\'s operator line — one axis unreadable (the steady state until the Brain lists the operator\'s questions), stale merges, nothing waits, and both axes counted; both skins for the last; the merge count opens the fleet head\'s merge queue (#557)', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const
+            home     = await openHome(page),
+            operator = home.locator('.fm-home-operator'),
+            land     = async query => {
+                const result = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${HOME_DRIVER}?shellPlaneConfigured=null&${query}&t=${++driverTick}`);
+
+                expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true)
+            };
+
+        await land('merges=5');
+        await expect(operator).toHaveText('your questions are not listed yet · 5 merges wait for you');
+        await expect(operator).toHaveAttribute('title', 'your questions: questions are not listed yet');
+        await settleField(page, '11');
+        await expect(home).toHaveScreenshot('home-operator-unreadable.png');
+
+        await land('merges=5&staleMinutes=12&questions=3');
+        await expect(operator).toHaveText('3 questions · 5 merges as of 12m ago wait for you');
+        await expect(home).toHaveScreenshot('home-operator-stale.png');
+
+        await land('merges=0&questions=0');
+        await expect(operator).toHaveText('nothing waits for you');
+        await expect(home).toHaveScreenshot('home-operator-nothing.png');
+
+        await land('merges=5&questions=3');
+        await expect(operator).toHaveText('3 questions · 5 merges wait for you');
+        await expect(home).toHaveScreenshot('home-operator-both.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await settleField(page, '11', 'light');
+        await expect(home).toHaveScreenshot('home-operator-both-light.png');
+
+        // the merge count is marked as a way in, in the line's own type
+        const link = operator.getByRole('button', {name: '5 merges'});
+
+        expect(await link.evaluate(el => {
+            const style = getComputedStyle(el);
+
+            return {decoration: style.textDecorationStyle, family: style.fontFamily === getComputedStyle(el.parentElement).fontFamily}
+        })).toEqual({decoration: 'dotted', family: true});
+
+        // one click on the merge count: the Fleet view, its head's merge queue open on the same five rows
+        await link.click();
+        await expect(page.locator('.fm-awaiting-merge-menu')).toBeVisible();
+        await expect(page.locator('.fm-awaiting-merge-row')).toHaveCount(5);
+        expect(new URL(page.url()).hash).toBe('#/fleet')
     });
 
     test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {
@@ -1384,6 +2241,31 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(cockpit).toHaveScreenshot('cockpit-empty-light.png')
+    });
+
+    test('the operator\'s open questions — `for you · 3 open` pressed, three rows in the read\'s order, one still open after it was archived', async ({page}) => {
+        // tall enough for the lower dock to hold all three rows
+        await page.setViewportSize({width: 1280, height: 1100});
+        await bootSettledCockpit(page);
+
+        const
+            name  = /^\s*Mailbox\s*$/i,
+            strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+            tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+            pane  = page.locator('.fm-operator-mailbox:visible').first();
+
+        await tab.click();
+        await expect(pane).toBeVisible({timeout: 30000});
+
+        const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${OPERATOR_QUESTIONS_DRIVER}?state=three&t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await expect(pane.locator('.fm-mailbox-view-chip', {hasText: 'for you'})).toHaveText('for you · 3 open');
+        await expect(pane.locator('.fm-mail-row', {hasText: 'does row 3 walk'}).locator('.fm-mail-archived')).toHaveText('archived');
+        await expect(pane.locator('.fm-freshness')).toHaveText('updated 30s ago');
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(pane).toHaveScreenshot('pane-mailbox-open-questions.png')
     });
 
     test('every strip and rail pane at 1280 — its head, its inset and its verbs, as the operator reads them', async ({page}) => {
@@ -1424,5 +2306,131 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForFunction(() => [...document.querySelectorAll('.fm-agent-detail img')].every(img => img.complete), null, {timeout: 10000});
         await settle();
         await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
+    });
+
+    test('the Add agent memory frame at 1280 — candidates with the empty row closing their group, and a check that could not answer, in the operator\'s words', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            tab  = page.locator('.neo-dashboard-dock-rail-tab', {hasText: /^\s*Add agent\s*$/i}).first(),
+            form = page.locator('.fm-add-agent-form:visible').first();
+
+        await tab.click();
+        await expect(tab).toHaveClass(/\bpressed\b/, {timeout: 10000});
+        await expect(form).toBeVisible({timeout: 30000});
+
+        for (const [state, golden] of [['candidates', 'add-agent-memory-candidates.png'], ['unavailable', 'add-agent-memory-unavailable.png']]) {
+            const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${ADD_AGENT_MEMORY_DRIVER}?state=${state}&t=${++driverTick}`);
+
+            expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+            await expect(form.locator('.fm-add-memory')).toBeVisible();
+            await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+            await page.mouse.move(0, 0);
+            await page.waitForTimeout(400);
+            await expect(form, `Add agent, memory ${state}`).toHaveScreenshot(golden)
+        }
+    });
+
+    test('the fleet button reads its next plan beside current counts: Start fleet · 4, Stop fleet · 8, and armed Stop with the confirmation plan', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        const
+            bar     = page.locator('.fm-cockpit-bar'),
+            button  = bar.locator('.fm-fleet-start'),
+            summary = bar.locator('.fm-fleet-start-summary'),
+            wired   = {
+                roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
+                repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
+                runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
+            },
+            // the sample roster with lifecycle evidence: `state` picks each ACTIVE seat's session state in order
+            live    = state => {
+                let active = 0;
+
+                return sampleRoster.map(row => ({...row, sources: wired, state: row.participationStatus === 'active' ? state(active++) : 'off'}))
+            },
+            settle  = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
+
+        // the static sample roster carries no lifecycle evidence: the plain verb, the reason on the title
+        await expect(button).toHaveText('Start fleet');
+        await expect(button).toHaveAttribute('title', /not wired/);
+
+        // four active seats up and four ready: current counts accompany the next start plan
+        await landFleetRoster(page, live(index => index % 2 ? 'off' : 'ok'));
+        await expect(button).toHaveText('Start fleet · 4');
+        await expect(button).not.toHaveAttribute('title', /./);
+        await expect(summary).toHaveText('4 started · 3 excluded');
+        await settle();
+        await expect(button).toHaveScreenshot('fleet-button-start-4.png');
+
+        // every active seat up: the plan is a stop of eight
+        await landFleetRoster(page, live(() => 'ok'));
+        await expect(button).toHaveText('Stop fleet · 8');
+        await expect(summary).toHaveText('8 started · 3 excluded');
+        await settle();
+        await expect(button).toHaveScreenshot('fleet-button-stop-8.png');
+
+        // the first press: the plan where the summaries live (the names in the grid's own order), the
+        // chip the second press, nothing sent
+        await button.click();
+        await expect(button).toHaveText('Stop fleet · press again');
+        await expect(summary).toHaveText('Stop fleet · 8 seats: Ada, Clio, Emmy, Eos, Euclid, Grace, Mnemosyne, Vega · 3 excluded');
+        await expect(summary).toHaveAttribute('title', /operator_benched/);
+        await settle();
+        await expect(button).toHaveScreenshot('fleet-button-stop-armed.png');
+        await expect(summary).toHaveScreenshot('fleet-button-stop-plan.png')
+    });
+
+    test('the Thought stream pane lists the shown seat\'s newest turns with their ages and the words for a weaker summary, the pill aged from the read; both skins (#476)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            now     = Date.now(),
+            minsAgo = minutes => new Date(now - minutes * 60_000).toISOString(),
+            turn    = (id, minutes, summary, extra = {}) => ({id, sessionId: `session-${id}`, timestamp: minsAgo(minutes), summary, summaryFallback: false, projectionPending: false, ...extra}),
+            // the Brain's envelope for the seat the card seats: three turns, one cut from the raw turn, one not projected yet
+            answer  = {
+                capability   : {state: 'wired', capturedAt: minsAgo(1)},
+                viewer       : '@operator',
+                target       : '@neo-opus-vega',
+                page         : {limit: 20, before: null},
+                turns        : [
+                    turn('t3', 2,  'Approved neo-stage #102: the head\'s promotion carries the sheet by hash, no findings.'),
+                    turn('t2', 9,  'Routed the design seat\'s read into four leaves under #505, each with its steward and the rationale.', {summaryFallback: true}),
+                    turn('t1', 31, null, {projectionPending: true})
+                ],
+                count        : 3,
+                nextCursor   : null,
+                memorySharing: {policy: 'team', clamped: false}
+            },
+            card    = page.locator('.fm-agent-card', {hasText: 'Vega'}),
+            detail  = page.locator('.fm-agent-detail:visible').first(),
+            pane    = detail.locator('.fm-detail-pane-thought-stream'),
+            rows    = pane.locator('.fm-detail-turn'),
+            settle  = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await card.click();
+        await expect(detail).toBeVisible({timeout: 30000});
+        // no plane answers here: the pill reads the honest unobserved (the verb it awaits, or a read
+        // the bridge did not answer) until the test lands the answer
+        await expect(pane.locator('.fm-freshness')).toHaveText(/^not observed/, {timeout: 15000});
+
+        await landFleetRecentTurns(page, answer);
+        await expect(rows).toHaveCount(3);
+        await expect(rows.nth(1).locator('.fm-detail-turn-meta')).toHaveText('9m ago · cut from the raw turn');
+        await expect(pane.locator('.fm-freshness')).toHaveText('updated 1m ago');
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-thought-stream.png');
+
+        await switchToLightSkin(page);
+        await expect(rows).toHaveCount(3);
+        await settle();
+        await expect(pane).toHaveScreenshot('detail-thought-stream-light.png')
     });
 });

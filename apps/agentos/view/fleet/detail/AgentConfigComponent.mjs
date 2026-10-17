@@ -1,5 +1,6 @@
-import Component     from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import HarnessChoice from '../../../util/HarnessChoice.mjs';
+import Component             from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import HarnessChoice         from '../../../util/HarnessChoice.mjs';
+import {displayBoundAgentOs} from '../instances/MenuList.mjs';
 import {
     mcpCatalogFor,
     normalizeMcpOverrides,
@@ -24,8 +25,8 @@ const LAUNCH_OWNERS = Object.freeze({
  * @extends Neo.component.Base
  *
  * @summary The per-agent configuration card — renders ONE selected agent's configuration from its
- * {@link AgentOS.model.AgentDefinition} record, entirely derived from the registries
- * (Brain's public Fleet contract): the harness (offered as the add-agent form offers it — a
+ * {@link AgentOS.model.AgentDefinition} record plus the shell's provider-owned destination state.
+ * The registries (Brain's public Fleet contract) define the harness (offered as the add-agent form offers it — a
  * product, then App or Command line where the product ships both, via `HarnessChoice`; fail-closed
  * "Unknown harness" for unregistered types), the MCP-server matrix (catalog order, effective
  * enable-state via `resolveMcpMatrix` — null matrix = the bound forge's catalog defaults), and the operational
@@ -84,12 +85,53 @@ class AgentConfigCard extends Component {
          */
         record_: null,
         /**
+         * Whether the operator explicitly opened the secondary connection controls. The normal card
+         * shows the current destination as one line and keeps target choices out of the ordinary path.
+         * @member {Boolean} connectionEditing_=false
+         * @reactive
+         */
+        connectionEditing_: false,
+        /**
+         * The shared public definitions Store. The card reads it only to prevent offering a saved
+         * tenant credential already assigned to another seat; the Brain still enforces uniqueness.
+         * @member {Neo.data.Store|null} agentDefinitionsStore_=null
+         * @reactive
+         */
+        agentDefinitionsStore_: null,
+        /**
          * The provider-hosted public tenant roster. This card listens to the Store directly so both
          * Accounts and a docked/popped-out AgentDetail refresh from the same availability truth.
          * @member {Neo.data.Store|null} tenantStore_=null
          * @reactive
          */
         tenantStore_: null,
+        /**
+         * The bound Agent OS profile. With `instanceStore` it names the "This fleet" destination,
+         * by the same words the Add form uses.
+         * @member {String|null} boundProfileId_=null
+         * @reactive
+         */
+        boundProfileId_: null,
+        /**
+         * The provider-hosted instance roster the bound profile resolves against, for its label
+         * and endpoint. The provider owns it; the card only reads it.
+         * @member {Neo.data.Store|null} instanceStore_=null
+         * @reactive
+         */
+        instanceStore_: null,
+        /**
+         * True while the installed shell holds the plane binding: the destination is then the
+         * shell's plane, not an instance record.
+         * @member {Boolean} shellCustody_=false
+         * @reactive
+         */
+        shellCustody_: false,
+        /**
+         * The plane the shell is attached to, or `null` for this machine.
+         * @member {String|null} shellPlaneBase_=null
+         * @reactive
+         */
+        shellPlaneBase_: null,
         /**
          * Ephemeral save feedback for the currently rendered record. This is deliberately component
          * state, never AgentDefinition data: pending/rejected are transport facts, not durable fleet
@@ -115,6 +157,7 @@ class AgentConfigCard extends Component {
      * @protected
      */
     afterSetRecord(value, oldValue) {
+        value?.id !== oldValue?.id && (this.connectionEditing = false);
         this.saveStatus = {agentId: value?.id ?? null, state: 'idle', reason: ''};
         this.refresh()
     }
@@ -133,6 +176,34 @@ class AgentConfigCard extends Component {
     }
 
     /**
+     * @summary Track public definition changes because a different seat can claim or release a
+     * tenant while this card remains mounted.
+     * @param {Neo.data.Store|null} value
+     * @param {Neo.data.Store|null} oldValue
+     * @protected
+     */
+    afterSetAgentDefinitionsStore(value, oldValue) {
+        oldValue?.un?.(this.getAgentDefinitionsStoreListeners());
+        value?.on?.(this.getAgentDefinitionsStoreListeners());
+        this.isConstructed && this.refresh()
+    }
+
+    /** @summary Re-render when the optional connection editor opens or closes. @protected */
+    afterSetConnectionEditing() { this.isConstructed && this.refresh() }
+    /** @summary Re-render when the shell's bound profile changes. @protected */
+    afterSetBoundProfileId() { this.isConstructed && this.refresh() }
+    /** @summary Refresh the endpoint from the current instance roster. @protected */
+    afterSetInstanceStore(value, oldValue) {
+        oldValue?.un?.(this.getInstanceStoreListeners());
+        value?.on?.(this.getInstanceStoreListeners());
+        this.isConstructed && this.refresh()
+    }
+    /** @summary Re-render when shell ownership changes. @protected */
+    afterSetShellCustody() { this.isConstructed && this.refresh() }
+    /** @summary Re-render when the shell's bound plane endpoint changes. @protected */
+    afterSetShellPlaneBase() { this.isConstructed && this.refresh() }
+
+    /**
      * @returns {Object} The complete public-tenant Store listener set.
      * @protected
      */
@@ -145,11 +216,41 @@ class AgentConfigCard extends Component {
         }
     }
 
+    /** @summary Create listeners for other seats claiming or releasing a saved tenant. @returns {Object} @protected */
+    getAgentDefinitionsStoreListeners() {
+        return {
+            load        : this.onAgentDefinitionsStoreChange,
+            mutate      : this.onAgentDefinitionsStoreChange,
+            recordChange: this.onAgentDefinitionsStoreChange,
+            scope       : this
+        }
+    }
+
+    /** @summary Create the listener set for the bound instance roster. @returns {Object} @protected */
+    getInstanceStoreListeners() {
+        return {
+            load        : this.onInstanceStoreChange,
+            mutate      : this.onInstanceStoreChange,
+            recordChange: this.onInstanceStoreChange,
+            scope       : this
+        }
+    }
+
     /**
      * @summary Re-render target choices when tenant membership or availability changes.
      * @protected
      */
     onTenantStoreChange() {
+        this.refresh()
+    }
+
+    /** @summary Re-derive target availability after another definition changes. @protected */
+    onAgentDefinitionsStoreChange() {
+        this.refresh()
+    }
+
+    /** @summary Refresh the destination when the instance roster changes. @protected */
+    onInstanceStoreChange() {
         this.refresh()
     }
 
@@ -170,8 +271,8 @@ class AgentConfigCard extends Component {
      * from the RESPONSE). Rows encode their intent in DOM ids: `<cardId>__srv__<key>` toggles one
      * MCP server; `<cardId>__product__<product>` picks a product and `<cardId>__harness__<type>` a
      * run mode (see {@link #createHarnessChoices}); `<cardId>__launch__<owner>` hands the seat's
-     * launches to this fleet or back to its own harness; `<cardId>__credential__plane` asks for the
-     * seat's own plane credential (see {@link #createTargetChoices}).
+     * launches to this fleet; `<cardId>__connection__edit` opens the secondary saved-target editor;
+     * `<cardId>__target__<id>` selects an available saved connection (see {@link #createTargetChoices}).
      * @param {Object} data DOM click event data.
      * @protected
      */
@@ -203,10 +304,14 @@ class AgentConfigCard extends Component {
             harnessType && harnessType !== record.harnessType && me.fire('configIntent', {id: record.id, harnessType})
         } else if (kind === 'launch' && key === 'fleet' && record.launchOwner === 'external') {
             me.fire('configIntent', {id: record.id, launchOwner: key})
-        } else if (kind === 'credential' && key === 'plane' && me.createPlaneCredentialRow(record).length) {
-            me.fire('configIntent', {id: record.id, planeCredential: true})
+        } else if (kind === 'connection' && key === 'edit') {
+            me.connectionEditing = !me.connectionEditing
         } else if (kind === 'target') {
             if (key === 'local') {
+                if (!me.getBoundAgentOsEndpoint() && !me.shellCustody) {
+                    return
+                }
+
                 record.mcpTarget?.kind === 'tenant' &&
                     me.fire('configIntent', {id: record.id, mcpTarget: null});
                 return
@@ -222,10 +327,7 @@ class AgentConfigCard extends Component {
 
             const tenant = me.tenantStore?.get(tenantId);
 
-            if (supportsTenantMcpTarget(record.harnessType) &&
-                tenant?.status === 'connected' &&
-                typeof tenant.endpoint === 'string' &&
-                tenant.endpoint &&
+            if (me.getTenantChoiceAvailability(record, tenant).available &&
                 record.mcpTarget?.tenantId !== tenantId) {
                 me.fire('configIntent', {
                     id       : record.id,
@@ -233,6 +335,106 @@ class AgentConfigCard extends Component {
                 })
             }
         }
+    }
+
+    /**
+     * @summary Resolve the currently bound Agent OS endpoint from the shell's declared authorities.
+     * @returns {String|null}
+     */
+    getBoundAgentOsEndpoint() {
+        if (this.shellCustody) {
+            return this.shellPlaneBase || null
+        }
+
+        return (this.boundProfileId && this.instanceStore?.get(this.boundProfileId)?.canonicalEndpoint) || null
+    }
+
+    /**
+     * @summary Find a different seat that already owns this saved tenant target.
+     * @param {String} tenantId
+     * @param {String} currentAgentId
+     * @returns {Object|null}
+     */
+    findTenantAssignee(tenantId, currentAgentId) {
+        return this.agentDefinitionsStore?.items?.find(agent =>
+            agent.id !== currentAgentId &&
+            agent.mcpTarget?.kind === 'tenant' &&
+            agent.mcpTarget.tenantId === tenantId
+        ) || null
+    }
+
+    /**
+     * @summary Fail closed until the public definitions Store confirms an otherwise usable target
+     * is not assigned to another seat. The Brain remains the final uniqueness authority.
+     * @param {Object} record
+     * @param {Object|null} tenant
+     * @returns {{available: Boolean, reason: String, assignee: Object|null}}
+     */
+    getTenantChoiceAvailability(record, tenant) {
+        const
+            me        = this,
+            assignee  = tenant ? me.findTenantAssignee(tenant.id, record.id) : null,
+            connected = tenant?.status === 'connected' && typeof tenant.endpoint === 'string' && !!tenant.endpoint;
+
+        if (!supportsTenantMcpTarget(record.harnessType)) {
+            return {available: false, assignee, reason: 'Unavailable for this harness'}
+        }
+
+        if (!connected) {
+            return {available: false, assignee, reason: 'Unavailable'}
+        }
+
+        if (!Array.isArray(me.agentDefinitionsStore?.data)) {
+            return {available: false, assignee, reason: 'Assignment not read back'}
+        }
+
+        if (assignee) {
+            const owner = assignee.displayName || assignee.githubUsername || assignee.id;
+
+            return {available: false, assignee, reason: `In use by ${owner}`}
+        }
+
+        return {available: true, assignee: null, reason: ''}
+    }
+
+    /**
+     * @summary One honest destination sentence: the bound Agent OS for resident services, or the
+     * explicit saved connection when this definition already targets one.
+     * @param {Object} record
+     * @returns {String}
+     */
+    getDestinationText(record) {
+        if (record.mcpTarget?.kind === 'tenant') {
+            const
+                tenant     = this.tenantStore?.get(record.mcpTarget.tenantId),
+                endpoint   = tenant?.endpoint,
+                availability = this.getTenantChoiceAvailability(record, tenant);
+
+            if (!endpoint) {
+                return `Saved connection unavailable · ${record.mcpTarget.tenantId}`
+            }
+
+            return `Saved connection · ${endpoint}${availability.available ? '' : ` · ${availability.reason}`}`
+        }
+
+        const name = this.getBoundAgentOsName();
+
+        return name ? `Agent OS · ${name}` : 'Agent OS destination not reported'
+    }
+
+    /**
+     * @summary The bound Agent OS by the same name the Add form gives it ({@link displayBoundAgentOs}):
+     * one destination, one name.
+     * @returns {String|null}
+     */
+    getBoundAgentOsName() {
+        const me = this;
+
+        return displayBoundAgentOs({
+            shellCustody  : me.shellCustody,
+            shellPlaneBase: me.shellPlaneBase,
+            record        : (me.boundProfileId && me.instanceStore?.get(me.boundProfileId)) || null
+        })
     }
 
     /**
@@ -258,10 +460,10 @@ class AgentConfigCard extends Component {
     }
 
     /**
-     * @summary Build the card's vdom from one record via the registries. Pure derivation — the
-     * record and the two registries are the only inputs, so the card can never drift from the
-     * configuration model. Server rows and harness chips are interactive (see {@link #onCardClick});
-     * operational rows are read-only observations.
+     * @summary Build the card's vdom from the current record, shared Stores, and bound destination.
+     * The declaration never drifts from its public registries; status and destination stay explicit.
+     * Server rows and harness chips are interactive (see {@link #onCardClick}); operational rows
+     * are read-only observations.
      * @param {Object|null} record
      * @returns {Object[]} vdom child nodes
      */
@@ -274,7 +476,7 @@ class AgentConfigCard extends Component {
             me            = this,
             catalog       = mcpCatalogFor(record.forge),
             matrix        = resolveMcpMatrix(record.mcpServers, catalog),
-            targetChoices = me.createTargetChoices(record),
+            targetChoices = me.connectionEditing ? me.createTargetChoices(record) : [],
             saveStatus    = me.saveStatus?.agentId === record.id
                 ? me.saveStatus
                 : {state: 'idle', reason: ''};
@@ -300,26 +502,41 @@ class AgentConfigCard extends Component {
         }, {
             cls: ['fm-config-section'],
             cn : [
-                {tag: 'strong', cls: ['fm-config-heading'], text: 'Memory & knowledge · declared'},
+                {tag: 'strong', cls: ['fm-config-heading'], text: 'Memory & knowledge'},
+                {cls: ['fm-config-destination'], text: me.getDestinationText(record)},
                 {
-                    cls: ['fm-config-chips', 'fm-config-targets'],
-                    cn : targetChoices
+                    id             : `${me.id}__connection__edit`,
+                    tag            : 'button',
+                    type           : 'button',
+                    cls            : ['fm-chip', 'fm-config-connection-edit'],
+                    text           : me.connectionEditing ? 'Close connection options' : 'Edit connection',
+                    'aria-expanded': String(me.connectionEditing),
+                    ...me.getButtonAccessibilityAttrs(false)
                 },
-                ...me.createPlaneCredentialRow(record)
+                ...(me.connectionEditing ? [{
+                    id         : `${me.id}__target-list`,
+                    role       : 'group',
+                    'aria-label': 'Memory and knowledge connection options',
+                    cls        : ['fm-config-chips', 'fm-config-targets'],
+                    cn         : targetChoices
+                }] : [])
             ]
         }, {
             cls: ['fm-config-section'],
             cn : [
                 {tag: 'strong', cls: ['fm-config-heading'], text: 'Servers · declared'},
                 ...catalog.map(server => ({
-                    id : `${me.id}__srv__${server.key}`,
-                    cls: ['fm-config-row', 'fm-config-toggle', 'is-declared', matrix[server.key] ? 'is-enabled' : 'is-disabled'],
+                    id   : `${me.id}__srv__${server.key}`,
+                    tag  : 'button',
+                    type : 'button',
+                    cls  : ['fm-config-row', 'fm-config-toggle', 'is-declared', matrix[server.key] ? 'is-enabled' : 'is-disabled'],
+                    ...me.getButtonAccessibilityAttrs(matrix[server.key]),
                     cn : [
-                        {cls: ['fm-config-label'], text: server.label},
+                        {tag: 'span', cls: ['fm-config-label'], text: server.label},
                         // `Declared` is load-bearing, not decoration: the fleet cannot observe an
                         // external harness's live server set, so this row only ever knows what the
                         // registry says. A bare `Off` here claimed an observation nobody made.
-                        {cls: ['fm-config-value'], text: matrix[server.key] ? 'Declared on' : 'Declared off'}
+                        {tag: 'span', cls: ['fm-config-value'], text: matrix[server.key] ? 'Declared on' : 'Declared off'}
                     ]
                 }))
             ]
@@ -334,6 +551,22 @@ class AgentConfigCard extends Component {
             cls : ['fm-config-save-status', `is-${saveStatus.state}`],
             text: saveStatus.reason
         }]
+    }
+
+    /**
+     * @summary Keep native buttons focusable during bridge updates while exposing pending and
+     * unavailable states to assistive technology.
+     * @param {Boolean} pressed
+     * @param {Boolean} unavailable
+     * @returns {Object}
+     */
+    getButtonAccessibilityAttrs(pressed=false, unavailable=false) {
+        const pending = this.saveStatus?.agentId === this.record?.id && this.saveStatus.state === 'pending';
+
+        return {
+            'aria-disabled': String(pending || unavailable),
+            'aria-pressed' : String(pressed)
+        }
     }
 
     /**
@@ -352,10 +585,13 @@ class AgentConfigCard extends Component {
         return Object.entries(LAUNCH_OWNERS)
             .filter(([owner]) => owner === launchOwner || owner === 'fleet')
             .map(([owner, {text, title}]) => ({
-                id : `${this.id}__launch__${owner}`,
-                cls: ['fm-chip', owner === launchOwner ? 'is-selected' : 'is-selectable'],
+                id   : `${this.id}__launch__${owner}`,
+                tag  : 'button',
+                type : 'button',
+                cls  : ['fm-chip', owner === launchOwner ? 'is-selected' : 'is-selectable'],
                 text,
-                title
+                title,
+                ...this.getButtonAccessibilityAttrs(owner === launchOwner)
             }))
     }
 
@@ -375,9 +611,12 @@ class AgentConfigCard extends Component {
             rows     = [{
                 cls: ['fm-config-chips', 'fm-config-harness'],
                 cn : products.map(entry => ({
-                    id  : `${me.id}__product__${entry.product}`,
-                    cls : ['fm-chip', entry.product === choice?.product ? 'is-selected' : 'is-selectable'],
-                    text: entry.label
+                    id   : `${me.id}__product__${entry.product}`,
+                    tag  : 'button',
+                    type : 'button',
+                    cls  : ['fm-chip', entry.product === choice?.product ? 'is-selected' : 'is-selectable'],
+                    text : entry.label,
+                    ...me.getButtonAccessibilityAttrs(entry.product === choice?.product)
                 }))
             }];
 
@@ -385,9 +624,12 @@ class AgentConfigCard extends Component {
             rows.push({
                 cls: ['fm-config-chips', 'fm-config-runs-as'],
                 cn : current.runsAs.map(entry => ({
-                    id  : `${me.id}__harness__${entry.type}`,
-                    cls : ['fm-chip', entry.type === record.harnessType ? 'is-selected' : 'is-selectable'],
-                    text: entry.label
+                    id   : `${me.id}__harness__${entry.type}`,
+                    tag  : 'button',
+                    type : 'button',
+                    cls  : ['fm-chip', entry.type === record.harnessType ? 'is-selected' : 'is-selectable'],
+                    text : entry.label,
+                    ...me.getButtonAccessibilityAttrs(entry.type === record.harnessType)
                 }))
             })
         }
@@ -396,34 +638,8 @@ class AgentConfigCard extends Component {
     }
 
     /**
-     * @summary The seat's plane-credential action: on a Fleet that serves a plane, "This fleet" is that
-     * plane, and a seat reaches it with a credential of its own. Offered while the seat targets this
-     * Fleet and its harness can reach a remote Memory Core; a tenant seat uses its tenant's bearer.
-     * The card never learns whether a credential is stored: the credential never leaves the Brain.
-     * @param {Object} record
-     * @returns {Object[]} vdom nodes: none, or one chips row
-     */
-    createPlaneCredentialRow(record) {
-        if (record.mcpTarget?.kind === 'tenant' || !supportsTenantMcpTarget(record.harnessType)) {
-            return []
-        }
-
-        return [{
-            cls: ['fm-config-chips', 'fm-config-plane-credential'],
-            cn : [{
-                id   : `${this.id}__credential__plane`,
-                cls  : ['fm-chip', 'is-selectable'],
-                text : 'Plane credential · Set',
-                title: 'The seat signs in to this Fleet\'s plane as itself: a PAT of its own account with no repository access, never its checkout PAT.'
-            }]
-        }]
-    }
-
-    /**
-     * @summary Build product-language choices for this Fleet versus one public connected tenant. A
-     * persisted target remains visible when missing/disconnected but is inert; unsupported harness
-     * families see remote choices as unavailable. No credential or transport-header vocabulary
-     * reaches the DOM.
+     * @summary Build secondary connection choices for this Fleet versus saved connections. A saved
+     * tenant already assigned to another seat stays visible with its owner and cannot emit an intent.
      * @param {Object} record
      * @returns {Object[]}
      */
@@ -433,38 +649,48 @@ class AgentConfigCard extends Component {
             selectedTenantId = record.mcpTarget?.kind === 'tenant'
                 ? record.mcpTarget.tenantId
                 : null,
-            tenantSupported  = supportsTenantMcpTarget(record.harnessType),
             records          = me.tenantStore?.items || [],
+            // the chip names the bound Agent OS; its full address stays one hover away, as on a saved connection
+            endpoint         = me.getBoundAgentOsEndpoint(),
             choices          = [{
-                id  : `${me.id}__target__local`,
-                cls : ['fm-chip', 'fm-target-choice', selectedTenantId ? 'is-selectable' : 'is-selected'],
-                text: 'This fleet'
+                id   : `${me.id}__target__local`,
+                tag  : 'button',
+                type : 'button',
+                cls  : ['fm-chip', 'fm-target-choice', selectedTenantId ? 'is-selectable' : 'is-selected'],
+                text : `This fleet · ${me.getBoundAgentOsName() ?? 'destination not reported'}`,
+                ...(endpoint ? {title: endpoint} : {}),
+                ...me.getButtonAccessibilityAttrs(!selectedTenantId, !endpoint && !me.shellCustody)
             }];
 
         for (const tenant of records) {
             const
-                selected  = tenant.id === selectedTenantId,
-                connected = tenant.status === 'connected' && typeof tenant.endpoint === 'string' && !!tenant.endpoint,
-                available = tenantSupported && connected,
-                state     = selected
+                selected           = tenant.id === selectedTenantId,
+                {available, reason} = me.getTenantChoiceAvailability(record, tenant),
+                state              = selected
                     ? ['is-selected', ...(available ? [] : ['is-unavailable'])]
                     : [available ? 'is-selectable' : 'is-unavailable'],
-                suffix    = connected
-                    ? (tenantSupported ? '' : ' · Unavailable for this harness')
-                    : ' · Unavailable';
+                suffix             = available ? '' : ` · ${reason}`;
 
             choices.push({
-                id  : `${me.id}__target__${encodeURIComponent(tenant.id)}`,
-                cls : ['fm-chip', 'fm-target-choice', ...state],
-                text: `${tenant.endpoint}${suffix}`
+                id    : `${me.id}__target__${encodeURIComponent(tenant.id)}`,
+                tag   : 'button',
+                type  : 'button',
+                cls   : ['fm-chip', 'fm-target-choice', ...state],
+                text  : `Saved connection · ${tenant.endpoint}${suffix}`,
+                title : available ? tenant.endpoint : reason,
+                ...me.getButtonAccessibilityAttrs(selected, !available)
             })
         }
 
         if (selectedTenantId && !records.some(tenant => tenant.id === selectedTenantId)) {
             choices.push({
-                id  : `${me.id}__target__${encodeURIComponent(selectedTenantId)}`,
-                cls : ['fm-chip', 'fm-target-choice', 'is-selected', 'is-unavailable'],
-                text: `${selectedTenantId} · Saved target unavailable`
+                id              : `${me.id}__target__${encodeURIComponent(selectedTenantId)}`,
+                tag             : 'button',
+                type            : 'button',
+                cls             : ['fm-chip', 'fm-target-choice', 'is-selected', 'is-unavailable'],
+                text            : `Saved connection unavailable · ${selectedTenantId}`,
+                'aria-disabled' : 'true',
+                'aria-pressed'  : 'true'
             })
         }
 
@@ -491,11 +717,13 @@ class AgentConfigCard extends Component {
     }
 
     /**
-     * @summary Detach public-tenant Store listeners before the component retires.
+     * @summary Detach both provider Store listeners before the component retires.
      * @param {...*} args
      */
     destroy(...args) {
         this.tenantStore?.un?.(this.getTenantStoreListeners());
+        this.agentDefinitionsStore?.un?.(this.getAgentDefinitionsStoreListeners());
+        this.instanceStore?.un?.(this.getInstanceStoreListeners());
         super.destroy(...args)
     }
 }

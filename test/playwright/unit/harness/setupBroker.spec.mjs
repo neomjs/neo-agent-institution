@@ -1,9 +1,8 @@
 import {expect, test}            from '@playwright/test';
-import {existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
+import {existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import fsPromises                from 'node:fs/promises';
 import {tmpdir}                  from 'node:os';
 import path                      from 'node:path';
-import {fileURLToPath}           from 'node:url';
 import {
     CONFIG_SOURCE_PATH,
     SETUP_CHANNELS,
@@ -12,14 +11,27 @@ import {
     loadSetupModules,
     resolveSetupRoots
 } from '../../../../harness/setupBroker.mjs';
+import {BRAIN_ROOT, TRUSTED, pinnedSetupHost} from '../../fixture/pinnedSetupHost.mjs';
 
 const tempDir = () => mkdtempSync(path.join(tmpdir(), 'setup-broker-'));
 
 /**
- * The pinned Brain package: the runtime root the Brain-backed arms load the recipe's modules from.
- * @type {String}
+ * A gate whose arrivals can be awaited. `hold()` parks a caller until the test releases it;
+ * `entered()` resolves with that caller's release once it has arrived, however long the broker takes
+ * to get there. Elapsed time is never the witness of an arrival.
+ * @returns {{entered: Function, hold: Function, waiting: Number}}
  */
-const BRAIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../node_modules/neo-agent-brain');
+function arrivalGate() {
+    const
+        arrived  = [],
+        watchers = [];
+
+    return {
+        get waiting() { return arrived.length },
+        entered: () => new Promise(resolve => arrived.length > 0 ? resolve(arrived.shift()) : watchers.push(resolve)),
+        hold   : () => new Promise(release => watchers.length > 0 ? watchers.shift()(release) : arrived.push(release))
+    }
+}
 
 /**
  * The Brain modules the broker reaches, as fakes with the exported names it calls — the recipe's
@@ -65,7 +77,7 @@ function fakeModules({evaluations = []} = {}) {
                 createSetupRecord: ({runId, target, recipeVersion}) => ({runId, target, recipeVersion, consents: [], receipts: []}),
                 setupRecordPath  : (root, runId) => path.join(root, `${runId}.json`),
                 readSetupRecord  : async filePath => { try { return {record: JSON.parse(readFileSync(filePath, 'utf8')), problem: null} } catch { return {record: null, problem: 'unreadable'} } },
-                resumeTarget     : (record, invocation) => ({...record.target, ...Object.fromEntries(Object.entries(invocation).filter(([, value]) => value != null))}),
+                runTarget        : ({record = null, named = {}, profile = {}}) => ({...profile, ...record?.target, ...Object.fromEntries(Object.entries(named).filter(([, value]) => value != null))}),
                 describeBinding  : (record, {recipeVersion, target}) => record.recipeVersion !== recipeVersion ? 'version-mismatch' : JSON.stringify(record.target) !== JSON.stringify(target) ? 'target-mismatch' : 'bound',
                 // the real module re-binds the record to the new target and retires the old proof into history
                 retireCurrentProof: (record, {reason, target}) => ({...record, target, consents: [], receipts: [], retired: reason})
@@ -128,7 +140,7 @@ function fakeModules({evaluations = []} = {}) {
     }
 }
 
-const trusted = {sender: 'trusted'};
+const trusted = TRUSTED;
 
 function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', fsModule} = {}) {
     return {
@@ -159,7 +171,8 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
             presets      : 'ai/services/fleet/placementPresets.mjs',
             probe        : 'ai/services/fleet/probePlacement.mjs',
             recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
-            record       : 'ai/services/fleet/setupRunRecord.mjs'
+            record       : 'ai/services/fleet/setupRunRecord.mjs',
+            verify       : 'ai/services/fleet/verifyEffect.mjs'
         })
     });
 
@@ -251,10 +264,10 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         // a slow persistence: the first consent's write is still in flight when the second answer lands
         const
             original = modules.hostEffects.recordConsent,
-            gate     = [];
+            gate     = arrivalGate();
 
         modules.hostEffects.recordConsent = async options => {
-            await new Promise(resolve => gate.push(resolve));
+            await gate.hold();
 
             return original(options)
         };
@@ -263,11 +276,9 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         const [first, second] = await (async () => {
             const pending = [broker.evaluate(trusted, {}), broker.answer(trusted, {stepId: 'preset', answer: 'hosted'}), broker.answer(trusted, {stepId: 'advanced', answer: 'unfolded'})];
 
-            // release the consents in arrival order once both are queued
-            await new Promise(resolve => setTimeout(resolve, 10));
-            while (gate.length) gate.shift()();
-            await new Promise(resolve => setTimeout(resolve, 10));
-            while (gate.length) gate.shift()();
+            // the chain lets one consent in at a time: each is released as it arrives
+            (await gate.entered())();
+            (await gate.entered())();
 
             return Promise.all(pending)
         })();
@@ -318,17 +329,19 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         const
             values             = ['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal'],
             seenAtConsent      = [],
-            gate               = [],
+            seenAtAcceptance   = [],
+            gate               = arrivalGate(),
             {modules}          = fakeModules(),
             original           = modules.hostEffects.recordConsent,
             {broker, setupRoot} = createBroker({modules, prompt: async () => values.shift()}),
             filePath           = path.join(setupRoot, 'credentials', 'plane-credential');
 
         // the consent's persistence pauses until the test releases it, and records what the
-        // referenced file holds at that moment
+        // referenced file holds when it arrives and when it is accepted
         modules.hostEffects.recordConsent = async options => {
             seenAtConsent.push(readFileSync(options.answer, 'utf8'));
-            await new Promise(resolve => gate.push(resolve));
+            await gate.hold();
+            seenAtAcceptance.push(readFileSync(options.answer, 'utf8'));
 
             return original(options)
         };
@@ -336,21 +349,25 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         await broker.evaluate(trusted, {});
 
         const
-            first  = broker.credential(trusted, {stepId: 'plane-credential'}),
-            second = broker.credential(trusted, {stepId: 'plane-credential'});
+            first        = broker.credential(trusted, {stepId: 'plane-credential'}),
+            second       = broker.credential(trusted, {stepId: 'plane-credential'}),
+            releaseFirst = await gate.entered();
 
+        // a grace window for a second write that must not come: its expiry cannot fail a correct
+        // broker, it only gives a broken one the time to show
         await new Promise(resolve => setTimeout(resolve, 20));
 
+        expect(values, 'both windows were answered').toEqual([]);
         expect(readFileSync(filePath, 'utf8'), 'the second window\'s value waits behind the first consent').toBe('ghp_firstValueNeverReal');
-        expect(gate.length, 'one consent in flight').toBe(1);
+        expect(gate.waiting, 'no second consent arrived while the first is in flight').toBe(0);
 
-        gate.shift()();
+        releaseFirst();
         await first;
-        await new Promise(resolve => setTimeout(resolve, 20));
-        gate.shift()();
+        (await gate.entered())();
         await second;
 
-        expect(seenAtConsent, 'each consent was accepted over its own value').toEqual(values.length === 0 ? ['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal'] : seenAtConsent);
+        expect(seenAtConsent, 'each consent arrived over its own value').toEqual(['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal']);
+        expect(seenAtAcceptance, 'and was accepted over it').toEqual(['ghp_firstValueNeverReal', 'ghp_secondValueNeverReal']);
         expect(readFileSync(filePath, 'utf8')).toBe('ghp_secondValueNeverReal');
 
         modules.hostEffects.recordConsent = original
@@ -358,9 +375,9 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
 
     test('a credential answered for one run never lands in another: a window opened for target A is refused once a second window re-targets the run to B; the same target stays A', async () => {
         const
-            gate      = [],
+            gate      = arrivalGate(),
             {modules} = fakeModules(),
-            {broker, setupRoot} = createBroker({modules, prompt: () => new Promise(resolve => gate.push(resolve))}),
+            {broker, setupRoot} = createBroker({modules, prompt: () => gate.hold()}),
             targetA   = {planeId: 'plane-a', dataRoot: '/srv/a', endpoint: 'http://127.0.0.1:3102'},
             targetB   = {planeId: 'plane-b', dataRoot: '/srv/b', endpoint: 'http://127.0.0.1:3102'};
 
@@ -369,17 +386,16 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(first.evaluation.target).toEqual(targetA);
 
         // the window opens for A and is held; a second trusted window re-targets the run to B
-        const held = broker.credential(trusted, {stepId: 'plane-credential'});
-
-        await new Promise(resolve => setTimeout(resolve, 10));
-        expect(gate.length, 'the window is open').toBe(1);
+        const
+            held    = broker.credential(trusted, {stepId: 'plane-credential'}),
+            answerA = await gate.entered();
 
         const retargeted = await broker.evaluate(trusted, {target: targetB});
 
         expect(retargeted.evaluation.target).toEqual(targetB);
 
         // the held window answers: refused, nothing written, nothing recorded
-        gate.shift()('ghp_answeredForA');
+        answerA('ghp_answeredForA');
 
         expect(await held).toEqual({ok: false, reason: 'the run was re-targeted while the window was open: nothing kept', stepId: 'plane-credential'});
         expect(existsSync(path.join(setupRoot, 'credentials', 'plane-credential')), 'no file for the refused value').toBe(false);
@@ -390,11 +406,12 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         expect(record.consents).toEqual([]);
 
         // the same-target control: a window opened for B, an evaluate for B meanwhile, the answer lands
-        const heldSame = broker.credential(trusted, {stepId: 'plane-credential'});
+        const
+            heldSame = broker.credential(trusted, {stepId: 'plane-credential'}),
+            answerB  = await gate.entered();
 
-        await new Promise(resolve => setTimeout(resolve, 10));
         await broker.evaluate(trusted, {target: targetB});
-        gate.shift()('ghp_answeredForB');
+        answerB('ghp_answeredForB');
 
         const kept = await heldSame;
 
@@ -544,11 +561,13 @@ async function brainBacked({setupRoot = tempDir(), stateRoot = tempDir(), disk =
 }
 
 /**
- * Binds the run to {@link TARGET} and consents to the preset and the plane credential.
+ * Starts the run and consents to the preset and the plane credential.
+ * @param {Object} run
+ * @param {Object|null} [target=TARGET] The target bound by hand; `null` is the card's own request, which names none
  * @returns {Promise<String>} The run's record path
  */
-async function consented({broker}) {
-    const first = await broker.evaluate(trusted, {target: TARGET});
+async function consented({broker}, target = TARGET) {
+    const first = await broker.evaluate(trusted, {target});
 
     expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true);
     expect((await broker.credential(trusted, {stepId: 'plane-credential'})).ok).toBe(true);
@@ -755,5 +774,206 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
 
         expect(records(), 'no second record').toEqual([path.basename(recordPath)]);
         expect((await broker.evaluate(trusted, {})).evaluation.runId, 'the broker still holds the run it had').toBe(path.basename(recordPath, '.json'))
+    })
+});
+
+const rowOf = (reply, id) => reply.evaluation?.steps.find(step => step.id === id) ?? null;
+
+/**
+ * Runs the three host effects, so the witness row is the next to act on.
+ * @param {Object} run
+ * @returns {Promise<void>}
+ */
+async function toTheWitness({broker}) {
+    for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+        expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
+    }
+}
+
+test.describe('harness/setupBroker over the pinned recipe — the run to done, with nothing real behind it', () => {
+    test('the card\'s own cold request names no target and binds the plane its profile declares; verify answers the run while its recall has not landed, and done is ok over one witness write', async () => {
+        const
+            run                      = await pinnedSetupHost(),
+            {broker, profile, world} = run,
+            recordPath               = await consented(run, null),
+            record                   = JSON.parse(readFileSync(recordPath, 'utf8'));
+
+        expect(profile.planeId, 'the pinned layout declares a plane').toBeTruthy();
+        expect(record.target, 'the run is bound to it, with nothing bound by hand').toEqual(profile);
+        expect(record.history, 'bound when it was created: a first run retires nothing').toEqual([]);
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+            expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
+        }
+
+        expect(world.commands.filter(command => command.startsWith('docker compose -p ')).length, 'compose-up asked the host once').toBe(1);
+
+        // the witness is written and read back; its recall has not landed
+        const waiting = await broker.effect(trusted, {effectId: 'verify'});
+
+        expect(waiting.ok, 'an effect that ran and waits answers the run, not a refusal').toBe(true);
+        expect(rowOf(waiting, 'verify')).toMatchObject({status: 'pending', reason: expect.stringContaining('the plane\'s semantic recall did not return it yet')});
+        expect(rowOf(waiting, 'done')).toMatchObject({status: 'pending', reason: expect.stringContaining('the witness was not recalled yet')});
+
+        world.recallLands = true;
+
+        const landed = await broker.effect(trusted, {effectId: 'verify'});
+
+        expect(rowOf(landed, 'verify')).toMatchObject({status: 'ok'});
+        expect(rowOf(landed, 'done')).toMatchObject({status: 'ok', reason: expect.stringContaining('recalled through the served plane')});
+
+        // a plain run never writes an accepted witness again
+        await broker.effect(trusted, {effectId: 'verify'});
+
+        expect(world.rows.length, 'one witness write').toBe(1)
+    });
+
+    test('a refused witness write: the row fails in the plane\'s words and names a new attempt; a plain run writes nothing, the new attempt writes once under its own marker and keeps the old one', async () => {
+        const
+            run             = await pinnedSetupHost(),
+            {broker, world} = run,
+            recordPath      = await consented(run, null),
+            section         = () => JSON.parse(readFileSync(recordPath, 'utf8')).verification;
+
+        await toTheWitness(run);
+
+        world.refuseWrite = true;
+
+        const refused = await broker.effect(trusted, {effectId: 'verify'});
+
+        expect(refused.ok, 'the effect ran: the run is the answer').toBe(true);
+        expect(rowOf(refused, 'verify')).toMatchObject({status: 'failed', reason: expect.stringContaining('the plane refused the witness write'), exits: ['new-attempt'], duplicatePossible: false});
+
+        world.refuseWrite = false;
+        await broker.effect(trusted, {effectId: 'verify'});
+
+        expect(world.rows.length, 'a refused witness is never written again without the operator\'s new attempt').toBe(0);
+
+        const
+            refusedMarker = section().attempt.marker,
+            again         = await broker.effect(trusted, {effectId: 'verify', newAttempt: true});
+
+        expect(again.ok).toBe(true);
+        expect(world.rows.length, 'the new attempt wrote once').toBe(1);
+        expect(section().attempt.marker, 'under a marker of its own').not.toBe(refusedMarker);
+        expect(section().priorAttempts.map(attempt => attempt.marker), 'and the refused attempt is kept').toEqual([refusedMarker]);
+        expect(world.rows[0].prompt).toContain(section().attempt.marker)
+    });
+
+    test('a lost acknowledgement: re-check is the effect without a new attempt and writes nothing; once a search did not find the row the new attempt is named beside it, with the Brain\'s warning, and writes once', async () => {
+        const
+            run             = await pinnedSetupHost(),
+            {broker, world} = run;
+
+        await consented(run, null);
+        await toTheWitness(run);
+
+        world.dropWrite = true;
+
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify'}), 'verify')).toMatchObject({status: 'reconcile-required', exits: ['resume'], duplicatePossible: false});
+        // a plain evaluation never searches the plane: the row stays as it is
+        expect(rowOf(await broker.evaluate(trusted, {}), 'verify')).toMatchObject({exits: ['resume']});
+
+        const searched = rowOf(await broker.effect(trusted, {effectId: 'verify'}), 'verify');
+
+        expect(searched).toMatchObject({status: 'reconcile-required', exits: ['resume', 'new-attempt'], duplicatePossible: true, reason: expect.stringContaining('consent to a new attempt writes a second row')});
+        expect(world.rows.length, 're-check wrote nothing').toBe(0);
+
+        world.dropWrite   = false;
+        world.recallLands = true;
+
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify', newAttempt: true}), 'done')).toMatchObject({status: 'ok'});
+        expect(world.rows.length, 'one write').toBe(1)
+    });
+
+    test('newAttempt is refused by name wherever the evaluated row does not name it, and nothing runs: another effect, the witness before its first attempt, the accepted witness; a value that is not true is no new attempt', async () => {
+        const
+            run             = await pinnedSetupHost(),
+            {broker, world} = run,
+            recordPath      = await consented(run, null),
+            refusal         = effectId => ({ok: false, reason: `new-attempt: '${effectId}' does not name a new attempt as its exit, so nothing runs`, effectId});
+
+        expect(await broker.effect(trusted, {effectId: 'write-secrets', newAttempt: true})).toEqual(refusal('write-secrets'));
+        expect(receiptsOnDisk(recordPath), 'no receipt moved').toEqual([]);
+        expect(existsSync(path.join(run.stateRoot, 'secrets')), 'no secret file').toBe(false);
+
+        await toTheWitness(run);
+
+        expect(await broker.effect(trusted, {effectId: 'verify', newAttempt: true}), 'before a first attempt the row names run').toEqual(refusal('verify'));
+        expect(world.rows.length).toBe(0);
+
+        world.recallLands = true;
+
+        // not `true`: a plain run
+        expect(rowOf(await broker.effect(trusted, {effectId: 'verify', newAttempt: 'yes'}), 'verify')).toMatchObject({status: 'ok', exits: []});
+        expect(await broker.effect(trusted, {effectId: 'verify', newAttempt: true}), 'an accepted witness names no exit').toEqual(refusal('verify'));
+        expect(world.rows.length, 'one witness row, never a second').toBe(1)
+    });
+
+    test('a report that moved nothing stays a refusal in the orchestration\'s words: a preset the config does not carry writes no file and no receipt', async () => {
+        const emptyConfig = path.join(tempDir(), 'configBase.mjs');
+
+        writeFileSync(emptyConfig, 'export default {};\n');
+
+        const
+            run        = await pinnedSetupHost({configSourcePath: emptyConfig}),
+            recordPath = await consented(run);
+
+        expect(await run.broker.effect(trusted, {effectId: 'write-secrets'})).toEqual({ok: false, reason: expect.stringContaining('refused before any write'), effectId: 'write-secrets'});
+        expect(receiptsOnDisk(recordPath)).toEqual([]);
+        expect(existsSync(path.join(run.stateRoot, 'secrets')), 'no secret file').toBe(false);
+        expect(run.world.commands).toEqual([])
+    });
+
+    test('a host that already runs a plane is read and never written: its env file, its secret files and its running project make the three host effects ok by observation, and a forced call changes nothing', async () => {
+        const
+            setupRoot  = tempDir(),
+            stateRoot  = tempDir(),
+            envFile    = path.join(stateRoot, 'config', 'local-agent-os.env'),
+            secretsDir = path.join(stateRoot, 'secrets');
+
+        mkdirSync(path.dirname(envFile), {recursive: true});
+        mkdirSync(secretsDir, {mode: 0o700, recursive: true});
+        writeFileSync(envFile, 'NEO_PLANE_ID=the-live-plane\n', {mode: 0o600});
+
+        for (const name of ['fleet-plane-token', 'mcp-auth-token']) {
+            writeFileSync(path.join(secretsDir, name), `the live ${name}`, {mode: 0o600})
+        }
+
+        const run = await pinnedSetupHost({setupRoot, stateRoot, running: true, served: {id: 'the-live-plane', dataRoot: '/srv/live'}});
+
+        await consented(run);
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+            expect(rowOf(await run.broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok', reason: 'observed; not performed by this run'})
+        }
+
+        expect(rowOf(await run.broker.evaluate(trusted, {}), 'served-plane')).toMatchObject({status: 'failed', reason: expect.stringContaining('a different plane is answering')});
+        expect(readFileSync(envFile, 'utf8'), 'the env file is as it was').toBe('NEO_PLANE_ID=the-live-plane\n');
+        expect(readFileSync(path.join(secretsDir, 'fleet-plane-token'), 'utf8'), 'so is the plane token').toBe('the live fleet-plane-token');
+        expect(run.world.commands, 'no command reached the host').toEqual([])
+    });
+
+    test('the scripted host flatters no target: the plane that comes up is the profile\'s, the one command is recorded and never run, and every file lands under the run\'s temp roots', async () => {
+        const run = await pinnedSetupHost();
+
+        await consented(run);
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+            expect((await run.broker.effect(trusted, {effectId})).ok, effectId).toBe(true)
+        }
+
+        // bound by hand to another id, the run reads the profile's plane as a different one
+        expect(rowOf(await run.broker.evaluate(trusted, {}), 'served-plane')).toMatchObject({status: 'failed', reason: "served plane id is 'neo-local-canonical', expected 'plane-a': a different plane is answering"});
+        expect(run.world.commands).toHaveLength(1);
+        expect(run.world.commands[0]).toMatch(/^docker compose -p neo-local-agent-os --env-file .+ up -d --wait$/);
+        expect(run.world.commands[0]).toContain(path.join(run.stateRoot, 'config', 'local-agent-os.env'));
+        expect(readdirSync(path.join(run.stateRoot, 'secrets')).length, 'the secret files are in the temp state root').toBeGreaterThan(0);
+        expect(readdirSync(run.setupRoot).some(name => name.endsWith('.json')), 'the record is in the temp setup root').toBe(true);
+
+        // a later boot resumes that record: a request that names nothing keeps its binding, never the profile's
+        const resumed = await pinnedSetupHost({setupRoot: run.setupRoot, stateRoot: run.stateRoot});
+
+        expect((await resumed.broker.evaluate(trusted, {target: null})).evaluation.target).toEqual(TARGET)
     })
 });

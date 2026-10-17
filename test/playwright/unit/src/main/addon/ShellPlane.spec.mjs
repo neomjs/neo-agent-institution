@@ -53,21 +53,45 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
         expect(await setupAnswer({stepId: 'preset', answer: 'hosted', windowId: 7})).toEqual({ok: true, name: 'setupAnswer'});
         await setupCredential({stepId: 'plane-credential', windowId: 7});
         await setupEffect({effectId: 'write-env', windowId: 7});
+        await setupEffect({effectId: 'verify', newAttempt: true, windowId: 7});
+        await setupEffect({effectId: 'verify', newAttempt: 'yes', windowId: 7});
         await setupEvaluate({target: {planeId: 'p'}, windowId: 7});
         await setupEvaluate({windowId: 7});
         await setupEvaluate({target: {planeId: 'p'}, fresh: true, windowId: 7});
         await setupPresets({windowId: 7});
         await setupProbe({windowId: 7});
 
-        expect(calls, 'only the named fields cross; the window id stays in the App worker\'s envelope').toEqual([
+        expect(calls, 'only the named fields cross; the window id stays in the App worker\'s envelope; a new attempt crosses only as true').toEqual([
             ['setupAnswer',     {answer: 'hosted', stepId: 'preset'}],
             ['setupCredential', {stepId: 'plane-credential'}],
             ['setupEffect',     {effectId: 'write-env'}],
+            ['setupEffect',     {effectId: 'verify', newAttempt: true}],
+            ['setupEffect',     {effectId: 'verify'}],
             ['setupEvaluate',   {target: {planeId: 'p'}}],
             ['setupEvaluate',   {target: null}],
             ['setupEvaluate',   {target: {planeId: 'p'}, fresh: true}],
             ['setupPresets',    {}],
             ['setupProbe',      {}]
         ])
+    });
+
+    test('seat placement forwards plain answers and only the reviewed fingerprint', async () => {
+        const {seatRootStatus, seatRootPlan, seatRootConsent} = ShellPlane.prototype;
+        for (const result of [seatRootStatus(), seatRootPlan(), seatRootConsent({fingerprint: 'reviewed'})]) {
+            expect(await result).toEqual({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+        }
+
+        const calls = [], held = {root: null, pending: null, outcome: {state: 'held', reason: 'unreadable record'}};
+        globalThis.neoShell = {
+            seatRootStatus : async () => held,
+            seatRootPlan   : async () => ({state: 'refused', reason: 'occupied destination', rows: []}),
+            seatRootConsent: async request => { calls.push(request); return {state: 'consented'} }
+        };
+        expect(await seatRootStatus()).toEqual(held);
+        expect((await seatRootPlan()).state).toBe('refused');
+        expect(await seatRootConsent({fingerprint: 'reviewed', from: '/injected', to: '/elsewhere', windowId: 7})).toEqual({state: 'consented'});
+        expect(calls).toEqual([{fingerprint: 'reviewed'}]);
+        globalThis.neoShell.seatRootPlan = async () => { throw new Error('transport lost') };
+        await expect(seatRootPlan()).rejects.toThrow('transport lost')
     })
 });

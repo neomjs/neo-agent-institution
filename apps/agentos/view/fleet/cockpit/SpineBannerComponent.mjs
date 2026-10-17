@@ -6,11 +6,12 @@ import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mj
  *
  * Presentation-thin by design: the full verdict derives on
  * {@link AgentOS.view.fleet.cockpit.StateProvider}'s `spineBanner` derived data, and the chrome
- * slot binds its leaves — `text` (the STATUS WORD: chrome labels are never sentences), `cls`,
- * `hidden`, plus the two attribute channels: `bannerTitle` (the full honesty sentence, one hover
- * away) and `bannerAriaLabel` (the sentence's screen-reader mirror — the title attribute alone is
- * unreachable to most readers). Each channel is first-class and independently reactive; none
- * rides another as a change proxy (the same discipline the wake telltale pinned).
+ * slot binds its leaves — `text` (the STATUS WORD), `cls`, `hidden`, plus the two attribute
+ * channels: `bannerTitle` (the lead plus the retained cause) and `bannerAriaLabel` (its
+ * screen-reader mirror — the title attribute alone is unreachable to most readers). The lead itself
+ * is never hover-only: the bar shows it beside this pill as its own component. Each channel is
+ * first-class and independently reactive; none rides another as a change proxy (the same
+ * discipline the wake telltale pinned).
  *
  * `text`, never `html`: the sentence interpolates RETAINED TRANSPORT STRINGS (the adapter's own
  * `capability.reason`, arriving over the fleet wire), and `html` is an innerHTML sink — hostile

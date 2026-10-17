@@ -1,7 +1,10 @@
-import Button            from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import DragAffordances   from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DragAffordances.mjs';
-import WorkspaceDocument from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
-import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
+import Button                from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import DragAffordances       from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DragAffordances.mjs';
+import Placement             from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/Placement.mjs';
+import WorkspaceDocument     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
+import Workspace             from '../../../../../node_modules/neo.mjs/src/dashboard/dock/Workspace.mjs';
+import VesselPark            from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselPark.mjs';
+import VesselProxyEmbodiment from '../../../../../node_modules/neo.mjs/src/dashboard/dock/window/VesselProxyEmbodiment.mjs';
 
 /**
  * @summary The cockpit's vessel + window-chrome layer — every pop-out / tear-out / return
@@ -12,7 +15,7 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
  * The engine owns the vessel lifecycle: admission, the one detach commit, adoption into the
  * connected window, the return on vessel death, and the pane handles in between
  * ({@link Neo.dashboard.dock.window.TearOut} composed by the Workspace, ownership recorded by the
- * Group's native lifecycle). Four responsibilities remain here, nothing else:
+ * Group's native lifecycle). This layer retains:
  * - **The platform seams** the engine asks the host for: {@link #openTearOutVessel} (the
  *   widget-childapp vessel window), {@link #closeTearOutVessel}, and the generic pane
  *   capability {@link #resolveLivePane} (the projected pane for an item).
@@ -21,6 +24,8 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
  *   dock host and its two overlays (the preview renderer and the drop-indicator menu), and routed
  *   the projected zones' cross-zone drag seams ({@link #getDockProjectionOptions}), so a held tab
  *   header is answered by zones and its release commits through the cockpit's own reducer.
+ * - **Native window return to main** — stable held-pane identity, the engine proxy and park
+ *   owners, and a strict Group-backed close after semantic commit; rejection keeps the window.
  * - **The click pop-out** — one pathway for every pane: {@link #popOutPane} enters the engine's
  *   header-action dispatch ({@link Neo.dashboard.dock.Workspace#onDockHeaderAction}) and
  *   {@link #returnPane} closes the vessel, because vessel death IS the return path.
@@ -37,6 +42,9 @@ import Workspace         from '../../../../../node_modules/neo.mjs/src/dashboard
  * @extends Neo.dashboard.dock.Workspace
  */
 class VesselContainer extends Workspace {
+    /** @member {String} CROSS_WINDOW_SORT_GROUP='fleet-cockpit-cross-window' @static */
+    static CROSS_WINDOW_SORT_GROUP = 'fleet-cockpit-cross-window'
+
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.VesselContainer'
@@ -55,9 +63,15 @@ class VesselContainer extends Workspace {
      * @protected
      */
     dragAffordances = null
+    /** @member {Neo.dashboard.dock.window.VesselProxyEmbodiment|null} vesselProxyEmbodiment=null */
+    vesselProxyEmbodiment = null
+    /** @member {Neo.dashboard.dock.window.VesselPark|null} nativeVesselParkHandlers=null */
+    nativeVesselParkHandlers = null
+    /** @member {String|Number|null} nativeVesselConversionSourceWindowId=null */
+    nativeVesselConversionSourceWindowId = null
 
     /**
-     * @summary Routes the projected zones' cross-zone drag seams to the composed gesture
+     * @summary Publishes the Fleet sort group and routes the projected zones' cross-zone drag seams to the gesture
      * controller, beside the inherited tear-out options.
      * @returns {Object}
      */
@@ -66,6 +80,7 @@ class VesselContainer extends Workspace {
 
         return {
             ...super.getDockProjectionOptions(),
+            crossWindowSortGroup     : VesselContainer.CROSS_WINDOW_SORT_GROUP,
             onDockCrossZoneDragCancel: data => me.dragAffordances.onDragCancel(data),
             onDockCrossZoneDragMove  : data => me.dragAffordances.onDragMove(data),
             onDockCrossZoneDrop      : data => me.dragAffordances.onDrop(data)
@@ -73,29 +88,157 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary Composes the gesture controller once the declared dock host and its overlays exist.
+     * @summary Supplies the live Fleet pane and main-window native return policy.
+     * @returns {Object}
+     */
+    getDockParticipationConfig() {
+        const me = this;
+
+        return {
+            affordances           : me.dragAffordances,
+            dragEmbodiment        : me.vesselProxyEmbodiment,
+            resolveOwnershipId    : () => me.resolveTopologyGroup() ?? null,
+            resolveNativeWindowDrag(movingWindowId) {
+                const
+                    ownerEntry   = me.nativeWindows?.ownerEntries(me.id)?.find(([, owner]) => owner.windowId === movingWindowId),
+                    itemId       = ownerEntry?.[0],
+                    owner        = ownerEntry?.[1],
+                    pane         = itemId ? me.vesselPane(itemId) : null,
+                    ownershipId  = me.participation?.ownershipId,
+                    workspaceId  = me.participation?.workspaceId;
+
+                if (!owner?.windowName || !pane || pane.isDestroyed || !ownershipId || !workspaceId) return null;
+
+                delete pane.dockGroupNodeId;
+                delete pane.dockSourceNodeId;
+                pane.dockItemId            = itemId;
+                pane.dockSourceOwnershipId = ownershipId;
+                pane.dockSourceWorkspaceId = workspaceId;
+
+                return {draggedItem: pane, embodyNativeHover: true, sourceWindowId: movingWindowId, widgetName: itemId}
+            },
+            suspendNativeWindowDrag(itemId, data) {
+                const owner = me.nativeWindows?.getOwner(me.id, itemId);
+
+                if (me.windowId == null || !me.nativeVesselParkHandlers || data?.targetWindowId !== me.windowId ||
+                    !owner?.windowName || owner.windowId !== data.sourceWindowId) {
+                    return false
+                }
+
+                return me.nativeVesselParkHandlers.onConversionIn({itemId, windowName: owner.windowName})
+            },
+            resumeNativeWindowDrag: itemId => me.finishNativeVesselDrag(itemId, 'rejected'),
+            retireNativeWindowDrag: draggedItem => me.finishNativeVesselDrag(draggedItem?.dockItemId, 'committed')
+        }
+    }
+
+    /**
+     * @summary Settles one native return without discarding a refused close's retry authority.
+     * @param {String} itemId
+     * @param {String} outcome
+     * @returns {Promise<Boolean>}
+     */
+    async finishNativeVesselDrag(itemId, outcome) {
+        const sourceWindowId = this.nativeVesselConversionSourceWindowId,
+              result         = await this.nativeVesselParkHandlers?.onGestureTerminal({itemId, outcome});
+
+        if (result === true && this.nativeVesselConversionSourceWindowId === sourceWindowId) {
+            this.nativeVesselConversionSourceWindowId = null
+        }
+
+        return result === true
+    }
+
+    /**
+     * @summary Accepts the native-main handoff without moving or focusing the source popup.
+     * The hold is the gesture; the exact Group-owned window retires only after commit.
+     * @param {Object} vessel
+     * @returns {Boolean}
+     */
+    parkNativeVessel({itemId, windowName}) {
+        const owner = this.nativeWindows?.getOwner(this.id, itemId);
+
+        if (this.windowId == null || !owner || owner.windowId == null || owner.windowName !== windowName) return false;
+
+        this.nativeVesselConversionSourceWindowId = owner.windowId;
+
+        return true
+    }
+
+    /**
+     * @summary A cancelled main-target gesture leaves the exact source popup in place.
+     * @param {Object} vessel
+     * @returns {Boolean}
+     */
+    reshowNativeVessel({itemId, windowName}) {
+        const owner = this.nativeWindows?.getOwner(this.id, itemId);
+
+        return Boolean(owner && owner.windowId === this.nativeVesselConversionSourceWindowId &&
+            owner.windowName === windowName)
+    }
+
+    /**
+     * @summary Closes only the Group-owned vessel whose native drop committed.
+     * @param {Object} vessel
+     * @returns {Promise<Boolean>}
+     */
+    async disposeNativeVessel(vessel) {
+        if (!this.reshowNativeVessel(vessel)) return false;
+
+        const result = await this.returnPane(vessel.itemId);
+
+        return result?.returned === true
+    }
+
+    /**
+     * @summary Composes drag feedback and native-return collaborators over the declared host.
      * @param {...*} args
      */
     onConstructed(...args) {
         super.onConstructed(...args);
 
-        let me = this;
+        const me = this;
 
         me.dragAffordances = Neo.create(DragAffordances, {
             host      : me.getDockHost(),
             indicators: me.getReference('drop-indicators'),
             owner     : me,
             preview   : me.getReference('dock-preview')
-        })
+        });
+        me.vesselProxyEmbodiment = Neo.create(VesselProxyEmbodiment, {
+            resolvePane: itemId => me.vesselPane(itemId) || me.findProjectedDockPane(itemId),
+            resolveProxyConfig: ({sourceSortZone, targetWindowId}) => {
+                const
+                    sourceConfig = sourceSortZone?.getDragProxyConfig?.() ?? {cls: []},
+                    targetApp    = Neo.apps[targetWindowId];
+
+                return {
+                    ...sourceConfig,
+                    appName: targetApp?.name ?? me.appName,
+                    cls    : [...new Set([...(sourceConfig.cls || []), 'neo-dock-dragproxy'])]
+                }
+            }
+        });
+        me.nativeVesselParkHandlers = Neo.create(VesselPark, {
+            disposeVessel: vessel => me.disposeNativeVessel(vessel),
+            parkVessel   : vessel => me.parkNativeVessel(vessel),
+            reshowVessel : vessel => me.reshowNativeVessel(vessel)
+        });
+        me.syncDockParticipation({recompose: true})
     }
 
     /**
-     * @summary Retires the gesture controller before the inherited vessel and workspace teardown.
+     * @summary Retires drag feedback, proxy and park owners before workspace teardown.
      * @param {...*} args
      */
     destroy(...args) {
         this.dragAffordances?.destroy();
         this.dragAffordances = null;
+        this.nativeVesselParkHandlers?.destroy();
+        this.nativeVesselParkHandlers = null;
+        this.vesselProxyEmbodiment?.destroy();
+        this.vesselProxyEmbodiment = null;
+        this.nativeVesselConversionSourceWindowId = null;
         super.destroy(...args)
     }
 
@@ -113,15 +256,17 @@ class VesselContainer extends Workspace {
 
     /**
      * @summary Admit a click pop-out with the pane's designed composition when one exists;
-     * otherwise preserve the engine's measured geometry and the caller's descriptor.
+     * otherwise use the engine's measured pane. A click's proxy is that pane measurement, so
+     * carry it as sourceRect for the common size contract without mutating the caller's descriptor.
      * @param {Object} data The engine's admission descriptor, including itemId and proxyRect.
      * @returns {Promise<Boolean>}
      * @protected
      */
     async admitDockPopOut(data) {
-        const composition = VesselContainer.vesselCompositions[data.itemId];
+        const composition = VesselContainer.vesselCompositions[data.itemId],
+              rect        = composition ? {...composition} : data.proxyRect;
 
-        return super.admitDockPopOut(composition ? {...data, proxyRect: {...composition}} : data)
+        return super.admitDockPopOut({...data, proxyRect: rect, sourceRect: rect})
     }
 
     /**
@@ -163,7 +308,12 @@ class VesselContainer extends Workspace {
      * @param {Object} data
      * @protected
      */
-    afterTearOutWindowDisconnect(data) {
+    afterTearOutWindowDisconnect({itemId, windowId}={}) {
+        windowId && this.vesselProxyEmbodiment?.restoreByWindow(windowId);
+        if (this.nativeVesselConversionSourceWindowId === windowId) {
+            this.nativeVesselParkHandlers?.onVesselRetired({itemId, retirement: true});
+            this.nativeVesselConversionSourceWindowId = null
+        }
         this.syncControlBar()
     }
 
@@ -309,16 +459,11 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * @summary Resolve the live {@link AgentOS.view.fleet.detail.Container} instance wherever it
-     * currently renders — the projected tree while docked, the owner's handle while vesseled. A
-     * vessel-mounted pane lives in the popup's view tree, out of this cockpit's `down()` /
-     * `getReference` reach, so every detail consumer (record mutation, selection reconciliation,
-     * the card→detail drill) routes through this accessor — the windowed inspector stays as live
-     * as the docked one.
+     * @summary Resolve existing Detail by vessel ownership or declared identity, including parked panes, without creating one.
      * @returns {Neo.container.Base|null} The detail pane, or `null` before its first materialization.
      */
     getAgentDetailPane() {
-        return this.vesselPane('detail') || this.getReference('agent-detail')
+        return this.vesselPane('detail') || Neo.get(this.getPaneDeclaration('detail')?.id) || null
     }
 
     /**
@@ -358,12 +503,13 @@ class VesselContainer extends Workspace {
 
     /**
      * @summary Resolve the live {@link AgentOS.view.fleet.wake.Container} instance whether it is
-     * docked, vesseled, or in flight home — the {@link #getMemoriesPane} contract for the
+     * docked, parked, vesseled, or in flight home — the {@link #getMemoriesPane} contract for the
      * wake-routes surface, so snapshot writes and the reconnect re-drive reach the pane in every phase.
+     * The rail parks this pane off the projected tree, so it resolves by its declared id.
      * @returns {Neo.container.Base|null} The wake-routes pane, or `null` before materialization.
      */
     getWakeRoutesPane() {
-        return this.vesselPane('wakeRoutes') || this.getReference('wakeRoutes')
+        return this.vesselPane('wakeRoutes') || Neo.get(this.getPaneDeclaration('wakeRoutes')?.id) || null
     }
 
     /**
@@ -377,7 +523,7 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * The platform half of the engine's admission: opens the vessel window for a gesture tear-out
+     * @summary The platform half of the engine's admission: opens the vessel window for a gesture tear-out
      * or a click pop-out, reusing the SAME widget-childapp shell for both (an empty pane host —
      * the engine reparents the live pane on connect). The Group's reserved slot rides the window
      * as its `topologyIdentity`: that is how the connecting window binds to this admission, so the
@@ -386,14 +532,18 @@ class VesselContainer extends Workspace {
      * throws), and any refused precondition — an item already vessel-owned or in flight, an
      * unresolvable live pane (placeholder items) — or falsy/throwing acquisition returns `null`,
      * degrading the gesture to its in-window fallback with zero vessel state.
+     * The source pane supplies the OUTER window size through the engine's shared resolver,
+     * bounded by the initiating window's screen; the drag proxy supplies position only.
+     * Missing size uses the engine fallback, and no chrome is added to the pane's footprint.
      * @param {Object} request
      * @param {String} request.itemId
      * @param {Object} request.proxyRect
+     * @param {Object|null} [request.sourceRect=null] The pane measurement or click composition.
      * @param {Object} request.topologyIdentity The Group slot reserved for this admission.
      * @returns {Promise<{popupHeight: Number, popupWidth: Number, windowName: String}|null>}
      * @protected
      */
-    async openTearOutVessel({itemId, proxyRect, topologyIdentity}) {
+    async openTearOutVessel({itemId, proxyRect, sourceRect=null, topologyIdentity}) {
         let me         = this,
             windowName = `fm-tearout-${itemId}-${me.id}`;
 
@@ -407,8 +557,7 @@ class VesselContainer extends Workspace {
                 firstWindowId   = Object.keys(windowConfigs)[0],
                 {basePath}      = windowConfigs[firstWindowId],
                 winData         = await Neo.Main.getWindowData({windowId: me.windowId}),
-                width           = Math.max(Math.round(proxyRect?.width  || 480), 320),
-                height          = Math.max(Math.round(proxyRect?.height || 360), 240),
+                {height, width} = Placement.resolveVesselSize({screen: winData.screen, sourceRect}),
                 left            = Math.round((proxyRect?.x ?? 120) + winData.screenLeft),
                 top             = Math.round((proxyRect?.y ?? 120) + (winData.outerHeight - winData.innerHeight) + winData.screenTop),
                 opened          = await Neo.Main.windowOpen({

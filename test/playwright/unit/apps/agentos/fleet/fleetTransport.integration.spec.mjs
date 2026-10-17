@@ -17,6 +17,7 @@ import {test, expect}       from '@playwright/test';
 import Neo                  from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core            from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import {installFleetBridge} from '../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import AddAgentFlow         from '../../../../../../apps/agentos/util/AddAgentFlow.mjs';
 import {loadAgentOsModule}  from '../../../../fixtures.mjs';
 import fs                   from 'fs';
 import os                   from 'os';
@@ -178,6 +179,46 @@ test.describe('fleet transport — full-chain integration (real server + real re
         expect(envelope.ok).toBe(false);
         expect(envelope.state).toBe(FLEET_WIRE_RESPONSE_STATES.unsupportedMethod);
         expect(envelope.error).toContain('not on the control surface')
+    });
+
+    test('#603: the scoped chooser reads the merged Brain producer through the authenticated wire', async () => {
+        const
+            {default: bridge}                             = await loadAgentOsModule('ai/services/fleet/FleetControlBridge.mjs'),
+            {default: lifecycle}                          = await loadAgentOsModule('ai/services/fleet/FleetLifecycleService.mjs'),
+            {detectMemoryCandidates, managedMemorySource} = await loadAgentOsModule('ai/services/fleet/seatMemoryImport.mjs'),
+            priorRoot                                     = FleetRegistryService.agentsRoot,
+            priorInstances                                = lifecycle.instanceRoot,
+            priorSource                                   = bridge.memoryCandidatesSource,
+            instanceRoot                                  = path.join(tmpDir, 'agents'),
+            homeDir                                       = path.join(tmpDir, 'operator');
+
+        FleetRegistryService.agentsRoot = instanceRoot;
+        lifecycle.instanceRoot = instanceRoot;
+
+        try {
+            const agent = await registryBridge.defineAgent({
+                githubUsername: 'integration-memory', harnessType: 'codex-desktop', credential: 'fixture-credential'
+            });
+            const source = managedMemorySource({agent, instanceRoot});
+            fs.mkdirSync(source, {recursive: true});
+            fs.writeFileSync(path.join(source, 'MEMORY.md'), 'fixture notes never cross the wire');
+            bridge.memoryCandidatesSource = {readMemoryCandidates: async context => {
+                const candidates = await detectMemoryCandidates({homeDir, ...context});
+                return {capability: {state: 'wired'}, candidates, count: candidates.length,
+                    ...(context ? {scope: {kind: 'seat', id: context.agent.id}} : {})}
+            }};
+
+            const selected = await AddAgentFlow.readMemoryCandidates({id: agent.id, bridgeResolver: () => registryBridge});
+            expect(selected.state).toBe('candidates');
+            expect(selected.candidates).toEqual([expect.objectContaining({family: 'codex', name: agent.id, notes: 1, source})]);
+            expect(JSON.stringify(selected)).not.toContain('fixture notes never cross the wire');
+            expect(await AddAgentFlow.readMemoryCandidates({bridgeResolver: () => registryBridge})).toEqual({state: 'none'});
+            expect((await AddAgentFlow.readMemoryCandidates({id: 'missing-seat', bridgeResolver: () => registryBridge})).state).toBe('unavailable')
+        } finally {
+            FleetRegistryService.agentsRoot = priorRoot;
+            lifecycle.instanceRoot = priorInstances;
+            bridge.memoryCandidatesSource = priorSource
+        }
     });
 
     test('resolveViewerIdentity (whoami): the stamped viewer round-trips through the authenticated wire; refusal shapes are named, never a fallback identity', async () => {

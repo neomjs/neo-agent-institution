@@ -34,6 +34,26 @@ const wiredRuntime = (confidence = 'observed') => ({
 
 test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => {
 
+    test('live state keeps Stop uncertainty distinct from a family that cannot Start', () => {
+        const record  = {agentId: 'native-up', state: 'ok', sources: wiredRuntime(), launchable: false, pendingAction: 'stop'};
+        const pending = FleetStartPlan.renderFleetState([record]);
+
+        expect(pending.text).toBe('0\u00a0started · 1\u00a0pending');
+        expect(pending.detail).toContain("'stop' round-trip");
+        expect(pending.detail).not.toContain('not launchable');
+
+        record.pendingAction = null;
+        record.controlReason = {kind: 'timeout', action: 'stop'};
+        const unknown = FleetStartPlan.renderFleetState([record]);
+
+        expect(unknown.text).toBe('0\u00a0started · 1\u00a0UNKNOWN');
+        expect(unknown.detail).toContain("'stop' outcome unknown");
+        expect(unknown.detail).not.toContain('not launchable');
+
+        record.controlReason = null;
+        expect(FleetStartPlan.renderFleetState([record]).text).toBe('1\u00a0started')
+    });
+
     test('partition: every exclusion is wire-derived and carries its reason; the down fleet is what starts', () => {
         const records = [
             {agentId: 'vega',   state: 'off',  sources: wiredRuntime()},                // eligible — wired down
@@ -91,6 +111,24 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(excluded[0].reason).toContain('operator_benched');
         expect(excluded[1].reason).toContain('temporarily_unreachable');
         expect(excluded[2].reason).toContain('hibernating')
+    });
+
+    test('a null participation whose read did not answer is unobserved, never "no node": excluded with the read\'s reason; a read that answered, or a Brain that reports no read, keeps the open-set rule (#568)', () => {
+        const {eligible, excluded} = FleetStartPlan.partitionFleetStart([
+            {agentId: 'iris',   state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: {state: 'unread', reason: 'presence unreadable'}},
+            {agentId: 'quiet',  state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: {state: 'unread'}},
+            {agentId: 'fork',   state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: {state: 'read'}},
+            {agentId: 'legacy', state: 'off', sources: wiredRuntime(), participationStatus: null, participationRead: null},
+            // a known status outranks the read: the node's recorded fact excludes as before
+            {agentId: 'eos',    state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched', participationRead: {state: 'read'}}
+        ]);
+
+        expect(eligible.map(record => record.agentId)).toEqual(['fork', 'legacy']);
+        expect(excluded.map(({agentId, reason}) => [agentId, reason])).toEqual([
+            ['iris',  'unobserved — the participation read did not answer: presence unreadable'],
+            ['quiet', 'unobserved — the participation read did not answer'],
+            ['eos',   'not active — authoritative participation status \'operator_benched\'']
+        ])
     });
 
     test("authority rule: unusable runtime provenance fails a start closed — projected 'off' is display fallback, not a stopped runtime", () => {
@@ -227,7 +265,7 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             unknown  : [{agentId: 'euclid', reason: 'timeout: start timed out after 30000ms'}]
         });
 
-        expect(text).toBe('2 started · 1 UNKNOWN · 1 rejected · 1 excluded');
+        expect(text).toBe('2\u00a0started · 1\u00a0UNKNOWN · 1\u00a0rejected · 1\u00a0excluded');
         expect(detail).toContain('euclid: timeout: start timed out after 30000ms');
         expect(detail).toContain('ada: missing credential');
         expect(detail).toContain('(guest): guest — no fleet definition to start');
@@ -235,7 +273,118 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         // the quiet batch: everything started, nothing to explain
         const clean = FleetStartPlan.renderFleetStartSummary({attempted: 2, excluded: [], rejected: [], started: 2, total: 2, unknown: []});
 
-        expect(clean.text).toBe('2 started');
+        expect(clean.text).toBe('2\u00a0started');
         expect(clean.detail).toBe('')
+    });
+
+    test('the stop partition is the mirror: the UP eligible fleet stops; down, benched, pending, unwired and guest rows are excluded with reasons (#618)', () => {
+        const {eligible, excluded} = FleetStartPlan.partitionFleetStop([
+            {agentId: 'ada',    state: 'ok',   sources: wiredRuntime()},
+            {agentId: 'grace',  state: 'idle', sources: wiredRuntime()},
+            {agentId: 'vega',   state: 'off',  sources: wiredRuntime()},
+            {agentId: 'gemini', state: 'ok',   sources: wiredRuntime(), participationStatus: 'operator_benched'},
+            {agentId: 'euclid', state: 'ok',   sources: wiredRuntime(), pendingAction: 'stop'},
+            {agentId: 'sophie', state: 'ok'},
+            {state: 'ok'}
+        ]);
+
+        expect(eligible.map(record => record.agentId)).toEqual(['ada', 'grace']);
+        expect(excluded.map(({agentId, reason}) => [agentId, reason])).toEqual([
+            ['vega',   expect.stringContaining('already down')],
+            ['gemini', expect.stringContaining('operator_benched')],
+            ['euclid', expect.stringContaining('stop')],
+            ['sophie', expect.stringContaining('runtime source')],
+            [null,     expect.stringContaining('guest')]
+        ])
+    });
+
+    test('the fleet button reads the plan it would run: Start fleet · n while anything eligible is down, Stop fleet · n only when nothing is left to start, the plain label with its reason when no plan can be computed (#618 AC-1)', () => {
+        const
+            up    = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
+            down  = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
+            eight = ['ada', 'grace', 'vega', 'sophie', 'emmy', 'euclid', 'clio', 'fable'];
+
+        expect(FleetStartPlan.describeFleetButton([...eight.slice(0, 4).map(up), ...eight.slice(4).map(down)]))
+            .toEqual({action: 'start', count: 4, text: 'Start fleet · 4', title: null});
+        // a benched seat never counts in either direction
+        expect(FleetStartPlan.describeFleetButton([...eight.map(up), {agentId: 'gemini', state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched'}]))
+            .toEqual({action: 'stop', count: 8, text: 'Stop fleet · 8', title: null});
+        // the roster unobserved: the plain label, the reason in the title, no count the partition did not produce
+        expect(FleetStartPlan.describeFleetButton([])).toMatchObject({action: null, count: 0, text: 'Start fleet', title: expect.stringContaining('roster')});
+        expect(FleetStartPlan.describeFleetButton(null)).toMatchObject({action: null, text: 'Start fleet'});
+        // every row unwired: nothing can be planned — still the plain label, the reason names the source
+        expect(FleetStartPlan.describeFleetButton([{agentId: 'ada', state: 'off'}, {agentId: 'vega', state: 'ok'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('wired')});
+        // every row benched: nothing to start or stop — the reasons reachable in the title
+        expect(FleetStartPlan.describeFleetButton([{agentId: 'gemini', state: 'ok', sources: wiredRuntime(), participationStatus: 'operator_benched'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('operator_benched')})
+    });
+
+    test('the summary speaks both directions: N stopped · M excluded, every reason reachable (#618)', () => {
+        const
+            partition = {eligible: [{agentId: 'ada'}, {agentId: 'grace'}], excluded: [{agentId: 'vega', reason: 'already down — session state \'off\''}]},
+            summary   = FleetStartPlan.summarizeFleetStart(partition, [{ok: true}, {ok: false, status: 'rejected', controlReason: {reason: 'the seat refused'}}]);
+
+        expect(FleetStartPlan.renderFleetStartSummary(summary, 'stopped')).toEqual({text: '1\u00a0stopped · 1\u00a0rejected · 1\u00a0excluded', detail: 'grace: the seat refused\nvega: already down — session state \'off\''});
+        expect(FleetStartPlan.renderFleetStartSummary(summary).text, 'the default verb is unchanged').toBe('1\u00a0started · 1\u00a0rejected · 1\u00a0excluded')
+    });
+
+    test('the armed stop renders where the summaries live: the eligible seats by name in roster order, the exclusions counted and reachable; a plan\'s key is its eligible set (#618 AC-4)', () => {
+        const plan = {
+            eligible: [{agentId: 'neo-opus-ada', displayName: 'Ada'}, {agentId: 'neo-gpt'}],
+            excluded: [{agentId: 'neo-gemini-pro', reason: 'not active — authoritative participation status \'operator_benched\''}]
+        };
+
+        expect(FleetStartPlan.renderFleetStopPlan(plan)).toEqual({detail: 'neo-gemini-pro: not active — authoritative participation status \'operator_benched\'', text: 'Stop fleet · 2\u00a0seats: Ada, neo-gpt · 1\u00a0excluded'});
+        expect(FleetStartPlan.renderFleetStopPlan({eligible: [{agentId: 'ada', displayName: 'Ada'}], excluded: []})).toEqual({detail: '', text: 'Stop fleet · 1\u00a0seat: Ada'});
+        expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'b'}, {agentId: 'a'}]})).toBe(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}, {agentId: 'b'}]}));
+        expect(FleetStartPlan.stopPlanKey({eligible: [{agentId: 'a'}]})).not.toBe(FleetStartPlan.stopPlanKey({eligible: []}))
+    });
+
+    test('waves: consecutive groups in roster order; a size below 1 or not an integer reads as 1; no records, no wave (#654 AC-1)', () => {
+        const eight = ['ada', 'grace', 'vega', 'mnemo', 'euclid', 'emmy', 'sophie', 'clio'].map(agentId => ({agentId}));
+
+        const ids = waves => waves.map(wave => wave.map(({agentId}) => agentId));
+
+        expect(ids(FleetStartPlan.waves(eight, 2))).toEqual([['ada', 'grace'], ['vega', 'mnemo'], ['euclid', 'emmy'], ['sophie', 'clio']]);
+        expect(ids(FleetStartPlan.waves(eight, 3))).toEqual([['ada', 'grace', 'vega'], ['mnemo', 'euclid', 'emmy'], ['sophie', 'clio']]);
+        expect(ids(FleetStartPlan.waves(eight, 1))).toEqual(eight.map(({agentId}) => [agentId]));
+        expect(ids(FleetStartPlan.waves(eight, 8))).toEqual([eight.map(({agentId}) => agentId)]);
+        expect(ids(FleetStartPlan.waves(eight))).toHaveLength(4);
+
+        [0, -1, NaN, 1.5, null, '2'].forEach(size => {
+            expect(FleetStartPlan.waves(eight.slice(0, 3), size), `size ${size} reads as one by one`).toHaveLength(3)
+        });
+
+        expect(FleetStartPlan.waves([], 2)).toEqual([]);
+        expect(FleetStartPlan.waves(null, 2)).toEqual([])
+    });
+
+    test('a batch still sending reports its unsent seats as pending — never as rejected — and the running line counts them (#654 AC-2)', () => {
+        const partition = FleetStartPlan.partitionFleetStart([
+            {agentId: 'ada',   state: 'off', sources: wiredRuntime()},
+            {agentId: 'grace', state: 'off', sources: wiredRuntime()},
+            {agentId: 'vega',  state: 'off', sources: wiredRuntime()},
+            {agentId: 'mnemo', state: 'off', sources: wiredRuntime()},
+            {agentId: 'up',    state: 'ok',  sources: wiredRuntime()}
+        ]);
+
+        // the first wave answered, the second not sent yet
+        const running = FleetStartPlan.summarizeFleetStart(partition, [{ok: true, status: 'settled'}, {ok: false, status: 'rejected', controlReason: {reason: 'the seat refused'}}]);
+
+        expect(running.started).toBe(1);
+        expect(running.rejected).toEqual([{agentId: 'grace', reason: 'the seat refused'}]);
+        expect(running.pending).toEqual([{agentId: 'vega', reason: 'pending — a later wave'}, {agentId: 'mnemo', reason: 'pending — a later wave'}]);
+        expect(running.unknown).toEqual([]);
+        expect(running.attempted).toBe(4);
+
+        const line = FleetStartPlan.renderFleetStartSummary(running);
+
+        expect(line.text).toBe('1\u00a0started · 2\u00a0pending · 1\u00a0rejected · 1\u00a0excluded');
+        expect(line.detail.split('\n')).toEqual(['vega: pending — a later wave', 'mnemo: pending — a later wave', 'grace: the seat refused', "up: already up — session state 'ok'"]);
+
+        // every wave answered: no pending word anywhere
+        const done = FleetStartPlan.summarizeFleetStart(partition, [{ok: true}, {ok: true}, {ok: true}, {ok: false, status: 'timeout', controlReason: {reason: 'start timed out after 30000ms'}}]);
+
+        expect(done.pending).toEqual([]);
+        expect(FleetStartPlan.renderFleetStartSummary(done).text).toBe('3\u00a0started · 1\u00a0UNKNOWN · 1\u00a0excluded')
     });
 });

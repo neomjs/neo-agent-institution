@@ -49,8 +49,11 @@ class FleetStartPlan extends Base {
      *    `operator_benched` and `temporarily_unreachable`) → the identity roots' AUTHORITATIVE
      *    participation fact — the wake-subscription liveness gate and the heartbeat target
      *    discovery both read every known non-active status as a hard exclusion, and lifecycle
-     *    fan-out follows the same authority; `null` (no identity root) stays ELIGIBLE — the
-     *    open-set case for forks/custom residents, unknown is not a recorded prohibition;
+     *    fan-out follows the same authority; `null` under a read that answered (no identity node)
+     *    stays ELIGIBLE — the open-set case for forks/custom residents, unknown is not a recorded
+     *    prohibition — but a `null` whose read did NOT answer (`participationRead.state === 'unread'`)
+     *    is `unobserved`, never "no node": excluded with the read's reason. A Brain that reports no read
+     *    keeps the open-set rule;
      * 3. `launchable === false` → the launch seam says this family has no harness template
      *    (tri-state honesty: `null` = not read back yet stays ELIGIBLE — the bridge's own refusal is
      *    the truthful outcome, never a cockpit guess);
@@ -60,7 +63,7 @@ class FleetStartPlan extends Base {
      *    closed: the projected `state: 'off'` below is a degraded DISPLAY fallback in this case, not
      *    evidence of a stopped runtime — the same gate that disables the per-card controls;
      * 6. a prior lifecycle `timeout` → the outcome is still UNKNOWN because the bridge Promise was
-     *    raced, not cancelled; fleet-level retry stays closed until an explicit card action clears it;
+     *    raced, not cancelled; retry stays closed until its current answer or a new card action clears it;
      * 7. session `state` other than `off` → the resident is already up (ok / idle / wedged / limited
      *    are all live states) — a fleet start targets the DOWN fleet (a WIRED stopped record —
      *    `observed` or `inferred` — is exactly that fleet).
@@ -85,6 +88,8 @@ class FleetStartPlan extends Base {
                 exclude('guest — no fleet definition to start')
             } else if (record.participationStatus != null && record.participationStatus !== 'active') {
                 exclude(`not active — authoritative participation status '${record.participationStatus}'`)
+            } else if (record.participationStatus == null && record.participationRead?.state === 'unread') {
+                exclude(`unobserved — the participation read did not answer${record.participationRead.reason ? `: ${record.participationRead.reason}` : ''}`)
             } else if (record.launchable === false) {
                 exclude(`not launchable — no harness template for the '${record.family ?? 'unknown'}' family`)
             } else if (record.pendingAction) {
@@ -104,20 +109,46 @@ class FleetStartPlan extends Base {
     }
 
     /**
+     * @summary Split the eligible records into the consecutive groups one fleet start sends at a
+     * time — the bounded burst a press puts on the Fleet (preparations, spawns), the plane (readiness
+     * probes, launch-admission proofs) and the host (harness boots). Roster order is kept, so a
+     * batch's results stay index-aligned with the partition; a size below 1 or not an integer reads
+     * as 1 (one by one, the safe direction); no records, no wave.
+     * @param {Object[]|null} records Eligible records in roster order ({@link partitionFleetStart}).
+     * @param {Number} [size=2] Seats per wave.
+     * @returns {Object[][]}
+     */
+    static waves(records, size = 2) {
+        const
+            rows  = records ?? [],
+            step  = Number.isInteger(size) && size > 0 ? size : 1,
+            waves = [];
+
+        for (let index = 0; index < rows.length; index += step) {
+            waves.push(rows.slice(index, index + step))
+        }
+
+        return waves
+    }
+
+    /**
      * @summary Fold the partition + the per-record C2 adapter results into the honest outcome
-     * summary: started / UNKNOWN-with-reasons / rejected-with-reasons / excluded-with-reasons, in
-     * each bucket's roster order.
+     * summary: started / pending / UNKNOWN-with-reasons / rejected-with-reasons /
+     * excluded-with-reasons, in each bucket's roster order.
      * A non-`ok` result keeps its terminal kind visible (`rejected` / `timeout` / `unauthorized` —
      * the adapter's terminal vocabulary), because a timeout is an UNKNOWN outcome, not a
-     * failure the operator may silently retry.
+     * failure the operator may silently retry. A record without a result yet is `pending`: a batch
+     * running in waves ({@link waves}) has not sent it, which is neither a refusal nor an outcome.
      * @param {{eligible: Object[], excluded: Object[]}} partition From {@link partitionFleetStart}.
-     * @param {Object[]} results Per-eligible-record results from `handleFleetLifecycleIntent`, index-aligned.
-     * @returns {{started: Number, unknown: Object[], rejected: Object[], excluded: Object[], attempted: Number, total: Number}}
-     * `unknown` / `rejected` / `excluded` entries are `{agentId, reason}` pairs in roster order.
+     * @param {Object[]} results Per-eligible-record results from `handleFleetLifecycleIntent`,
+     *     index-aligned; shorter than `eligible` while a batch is still sending.
+     * @returns {{started: Number, pending: Object[], unknown: Object[], rejected: Object[], excluded: Object[], attempted: Number, total: Number}}
+     * `pending` / `unknown` / `rejected` / `excluded` entries are `{agentId, reason}` pairs in roster order.
      */
     static summarizeFleetStart(partition, results) {
         const
             {eligible, excluded} = partition,
+            pending              = [],
             rejected             = [],
             unknown              = [];
 
@@ -126,12 +157,14 @@ class FleetStartPlan extends Base {
         eligible.forEach((record, index) => {
             const result = results?.[index];
 
-            if (result?.ok) {
+            if (result == null) {
+                pending.push({agentId: record.agentId, reason: 'pending — a later wave'})
+            } else if (result.ok) {
                 started++
             } else {
                 const
-                    kind   = result?.status ?? 'rejected',
-                    reason = result?.controlReason?.reason ?? `start ${kind}`;
+                    kind   = result.status ?? 'rejected',
+                    reason = result.controlReason?.reason ?? `start ${kind}`;
 
                 const entry = {agentId: record.agentId, reason: kind === 'rejected' ? reason : `${kind}: ${reason}`};
 
@@ -142,6 +175,7 @@ class FleetStartPlan extends Base {
         return {
             attempted: eligible.length,
             excluded : excluded.map(({agentId, reason}) => ({agentId, reason})),
+            pending,
             rejected,
             started,
             total    : eligible.length + excluded.length,
@@ -150,23 +184,205 @@ class FleetStartPlan extends Base {
     }
 
     /**
-     * @summary Render the summary as the compact chrome line + the reachable per-member reasons.
-     * Pure string building: `text` is the at-a-glance state
-     * ("3 started · 1 UNKNOWN · 1 rejected · 2 excluded"); `detail` lists every
-     * unknown/rejected/excluded member with its reason, one per line — the "reasons reachable from
-     * the summary" contract, carried as the summary element's title.
-     * @param {Object} summary From {@link summarizeFleetStart}.
+     * @summary The mirror partition for a fleet-wide stop: the UP eligible fleet. The same authority
+     * and evidence rules as {@link partitionFleetStart}, first match wins — a guest without
+     * `agentId`, a known non-active or unobserved `participationStatus`, a `pendingAction` in flight,
+     * an unwired runtime source (a projected state over an unusable source is no proof of a running
+     * seat either), a prior timeout — and then the direction flips: a session state of `off` is
+     * "already down", everything else is up and stoppable.
+     * @param {Object[]} records FleetAgent records (or plain field bags in tests).
+     * @returns {{eligible: Object[], excluded: Object[]}} `excluded` entries are `{record, agentId, reason}`.
+     */
+    static partitionFleetStop(records) {
+        const
+            eligible = [],
+            excluded = [];
+
+        (records ?? []).forEach(record => {
+            if (!record) return;
+
+            const
+                agentId = record.agentId ?? null,
+                runtime = SourceHealth.normalizeFleetSources(record.sources).runtime,
+                exclude = reason => excluded.push({agentId, reason, record});
+
+            if (!agentId) {
+                exclude('guest — no fleet definition to stop')
+            } else if (record.participationStatus != null && record.participationStatus !== 'active') {
+                exclude(`not active — authoritative participation status '${record.participationStatus}'`)
+            } else if (record.participationStatus == null && record.participationRead?.state === 'unread') {
+                exclude(`unobserved — the participation read did not answer${record.participationRead.reason ? `: ${record.participationRead.reason}` : ''}`)
+            } else if (record.pendingAction) {
+                exclude(`'${record.pendingAction}' round-trip already in flight`)
+            } else if (runtime.state !== 'wired') {
+                exclude(`runtime source '${runtime.state}' — no usable lifecycle evidence to stop against`)
+            } else if (record.controlReason?.kind === 'timeout') {
+                exclude(`'${record.controlReason.action ?? 'lifecycle'}' outcome unknown after timeout — retry only through an explicit card control`)
+            } else if ((record.state ?? 'off') === 'off') {
+                exclude('already down — session state \'off\'')
+            } else {
+                eligible.push(record)
+            }
+        });
+
+        return {eligible, excluded}
+    }
+
+    /**
+     * @summary The fleet button's words, from the plan a click would run: `Start fleet · n` while
+     * anything eligible is down; `Stop fleet · n` only when nothing is left to start and n eligible
+     * seats are up; the plain `Start fleet` with the reason in `title` when no plan can be computed —
+     * the roster unobserved, every runtime source unwired, or every row excluded — never a count the
+     * partition did not produce. The caller decides WHEN to read it (settled rosters only: a batch in
+     * flight keeps the last settled label).
+     * @param {Object[]|null} records FleetAgent records
+     * @returns {{action: String|null, count: Number, text: String, title: String|null}} `action` is
+     * `start` · `stop` · `null` (nothing to run)
+     */
+    static describeFleetButton(records) {
+        const rows = (records ?? []).filter(Boolean);
+
+        if (rows.length === 0) {
+            return {action: null, count: 0, text: 'Start fleet', title: 'the roster has not answered — no plan to run yet'}
+        }
+
+        const start = FleetStartPlan.partitionFleetStart(rows);
+
+        if (start.eligible.length > 0) {
+            return {action: 'start', count: start.eligible.length, text: `Start fleet · ${start.eligible.length}`, title: null}
+        }
+
+        const stop = FleetStartPlan.partitionFleetStop(rows);
+
+        if (stop.eligible.length > 0) {
+            return {action: 'stop', count: stop.eligible.length, text: `Stop fleet · ${stop.eligible.length}`, title: null}
+        }
+
+        const
+            unwired = rows.every(record => SourceHealth.normalizeFleetSources(record.sources).runtime.state !== 'wired'),
+            reasons = [...new Set(stop.excluded.map(({reason}) => reason))].join(' · ');
+
+        return {
+            action: null,
+            count : 0,
+            text  : 'Start fleet',
+            title : unwired ? 'no usable lifecycle evidence — the runtime source is not wired' : `nothing to start or stop — ${reasons}`
+        }
+    }
+
+    /**
+     * @summary Project the current roster cohorts, independently of a previous batch's results.
+     * Eligibility remains owned by the start/stop partitions. A ready stopped seat is not excluded;
+     * pending and unknown evidence keep their own buckets instead of becoming stopped or running.
+     * @param {Object[]|null} records Admitted FleetAgent records.
+     * @returns {{text: String, detail: String}|null} Current counts and member reasons, or no observed roster.
+     */
+    static renderFleetState(records) {
+        const rows = (records ?? []).filter(Boolean);
+
+        if (!rows.length) return null;
+
+        const start        = FleetStartPlan.partitionFleetStart(rows),
+              stop         = FleetStartPlan.partitionFleetStop(rows),
+              ready        = new Set(start.eligible),
+              up           = new Set(stop.eligible),
+              startReasons = new Map(start.excluded.map(entry => [entry.record, entry.reason])),
+              stopReasons  = new Map(stop.excluded.map(entry => [entry.record, entry.reason])),
+              summary      = {started: up.size, pending: [], unknown: [], rejected: [], excluded: []},
+              detail       = [];
+
+        rows.forEach(record => {
+            const agentId = record.agentId ?? '(guest)';
+
+            if (record.controlReason?.kind !== 'timeout' && record.controlReason?.reason) {
+                detail.push(`${agentId}: ${record.controlReason.reason}`)
+            }
+
+            if (up.has(record)) return;
+
+            if (ready.has(record)) {
+                detail.push(`${agentId}: ready to start`);
+                return
+            }
+
+            const excluded   = !record.agentId || (record.participationStatus != null && record.participationStatus !== 'active'),
+                  startEntry = {agentId, reason: startReasons.get(record)},
+                  stopEntry  = {agentId, reason: stopReasons.get(record)};
+
+            if (excluded) {
+                summary.excluded.push(startEntry)
+            } else if (record.pendingAction) {
+                summary.pending.push(stopEntry)
+            } else if ((record.participationStatus == null && record.participationRead?.state === 'unread') || record.controlReason?.kind === 'timeout' ||
+                       SourceHealth.normalizeFleetSources(record.sources).runtime.state !== 'wired') {
+                summary.unknown.push(stopEntry)
+            } else {
+                summary.excluded.push(startEntry)
+            }
+        });
+
+        const line = FleetStartPlan.renderFleetStartSummary(summary);
+
+        line.detail = [line.detail, ...detail].filter(Boolean).join('\n');
+        return line
+    }
+
+    /**
+     * @summary The armed stop's plan as the chrome line the first press renders where the batch
+     * summaries live: `Stop fleet · 8 seats: Ada, Grace, … · 4 excluded` — the eligible seats
+     * by display name in roster order, the exclusions counted in the text and worded one per line in
+     * `detail` (the summary element's title), the same reach as a batch outcome. Nothing in it is
+     * sent: it is the question the second press answers.
+     * @param {{eligible: Object[], excluded: Object[]}} plan From {@link partitionFleetStop}.
      * @returns {{text: String, detail: String}}
      */
-    static renderFleetStartSummary(summary) {
+    static renderFleetStopPlan(plan) {
         const
-            parts  = [`${summary.started} started`],
+            names = plan.eligible.map(record => record.displayName ?? record.agentId),
+            parts = [`Stop fleet · ${names.length}\u00a0seat${names.length === 1 ? '' : 's'}: ${names.join(', ')}`];
+
+        plan.excluded.length && parts.push(`${plan.excluded.length}\u00a0excluded`);
+
+        return {
+            detail: plan.excluded.map(({agentId, reason}) => `${agentId ?? '(guest)'}: ${reason}`).join('\n'),
+            text  : parts.join(' · ')
+        }
+    }
+
+    /**
+     * @summary A stop plan's identity: its eligible seats, order-free. A settled roster whose key
+     * differs from the armed plan's takes the first press back — the fleet it would stop is no
+     * longer the one shown.
+     * @param {{eligible: Object[]}} plan
+     * @returns {String}
+     */
+    static stopPlanKey(plan) {
+        return plan.eligible.map(record => record.agentId).sort().join(' ')
+    }
+
+    /**
+     * @summary Render the summary as the compact chrome line + the reachable per-member reasons.
+     * Pure string building: `text` is the at-a-glance state
+     * ("3 started · 1 UNKNOWN · 1 rejected · 2 excluded"; "1 started · 3 pending · 2 excluded" while a
+     * batch is still sending its waves); `detail` lists every pending/unknown/rejected/excluded member
+     * with its reason, one per line — the "reasons reachable from the summary" contract, carried as the
+     * summary element's title. The verb names the direction: `started` for a fleet start, `stopped`
+     * for a fleet stop. Count-label pairs stay together when the chrome wraps between segments.
+     * @param {Object} summary From {@link summarizeFleetStart}.
+     * @param {String} [verb='started']
+     * @returns {{text: String, detail: String}}
+     */
+    static renderFleetStartSummary(summary, verb = 'started') {
+        const
+            parts  = [`${summary.started}\u00a0${verb}`],
             detail = [];
 
-        summary.unknown.length  && parts.push(`${summary.unknown.length} UNKNOWN`);
-        summary.rejected.length && parts.push(`${summary.rejected.length} rejected`);
-        summary.excluded.length && parts.push(`${summary.excluded.length} excluded`);
+        summary.pending?.length && parts.push(`${summary.pending.length}\u00a0pending`);
+        summary.unknown.length  && parts.push(`${summary.unknown.length}\u00a0UNKNOWN`);
+        summary.rejected.length && parts.push(`${summary.rejected.length}\u00a0rejected`);
+        summary.excluded.length && parts.push(`${summary.excluded.length}\u00a0excluded`);
 
+        summary.pending?.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.unknown.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.rejected.forEach(({agentId, reason}) => detail.push(`${agentId}: ${reason}`));
         summary.excluded.forEach(({agentId, reason}) => detail.push(`${agentId ?? '(guest)'}: ${reason}`));

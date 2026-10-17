@@ -3,7 +3,7 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
 
 /**
  * One session-summary card as a pooled grid cell — the merged memories sketch's card anatomy
- * (`apps/agentos/design/institution-memories-pane.html`, #37/#38): an optional viewer-calendar
+ * (`apps/agentos/design/institution-memories-pane.html`): an optional viewer-calendar
  * band eyebrow, the card head (title · DERIVED provenance chip · the drill-open button), the
  * meta line (T5 viewer-local stamp with the exact ISO on `title`, session id, category, counts),
  * explicit co-author attribution, and the summary body.
@@ -87,8 +87,9 @@ class SummaryRowComponent extends Component {
                     cls : ['fm-memories-card-title'],
                     text: data.title ?? 'Title unavailable for this session.'
                 }, {
-                    cls : ['fm-memories-provenance', 'is-derived'],
-                    text: 'derived'
+                    cls  : ['fm-memories-provenance', 'is-derived'],
+                    text : 'derived',
+                    title: 'a summary made from the agent\'s own records'
                 }, {
                     tag         : 'button',
                     type        : 'button',

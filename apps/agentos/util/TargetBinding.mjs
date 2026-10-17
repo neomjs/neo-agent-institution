@@ -6,7 +6,9 @@ import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
  * @summary The rule the cockpit's retained truth obeys: rows a store holds belong to the profile
  * whose answer produced them. `DeploymentStateRead` stamps its picture with the answering
  * `profileId`; this helper brings the roster, the activity feed, the graph scene and the operator's
- * own mailbox under the same rule, lifted beside the liveness owner (which holds the size bar). A read through a bridge bound to
+ * own mailbox under the same rule, lifted beside the liveness owner (which holds the size bar). The
+ * activity feed's clear also serves its other authorities, the Activity mode and the observer admission
+ * ({@link AgentOS.util.ActivityObserver}). A read through a bridge bound to
  * ANOTHER profile first retires the previous profile's truth — both stores empty, both surfaces read
  * `cold`, the graph leaf returns to unobserved, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
@@ -57,8 +59,7 @@ class TargetBinding extends Base {
 
     /**
      * @summary Retire the activity feed when the bridge in hand belongs to another profile than
-     * the events the store holds. The store empties and the header reads `not answered yet` until
-     * the new profile answers; the previous profile's counts go with its rows.
+     * the events the store holds ({@link #clearActivity}).
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} options
      * @param {Neo.data.Store} options.store The provider-owned activity store.
@@ -71,16 +72,57 @@ class TargetBinding extends Base {
             return false
         }
 
-        owner.activityWired     = false;
-        owner.activityProfileId = null;
-
-        store.clear();
-
-        // the old profile's exhausted mailbox is not the new one's
-        owner.publishConnection('stream', {data: {activityCounts: [], streamAdapterState: 'cold', streamDegradedReason: null, streamHistoryExhausted: false}});
-        stream && (stream.adapterState = 'cold');
+        TargetBinding.clearActivity(owner, {store, stream});
 
         return true
+    }
+
+    /**
+     * @summary Empty the activity feed for another authority: another profile, Activity mode or observer
+     * admission. The rows go with their counts and paging, so an older page in flight lands nowhere, and so do
+     * the observer's held admission and continuation. The header reads `not answered yet` until the new
+     * authority answers, and a cold stream shows no row.
+     *
+     * `rows: false` keeps the rows for the next admission, which replaces them in one Store transaction (the
+     * feed is no longer wired). A store that empties and refills before the buffered list's update lands keeps
+     * stale pooled rows in the DOM, and an observer's next answer can be that fast.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @param {Object} [options]
+     * @param {Neo.data.Store|null} [options.store] The provider-owned activity store.
+     * @param {Neo.component.Base|null} [options.stream] The held stream, if materialized.
+     * @param {Boolean} [options.rows=true] Empty the store now
+     */
+    static clearActivity(owner, {store = owner.resolveFleetActivityEventsStore(), stream = owner.getReference('activity-stream'), rows = true} = {}) {
+        owner.activityWired            = false;
+        owner.activityProfileId        = null;
+        owner.activityAdmissionKey     = null;
+        owner.activityContinuation     = null;
+        owner.activityHistoryFlight    = null;
+        owner.activityHistoryStalledAt = null;
+        owner.activityHistoryGeneration++;
+
+        rows && store?.clear();
+
+        // the old authority's exhausted mailbox, guidance and observation are not the new one's
+        const guidance = {
+            head     : null,
+            headTitle: null,
+            missing  : null,
+            reason   : null,
+            recheck  : null,
+            remaining: null,
+            repair   : null,
+            summary  : null
+        };
+        owner.publishConnection('stream', {data: {
+            activityCounts        : [],
+            activityGuidance      : guidance,
+            activityObservation   : {clamped: false, policy: null, reason: null, state: null},
+            streamAdapterState    : 'cold',
+            streamDegradedReason  : null,
+            streamHistoryExhausted: false
+        }});
+        stream && (typeof stream.set === 'function' ? stream.set({adapterState: 'cold', guidance}) : (stream.adapterState = 'cold', stream.guidance = guidance))
     }
 
     /**
@@ -100,6 +142,28 @@ class TargetBinding extends Base {
 
         owner.openWorkSnapshot  = null;
         owner.openWorkProfileId = null;
+
+        return true
+    }
+
+    /**
+     * @summary Retire the held recent turns when the bridge in hand belongs to another profile than the one
+     * that answered them. The Agent Detail's Thought stream returns to unobserved until the new profile
+     * answers for the seat shown, so one instance's turns never stand under another's name; the seat stays
+     * held, the read that calls this asks for it anew. That read has already taken its generation, which
+     * fences any earlier profile's read still in flight.
+     * @param {AgentOS.util.RecentTurnsRead} reader The cockpit's recent-turns reader.
+     * @param {Object} options
+     * @param {String|null} options.profileId The profile the bridge in hand is bound to.
+     * @returns {Boolean} whether a retirement happened
+     */
+    static retireRecentTurns(reader, {profileId}) {
+        if (!reader.snapshot || reader.profileId === profileId) {
+            return false
+        }
+
+        reader.snapshot  = null;
+        reader.profileId = null;
 
         return true
     }
@@ -132,7 +196,7 @@ class TargetBinding extends Base {
      * the identity and window the owner holds. They leave together: the window was read as that
      * identity, and one operator handle can name two instances, so the pane's subject check cannot
      * tell them apart. The pane reads `unobserved` until the new profile's identity binds and reads
-     * its own first window; the last send's outcome goes with them.
+     * its own first window; the open questions and the last send's outcome go with them.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @param {Object} options
      * @param {String|null} options.profileId The profile the bridge in hand is bound to.
@@ -149,7 +213,7 @@ class TargetBinding extends Base {
         owner.operatorSnapshot        = null;
         owner.operatorInboxReadGeneration++;
 
-        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, record: null, snapshot: null});
+        owner.component.getOperatorMailboxPane()?.set({composeOutcome: null, identityPosture: null, questions: null, readFailed: false, record: null, snapshot: null});
 
         return true
     }

@@ -30,6 +30,7 @@ const
         ['src/dashboard/Panel.mjs',     'Panel'],
         ['src/dashboard/dock/Workspace.mjs', 'Container'],
         ['src/container/Base.mjs',      'Container'],
+        ['src/toolbar/Base.mjs',        'Toolbar'],
         ['src/component/Chip.mjs',      'Chip'],
         ['src/component/Base.mjs',      'Component'],
         ['src/list/Chip.mjs',           'List'],
@@ -39,6 +40,7 @@ const
         ['src/button/Base.mjs',         'Button'],
         ['src/controller/Component.mjs','Controller'],
         ['src/selection/ListModel.mjs', 'Model'],
+        ['src/selection/grid/RowModel.mjs', 'Model'],
         ['src/state/Provider.mjs',      'StateProvider']
     ];
 

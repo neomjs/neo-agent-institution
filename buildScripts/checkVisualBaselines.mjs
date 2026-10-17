@@ -1,8 +1,8 @@
-import {execSync}      from 'node:child_process';
-import crypto          from 'node:crypto';
-import fs              from 'node:fs';
-import path            from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {execSync}                             from 'node:child_process';
+import fs                                     from 'node:fs';
+import path                                   from 'node:path';
+import {fileURLToPath}                        from 'node:url';
+import {installedRevision, readInstalledLock} from './resolveOrgDev.mjs';
 
 /**
  * @summary The Darwin-golden drift signal: a render-free freshness gate over the visual baselines.
@@ -16,9 +16,10 @@ import {fileURLToPath} from 'node:url';
  * This script closes the blind spot WITHOUT granting Ubuntu pixel authority. It never renders and
  * never compares pixels; it compares INPUT IDENTITY. `--stamp` records the staged blob id of every
  * style-owning input file (`resources/scss`, `apps/agentos`, the two capture specs and their golden
- * sets) plus the engine's locked resolution; the default check recomputes them and fails when any
- * input moved past the stamp — the signal that the goldens were left behind and must be re-captured
- * on a rendering platform.
+ * sets) plus the engine revision they were captured against; the default check recomputes them and fails
+ * when any input file moved past the stamp — the signal that the goldens were left behind and must be
+ * re-captured on a rendering platform. The Engine tracks `dev`, so it moves on its own schedule: a moved
+ * engine is named, never failed, so a red local capture run can be traced to it.
  *
  * The stamp holds one entry per FILE: its path, its blob id on an indented line, a blank line. Git
  * conflicts on edits that touch and merges edits an unchanged line separates. A changed file moves
@@ -63,8 +64,7 @@ const
     ],
     // a fixed last line, so the final entry's blank line is never the end of the file
     stampFooter = '# end of stamp',
-    engineKey   = 'engine',
-    engineRow   = 'package-lock.json → node_modules/neo.mjs (engine version)';
+    engineKey   = 'engine';
 
 /**
  * @summary The pure listing half: `git ls-files -s` output as a map of path → staged blob id.
@@ -90,7 +90,7 @@ export function listingEntries(listing) {
  * @summary The stamp file's text: the header, the engine entry, then one entry per input file sorted
  * by path. An entry is its key, its value on an indented line, and a blank line.
  * @param {Object}              stamp
- * @param {String}              stamp.engine  The engine digest.
+ * @param {String}              stamp.engine  The engine revision the goldens were captured against.
  * @param {Map<String, String>} stamp.entries Path → blob id.
  * @returns {String}
  */
@@ -126,13 +126,14 @@ export function parseStamp(text) {
 }
 
 /**
- * @summary The pure verdict half: every input that moved past the stamp, by name.
+ * @summary The pure verdict half: every input file that moved past the stamp, by name. The engine is not
+ * one of them: see {@link engineDrift}.
  * @param {Object} stamp   `{engine, entries}` as parsed from the stamp file.
  * @param {Object} current Same shape, freshly computed.
  * @returns {String[]} Human-readable drifted rows; empty = fresh.
  */
 export function diffStamp(stamp, current) {
-    const rows = stamp.engine !== current.engine ? [engineRow] : [];
+    const rows = [];
 
     for (const file of new Set([...stamp.entries.keys(), ...current.entries.keys()])) {
         const was = stamp.entries.get(file), is = current.entries.get(file);
@@ -143,6 +144,20 @@ export function diffStamp(stamp, current) {
     }
 
     return rows
+}
+
+/**
+ * @summary The engine notice: the revision the goldens were captured against, when the running engine differs.
+ * Never a failure — the Engine tracks `dev` and moves without any Institution change. It names the one input a
+ * red local capture run may owe to someone else.
+ * @param {Object} stamp   `{engine}` as parsed from the stamp file.
+ * @param {Object} current `{engine}`, freshly read.
+ * @returns {String|null} `null` when the engines match.
+ */
+export function engineDrift(stamp, current) {
+    return stamp.engine === current.engine ? null :
+        `visual-baselines: goldens captured at engine ${stamp.engine ?? 'unknown'}, running ${current.engine} — ` +
+        'a capture run that fails on surfaces you did not touch may be the engine\'s change, not yours.'
 }
 
 /**
@@ -160,15 +175,11 @@ export function scopeListing({key, exclude = []}) {
 }
 
 /**
- * @summary The engine axis: the locked neo.mjs resolution — a version bump re-renders every surface.
+ * @summary The engine axis: the revision of the neo.mjs actually installed — what the goldens render with.
  * @returns {String}
  */
-function engineDigest() {
-    const lock = JSON.parse(fs.readFileSync(path.join(cwd, 'package-lock.json'), 'utf8'));
-
-    return crypto.createHash('sha256')
-        .update(JSON.stringify(lock.packages?.['node_modules/neo.mjs'] ?? null))
-        .digest('hex')
+function engineRevision() {
+    return installedRevision(readInstalledLock(cwd), 'neo.mjs') ?? 'unknown'
 }
 
 // Import-safe by construction: the pure halves above are unit-testable, and the git-touching main
@@ -181,7 +192,7 @@ if (!isEntryScript) {
 } else {
 
 const current = {
-    engine : engineDigest(),
+    engine : engineRevision(),
     entries: new Map(inputScopes.flatMap(scope => [...listingEntries(scopeListing(scope))]))
 };
 
@@ -201,7 +212,12 @@ if (!fs.existsSync(path.join(cwd, stampFile))) {
     process.exit(1)
 }
 
-const drifted = diffStamp(parseStamp(fs.readFileSync(path.join(cwd, stampFile), 'utf8')), current);
+const
+    stamp      = parseStamp(fs.readFileSync(path.join(cwd, stampFile), 'utf8')),
+    drifted    = diffStamp(stamp, current),
+    engineNote = engineDrift(stamp, current);
+
+engineNote && console.log(engineNote);
 
 if (drifted.length > 0) {
     console.error(

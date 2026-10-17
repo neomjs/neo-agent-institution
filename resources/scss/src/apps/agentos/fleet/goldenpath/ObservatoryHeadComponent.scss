@@ -1,0 +1,99 @@
+/* AgentOS.view.fleet.goldenpath.ObservatoryHeadComponent — the Observatory's head in the chrome role: the title with
+   the hovered node beside it, then the read's first line (the team's sentence) with its Details disclosure, then the
+   counts while Details is open. Each row keeps its own cell, so no hover pushes the line out and opening Details
+   moves nothing above it. Every colour reads from the --fm-* token layer. */
+.fm-observatory-head {
+    display              : grid;
+    align-items          : baseline;
+    border-bottom        : thin solid var(--fm-line-soft);
+    column-gap           : var(--fm-space-3);
+    grid-template-areas  : "title hover hover" "line line toggle" "details details details";
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-width            : 0;
+    padding              : var(--fm-space-2) var(--fm-space-3);
+    row-gap              : var(--fm-space-1);
+    font                 : var(--fm-text-chrome);
+    letter-spacing       : var(--fm-text-chrome-tracking);
+    text-transform       : uppercase;
+    color                : var(--fm-ink-dim);
+    white-space          : nowrap;
+
+    .fm-observatory-title {
+        color    : var(--fm-ink);
+        grid-area: title;
+    }
+
+    .fm-observatory-currency,
+    .fm-observatory-hover {
+        max-width    : 100%;
+        min-width    : 0;
+        overflow     : hidden;
+        text-overflow: ellipsis;
+    }
+
+    .fm-observatory-currency {
+        grid-area: line;
+    }
+
+    /* the hovered node keeps its own case: it is a title, not chrome; the gesture hint that
+       stands in for it while no node is under the pointer stays chrome, dim */
+    .fm-observatory-hover {
+        color         : var(--fm-signal);
+        grid-area     : hover;
+        justify-self  : end;
+        letter-spacing: normal;
+        text-transform: none;
+
+        &.is-hint {
+            color         : var(--fm-ink-dim);
+            letter-spacing: inherit;
+            text-transform: inherit;
+        }
+    }
+
+    /* the attention item is a title and a way in: its own case, the line's type, marked like Home's links */
+    .fm-observatory-attention,
+    .fm-observatory-details-toggle {
+        background           : none;
+        border               : 0;
+        padding              : 0;
+        font                 : inherit;
+        cursor               : pointer;
+        text-decoration      : underline dotted;
+        text-underline-offset: 3px;
+
+        &:hover {
+            text-decoration-style: solid;
+        }
+
+        &:focus-visible {
+            outline       : 2px solid var(--fm-ink);
+            outline-offset: 2px;
+        }
+    }
+
+    .fm-observatory-attention {
+        color         : var(--fm-ink);
+        letter-spacing: normal;
+        text-transform: none;
+    }
+
+    .fm-observatory-details-toggle {
+        color         : var(--fm-ink-dim);
+        grid-area     : toggle;
+        letter-spacing: inherit;
+        text-transform: inherit;
+
+        &[aria-expanded="true"] {
+            color: var(--fm-ink);
+        }
+    }
+
+    /* open, the counts read in full: they wrap rather than clip */
+    .fm-observatory-details {
+        grid-area    : details;
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        white-space  : normal;
+    }
+}

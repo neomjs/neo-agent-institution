@@ -173,6 +173,34 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
         store.destroy()
     });
 
+    test('a titled row reads #N · title with the repository and the whole title in its tooltip; an untitled row keeps its reference and its link', async () => {
+        const
+            title          = 'feat(agentos): the awaiting-merge list names each pull request by its title',
+            store          = Neo.create(FleetAwaitingMerge, {data: [pr(19499, {title}), pr(799, {repo: 'neomjs/neo-agent-brain', id: 'neomjs/neo-agent-brain#799', stale: true})]}),
+            {head, button} = createButton({openWork: ok, store});
+
+        try {
+            await expect.poll(() => Boolean(button.menuList)).toBe(true);
+
+            const
+                titled   = button.menuList.createItemContent(store.getAt(0)),
+                untitled = button.menuList.createItemContent(store.getAt(1));
+
+            expect(titled.cn[0].text).toBe(`#19499 · ${title}`);
+            expect(titled.title).toBe(`neomjs/neo #19499 · ${title}`);
+            expect(titled.cn[0].href, 'the row stays a link to the PR').toBe('https://github.com/neomjs/neo/pull/19499');
+
+            expect(store.getAt(1).title, 'a row without one reads null').toBeNull();
+            expect(untitled.cn[0].text).toBe('neomjs/neo-agent-brain #799');
+            expect(untitled.title).toBe('https://github.com/neomjs/neo-agent-brain/pull/799');
+            expect(untitled.cn.map(node => node.text), 'the stale chip is unchanged').toEqual(['neomjs/neo-agent-brain #799', 'stale'])
+        } finally {
+            head.destroy()
+        }
+
+        store.destroy()
+    });
+
     test('an open list closes when the queue stops being one', async () => {
         const store          = Neo.create(FleetAwaitingMerge, {data: [pr(1)]}),
               {head, button} = createButton({openWork: ok, store});
@@ -193,6 +221,120 @@ test.describe('AwaitingMergeButton — the fleet head\'s merge queue', () => {
             store.data = [];
             expect(closed, 'an emptied queue closes its list').toEqual([true]);
             expect(button.hidden).toBe(true)
+        } finally {
+            head.destroy();
+            store.destroy()
+        }
+    });
+
+    test('an addressed Stage result stays reachable after the last queue row leaves, while an idle empty queue stays hidden', async () => {
+        const store = Neo.create(FleetAwaitingMerge, {data: [pr(59)]}),
+            {head, button} = createButton({openWork: ok, store, stageEnabled: true});
+        try {
+            button.stageOutcome = {recordId: 'neomjs/neo#59', state: 'opening', message: 'Opening Stage…'};
+            store.data = [];
+            expect(button.hidden, 'the pending launch still has a reachable feedback owner').toBe(false);
+            expect(button.text).toBe('Stage · opening');
+            expect(button.vdom['aria-label']).toContain('neomjs/neo#59: Opening Stage…');
+            expect(button.vdom['aria-haspopup'], 'there is no queue menu to open').toBeNull();
+            button.stageOutcome = {recordId: 'neomjs/neo#59', state: 'superseded', message: 'Stage launch canceled: its source observation changed.'};
+            expect(button.hidden).toBe(false);
+            expect(button.text).toBe('Stage result');
+            expect(button.vdom.title).toContain('neomjs/neo#59: Stage launch canceled');
+            button.stageOutcome = null;
+            expect(button.hidden).toBe(true);
+            expect(button.vdom['aria-label']).toBeNull()
+        } finally {
+            head.destroy();
+            store.destroy()
+        }
+    });
+
+    test('the Stage action resolves an internal node ID to its exact Store key, keeps the menu open, and addresses only that row', async () => {
+        const store = Neo.create(FleetAwaitingMerge, {data: [pr(59), pr(59, {
+            repo: 'neomjs/neo-agent-brain', id: 'neomjs/neo-agent-brain#59'
+        })]}), {head, button} = createButton({openWork: ok, store, stageEnabled: true}), requests = [], closed = [];
+
+        try {
+            await expect.poll(() => Boolean(button.menuList)).toBe(true);
+            const menu = button.menuList, record = store.get('neomjs/neo-agent-brain#59'), item = menu.createItem(record, 1),
+                action = content => content.cn.find(node => node['data-action'] === 'stage'),
+                initialAction = action(menu.createItemContent(record));
+            button.on('stageRequest', ({recordId}) => requests.push(recordId));
+            menu._hidden = false;
+            menu.unmount = () => { closed.push(true); menu._hidden = true };
+
+            expect(menu.useInternalId).toBe(true);
+            expect(menu.getItemRecordId(item.id)).toBe(store.getInternalId(record));
+            expect(menu.getItemRecordId(item.id)).not.toBe(record.id);
+            menu.onItemClick(item, {path: [{data: {action: 'stage'}}]});
+
+            expect(requests).toEqual(['neomjs/neo-agent-brain#59']);
+            expect(closed).toEqual([]);
+            expect(menu.hidden).toBe(false);
+
+            button.stageOutcome = {recordId: requests[0], state: 'opening', message: 'Opening this Brain record…'};
+            const addressed = menu.createItemContent(record), other = menu.createItemContent(store.get('neomjs/neo#59'));
+            expect(action(addressed).id).toBe(initialAction.id);
+            expect(action(addressed).id).toBeTruthy();
+            expect(action(addressed)['aria-disabled']).toBe('true');
+            expect(action(addressed)['aria-busy']).toBe('true');
+            expect(action(addressed), 'native disabled would blur the focused action and dismiss its menu').not.toHaveProperty('disabled');
+            expect(addressed.cn.find(node => node.role === 'status').text).toBe('Opening this Brain record…');
+            expect(action(other)['aria-disabled']).toBeNull();
+            expect(action(other)['aria-busy']).toBeNull();
+            expect(action(other)).not.toHaveProperty('disabled');
+            expect(other.cn.some(node => node.role === 'status')).toBe(false);
+            expect(closed, 'feedback re-renders its row without dismissing the menu').toEqual([]);
+
+            menu.onItemClick(item, {path: [{data: {action: 'stage'}}]});
+            expect(requests, 'the busy row ignores a repeated activation').toEqual(['neomjs/neo-agent-brain#59']);
+            menu.onItemClick(menu.createItem(store.get('neomjs/neo#59'), 0), {path: [{data: {action: 'stage'}}]});
+            expect(requests, 'the addressed busy state does not suppress another row').toEqual(['neomjs/neo-agent-brain#59', 'neomjs/neo#59']);
+
+            button.stageOutcome = {recordId: requests[0], state: 'unavailable', message: 'Stage popup was denied.'};
+            const unavailable = menu.createItemContent(record);
+            expect(action(unavailable).id, 'opening and unavailable repaint the same action address').toBe(initialAction.id);
+            expect(action(unavailable)['aria-disabled']).toBeNull();
+            expect(action(unavailable)['aria-busy']).toBeNull();
+            expect(action(unavailable)).not.toHaveProperty('disabled');
+            expect(unavailable.cn.find(node => node.role === 'status').text).toBe('Stage popup was denied.');
+            expect(unavailable.cn.find(node => node.role === 'status').id).toBe(addressed.cn.find(node => node.role === 'status').id);
+            expect(closed, 'a denied result remains in the open menu').toEqual([]);
+            menu.onItemClick(item, {path: [{data: {action: 'stage'}}]});
+            expect(requests, 'a settled refusal allows retrying the same row').toEqual(['neomjs/neo-agent-brain#59', 'neomjs/neo#59', 'neomjs/neo-agent-brain#59']);
+
+            expect(addressed.cn[0].href).toBe('https://github.com/neomjs/neo-agent-brain/pull/59');
+            menu.onItemClick(item, {path: [{tagName: 'A'}]});
+            expect(closed, 'the primary forge row retains its dismissal path').toEqual([true]);
+            expect(requests).toHaveLength(3)
+        } finally {
+            head.destroy();
+            store.destroy()
+        }
+    });
+
+    test('a caller outside the head opens the list only when there is one, and never closes an open one', async () => {
+        const store          = Neo.create(FleetAwaitingMerge, {data: [pr(1)]}),
+              {head, button} = createButton({openWork: ok, store}),
+              toggles        = [];
+
+        try {
+            await expect.poll(() => Boolean(button.menuList)).toBe(true);
+
+            const menu = button.menuList;
+
+            // stand in for the framework's toggle without mounting the list
+            button.toggleMenu = async () => { toggles.push(true); menu._hidden = !menu._hidden };
+
+            expect(await button.openMenu()).toBe(true);
+            expect(await button.openMenu(), 'asking twice keeps it open').toBe(true);
+            expect(toggles, 'the first ask opened it, the second toggled nothing').toEqual([true]);
+
+            menu._hidden = true;
+            store.data   = [];
+            expect(await button.openMenu(), 'an empty queue has no list to open').toBe(false);
+            expect(toggles).toEqual([true])
         } finally {
             head.destroy();
             store.destroy()

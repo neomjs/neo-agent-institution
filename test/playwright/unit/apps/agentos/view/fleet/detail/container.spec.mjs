@@ -25,7 +25,7 @@ import Instance       from '../../../../../../../../node_modules/neo.mjs/src/man
  * freshness contract renders deterministically.
  */
 test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () => {
-    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, Store;
+    let AgentDetail, AgentDetailController, AgentDefinition, FleetAgent, FleetTenants, OpenWorkSeat, Store;
 
     const
         stores          = [],
@@ -66,6 +66,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     const chip = (detail, key) => detail.down({reference: `pane-${key}-freshness`});
     const body = (detail, key) => detail.down({reference: `pane-${key}-body`});
+    // the Repository pane's lines read from the record, above its checkouts' list
+    const repoFacts = detail => body(detail, 'repo').getReference('repo-facts').vdom.cn;
+    // the checkouts' rows as the list renders them: the outcome's state class, then each node's words
+    const repoRows = detail => {
+        const list = body(detail, 'repo').getReference('repo-checkouts');
+
+        return list.hidden ? [] : list.vdom.cn.map(item => [item.cn[1]?.cls[1], ...item.cn.map(node => node.text)])
+    };
     /**
      * @summary Hold a transport response or scheduler wait until the test releases it.
      * @returns {{promise: Promise, resolve: Function, reject: Function}}
@@ -86,6 +94,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         AgentDefinition       = (await import('../../../../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
         FleetAgent            = (await import('../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
         FleetTenants          = (await import('../../../../../../../../apps/agentos/store/FleetTenants.mjs')).default;
+        OpenWorkSeat          = (await import('../../../../../../../../apps/agentos/util/OpenWorkSeat.mjs')).default;
         Store                 = (await import('../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
     });
 
@@ -167,6 +176,330 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('the Seat row names the family in words, only for a reported family; a Claude Desktop seat with a folder adds its first-launch step, and the row never repeats the path', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-family').text).toBe('Claude · App');
+        expect(part('detail-seat-launch').hidden).toBe(false);
+        expect(part('detail-seat-launch').text).toBe('Open the repository folder below in Claude\'s Code tab, then Start on the card.');
+        expect(part('detail-seat').items.map(item => item.text ?? '').join(' '), 'the path lives on the Repository pane alone').not.toContain(repoPath);
+
+        // another family has the row and no first-launch step: it is launched into its folder
+        applySet(detail, {harnessType: 'codex-desktop'});
+        expect(part('detail-seat-family').text).toBe('Codex · App');
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // a Claude Desktop seat without a reported folder has no step to point at
+        applySet(detail, {harnessType: 'claude-desktop', repoPath: null});
+        expect(part('detail-seat').hidden).toBe(false);
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // no reported family: no row, no placeholder
+        applySet(detail, {harnessType: null});
+        expect(part('detail-seat').hidden).toBe(true);
+
+        detail.destroy()
+    });
+
+    test('after a Start, a session outside the seat\'s folder reads as a state word in the Seat row, and in full under the Repository pane\'s path (#522)', () => {
+        const
+            repoPath = '/Users/x/agents/vega/neomjs/neo',
+            observed = '/Users/x/Desktop/scratch',
+            detail   = createDetail({
+                agentId      : 'vega', displayName: 'Vega', harnessType: 'claude-desktop', repoPath, state: 'ok',
+                sessionFolder: {state: 'wrong', expected: repoPath, observed}
+            }),
+            part     = reference => detail.down({reference}),
+            words    = () => part('detail-seat-folder').vdom.cn.map(node => node.text).join(''),
+            session  = () => repoFacts(detail).find(node => node.cls?.includes('fm-detail-repo-session')) ?? null;
+
+        // AC-1: the Seat row stays one short line with no path; the pane says where and what to do
+        expect(part('detail-seat-folder').hidden).toBe(false);
+        expect(words()).toBe('wrong folder · see Repository');
+        expect(part('detail-seat-folder').vdom.cn[0].cls).toContain('is-wrong');
+        expect(part('detail-seat-folder').vdom.title).toBeUndefined();
+        expect(session().cls).toContain('is-wrong');
+        expect(session().text).toBe(`The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks. Reopen this folder in Claude's Code tab.`);
+        // the first-launch step gives way to what happened
+        expect(part('detail-seat-launch').hidden).toBe(true);
+
+        // AC-2: pending and unknown read as themselves, with their reasons
+        applySet(detail, {sessionFolder: {state: 'pending', expected: repoPath}});
+        expect(words()).toBe('not opened yet · see Repository');
+        expect(session().text).toBe("No session has opened since the launch. Open this folder in Claude's Code tab.");
+        applySet(detail, {sessionFolder: {state: 'unknown', expected: repoPath, reason: 'the session records could not be read'}});
+        expect(words()).toBe('folder unknown · see Repository');
+        expect(session().text).toBe("Where the session opened is unknown: the session records could not be read. Check that Claude's Code tab has this folder open.");
+
+        // the launch's folder is the verdict's authority: the repository changed or cleared since the
+        // launch is not where the session should be, so the pane names the launch's folder
+        applySet(detail, {repoPath: '/Users/x/agents/vega/neomjs/other', sessionFolder: {state: 'wrong', expected: repoPath, observed}});
+        expect(session().text).toBe(`The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks. This launch expected ${repoPath}. Reopen that folder in Claude's Code tab, or Restart it on the card to launch in this repository.`);
+        applySet(detail, {repoPath: null});
+        expect(session().text).toBe(`The session opened in ${observed}, so it loads none of the seat's servers, memory or hooks. This launch expected ${repoPath}. Reopen that folder in Claude's Code tab.`);
+
+        // ok adds no line, and AC-3: a Brain that reports no folder state renders nothing new
+        for (const sessionFolder of [{state: 'ok', expected: repoPath}, null]) {
+            applySet(detail, {repoPath, sessionFolder});
+            expect(part('detail-seat-folder').hidden).toBe(true);
+            expect(session()).toBeNull()
+        }
+
+        detail.destroy()
+    });
+
+    test('the Repository pane shows the whole clone path, with Copy path only while a path is reported', () => {
+        const
+            repoPath = '/Users/x/Library/Application Support/neo-harness/brain/fleet/agents/vega/neomjs/neo',
+            detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'}),
+            part     = reference => detail.down({reference});
+
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+        expect(part('detail-repo-copy').hidden).toBe(false);
+        expect(part('detail-repo-copy').text).toBe('Copy path');
+        expect(part('detail-repo-field').vdom.value).toBe(repoPath);
+
+        applySet(detail, {repoPath: null});
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo']);
+        expect(part('detail-repo-copy').hidden).toBe(true);
+        expect(part('detail-repo-field').vdom.value).toBe('');
+
+        detail.destroy()
+    });
+
+    test('the Repository pane reads each checkout\'s preparation, the working one first, each reason whole; an install still running belongs to this start (#610)', () => {
+        const
+            repoPath = '/seats/vega/neomjs/neo',
+            npm      = 'npm ci exited 1: ERESOLVE could not resolve dependency tree',
+            clone    = 'git clone exited 128: remote: Repository not found.',
+            detail   = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath, state: 'ok'});
+
+        applySet(detail, {
+            dependencyOutcomes: [
+                {repoSlug: 'neomjs/neo',             state: 'skipped', reason: 'skipped during the install'},
+                {repoSlug: 'neomjs/neo-agent-brain', state: 'failed',  reason: npm}
+            ],
+            // a clone that failed has no checkout to install: its row comes after the checkouts
+            repoOutcomes: [
+                {repoSlug: 'neomjs/neo-agent-brain',       state: 'prepared'},
+                {repoSlug: 'neomjs/neo-agent-institution', state: 'failed', reason: clone}
+            ]
+        });
+
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', repoPath, 'Preparation · last start']);
+        // the Accounts card's rows, read-only: no Remove, no working tag, each reason whole on its own line
+        expect(repoRows(detail)).toEqual([
+            ['is-skipped', 'neomjs/neo',                   'Skipped', 'skipped during the install'],
+            ['is-failed',  'neomjs/neo-agent-brain',       'Failed',  npm],
+            ['is-failed',  'neomjs/neo-agent-institution', 'Failed',  clone]
+        ]);
+        expect(body(detail, 'repo').getReference('repo-checkouts').store.getCount()).toBe(3);
+
+        // a Start installing now: the rows are live and the head names this start
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'present'}], repoOutcomes: null});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · this start');
+        expect(repoRows(detail)).toEqual([['is-installing', 'neomjs/neo', 'Installing'], ['is-prepared', 'neomjs/neo-agent-brain', 'Prepared']]);
+
+        // no start has reported one: nothing beyond the slug and the path, never a ready claim
+        applySet(detail, {dependencyOutcomes: null});
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', repoPath]);
+        expect(repoRows(detail)).toEqual([]);
+
+        detail.destroy()
+    });
+
+    test('the Repository pane never reads a clone alone as prepared, and a retry\'s rows speak over the previous launch\'s clone failure while it installs and once it settles without a launch (#610)', () => {
+        const
+            clone  = 'git clone exited 128: remote: Repository not found.',
+            detail = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neomjs/neo', state: 'off'});
+
+        // an older Fleet reports only its clones: no install was reported, so nothing reads prepared
+        applySet(detail, {dependencyOutcomes: null, repoOutcomes: [{repoSlug: 'neomjs/extra', state: 'prepared'}]});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · last start');
+        expect(repoRows(detail)).toEqual([['is-unverified', 'neomjs/extra', 'Unverified', 'no dependency install reported']]);
+
+        // the previous launch: the working checkout prepared, and the other repository's clone failed
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installed'}], repoOutcomes: [{repoSlug: 'neomjs/neo-agent-brain', state: 'failed', reason: clone}]});
+        expect(repoRows(detail)).toEqual([['is-prepared', 'neomjs/neo', 'Prepared'], ['is-failed', 'neomjs/neo-agent-brain', 'Failed', clone]]);
+
+        // the retry clones it and installs: the Fleet records its clones only at a launch, so the old failure stays on
+        // the record, and this start's rows speak alone
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installed'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installing'}]});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · this start');
+        expect(repoRows(detail)).toEqual([['is-prepared', 'neomjs/neo', 'Prepared'], ['is-installing', 'neomjs/neo-agent-brain', 'Installing']]);
+
+        // it settles and the launch is refused: the old clone failure is still on the record, and the install speaks over it
+        applySet(detail, {dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'installed'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}]});
+        expect(repoFacts(detail)[2].text).toBe('Preparation · last start');
+        expect(repoRows(detail)).toEqual([['is-prepared', 'neomjs/neo', 'Prepared'], ['is-prepared', 'neomjs/neo-agent-brain', 'Prepared']]);
+
+        detail.destroy()
+    });
+
+    test('the Repository pane offers Skip only while a Start installs and only from a Fleet with the verb; the answer binds to the seat it was asked for (#616)', async () => {
+        const
+            oldAgentOS = globalThis.AgentOS,
+            calls      = [],
+            live       = [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}],
+            detail     = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neomjs/neo', state: 'off'}),
+            // the Skip's own item follows the checkouts' list; hidden, it offers nothing
+            nodes      = () => {
+                const skip = body(detail, 'repo').getReference('repo-skip');
+
+                return skip.hidden ? [] : skip.vdom.cn
+            },
+            find       = cls => nodes().find(node => node.cls?.includes(cls)) ?? null,
+            skipWire   = () => {
+                const answer = deferred();
+
+                globalThis.AgentOS = {fleet: {registryBridge: {skipAgentDependencies: agentId => { calls.push(agentId); return answer.promise }}}};
+
+                return answer
+            };
+
+        try {
+            // today's pinned wire has no verb: no Skip is offered, even while the Start installs
+            globalThis.AgentOS = {fleet: {registryBridge: {startAgent() {}}}};
+            applySet(detail, {dependencyOutcomes: live});
+            expect(find('fm-detail-repo-skip')).toBeNull();
+
+            // a wire with the verb: Skip, its consequence before the click, then the Fleet's answer
+            let answer = skipWire();
+
+            applySet(detail, {dependencyOutcomes: [...live]});
+            expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation');
+            expect(find('fm-detail-repo-skip-note').text).toBe('The seat launches without waiting. A checkout still installing reads Skipped, and while the working checkout is unfinished the seat\'s skills stay unverified.');
+
+            let clicking = body(detail, 'repo').onSkipClick();
+
+            expect(find('fm-detail-repo-skip').text).toBe('Skipping…');
+            expect(find('fm-detail-repo-skip').disabled).toBe(true);
+            answer.resolve({id: 'vega', skippedStarts: 1});
+            await clicking;
+            expect(find('fm-detail-repo-skip-status').text).toBe('Skip requested: the installs still running stop, and the seat launches.');
+            expect(calls).toEqual(['vega']);
+
+            // an answer for a seat the pane no longer shows writes nothing
+            answer   = skipWire();
+            clicking = body(detail, 'repo').onSkipClick();
+            detail.record = makeRecord({agentId: 'ada', repoSlug: 'neomjs/neo', state: 'off', dependencyOutcomes: live});
+            answer.resolve({id: 'vega', skippedStarts: 0});
+            await clicking;
+            expect(body(detail, 'repo').skipStatus.agentId).toBe('vega');
+            expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation');
+            expect(find('fm-detail-repo-skip-status')).toBeNull();
+
+            // a sent cancel withdraws Skip, and so does the end of the live phase
+            applySet(detail, {pendingAction: 'stop'});
+            expect(find('fm-detail-repo-skip')).toBeNull();
+            applySet(detail, {pendingAction: null, dependencyOutcomes: [{repoSlug: 'neomjs/neo', state: 'skipped', reason: 'skipped during the install'}]});
+            expect(find('fm-detail-repo-skip')).toBeNull()
+        } finally {
+            globalThis.AgentOS = oldAgentOS;
+            detail.destroy()
+        }
+    });
+
+    test('a Skip belongs to the attempt it was asked in: its status retires with the live phase, its late answer never reaches the seat\'s next Start, and an unanswered cancel keeps it withdrawn (#616)', async () => {
+        const
+            oldAgentOS = globalThis.AgentOS,
+            answers    = [],
+            live       = [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}],
+            ended      = [{repoSlug: 'neomjs/neo', state: 'installed'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}],
+            detail     = createDetail({agentId: 'vega', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neomjs/neo', state: 'off'}),
+            pane       = () => body(detail, 'repo'),
+            nodes      = () => pane().getReference('repo-skip').hidden ? [] : pane().getReference('repo-skip').vdom.cn,
+            find       = cls => nodes().find(node => node.cls?.includes(cls)) ?? null,
+            // the adapter reaches the bridge after a microtask; the answer exists once it has
+            answer     = async (index, value) => {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                answers[index].resolve(value)
+            };
+
+        globalThis.AgentOS = {fleet: {registryBridge: {skipAgentDependencies: () => {
+            const answer = deferred();
+
+            answers.push(answer);
+            return answer.promise
+        }}}};
+
+        try {
+            // attempt A: a Skip goes out, then A's installs end before the Fleet answers
+            applySet(detail, {dependencyOutcomes: live});
+            const clickingA = pane().onSkipClick();
+
+            expect(find('fm-detail-repo-skip').text).toBe('Skipping…');
+            applySet(detail, {dependencyOutcomes: ended});
+            expect(find('fm-detail-repo-skip')).toBeNull();
+
+            // attempt B of the same seat: Skip is offered fresh
+            applySet(detail, {dependencyOutcomes: [...live]});
+            expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation');
+            expect(find('fm-detail-repo-skip').disabled).toBe(false);
+
+            // B's own Skip goes out, then A's late answer lands: it neither reads under B nor replaces B's request
+            const clickingB = pane().onSkipClick();
+
+            await answer(0, {id: 'vega', skippedStarts: 1});
+            await clickingA;
+            expect(find('fm-detail-repo-skip').text).toBe('Skipping…');
+            expect(find('fm-detail-repo-skip-status')).toBeNull();
+
+            // B's answer reads within B, then retires when B's installs end and C begins
+            await answer(1, {id: 'vega', skippedStarts: 1});
+            await clickingB;
+            expect(find('fm-detail-repo-skip-status').text).toBe('Skip requested: the installs still running stop, and the seat launches.');
+            applySet(detail, {dependencyOutcomes: ended});
+            applySet(detail, {dependencyOutcomes: [...live]});
+            expect(find('fm-detail-repo-skip-status')).toBeNull();
+
+            // a Start sent from this cockpit opens its own phase even while the roster still shows the old rows
+            const clickingC = pane().onSkipClick();
+
+            await answer(2, {id: 'vega', skippedStarts: 0});
+            await clickingC;
+            expect(find('fm-detail-repo-skip-status').text).toBe('Nothing was left to skip: every install had finished.');
+            applySet(detail, {pendingAction: 'start'});
+            expect(find('fm-detail-repo-skip-status')).toBeNull();
+
+            // a cancel whose Stop outlived the cockpit's deadline is still open: Skip stays withdrawn
+            applySet(detail, {pendingAction: null, controlReason: {action: 'stop', kind: 'timeout', reason: 'stop timed out after 30000ms'}});
+            expect(find('fm-detail-repo-skip')).toBeNull();
+            applySet(detail, {controlReason: null});
+            expect(find('fm-detail-repo-skip').text).toBe('Skip remaining preparation')
+        } finally {
+            globalThis.AgentOS = oldAgentOS;
+            detail.destroy()
+        }
+    });
+
+    test('Copy path selects the unseen field, copies through the main thread, and hands the focus back', async () => {
+        const
+            detail = createDetail({agentId: 'vega', harnessType: 'codex', repoPath: '/Users/x/agents/vega/neomjs/neo', state: 'ok'}),
+            calls  = [],
+            main   = Neo.main ?? (Neo.main = {}),
+            saved  = main.DomAccess;
+
+        main.DomAccess = {
+            selectNode : async ({id})      => calls.push(['select', id]),
+            execCommand: async ({command}) => calls.push(['execCommand', command]),
+            focus      : async ({id})      => calls.push(['focus', id])
+        };
+
+        try {
+            await detail.onCopyRepoPath({detail: 1});
+
+            expect(calls.slice(0, 2)).toEqual([['select', detail.down({reference: 'detail-repo-field'}).id], ['execCommand', 'copy']])
+        } finally {
+            main.DomAccess = saved;
+            detail.destroy()
+        }
+    });
+
     test('ADR-0032 §2.3.2: name/engine are display state over the durable id — a rename re-renders in place, never a re-key', () => {
         const detail   = createDetail({agentId: 'vega', displayName: 'Vega', engineTag: 'opus-4.8', state: 'ok'});
         const beforeId = detail.id;
@@ -217,6 +550,58 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test('#568: a read that did not answer is unobserved, with its reason and the roster read\'s time; the Participation group names the one command that fits, where it runs, and re-seats on a re-read', () => {
+        const
+            readAt = Date.UTC(2026, 9, 6, 14, 30),
+            atTime = `read at ${new Date(readAt).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}`,
+            detail = createDetail({agentId: 'preview', githubUsername: 'neo-preview', state: 'off', participationStatus: null, participationRead: {state: 'unread', reason: 'presence unreadable'}}, {rosterObservedAt: readAt}),
+            group  = detail.getReference('participation'),
+            pill   = () => {
+                const nodes = detail.down({reference: 'detail-ledger'}).vdom.cn ?? [],
+                      index = nodes.findIndex(node => node.text === 'status');
+
+                return index < 0 ? null : nodes[index + 1]
+            },
+            text   = reference => group.getReference(reference).text;
+
+        applySet(detail, {});
+        expect(pill()).toMatchObject({cls: ['fm-freshness', 'is-unobserved'], text: 'unobserved', title: `the read did not answer: presence unreadable · ${atTime}`});
+        expect(group.hidden).toBe(false);
+        expect(text('participation-line')).toBe('unobserved — presence unreadable');
+
+        // the shell's own plan names no plane: no command is offered, and the group says why rather than guess a place
+        expect([group.getReference('participation-command').hidden, group.getReference('participation-copy').hidden]).toEqual([true, true]);
+        expect(text('participation-place')).toBe('No command is offered: this view cannot name where the plane\'s Memory Core runs.');
+
+        // attached to this machine's plane: the command, and where its Memory Core runs
+        detail.shellPlaneBase = 'http://127.0.0.1:3102';
+        expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs show --identity @neo-preview');
+        expect(text('participation-place')).toBe('Run it on this machine, where the plane at 127.0.0.1:3102 runs its Memory Core (on a Docker plane, inside its container).');
+
+        // a re-read in place re-seats the group, no restart: benched, with the operator's reason and date
+        applySet(detail, {participationStatus: 'operator_benched', participationRead: {state: 'read'}, participationReason: 'the preview model behind this chair ended', participationSince: '2026-10-01T00:00:00.000Z'});
+        expect(pill()).toMatchObject({cls: ['fm-freshness', 'is-stale'], text: 'operator benched', title: `since 2026-10-01 · the preview model behind this chair ended · ${atTime}`});
+        expect(text('participation-line')).toBe('benched since 2026-10-01 — the preview model behind this chair ended');
+        expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs activate --identity @neo-preview --apply');
+
+        // an active seat's one command is the bench, its reason a visible placeholder; a remote plane names its host
+        detail.shellPlaneBase = 'https://plane.example.net:3102/mc';
+        applySet(detail, {participationStatus: 'active', participationReason: null, participationSince: null});
+        expect(text('participation-line')).toBe('active');
+        expect(text('participation-command')).toBe('node ai/scripts/fleet/participation.mjs bench --identity @neo-preview --reason "<why>" --apply');
+        expect(text('participation-place')).toBe('Run it on the plane host plane.example.net:3102, where its Memory Core runs (on a Docker plane, inside its container).');
+
+        // the group offers the command to copy and nothing else: Copy is its one control
+        expect(group.down({ntype: 'button'})?.reference).toBe('participation-copy');
+        expect(group.getReference('participation-field').vdom.value).toBe('node ai/scripts/fleet/participation.mjs bench --identity @neo-preview --reason "<why>" --apply');
+
+        // no identity node (a read that answered, no status), or a Brain that reports no read: no group, no row
+        applySet(detail, {participationStatus: null, participationRead: {state: 'read'}});
+        expect([group.hidden, pill()]).toEqual([true, null]);
+
+        detail.destroy()
+    });
+
     test('the state dot is gated on a wired runtime source — missing runtime evidence never renders live', () => {
         const
             detail  = createDetail({agentId: 'vega', state: 'ok'}),
@@ -254,7 +639,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                 'thought-stream': {observedAt: '2026-07-11T23:59:50.000Z', freshnessTtl: 30_000}, // 10s → fresh
                 lane            : {observedAt: '2026-07-11T23:58:30.000Z', freshnessTtl: 30_000}, // 90s → stale
                 repo            : {lost: true}                                                    // explicit → lost
-                // prs: no ledger → unobserved
+                // prs: no ledger and no open-work answer → unobserved
             }
         });
 
@@ -263,7 +648,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'lane').cls).toContain('is-stale');
         expect(chip(detail, 'repo').cls).toContain('is-lost');
         expect(chip(detail, 'prs').cls).toContain('is-unobserved');
-        expect(chip(detail, 'prs').text).toBe('not observed — source not wired');
+        expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
 
         detail.destroy()
     });
@@ -286,11 +671,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         const detail = createDetail({agentId: 'vega', laneLine: 'FM cockpit agent detail view', openLaneCount: 17, state: 'ok'});
 
         expect(body(detail, 'lane').text).toBe('FM cockpit agent detail view · 17 open lanes');
-        // a feed-gated pane never fabricates a stream — and never repeats the head's honest
-        // "not observed" as a body line either: the body stays EMPTY, the awaiting truth
-        // rides the freshness pill's title
-        expect(body(detail, 'thought-stream').text).toBe('');
-        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting a policy-aware read');
+        // a pane without an answer never fabricates a stream — and never repeats the head's honest
+        // "not observed" as a body line either: the list and the no-rows sentence stay hidden, the
+        // awaiting truth rides the freshness pill's title
+        expect(detail.down({reference: 'turn-list'}).hidden).toBe(true);
+        expect(detail.down({reference: 'turns-none'}).hidden).toBe(true);
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('awaiting a Fleet server that serves recent turns');
 
         // no lane reported → honest fallback, no fabricated count
         applySet(detail, {laneLine: null, openLaneCount: null});
@@ -301,12 +687,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     test('the lane source uses the roster observation stamp while the body ages the lane claim itself', () => {
         const detail = createDetail({
-            agentId: 'vega',
-            laneLine: 'working on #418',
+            agentId      : 'vega',
+            laneLine     : 'working on #418',
             laneClaimedAt: new Date(NOW - 120_000).toISOString(),
             openLaneCount: 17,
-            sources: {...observedSources, lane: observedLane},
-            state: 'ok'
+            sources      : {...observedSources, lane: observedLane},
+            state        : 'ok'
         }, {rosterObservedAt: NOW - 10_000});
 
         // With no explicit lane ledger, the wired lane fact derives its pill age from roster admission.
@@ -323,14 +709,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     test('an explicit lane pane ledger outranks the roster source for freshness only', () => {
         const detail = createDetail({
-            agentId: 'vega',
-            laneLine: 'working on #418',
+            agentId      : 'vega',
+            laneLine     : 'working on #418',
             laneClaimedAt: new Date(NOW - 120_000).toISOString(),
             openLaneCount: 1,
-            sources: {...observedSources, lane: observedLane},
-            state: 'ok'
+            sources      : {...observedSources, lane: observedLane},
+            state        : 'ok'
         }, {
-            paneLedgers: {lane: {observedAt: new Date(NOW - 20_000).toISOString(), freshnessTtl: 30_000}},
+            paneLedgers     : {lane: {observedAt: new Date(NOW - 20_000).toISOString(), freshnessTtl: 30_000}},
             rosterObservedAt: NOW - 40 * 60_000
         });
 
@@ -513,6 +899,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             ),
             card = detail.getReference('config-pane');
 
+        card.onCardClick({path: [{id: `${card.id}__connection__edit`}]});
         expect(card.tenantStore).toBe(tenants);
         expect(JSON.stringify(card.vdom.cn)).toContain('https://tenant.example.com');
         expect(JSON.stringify(card.vdom.cn)).not.toContain('Unavailable');
@@ -541,9 +928,9 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         stores.push(definitions);
 
         const
-            detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
-            card   = detail.getReference('config-pane'),
-            result = deferred(),
+            detail  = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+            card    = detail.getReference('config-pane'),
+            result  = deferred(),
             intents = [];
 
         // AgentOS is the APP NAMESPACE — deleting it would unregister every AgentOS.* class for
@@ -571,6 +958,514 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         card.fire('configIntent', {id: 'ada', harnessType: 'codex'});
         expect(intents).toHaveLength(1);
         globalThis.AgentOS.fleet = priorFleet
+    });
+
+    test('AC-3 (#524): Configuration keeps the seat\'s commit identity, read once per seat, and declares it through the runner', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [],
+            reads      = [];
+        let answer = {state: 'missing', name: 'Ada', reason: 'its forge account offers no email this PAT can read'};
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+                return {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}}
+            },
+            fleetSeatGitIdentity: async ({id}) => {
+                reads.push(id);
+                return answer
+            }
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row'),
+                fields = row.getReference('identity-fields');
+
+            await expect.poll(() => row.identity?.state).toBe('missing');
+            expect(row.hidden).toBe(false);
+            expect(row.getReference('identity-line').text).toBe('No commit identity: its forge account offers no email this PAT can read.');
+            expect(row.getReference('identity-repair').text).toBe('Declare identity');
+            expect(fields.hidden).toBe(true);
+
+            // a roster refresh re-seats the same seat: no second read
+            applySet(detail, {displayName: 'Ada (renamed)'});
+            expect(reads).toEqual(['ada']);
+
+            // a half pair is refused before the wire
+            row.onRepairClick();
+            row.getReference('field-git-email').value = '';
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: ''});
+            expect(intents).toEqual([]);
+            expect(row.status).toEqual({state: 'rejected', reason: 'Name and email are both required.'});
+
+            answer = {state: 'declared', source: 'declaration', name: 'Ada', email: 'ada@example.com'};
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: 'ada@example.com'});
+
+            // only the pair crosses, and the Fleet's read-back answer is what the row shows
+            expect(intents).toEqual([{id: 'ada', gitName: 'Ada', gitEmail: 'ada@example.com'}]);
+            await expect.poll(() => row.identity?.state).toBe('declared');
+            expect(reads).toEqual(['ada', 'ada']);
+            expect(row.getReference('identity-line').text).toBe('Commits as Ada <ada@example.com> · declared');
+            expect(row.getReference('identity-repair').text).toBe('Change identity');
+            expect(fields.hidden).toBe(true);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('#559: the Seat group reads the declaration beside the config, asks the Fleet what to offer, and declares one field through the runner', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [],
+            reads      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+                // the Fleet answers the whole definition, and a withdrawn field is absent from it
+                return {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', ...(intent.model ? {model: intent.model} : {})}}
+            },
+            fleetSeatModelCatalog: async ({id}) => {
+                reads.push(id);
+                return {state: 'complete', reason: null, models: [{id: 'gpt-6-luna', efforts: ['high']}, {id: 'gpt-6-sol', efforts: ['max']}]}
+            },
+            fleetSeatGitIdentity: async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off', harnessSettings: {model: 'gpt-6-luna', reasoningEffort: null}}, {agentDefinitions: definitions}),
+                group  = detail.getReference('seat-model'),
+                line   = () => group.getReference('model-line').text;
+
+            expect(group.hidden).toBe(false);
+            expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+
+            // running reads the same: the harness reads its config when it launches
+            applySet(detail, {state: 'ok'});
+            expect(line()).toBe('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
+
+            // a start the Fleet refused for the declaration: the row says so in the Fleet's words
+            applySet(detail, {state: 'off', seatModel: {state: 'refused', model: 'gpt-6-sol', reasoningEffort: null, reason: 'model gpt-6-sol is not available'}});
+            expect(line()).toBe('declared gpt-6-sol · start refused: model gpt-6-sol is not available');
+
+            applySet(detail, {seatModel: null});
+            group.onActionClick({component: group.getReference('model-change')});
+            await expect.poll(() => group.catalog?.state).toBe('complete');
+            expect(reads).toEqual(['ada']);
+
+            await detail.controller.onDeclareSeatModel({field: 'model', value: 'gpt-6-luna'});
+
+            // only the one field crosses; the accepted readback re-seats the group and closes the offer
+            expect(intents).toEqual([{id: 'ada', model: 'gpt-6-luna'}]);
+            expect(definitions.get('ada').model).toBe('gpt-6-luna');
+            expect(line()).toBe('declared gpt-6-luna');
+            expect([group.editing, group.status.state]).toEqual([null, 'idle']);
+
+            // withdrawn: the readback carries no model, and the row reads what the config is set to
+            await detail.controller.onDeclareSeatModel({field: 'model', value: null});
+            expect(intents.at(-1)).toEqual({id: 'ada', model: null});
+            expect(definitions.get('ada').model).toBeNull();
+            expect(line()).toBe('derived · reads gpt-6-luna (configured on disk)');
+
+            // a field the group does not own never reaches the wire
+            await detail.controller.onDeclareSeatModel({field: 'harnessType', value: 'codex'});
+            expect(intents).toHaveLength(2);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('#572: the Memory row reads the Fleet\'s candidates and records the consent through the runner, read back from the definition', async () => {
+        const
+            source      = '/Users/ada/.claude/projects/-Users-Shared-github-neomjs-neo/memory',
+            definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+                {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}
+            ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            intents    = [],
+            reads      = [];
+
+        let refuse = null, unreachable = false;
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent: async intent => {
+                intents.push(intent);
+
+                if (unreachable) throw new Error('transport closed');
+
+                // the Fleet normalizes the consent it records: the row shows the readback, never the request
+                return refuse
+                    ? {status: 'rejected', ...refuse}
+                    : {status: 'accepted', agent: {id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop', memoryImport: `${intent.memoryImport}/`}}
+            },
+            fleetMemoryCandidates: async params => {
+                reads.push(params);
+                return {capability: {state: 'wired'}, scope: {kind: 'seat', id: 'ada'}, candidates: [
+                    {family: 'claude', source, name: 'github-neomjs-neo', notes: 918, lastChanged: null}
+                ]}
+            },
+            fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('seat-memory'),
+                line   = () => row.getReference('memory-line').text;
+
+            // no consent says nothing about the seat's home, which may already hold memory: neither empty nor cleared
+            expect(line()).toBe('no import choice recorded');
+
+            row.onChangeClick();
+            await expect.poll(() => row.discovery?.state).toBe('candidates');
+            expect(reads).toEqual([{id: 'ada'}]);
+            // one candidate is preselected, as in Add
+            expect(row.choice).toBe(source);
+
+            await detail.controller.onDeclareSeatMemory({memoryImport: row.choice});
+
+            expect(intents).toEqual([{id: 'ada', memoryImport: source}]);
+            expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
+            // the recorded choice, never a finished import
+            expect(line()).toBe(`recorded: import the memory at ${source}/`);
+            expect([row.editing, row.discovery, row.status.state]).toEqual([false, null, 'idle']);
+
+            // an unreachable Fleet refuses nothing: the reason is generic, and the choice stays open to try again
+            unreachable = true;
+            await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
+            expect(row.status).toEqual({state: 'rejected', reason: 'Could not save the configuration. Nothing was changed.'});
+            expect([row.closed, row.getReference('memory-change').hidden]).toEqual([false, false]);
+
+            // a refusal the operator can correct carries no code: its words show, the choice and Save stay open,
+            // and the definition keeps the readback
+            unreachable = false;
+            refuse      = {reason: 'configureAgent: memoryImport must name a folder the Fleet offered.'};
+            row.onChangeClick();
+            await expect.poll(() => row.discovery?.state).toBe('candidates');
+            await detail.controller.onDeclareSeatMemory({memoryImport: '/elsewhere'});
+            expect(row.status).toEqual({state: 'rejected', reason: refuse.reason});
+            expect([row.closed, row.editing, row.getReference('memory-offer').hidden, row.getReference('memory-save').disabled]).toEqual([false, true, false, false]);
+            expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
+
+            // only the Fleet's code for a closed choice withdraws the offer: its words on the row, the readback kept
+            refuse = {code: 'FLEET_SEAT_MEMORY_IMPORT_CLOSED', reason: 'A seat\'s memory import is chosen before its first Start, and \'ada\' already holds its memory.'};
+            await detail.controller.onDeclareSeatMemory({memoryImport: 'none'});
+            expect(row.status).toEqual({state: 'rejected', reason: refuse.reason});
+            expect([row.closed, row.editing, row.getReference('memory-change').hidden]).toEqual([true, false, true]);
+            expect(definitions.get('ada').memoryImport).toBe(`${source}/`);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    for (const transition of ['other seat', 'seat round trip', 'harness round trip', 'store replacement', 'newer read', 'destroy']) {
+        test(`#603: a memory reply cannot survive ${transition}`, async () => {
+            const
+                data        = [{id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop'}, {id: 'eos', githubUsername: 'eos', harnessType: 'codex-desktop'}],
+                definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data}),
+                priorFleet  = globalThis.AgentOS?.fleet,
+                reads       = [],
+                answer      = {capability: {state: 'wired'}, scope: {kind: 'seat', id: 'ada'}, candidates: [
+                    {family: 'codex', source: '/fixture/ada/harness/codex-desktop/codex-home/memories', name: 'ada', notes: 1, lastChanged: null}
+                ]};
+            stores.push(definitions);
+            globalThis.AgentOS ??= {};
+            globalThis.AgentOS.fleet = {registryBridge: {
+                fleetMemoryCandidates: () => { const held = deferred(); reads.push(held); return held.promise },
+                fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+            }};
+
+            let detail;
+
+            try {
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions});
+                const row = detail.getReference('seat-memory');
+                await detail.ready();
+
+                const first = detail.controller.readSeatMemory();
+                reads[0].resolve(answer);
+                await first;
+                expect(row.discovery).toEqual({state: 'candidates', candidates: answer.candidates});
+
+                const late = detail.controller.readSeatMemory();
+
+                if (transition === 'other seat' || transition === 'seat round trip') {
+                    detail.record = makeRecord({agentId: 'eos', displayName: 'Eos', state: 'off'});
+                    if (transition === 'seat round trip') detail.record = makeRecord({agentId: 'ada', displayName: 'Ada', state: 'off'})
+                } else if (transition === 'harness round trip') {
+                    definitions.get('ada').set({harnessType: 'claude-code'});
+                    definitions.get('ada').set({harnessType: 'codex-desktop'})
+                } else if (transition === 'store replacement') {
+                    const replacement = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data});
+                    stores.push(replacement);
+                    detail.agentDefinitions = replacement
+                } else if (transition === 'newer read') {
+                    const latest = detail.controller.readSeatMemory();
+                    reads[2].resolve({...answer, candidates: []});
+                    await latest
+                } else {
+                    detail.destroy()
+                }
+
+                const before = row.discovery;
+                reads[1].resolve(answer);
+                await late;
+                expect(row.discovery).toEqual(before)
+            } finally {
+                detail?.destroy();
+                globalThis.AgentOS.fleet = priorFleet
+            }
+        })
+    }
+
+    test('#559: a catalog read or a declaration answers only the seat and harness it started for', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop', model: 'gpt-6-sol'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex-desktop'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            catalogs   = [],
+            saves      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            fleetSeatModelCatalog: () => { const held = deferred(); catalogs.push(held); return held.promise },
+            configureAgent       : () => { const held = deferred(); saves.push(held); return held.promise },
+            fleetSeatGitIdentity : async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail   = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: definitions}),
+                group    = detail.getReference('seat-model'),
+                codexSet = {state: 'complete', reason: null, models: [{id: 'gpt-6-sol', efforts: ['low', 'max']}]};
+
+            // control: the same binding's answer lands
+            const read = detail.controller.readSeatCatalog();
+            catalogs[0].resolve(codexSet);
+            await read;
+            expect(group.catalog).toEqual(codexSet);
+
+            // the same seat moves to another harness: its catalog goes, and a Codex answer still on its way stays out
+            const late = detail.controller.readSeatCatalog();
+            definitions.get('ada').set({harnessType: 'claude-code'});
+            expect(group.catalog).toBeNull();
+            catalogs[1].resolve(codexSet);
+            await late;
+            expect(group.catalog, 'a reply from the prior binding').toBeNull();
+
+            // a declaration for Ada, refused after the group shows Eos, paints nothing on Eos
+            const save = detail.controller.onDeclareSeatModel({field: 'reasoningEffort', value: 'max'});
+            expect(group.status.state).toBe('pending');
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos', state: 'off'});
+            expect(group.seat.id).toBe('eos');
+            saves[0].resolve({status: 'rejected', reason: "effort 'max' is not available"});
+            await save;
+            expect(group.status).toEqual({state: 'idle', reason: ''});
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('#559: another definitions Store is another binding, even holding the same seat on the same harness', async () => {
+        const
+            makeStore = () => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [{id: 'ada', githubUsername: 'ada', harnessType: 'codex-desktop'}]}),
+            first     = makeStore(),
+            second    = makeStore();
+        stores.push(first, second);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            saves      = [];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent      : () => { const held = deferred(); saves.push(held); return held.promise },
+            fleetSeatGitIdentity: async () => ({state: 'derived', name: 'Ada', email: 'ada@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada', state: 'off'}, {agentDefinitions: first}),
+                group  = detail.getReference('seat-model');
+
+            group.catalog = {state: 'complete', reason: null, models: [{id: 'gpt-6-sol', efforts: ['low']}]};
+            const save = detail.controller.onDeclareSeatModel({field: 'reasoningEffort', value: 'low'});
+            expect(group.status.state).toBe('pending');
+
+            detail.agentDefinitions = second;
+            expect([group.catalog, group.status.state]).toEqual([null, 'idle']);
+
+            // the first Store's answer still lands on its own Store, and paints nothing here
+            saves[0].resolve({status: 'rejected', reason: "effort 'low' is not available"});
+            await save;
+            expect(group.status).toEqual({state: 'idle', reason: ''});
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('AC-3 (#524): a late answer for a seat no longer shown paints nothing; a seat without a definition shows no row', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            held       = deferred();
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            fleetSeatGitIdentity: ({id}) => id === 'ada' ? held.promise : Promise.resolve({state: 'derived', name: 'Eos', email: 'eos@example.com'})
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            expect(row.getReference('identity-line').text).toBe('Identity not yet read.');
+
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos'});
+            await expect.poll(() => row.identity?.state).toBe('derived');
+
+            held.resolve({state: 'missing', reason: 'its forge account offers no email this PAT can read'});
+            await held.promise;
+            expect(row.identity.name).toBe('Eos');
+
+            detail.record = makeRecord({agentId: 'nobody', displayName: 'Nobody'});
+            expect(row.hidden).toBe(true);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('AC-3 (#524): only the latest identity request paints the row: A → B → A, and a declaration over a read still on its way', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'},
+            {id: 'eos', githubUsername: 'eos', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            reads      = {ada: [], eos: []},
+            missing    = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            declared   = {state: 'declared', name: 'Ada', email: 'ada@example.com'},
+            settle     = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {
+            configureAgent      : async intent => ({status: 'accepted', agent: {id: intent.id, githubUsername: intent.id, harnessType: 'codex'}}),
+            fleetSeatGitIdentity: ({id}) => {
+                const reply = deferred();
+                reads[id].push(reply);
+                return reply.promise
+            }
+        }};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            // A, then B, then A again: the first read of A is still on its way
+            expect(reads.ada).toHaveLength(1);
+            expect(row.getReference('identity-status').text).toBe('Reading…');
+            detail.record = makeRecord({agentId: 'eos', displayName: 'Eos'});
+            reads.eos[0].resolve({state: 'derived', name: 'Eos', email: 'eos@example.com'});
+            await expect.poll(() => row.identity?.name).toBe('Eos');
+            detail.record = makeRecord({agentId: 'ada', displayName: 'Ada'});
+            reads.ada[1].resolve(declared);
+            await expect.poll(() => row.identity?.state).toBe('declared');
+
+            reads.ada[0].resolve(missing);
+            await settle();
+            expect(row.identity).toEqual(declared);
+
+            // a declaration is the latest request: the read it overtook paints nothing either
+            detail.controller.readGitIdentity();
+            await detail.controller.onDeclareGitIdentity({gitName: 'Ada', gitEmail: 'ada@example.com'});
+            expect(reads.ada).toHaveLength(4);
+            reads.ada[3].resolve(declared);
+            reads.ada[2].resolve(missing);
+            await settle();
+            expect(row.identity).toEqual(declared);
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
+    });
+
+    test('AC-3 (#524): a read that failed has one action in Detail, "Read again", which reads the seat again', async () => {
+        const definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
+            {id: 'ada', githubUsername: 'ada', harnessType: 'codex'}
+        ]});
+        stores.push(definitions);
+
+        const
+            priorFleet = globalThis.AgentOS?.fleet,
+            answers    = [{state: 'unknown', reason: 'its forge account could not be read (HTTP 401)'}, {state: 'derived', name: 'Ada', email: 'ada@example.com'}];
+
+        globalThis.AgentOS ??= {};
+        globalThis.AgentOS.fleet = {registryBridge: {fleetSeatGitIdentity: async () => answers.shift()}};
+
+        try {
+            const
+                detail = createDetail({agentId: 'ada', displayName: 'Ada'}, {agentDefinitions: definitions}),
+                row    = detail.getReference('identity-row');
+
+            await expect.poll(() => row.identity?.state).toBe('unknown');
+            expect(row.getReference('identity-repair').hidden).toBe(true);
+            expect(row.getReference('identity-read').hidden).toBe(false);
+
+            row.onReadClick();
+            await expect.poll(() => row.identity?.state).toBe('derived');
+            expect(row.getReference('identity-read').hidden).toBe(true);
+            expect(row.getReference('identity-repair').text).toBe('Change identity');
+
+            detail.destroy()
+        } finally {
+            globalThis.AgentOS.fleet = priorFleet
+        }
     });
 
     test('an external definition write (another owner\'s readback) refreshes the seated tab in place (#15242)', () => {
@@ -696,6 +1591,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             replacement = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data: [
                 {id: 'ada', githubUsername: 'ada', harnessType: 'claude-code'}
             ]}),
+            replacementLoaded = new Promise(resolve => replacement.on('load', resolve)),
             result = deferred();
 
         stores.push(definitions, replacement);
@@ -720,23 +1616,28 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(statuses.map(([, state]) => state)).toEqual(['pending']);
 
         // The response belongs to the old shared Store; this inspector now renders the replacement.
-        detail.agentDefinitions = replacement;
-        expect(card.record).toBe(replacement.get('ada'));
         const originalRefresh = card.refresh;
-        let refreshes = 0;
+        let   refreshes       = 0;
         card.refresh = function(...args) {
             refreshes++;
             return originalRefresh.apply(this, args)
         };
+        detail.agentDefinitions = replacement;
+        expect(card.record).toBe(replacement.get('ada'));
+        expect(card.agentDefinitionsStore).toBe(replacement);
+        await replacementLoaded; // settle the new Store's legitimate initial load before measuring the late response
+        const refreshesAfterRebind = refreshes;
+        definitions.get('ada').set({statusText: 'old Store mutation'});
+        expect(refreshes, 'the old Store listener is detached after rebinding').toBe(refreshesAfterRebind);
         result.resolve({status: 'accepted', agent: {id: 'ada', harnessType: 'native-neo'}});
         await request;
 
         expect(definitions.get('ada').harnessType).toBe('native-neo');
         expect(replacement.get('ada').harnessType).toBe('claude-code');
         expect(statuses.map(([, state]) => state)).toEqual(['pending']);
-        expect(refreshes, 'the old Store listener is detached').toBe(0);
+        expect(refreshes, 'the late readback caused no repaint after the new Store was bound').toBe(refreshesAfterRebind);
         replacement.get('ada').set({statusText: 'current Store'});
-        expect(refreshes, 'the replacement Store listener remains live').toBeGreaterThan(0);
+        expect(refreshes, 'the replacement Store listener remains live').toBeGreaterThan(refreshesAfterRebind);
 
         globalThis.AgentOS.fleet = priorFleet;
         detail.destroy()
@@ -748,9 +1649,9 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         ]});
         stores.push(definitions);
 
-        const first = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
+        const first  = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
         const second = createDetail({agentId: 'ada'}, {agentDefinitions: definitions});
-        const waits = [], priorFleet = globalThis.AgentOS?.fleet;
+        const waits  = [], priorFleet = globalThis.AgentOS?.fleet;
         globalThis.AgentOS.fleet = {registryBridge: {configureAgent: () => {
             const wait = deferred();
             waits.push(wait);
@@ -816,11 +1717,11 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
     test('the controller ages the pane on schedule, keeps scheduling with no record, and stops after destroy', async () => {
         const
-            scheduled = [],
-            ticks = [],
+            scheduled       = [],
+            ticks           = [],
             originalTimeout = Object.getOwnPropertyDescriptor(AgentDetailController.prototype, 'timeout'),
-            originalStart = AgentDetailController.prototype.startFreshnessAging,
-            originalNow = Date.now;
+            originalStart   = AgentDetailController.prototype.startFreshnessAging,
+            originalNow     = Date.now;
         let clock = NOW;
 
         Date.now = () => clock;
@@ -839,12 +1740,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
         try {
             detail = createDetail({agentId: 'vega', state: 'ok'}, {
-                now: null,
+                now        : null,
                 paneLedgers: {lane: {observedAt: new Date(NOW - 10_000).toISOString(), freshnessTtl: 30_000}}
             });
 
-            const controller = detail.getController();
-            let refreshes = 0;
+            const controller     = detail.getController();
+            let   refreshes      = 0;
             const applyFreshness = detail.applyPaneFreshness;
 
             detail.applyPaneFreshness = function(...args) {
@@ -901,14 +1802,13 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
     test('panes without a producer name what they await; the lane pill states the roster source fact (#391 AC-1)', () => {
         const detail = createDetail({agentId: 'vega', state: 'ok'});
 
-        for (const [key, producer] of [
-            ['thought-stream', 'policy-aware read'],
-            ['prs',            'per-seat open-work projection']
-        ]) {
-            expect(chip(detail, key).text, key).toBe('not observed — source not wired');
-            expect(chip(detail, key).cls, key).toContain('is-unobserved');
-            expect(chip(detail, key).vdom.title, key).toContain(producer)
-        }
+        expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+        expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+        expect(chip(detail, 'thought-stream').vdom.title).toContain('serves recent turns');
+
+        // the pull requests pane has its producer: without an answer it says so in the resolver's words
+        expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
+        expect(chip(detail, 'prs').vdom.title).toBe(chip(detail, 'prs').text);
 
         // The lane now has a roster-row source axis. An absent lane fact uses its explicit source
         // vocabulary rather than borrowing the old feed-waiting text from an unwired pane.
@@ -923,12 +1823,135 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         detail.destroy()
     });
 
+    test.describe('the Pull requests pane reads the seat\'s open work (#501)', () => {
+        const
+            seat     = '@neo-vega',
+            minsAgo  = minutes => new Date(NOW - minutes * 60_000).toISOString(),
+            prRow    = (repo, number, role, extra = {}) => ({repo, number, holder: {role, ids: [seat]}, ...extra}),
+            answer   = (authored, reviewing, observedAt) => ({state: 'ok', observedAt, seats: {[seat]: {authored, reviewing}}}),
+            list     = detail => detail.down({reference: 'pr-list'}),
+            none     = detail => detail.down({reference: 'prs-none'}),
+            rowsOf   = detail => list(detail).vdom.cn,
+            heldFrom = snapshot => OpenWorkSeat.held(snapshot, seat);
+
+        test('three held rows render worst first in the resolver\'s words through the list\'s Store, and the pill reads the read\'s observation (AC-1)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
+                [prRow('neomjs/neo-agent-brain', 806, 'author', {ci: 'pending', title: 'feat: the memory import at Start'}), prRow('neomjs/neo-agent-institution', 504, 'author', {ci: 'red', observedAt: minsAgo(2)})],
+                [prRow('neomjs/neo', 19379, 'reviewer')],
+                minsAgo(1)
+            ))});
+
+            // the rows are the list Store's records in the resolver's order: the Store sorts nothing
+            expect(list(detail).store.className).toBe('AgentOS.store.HeldPullRequests');
+            expect(list(detail).store.items.map(record => record.id)).toEqual(['neomjs/neo-agent-institution#504', 'neomjs/neo-agent-brain#806', 'neomjs/neo#19379']);
+            expect(list(detail).hidden).toBe(false);
+            expect(none(detail).hidden).toBe(true);
+            rowsOf(detail).forEach(row => expect(row.cls).toContain('fm-detail-pr'));
+
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo-agent-institution #504', 'neomjs/neo-agent-brain #806', 'neomjs/neo #19379']);
+            expect(rowsOf(detail).map(row => row.cn.at(-1).text)).toEqual(['author · red · observed 2m ago', 'author · changes requested', 'reviewer · review due']);
+            expect(rowsOf(detail)[0].cn[0]).toMatchObject({tag: 'a', href: 'https://github.com/neomjs/neo-agent-institution/pull/504', rel: 'noopener', target: '_blank'});
+
+            // the title slot: a row whose producer carries a title shows it between reference and line
+            expect(rowsOf(detail)[1].cn.map(node => node.cls[0])).toEqual(['fm-detail-pr-ref', 'fm-detail-pr-title', 'fm-detail-pr-line']);
+            expect(rowsOf(detail)[1].cn[1].text).toBe('feat: the memory import at Start');
+            expect(rowsOf(detail)[0].cn, 'no title, no slot').toHaveLength(2);
+
+            // the oldest held row's observation is the pane's
+            expect(chip(detail, 'prs').text).toBe('updated 2m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-fresh');
+
+            detail.destroy()
+        });
+
+        test('an idle detail carries no list: it joins the pane for the first resident shown', () => {
+            const idle = Neo.create(AgentDetail, {appName});
+
+            expect(list(idle)).toBeFalsy();
+            idle.destroy();
+
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(null)});
+
+            expect(list(detail).store.className).toBe('AgentOS.store.HeldPullRequests');
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('nothing held renders the empty sentence, an unanswered read renders no list and says so on the pill (AC-2)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer([prRow('neomjs/neo', 7, 'author', {ci: 'red'})], [], minsAgo(1)))});
+
+            expect(list(detail).store.getCount()).toBe(1);
+
+            // the next answer holds nothing: the Store empties and the sentence replaces the list
+            applySet(detail, {openWorkHeld: heldFrom(answer([], [], minsAgo(1)))});
+            expect(list(detail).store.getCount()).toBe(0);
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(false);
+            expect(none(detail).text).toBe('no pull request waits on this seat');
+            expect(chip(detail, 'prs').text).toBe('updated 1m ago');
+
+            applySet(detail, {openWorkHeld: heldFrom(null)});
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden, 'no answer is not an answer holding nothing').toBe(true);
+            expect(chip(detail, 'prs').text).toBe('not observed — open-work read unanswered');
+            expect(chip(detail, 'prs').cls).toContain('is-unobserved');
+
+            detail.destroy()
+        });
+
+        test('a failed pulse reads stale at once: a recent observation the producer marks stale keeps its rows and its real age', () => {
+            const
+                failed = {...answer([prRow('neomjs/neo', 7, 'author', {ci: 'red', observedAt: minsAgo(1)})], [], minsAgo(1)), state: 'stale'},
+                detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(failed)});
+
+            expect(chip(detail, 'prs').text).toBe('stale · last seen 1m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-stale');
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['neomjs/neo #7']);
+
+            // the control: the same observation from a pulse that succeeded is fresh
+            applySet(detail, {openWorkHeld: heldFrom({...failed, state: 'ok'})});
+            expect(chip(detail, 'prs').text).toBe('updated 1m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-fresh');
+
+            detail.destroy()
+        });
+
+        test('the rows re-age with the pane\'s clock, like its pill', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom(answer(
+                [prRow('neomjs/neo', 7, 'author', {ci: 'red', observedAt: minsAgo(2)})], [], minsAgo(2)
+            ))});
+
+            expect(rowsOf(detail)[0].cn.at(-1).text).toBe('author · red · observed 2m ago');
+
+            detail.now = NOW + 60_000;
+            expect(rowsOf(detail)[0].cn.at(-1).text).toBe('author · red · observed 3m ago');
+            expect(chip(detail, 'prs').text).toBe('updated 3m ago');
+
+            detail.destroy()
+        });
+
+        test('a stale read keeps its rows and carries its age; an answer never reads as source not wired (AC-3)', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok', openWorkHeld: heldFrom({
+                ...answer([prRow('neomjs/neo', 7, 'author', {ci: 'red', stale: true, observedAt: minsAgo(12)})], [], minsAgo(12)),
+                state: 'stale'
+            })});
+
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['author · red · observed 12m ago · stale']);
+            expect(chip(detail, 'prs').text).toBe('stale · last seen 12m ago');
+            expect(chip(detail, 'prs').cls).toContain('is-stale');
+            expect(chip(detail, 'prs').text).not.toContain('source not wired');
+
+            detail.destroy()
+        });
+    });
+
     test('the repository pane and the header row derive from ONE descriptor — the roster row\'s repoStatus fact, aged from the roster admission (#391 AC-2)', () => {
         const detail = createDetail({agentId: 'vega', state: 'ok', repoSlug: 'neomjs/neo', repoPath: '/seats/vega/neo'}, {rosterObservedAt: NOW - 10_000});
 
         expect(chip(detail, 'repo').cls).toContain('is-fresh');
         expect(chip(detail, 'repo').text).toBe('updated 10s ago');
-        expect(body(detail, 'repo').vdom.cn.map(node => node.text)).toEqual(['neomjs/neo', '/seats/vega/neo']);
+        expect(repoFacts(detail).map(node => node.text)).toEqual(['neomjs/neo', '/seats/vega/neo']);
 
         // no roster read in this mount: the pane says so instead of claiming an observation it never had
         detail.rosterObservedAt = null;
@@ -945,7 +1968,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(missing, 'repo').text).toBe('missing — no repository status answered for this agent');
         // the full answer rides the title too: a rail-width head elides the pill's words
         expect(chip(missing, 'repo').vdom.title).toBe('missing — no repository status answered for this agent');
-        expect(body(missing, 'repo').vdom.cn.map(node => node.text)).toEqual(['no repository declared']);
+        expect(repoFacts(missing).map(node => node.text)).toEqual(['no repository declared']);
 
         const rows = missing.down({reference: 'detail-ledger'}).vdom.cn,
               axis = rows.findIndex(node => node.text === 'repository');
@@ -971,5 +1994,157 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
         expect(chip(detail, 'repo').cls).toContain('is-lost');
 
         detail.destroy()
+    });
+
+    test.describe('the Thought stream pane reads the seat\'s recent turns (#476)', () => {
+        const
+            seat    = '@neo-vega',
+            minsAgo = minutes => new Date(NOW - minutes * 60_000).toISOString(),
+            turn    = (id, minutes, summary, extra = {}) => ({id, sessionId: `session-${id}`, timestamp: minsAgo(minutes), summary, summaryFallback: false, projectionPending: false, ...extra}),
+            // the Brain's envelope, wired, for the seat asked
+            answer  = (turns, {capturedAt = minsAgo(1), clamped = false, target = seat} = {}) => ({
+                capability   : {state: 'wired', capturedAt},
+                viewer       : '@operator',
+                target,
+                page         : {limit: 20, before: null},
+                turns,
+                count        : turns.length,
+                nextCursor   : null,
+                memorySharing: {policy: clamped ? 'private' : 'team', clamped}
+            }),
+            // the cockpit's own fallback when the bridge lacks the verb or did not answer
+            fallback = (reason, coverage) => ({capability: {state: 'unavailable', reason, capturedAt: null}, coverage, viewer: null, target: seat, page: {limit: 20, before: null}, turns: [], count: 0, nextCursor: null, memorySharing: null}),
+            list     = detail => detail.down({reference: 'turn-list'}),
+            none     = detail => detail.down({reference: 'turns-none'}),
+            rowsOf   = detail => list(detail).vdom.cn;
+
+        test('AC-1: a wired answer renders the seat\'s turns newest first through the list\'s Store, each with its age and the word for a weaker summary; the pill reads the read\'s age', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([
+                turn('t3', 2,  'Approved the Stage promotion PR.'),
+                turn('t2', 9,  'Routed the design read into four leaves.', {summaryFallback: true}),
+                turn('t1', 30, null, {projectionPending: true})
+            ])});
+
+            // the rows are the list Store's records in the plane's order: the Store sorts nothing
+            expect(list(detail).store.className).toBe('AgentOS.store.AgentRecentTurns');
+            expect(list(detail).store.items.map(record => record.id)).toEqual(['t3', 't2', 't1']);
+            expect(list(detail).hidden).toBe(false);
+            expect(none(detail).hidden).toBe(true);
+            rowsOf(detail).forEach(row => expect(row.cls).toContain('fm-detail-turn'));
+
+            expect(rowsOf(detail).map(row => row.cn.map(node => node.cls[0]))).toEqual(Array(3).fill(['fm-detail-turn-meta', 'fm-detail-turn-summary']));
+            expect(rowsOf(detail).map(row => row.cn[0].text)).toEqual(['2m ago', '9m ago · cut from the raw turn', '30m ago · summary pending']);
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['Approved the Stage promotion PR.', 'Routed the design read into four leaves.', 'no summary served']);
+            // the instant itself rides the meta line's title
+            expect(rowsOf(detail)[0].cn[0].title).toBe(minsAgo(2));
+
+            // the pill is the read's own observation, aged like the sibling panes
+            expect(chip(detail, 'thought-stream').text).toBe('updated 1m ago');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-fresh');
+            expect(chip(detail, 'thought-stream').vdom.title).toBeNull();
+
+            detail.destroy()
+        });
+
+        test('an idle detail carries no list: it joins the pane for the first resident shown', () => {
+            const idle = Neo.create(AgentDetail, {appName});
+
+            expect(list(idle)).toBeFalsy();
+            idle.destroy();
+
+            const detail = createDetail({agentId: 'vega', state: 'ok'});
+
+            expect(list(detail).store.className).toBe('AgentOS.store.AgentRecentTurns');
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('AC-2: an empty stream, a clamped plane and the producer\'s unavailable each read as themselves, with no sample row in any state', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([])});
+
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(false);
+            expect(none(detail).text).toBe('no turns yet');
+            expect(chip(detail, 'thought-stream').text).toBe('updated 1m ago');
+
+            // the plane's policy clamps peer turns: a wired empty page that says why
+            detail.recentTurns = answer([], {clamped: true});
+            expect(none(detail).text).toBe('this plane shares no peer turns');
+            expect(list(detail).store.getCount()).toBe(0);
+            expect(chip(detail, 'thought-stream').cls).toContain('is-fresh');
+
+            // the producer's own unavailable: its reason in words, its detail beside it, no sentence and no rows
+            detail.recentTurns = {...answer([]), capability: {state: 'unavailable', reason: 'recent-turns-read-failed', capturedAt: minsAgo(1), detail: 'The graph recency reader is unavailable.'}, memorySharing: null};
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden, 'an answer the producer did not give holds nothing to say').toBe(true);
+            expect(chip(detail, 'thought-stream').text).toBe('unavailable — recent turns read failed · The graph recency reader is unavailable.');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe(chip(detail, 'thought-stream').text);
+
+            detail.destroy()
+        });
+
+        test('AC-3: an answer asked for another seat renders nothing for the seat shown; a re-seat onto that seat shows its own answer', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([turn('a1', 1, 'Ada\'s turn.')], {target: '@neo-ada'})});
+
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(true);
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+
+            detail.record = makeRecord({agentId: 'ada', state: 'ok'});
+            expect(list(detail).hidden).toBe(false);
+            expect(rowsOf(detail).map(row => row.cn[1].text)).toEqual(['Ada\'s turn.']);
+            expect(chip(detail, 'thought-stream').text).toBe('updated 1m ago');
+
+            detail.destroy()
+        });
+
+        test('AC-4: the cockpit\'s fallback for a bridge without the verb keeps the unobserved pill and names the verb on its title; a read the bridge did not answer says so', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: fallback('fleet recent-turns verb not wired', 'not-wired')});
+
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — source not wired');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-unobserved');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe('awaiting a Fleet server that serves recent turns — the bridge in hand carries no fleetRecentTurns verb');
+            expect(list(detail).hidden).toBe(true);
+            expect(none(detail).hidden).toBe(true);
+
+            detail.recentTurns = fallback('fleet recent-turns read failed', 'unanswered');
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — recent-turns read unanswered');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe(chip(detail, 'thought-stream').text);
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
+
+        test('the rows and the pill re-age with the pane\'s clock; a read older than the TTL reads stale and keeps its rows', () => {
+            const detail = createDetail({agentId: 'vega', state: 'ok'}, {recentTurns: answer([turn('t1', 2, 'A turn.')])});
+
+            expect(rowsOf(detail)[0].cn[0].text).toBe('2m ago');
+
+            detail.now = NOW + 60_000;
+            expect(rowsOf(detail)[0].cn[0].text).toBe('3m ago');
+            expect(chip(detail, 'thought-stream').text).toBe('updated 2m ago');
+
+            // past the pane's 120 s TTL: stale, the rows stay
+            detail.now = NOW + 180_000;
+            expect(chip(detail, 'thought-stream').text).toBe('stale · last seen 4m ago');
+            expect(chip(detail, 'thought-stream').cls).toContain('is-stale');
+            expect(list(detail).hidden).toBe(false);
+
+            detail.destroy()
+        });
+
+        test('a seat the roster names no identity for cannot be read: the pill says so instead of waiting for a verb', () => {
+            const detail = createDetail({agentId: 'ghost', githubUsername: null, state: 'ok'}, {recentTurns: answer([turn('t1', 1, 'Nobody\'s turn.')], {target: '@ghost'})});
+
+            expect(chip(detail, 'thought-stream').text).toBe('not observed — the roster row names no identity whose turns to read');
+            expect(chip(detail, 'thought-stream').vdom.title).toBe(chip(detail, 'thought-stream').text);
+            expect(list(detail).hidden).toBe(true);
+
+            detail.destroy()
+        });
     });
 });

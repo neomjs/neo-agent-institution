@@ -38,6 +38,12 @@ const
         markdown: `## Computed Golden Path (Strategic Recommendation)\n\nCaptured at: 2026-07-05 08:00 UTC\n\n1. **neo#15252**: Score 0.91 (Semantic: 0.61, Structural: 0.30)\n   - *The five-beat multi-window film*\n\n2. **neo#210**: Score 0.87 (Semantic: 0.57, Structural: 0.30)\n   - *${LONG_TITLE}*\n\n> **Routing Guard:** Contradictory immediate routes were filtered by the producer.\n\n### Strategic Interpretation\n\nThe complete producer interpretation is a normal reading surface, not another reduced route list.`,
         mtimeMs: Date.parse('2026-07-05T08:05:00.000Z'), ageMs: 60000, staleAfterMs: 129600000, stale: false, reason: null
     },
+    // the section exactly as GoldenPathSynthesizer writes it: heading, captured-at, introduction, a tight list of ten
+    PRODUCER_MARKDOWN = [
+        '## Computed Golden Path (Strategic Recommendation)\n\nCaptured at: 2026-07-05 08:00 UTC\n',
+        'Based on the latest Tri-Vector Synthesis and Topological Priorities, the following tasks are mathematically recommended as the next immediate focus:\n',
+        Array.from({length: 10}, (_, i) => `${i + 1}. **issue-${14647 + i}**: Score ${(5 - i / 4).toFixed(2)} (Semantic: 0.83, Structural: 3.33)\n   - *${i ? `Ranked item ${i + 1}, titled as long as the synthesizer's real items run` : 'Institution Cockpit demo: the object-permanent selves tour (v14 home)'}*`).join('\n')
+    ].join('\n'),
     STATES = [
         ['current', {capability: wired, handoff, admission: {admitted: true, fallback: 'current', reasonCode: 'current', requiredFacets: [], staleFacets: []}, route: route(), rem, sources: {}}],
         ['withheld', {capability: wired, handoff: {...handoff, stale: true}, admission: {admitted: false, fallback: 'last-known-good', reasonCode: 'freshness-sla-breached', requiredFacets: ['issues', 'discussions'], staleFacets: ['issues']}, route: route(), rem, sources: {}}],
@@ -77,6 +83,8 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         for (const [state, envelope] of STATES) {
             await land(envelope);
             await expect(currency).toHaveClass(new RegExp(`(?:^|\\s)is-${state}(?:\\s|$)`));
+            // the chip's frame is the currency: only a current route earns a solid line
+            await expect(currency).toHaveCSS('border-top-style', state === 'current' ? 'solid' : 'dashed');
 
             for (const [skin, theme] of skins) {
                 await app.callMethod(viewportState.controller.id, 'setTheme', [theme, false]);
@@ -109,8 +117,63 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         const width = await pane.evaluate(el => ({visible: el.clientWidth, content: el.scrollWidth}));
         expect(width.content, 'the full recommendation wraps inside the narrow pane').toBeLessThanOrEqual(width.visible + 1);
         await expect(pane).toHaveScreenshot('golden-path-current-narrow.png');
-        await pane.evaluate(el => { el.scrollTop = el.scrollHeight });
+        // the recommendation column is the pane's one scroll seat; the pane itself never scrolls
+        await pane.locator('.fm-golden-path-markdown').evaluate(el => { el.scrollTop = el.scrollHeight });
         await expect(pane.locator('.fm-golden-path-markdown p').last()).toBeInViewport();
         await expect(pane).toHaveScreenshot('golden-path-current-narrow-bottom.png')
+    });
+
+    test('the facts row stays on screen at the lower dock\'s default height and only the recommendation column scrolls', async ({page, neuralLink}) => {
+        // 1056 × 900 lands the pane at the 988 × 282 the installed vessel measured for the lower split's default
+        await page.setViewportSize({width: 1056, height: 900});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        const app = await neuralLink.connectToApp('AgentOS');
+        await page.getByRole('tab', {name: 'Golden Path', exact: true}).click();
+
+        const
+            pane     = page.locator('.fm-golden-path-pane'),
+            facts    = pane.locator('.fm-golden-path-facts'),
+            column   = pane.locator('.fm-golden-path-markdown'),
+            [cockpit]    = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+            cockpitState = await app.getComponent(cockpit.properties.id, ['controller']),
+            producerHandoff = {...handoff, markdown: PRODUCER_MARKDOWN},
+            boxes        = async () => {
+                const paneBox   = await pane.evaluate(el => ({width: el.getBoundingClientRect().width, bottom: el.getBoundingClientRect().bottom, scroll: el.scrollHeight, client: el.clientHeight})),
+                      factsBox  = await facts.evaluate(el => el.getBoundingClientRect()),
+                      columnBox = await column.evaluate(el => ({scroll: el.scrollHeight, client: el.clientHeight, first: el.querySelector('ol li')?.getBoundingClientRect().bottom ?? null}));
+                return {paneBox, factsBox, columnBox}
+            };
+
+        await expect(pane).toBeVisible({timeout: 10000});
+        // the producer's real worst case: ten items and the null-run sentence, which wraps the facts to two lines
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{...STATES[0][1], handoff: producerHandoff, route: route({provenance: {producer: 'GoldenPathSynthesizer', runId: null, algorithmVersion: 'golden-path.tri-vector.v1'}})}]);
+        await expect(facts.locator('.fm-golden-path-provenance')).toHaveText(/^GoldenPathSynthesizer · run id not recorded by the synthesizer · golden-path\.tri-vector\.v1 · expires /);
+        await page.evaluate(() => document.fonts.ready);
+
+        const fold = await boxes();
+
+        expect(Math.round(fold.paneBox.width), 'the pane is the installed default width').toBe(988);
+        expect(fold.paneBox.client, 'the lower dock default leaves the pane well under the content height').toBeLessThan(400);
+        expect(fold.factsBox.bottom, 'the four facts are fully inside the pane without scrolling').toBeLessThanOrEqual(fold.paneBox.bottom);
+        expect(fold.columnBox.first, 'the first ranked item, its reference line and its title, is on screen with the facts').toBeLessThanOrEqual(fold.paneBox.bottom);
+        expect(fold.paneBox.scroll, 'the pane itself does not scroll').toBeLessThanOrEqual(fold.paneBox.client + 1);
+        expect(fold.columnBox.scroll, 'the recommendation column is the scroll seat').toBeGreaterThan(fold.columnBox.client);
+
+        // a route that recorded its run names it
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{...STATES[0][1], handoff: producerHandoff}]);
+        await expect(facts.locator('.fm-golden-path-provenance')).toHaveText(/run run-42/);
+
+        // a pane taller than its content scrolls nowhere: the column only moves when it has to
+        await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [STATES[0][1]]);
+        await page.setViewportSize({width: 1056, height: 2000});
+        await page.mouse.move(8, 8);
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+
+        const tallPane = await boxes();
+
+        expect(tallPane.paneBox.client, 'the taller viewport gives the pane more height than the short fixture needs').toBeGreaterThan(400);
+        expect(tallPane.columnBox.scroll).toBeLessThanOrEqual(tallPane.columnBox.client + 1);
+        expect(tallPane.paneBox.scroll).toBeLessThanOrEqual(tallPane.paneBox.client + 1)
     });
 });

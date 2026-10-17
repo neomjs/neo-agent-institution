@@ -1,39 +1,37 @@
 import Container                     from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import GoldenPathEnvelope            from '../../../util/GoldenPathEnvelope.mjs';
-import GraphNodeSource               from '../../../util/GraphNodeSource.mjs';
 import GraphSceneEnvelope            from '../../../util/GraphSceneEnvelope.mjs';
 import GraphSceneNodes               from '../../../store/GraphSceneNodes.mjs';
 import GraphSceneRelations           from '../../../store/GraphSceneRelations.mjs';
+import ObservatoryBrief              from '../../../util/ObservatoryBrief.mjs';
 import ObservatoryCanvas             from './ObservatoryCanvas.mjs';
+import ObservatoryHeadComponent      from './ObservatoryHeadComponent.mjs';
 import ObservatoryNodeList           from './ObservatoryNodeList.mjs';
+import ObservatoryNodesHeadContainer from './ObservatoryNodesHeadContainer.mjs';
 import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.mjs';
 import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
 import ObservatoryTeamContainer      from './ObservatoryTeamContainer.mjs';
 import ObservatoryViewContainer      from './ObservatoryViewContainer.mjs';
+import Splitter                      from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 import ViewerTime                    from '../../../util/ViewerTime.mjs';
 import {peerHues}                    from '../../../canvas/fmPalette.mjs';
-
-/**
- * What the hover slot says while no node is under the pointer.
- * @type {String}
- */
-const HOVER_HINT = 'drag orbits · wheel zooms · click selects';
 
 /**
  * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
  * worker beside a side panel that reads, top to bottom, the team, the view, the nodes and the selected node.
  * The {@link #geography} is strategic wells by default, the Brain's strategic anchors drawing the
  * rest around them, and density wells on a read that carries no anchor; mail stays out of the scene until the
- * View section brings it in, and the nodes in no well sit in an outer halo it can hide. The head carries the
- * read's line first (capability, capture, holdings, what the view hid, completeness —
- * {@link AgentOS.util.GraphSceneEnvelope#describe}) and the node under the pointer beside it. The pane binds the
+ * View section brings it in, and the nodes in no well sit in an outer halo it can hide. The head
+ * ({@link AgentOS.view.fleet.goldenpath.ObservatoryHeadComponent}) opens with the team's sentence
+ * ({@link AgentOS.util.ObservatoryBrief#line}), keeps the read's counts behind Details
+ * ({@link AgentOS.util.GraphSceneEnvelope#describe}) and names the node under the pointer. The pane binds the
  * shell's `graphSceneEnvelope` leaf, which the cockpit's graph read writes, derives the scene once
  * ({@link AgentOS.util.ObservatorySceneLayout#fromGraphScene}) and hands it to the canvas and the panel. The
  * Golden Path leaf only qualifies the line and the route's control: its route's admission is not the graph
  * read's to report, so a withheld route is named beside the graph read's own words.
  *
- * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, at the top of the
- * side panel ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
+ * Two overlays draw over whatever geography is chosen, and neither moves a node. The team lens, below the View
+ * section ({@link AgentOS.view.fleet.goldenpath.ObservatoryTeamContainer}), offers the team the read names,
  * busiest first, each peer in its own hue; checking peers draws their nodes in their hues, the union of them,
  * fades the rest, and names in the node list what each node is to its peer
  * ({@link AgentOS.util.ObservatorySceneLayout#roleOf}). Attention brightens what drew attention within the stated
@@ -69,6 +67,12 @@ class ObservatoryContainer extends Container {
      * @static
      */
     static geographies = ['communities', 'density', 'strategic']
+    /**
+     * The side panel's sections that open to its remaining height; the View section always shows.
+     * @member {String[]} sections=['nodes','selected','team']
+     * @static
+     */
+    static sections = ['nodes', 'selected', 'team']
 
     static config = {
         /**
@@ -124,21 +128,17 @@ class ObservatoryContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The head (title, the read's line, the hovered node) and the body: the side panel with the team lens's
-         * peers, the View section, the node list and the selected node's section, which the canvas joins in
-         * {@link #onConstructed} where a canvas worker exists. A selection never resizes the canvas.
+         * The head (title, the read's line, the hovered node) and the body: the side panel with the View section
+         * on top, where the lens controls never move, then the team lens's peers, the node list and the selected
+         * node's section, which the canvas joins in {@link #onConstructed} where a canvas worker exists. A
+         * selection never resizes the canvas.
          * @member {Object[]} items
          */
         items: [{
-            ntype    : 'component',
-            cls      : ['fm-observatory-head'],
+            module   : ObservatoryHeadComponent,
+            brief    : {attention: null, lead: GraphSceneEnvelope.describe(null).text, tail: null},
             flex     : 'none',
-            reference: 'observatory-head',
-            vdom     : {cn: [
-                {tag: 'span', cls: ['fm-observatory-title'],    text: 'Golden Path · observatory'},
-                {tag: 'span', cls: ['fm-observatory-currency'], text: GraphSceneEnvelope.describe(null).text},
-                {tag: 'span', cls: ['fm-observatory-hover', 'is-hint'], text: HOVER_HINT}
-            ]}
+            reference: 'observatory-head'
         }, {
             ntype    : 'container',
             cls      : ['fm-observatory-body'],
@@ -152,19 +152,17 @@ class ObservatoryContainer extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
                 reference: 'observatory-side',
                 items    : [{
-                    module   : ObservatoryTeamContainer,
-                    flex     : 'none',
-                    reference: 'observatory-team'
-                }, {
                     module   : ObservatoryViewContainer,
                     flex     : 'none',
                     reference: 'observatory-view-section'
                 }, {
-                    ntype    : 'component',
-                    cls      : ['fm-observatory-side-title'],
+                    module   : ObservatoryTeamContainer,
                     flex     : 'none',
-                    reference: 'observatory-nodes-title',
-                    text     : 'Nodes'
+                    reference: 'observatory-team'
+                }, {
+                    module   : ObservatoryNodesHeadContainer,
+                    flex     : 'none',
+                    reference: 'observatory-nodes-head'
                 }, {
                     module   : ObservatoryNodeList,
                     flex     : 1,
@@ -192,6 +190,22 @@ class ObservatoryContainer extends Container {
          */
         lensPeers_: [],
         /**
+         * The Nodes list's order ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}): `changed` leads
+         * with what changed in the attention window, `relations` with the most related. Session view state; the
+         * Nodes head's toggle flips it.
+         * @member {'changed'|'relations'} nodeOrder_='changed'
+         * @reactive
+         */
+        nodeOrder_: 'changed',
+        /**
+         * The side panel's open section (`team`, `nodes` or `selected`): it takes the panel's remaining height and
+         * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
+         * unless the viewer is browsing `nodes`: the list stays, and the collapsed Selected head line names the node.
+         * @member {String} openSection_='team'
+         * @reactive
+         */
+        openSection_: 'team',
+        /**
          * The `fleetGoldenPath` envelope, bound from the Viewport provider's `goldenPathEnvelope` leaf. Only its
          * currency is read: a withheld route qualifies the line and reads unavailable in its control.
          * @member {Object|null} routeEnvelope_=null
@@ -199,7 +213,7 @@ class ObservatoryContainer extends Container {
          */
         routeEnvelope_: null,
         /**
-         * Whether the route is drawn over the graph; the View section's Golden Path control flips it.
+         * Whether the route is drawn over the graph; the View section's Route control flips it.
          * @member {Boolean} routeOverlay_=true
          * @reactive
          */
@@ -251,6 +265,12 @@ class ObservatoryContainer extends Container {
      */
     scene = ObservatorySceneLayout.fromGraphScene(null)
     /**
+     * Whether the viewer has opened a section, by its head or a selection; until then a read opens Team only
+     * when it lists peers, and Nodes otherwise, so no default opens an empty section.
+     * @member {Boolean} sectionChosen=false
+     */
+    sectionChosen = false
+    /**
      * Why the selection last cleared itself, until the next selection or click.
      * @member {String|null} selectionNote=null
      */
@@ -275,6 +295,10 @@ class ObservatoryContainer extends Container {
      * canvas worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
      * readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so the side panel takes
      * the whole body — and an envelope in the config reaches the head and the panel.
+     *
+     * Beside the canvas, the engine's splitter resizes the side panel for the session. Its bounds are the panel's
+     * CSS `min-width` and `max-width`, which the engine's drag clamps against. Nothing stores the width, so a
+     * new pane starts at the default.
      */
     onConstructed() {
         super.onConstructed();
@@ -288,6 +312,7 @@ class ObservatoryContainer extends Container {
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
+        me.getReference('observatory-head').on('attentionSelect', ({id}) => me.onNodeSelect({node: {id}}));
         me.getReference('observatory-team').on('lensChange', ({lensPeers}) => me.lensPeers = lensPeers);
         me.getReference('observatory-selected').on({selectionClear: me.onSelectionClear, sessionOpen: me.onSessionOpen, scope: me});
         me.getReference('geography-density')  .set({handler: () => me.geography = 'density',   handlerScope: me});
@@ -296,9 +321,14 @@ class ObservatoryContainer extends Container {
         me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
+        me.getReference('observatory-nodes-head').on({orderChange: ({order}) => me.nodeOrder = order, sectionHeadClick: ({section}) => me.chooseSection(section)});
+        me.afterSetNodeOrder(me.nodeOrder);
+        me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.chooseSection(section));
+        me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.chooseSection(section));
+        me.syncSections();
 
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
-            me.getReference('observatory-body').insert(0, {
+            me.getReference('observatory-body').insert(0, [{
                 module      : ObservatoryCanvas,
                 flex        : 1,
                 reference   : 'observatory-canvas',
@@ -307,9 +337,18 @@ class ObservatoryContainer extends Container {
                 selectedId  : me.selectedId,
                 ...me.channels(),
                 listeners   : {nodeHover: me.onNodeHover, nodeSelect: me.onNodeSelect, scope: me}
-            })
+            }, {
+                module      : Splitter,
+                cls         : ['fm-observatory-splitter'],
+                reference   : 'observatory-splitter',
+                resizeTarget: 'next',
+                size        : 6
+            }])
         } else {
-            me.getReference('observatory-side').flex = 1
+            const side = me.getReference('observatory-side');
+
+            // no surface: the panel is the whole body; the layout already copied its flex into the style
+            side.set({flex: 1, style: {...side.style, flex: '1 1 0%'}})
         }
 
         me.updateLine();
@@ -339,7 +378,9 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     afterSetEnvelope(value, oldValue) {
-        this.applyScene(this.layOut(value), 'read')
+        this.applyScene(this.layOut(value), 'read');
+        // a read with roadmap anchors and one without draw different wells; the View section says which
+        this.updateView()
     }
 
     /**
@@ -426,6 +467,24 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * Triggered after the Nodes order changed: the head says which order reads, and the list reorders, keeping the
+     * selection.
+     * @param {String} value
+     * @param {String|undefined} oldValue
+     * @protected
+     */
+    afterSetNodeOrder(value, oldValue) {
+        const me = this, head = me.getReference('observatory-nodes-head');
+
+        head && (head.order = value);
+
+        if (oldValue !== undefined && me.scene) {
+            me.fillNodeList();
+            me.syncLists()
+        }
+    }
+
+    /**
      * Triggered after the routeEnvelope config got changed: the line and the route's control follow the route's
      * currency.
      * @param {Object|null} value
@@ -461,7 +520,18 @@ class ObservatoryContainer extends Container {
 
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
-        me.updateSelection()
+        me.updateSelection();
+        value && me.openSection !== 'nodes' && me.chooseSection('selected')
+    }
+
+    /**
+     * Triggered after the openSection config got changed: the side panel opens that section.
+     * @param {String} value
+     * @param {String|undefined} oldValue
+     * @protected
+     */
+    afterSetOpenSection(value, oldValue) {
+        oldValue !== undefined && this.syncSections()
     }
 
     /**
@@ -506,6 +576,17 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * Triggered before the openSection config gets changed: only a known section opens.
+     * @param {String} value
+     * @param {String} oldValue
+     * @returns {String|undefined}
+     * @protected
+     */
+    beforeSetOpenSection(value, oldValue) {
+        return this.beforeSetEnumValue(value, oldValue, 'openSection', ObservatoryContainer.sections)
+    }
+
+    /**
      * @summary The two overlays over the current scene, by its node indices, kept in {@link #overlays}: the heat
      * while Attention is on, and the lens with one hue per checked peer while a peer is checked; each `null`
      * otherwise.
@@ -522,71 +603,31 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary The selected node as the scene has it, for its section: the qualified id, a label other than the
-     * id, the kind, the state, attribution and last activity the read carries (each `null` where it does not),
-     * the rank while the current route holds the node, its relations in the read and how many of them list, and
-     * its source ({@link AgentOS.util.GraphNodeSource#sourceOf}). `null` while nothing is selected.
-     * @returns {Object|null}
-     * @protected
-     */
-    factsOf() {
-        const
-            {listBudget, scene, selectedId} = this,
-            index = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1;
-
-        if (index < 0) {
-            return null
-        }
-
-        const
-            node      = scene.nodes[index],
-            relations = scene.edges.reduce((sum, pair) => sum + (pair.includes(index) ? 1 : 0), 0);
-
-        return {
-            assignedTo     : node.assignedTo,
-            authoredBy     : node.authoredBy,
-            id             : node.id,
-            kind           : node.kind ?? null,
-            label          : node.label && node.label !== node.id ? node.label : null,
-            lastActivityAt : node.lastActivityAt,
-            memoryOf       : node.memoryOf,
-            rank           : node.rank ?? null,
-            relations,
-            relationsListed: Math.min(relations, listBudget),
-            source         : GraphNodeSource.sourceOf(node),
-            state          : node.state
-        }
-    }
-
-    /**
-     * @summary Fills the node list from the current scene: the whole read up to {@link #listBudget}, else the
-     * budget's first nodes in the layout's order, the route's seeds leading. The title says when the list holds
-     * less than the read.
+     * @summary Fills the node list from the current scene in the chosen {@link #nodeOrder}
+     * ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}) up to {@link #listBudget} rows; the order
+     * applies to the whole read before the budget cuts it. The section's head names the order and says when the list
+     * holds less than the read.
      * @protected
      */
     fillNodeList() {
         const
             me                             = this,
             {listBudget, nodeStore, scene} = me,
-            counts                         = new Uint32Array(scene.nodes.length),
-            listed                         = scene.nodes.slice(0, listBudget),
-            title                          = me.getReference('observatory-nodes-title');
+            counts                         = new Uint32Array(scene.nodes.length);
 
         scene.edges.forEach(([from, to]) => {
             counts[from]++;
             from !== to && counts[to]++
         });
 
+        const listed = ObservatoryNodeList.orderOf(scene, me.nodeOrder, counts).slice(0, listBudget).map(index => scene.nodes[index]);
+
         me.relationCounts = counts;
         me.extraId        = null;
         nodeStore.clear();
         listed.length && nodeStore.add(listed.map(node => me.rowOf(node)));
 
-        if (title) {
-            title.text = scene.nodes.length > listed.length
-                ? `Nodes · ${listed.length.toLocaleString('en-US')} of ${scene.nodes.length.toLocaleString('en-US')} · relations reach the rest`
-                : 'Nodes'
-        }
+        me.getReference('observatory-nodes-head')?.set({counts: {listed: listed.length, total: scene.nodes.length}})
     }
 
     /**
@@ -669,17 +710,13 @@ class ObservatoryContainer extends Container {
      * @param {Object|null} data.node
      */
     onNodeHover({node}) {
-        const head = this.getReference('observatory-head'), slot = head?.vdom.cn[2];
+        const head = this.getReference('observatory-head');
 
-        if (slot) {
-            slot.text = node ? [
-                node.label ?? node.id,
-                node.kind,
-                node.hop === 0 ? `rank ${node.rank}` : node.hop === null ? 'no edge to the route in this read' : `${node.hop} hop${node.hop === 1 ? '' : 's'} from the route`
-            ].filter(Boolean).join(' · ') : HOVER_HINT;
-            slot.cls = ['fm-observatory-hover', ...(node ? [] : ['is-hint'])];
-            head.update()
-        }
+        head && (head.hover = node ? [
+            node.label ?? node.id,
+            node.kind,
+            node.hop === 0 ? `rank ${node.rank}` : node.hop === null ? 'no edge to the route in this read' : `${node.hop} hop${node.hop === 1 ? '' : 's'} from the route`
+        ].filter(Boolean).join(' · ') : null)
     }
 
     /**
@@ -713,7 +750,7 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Golden Path was clicked: the route overlay flips.
+     * @summary Route was clicked: the route overlay flips.
      */
     onRouteToggleClick() {
         this.routeOverlay = !this.routeOverlay
@@ -817,52 +854,91 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * @summary The viewer opened a section, by its head or a selection: from now on a new read keeps it open.
+     * @param {String} section One of {@link #sections}
+     * @protected
+     */
+    chooseSection(section) {
+        this.sectionChosen = true;
+        this.openSection   = section
+    }
+
+    /**
+     * @summary Opens {@link #openSection} to the side panel's remaining height and collapses the others to their
+     * heads; a head is pressed and `aria-expanded` while its section is open. The View section is not a section: it always shows.
+     * @protected
+     */
+    syncSections() {
+        const me = this, {openSection} = me;
+
+        [['team', 'observatory-team', 'observatory-peers-title'],
+         ['nodes', 'observatory-nodes', 'observatory-nodes-title'],
+         ['selected', 'observatory-selected', 'selected-section-head']].forEach(([section, body, head]) => {
+            const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);
+
+            // the layout copied flex into the style when it placed the section, so a change must reach the style
+            component.set({
+                flex : isOpen ? 1 : 'none',
+                style: {...component.style, flex: isOpen ? '1 1 0%' : 'none'}
+            });
+            component.toggleCls('is-collapsed', !isOpen);
+            button.pressed               = isOpen;
+            button.vdom['aria-expanded'] = String(isOpen);
+            button.update()
+        })
+    }
+
+    /**
      * @summary Hands the Team section the scene's peers, each in the hue it is drawn in, and the lens: a new
      * scene refills the list, a changed lens only recolours it and puts its checks back.
      * @param {Boolean} refill `true` for a new scene
      * @protected
      */
     syncTeam(refill) {
-        const me = this;
+        const me = this, peers = ObservatorySceneLayout.peersOf(me.scene);
 
         me.getReference('observatory-team')?.sync({
             lensPeers: me.lensPeers,
             named    : me.scene.identities.length > 0,
-            peers    : ObservatorySceneLayout.peersOf(me.scene).map(peer => ({...peer, hue: me.hueOf(peer.id)})),
+            peers    : peers.map(peer => ({...peer, hue: me.hueOf(peer.id)})),
             refill
-        })
+        });
+
+        me.sectionChosen || (me.openSection = peers.length ? 'team' : 'nodes')
     }
 
     /**
-     * @summary Writes the read's line into the head, with the capture instant in the viewer's own clock, the
-     * way the Golden Path text pane stamps it, and a withheld route named beside it. The Golden Path leaf is the
-     * pane's one source for the route's admission: it alone knows whether the route expired. Under the lens the
-     * line counts its nodes and peers; under the heat it states the window and how many nodes it could not read.
+     * @summary Writes the head: the title names the view and the geography the scene drew, once it drew a node; the
+     * first line is the team's sentence ({@link AgentOS.util.ObservatoryBrief#line}), stamped in the viewer's own
+     * clock the way the Golden Path text pane stamps it; Details holds the read's counts, a withheld route (the
+     * Golden Path leaf alone knows whether the route expired), the lens's nodes and peers, and the heat's window
+     * with how many nodes it could not read.
      * @protected
      */
     updateLine() {
         const
-            me             = this,
-            head           = me.getReference('observatory-head'),
-            route          = me.routeEnvelope,
-            {scene}        = me,
-            {heat, lens}   = me.overlays,
-            plural         = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
-            days           = ObservatorySceneLayout.attention.windowMs / 86400000,
-            lensed         = lens ? lens.lens.reduce((sum, peer) => sum + (peer > 0 ? 1 : 0), 0) : 0,
-            unknown        = heat ? heat.reduce((sum, value) => sum + (Number.isNaN(value) ? 1 : 0), 0) : 0,
-            // the line counts what the layout drew, names what the view hid, and what the read carried beyond it
-            drawn          = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
+            me           = this,
+            route        = me.routeEnvelope,
+            {scene}      = me,
+            {heat, lens} = me.overlays,
+            formatStamp  = at => ViewerTime.formatViewerTime(at)?.text ?? null,
+            plural       = (count, word) => `${count} ${word}${count === 1 ? '' : 's'}`,
+            days         = ObservatorySceneLayout.attention.windowMs / 86400000,
+            lensed       = lens ? lens.lens.reduce((sum, peer) => sum + (peer > 0 ? 1 : 0), 0) : 0,
+            unknown      = heat ? heat.reduce((sum, value) => sum + (Number.isNaN(value) ? 1 : 0), 0) : 0,
+            // the counts are what the layout drew, what the view hid, and what the read carried beyond it
+            drawn        = scene && {nodes: scene.nodes.length, edges: scene.edges.length, halo: scene.halo, hidden: scene.hidden, overCap: scene.overCap, wellCap: scene.wellCap};
 
-        if (head) {
-            head.vdom.cn[1].text = [
-                GraphSceneEnvelope.describe(me.envelope, at => ViewerTime.formatViewerTime(at)?.text ?? null, drawn).text,
+        me.getReference('observatory-head')?.set({
+            brief  : ObservatoryBrief.line(me.envelope, scene, {formatStamp}),
+            details: [
+                GraphSceneEnvelope.describe(me.envelope, formatStamp, drawn).text,
                 GoldenPathEnvelope.currency(route) === 'withheld' && `route withheld · ${GoldenPathEnvelope.withheldReason(route)}`,
                 lens && `lens · ${plural(lensed, 'node')} · ${plural(me.lensPeers.length, 'peer')}`,
                 heat && `heat · last ${plural(days, 'day')}${unknown ? ` · ${unknown} unknown` : ''}`
-            ].filter(Boolean).join(' · ');
-            head.update()
-        }
+            ].filter(Boolean).join(' · '),
+            title  : ['Observatory', scene?.nodes.length && ObservatoryViewContainer.titleOf(scene.geography)].filter(Boolean).join(' · ')
+        })
     }
 
     /**
@@ -870,18 +946,19 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     updateSelection() {
-        this.getReference('observatory-selected')?.set({facts: this.factsOf(), note: this.selectionNote})
+        this.getReference('observatory-selected')?.set({facts: ObservatorySelectionContainer.factsOf(this), note: this.selectionNote})
     }
 
     /**
-     * @summary Hands the View section the pane's state: the geography, each overlay, the attention window, and
-     * why the Golden Path read withholds the route while it does.
+     * @summary Hands the View section the pane's state: the geography chosen and the one drawn, each overlay, the
+     * attention window, and why the Golden Path read withholds the route while it does.
      * @protected
      */
     updateView() {
         const me = this, route = me.routeEnvelope;
 
         me.getReference('observatory-view-section')?.sync({
+            drawn        : me.scene?.nodes.length ? me.scene.geography : null,
             geography    : me.geography,
             halo         : me.halo,
             heat         : me.heatOverlay,

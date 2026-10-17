@@ -1,7 +1,9 @@
+import AgentFreshness         from '../../util/AgentFreshness.mjs';
 import BaseContainer          from '../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import Button                 from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import FleetAgent             from '../../model/FleetAgent.mjs';
 import HomeCanvas             from './Canvas.mjs';
+import OpenWorkSeat           from '../../util/OpenWorkSeat.mjs';
 import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
 
 /**
@@ -9,6 +11,40 @@ import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
  * @type {String}
  */
 const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
+
+/**
+ * @summary The first run's promise, in the operator's words: what the door behind it sets up. The
+ * merge gate stays the operator's own decision, never a property of the product.
+ * @type {String}
+ */
+const PROMISE_LINE = 'Set up your own AI engineering team — agents with memory that review each other\'s work, running on your machine. You decide what merges.';
+
+/**
+ * @summary An axis of the operator's line with nothing to say: no answer yet, or an absence another surface tells.
+ * @type {Object}
+ */
+const SILENT = Object.freeze({kind: 'silent'});
+
+/**
+ * @summary A count and its noun: `1 merge`, `2 merges`.
+ * @param {Number} count
+ * @param {String} noun The singular
+ * @returns {String}
+ */
+const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
+
+/**
+ * @summary The operator's line from its segments, with the reasons of the axes it names in the title.
+ * @param {Object[]} segments The line's runs, `{text}` or `{link, text}`
+ * @param {Object[]} axes     The axes the line names
+ * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}}
+ */
+const lineOf = (segments, axes) => ({
+    hidden: segments.length === 0,
+    segments,
+    text  : segments.map(({text}) => text).join(''),
+    title : axes.filter(axis => axis.reason).map(axis => `your ${axis.noun}s: ${axis.reason}`).join(' · ') || null
+});
 
 /**
  * @summary One door per keeper view, named by the question the view answers.
@@ -30,14 +66,20 @@ const door = (iconCls, route, question) => ({
  * Home, the rail's first keeper view. For the returning team it answers "is the team alive, and
  * where do I go?": the team line leads in the display slot, the plane line speaks only when the plane
  * is not connected, and one door leads to each view. For a first-time operator in a packaged shell
- * without a plane it says what FM is and offers one action, *Connect a plane*, with nothing that reads
- * as fleet state. Behind both, a field on the canvas worker ({@link AgentOS.view.home.Canvas}) takes the
+ * without a plane it says what FM is, promises what the door sets up, and offers one action — *Set up
+ * your institution* — with joining a team that already runs one as the quiet second door, and nothing
+ * that reads as fleet state. Behind both, a field on the canvas worker ({@link AgentOS.view.home.Canvas}) takes the
  * pointer from the whole view and draws one mark per rostered agent from the team line's own read.
  *
+ * Above everything, the operator's own line says what waits for the operator: the merges that wait for a
+ * hand and the questions that wait for a word ({@link #operatorLine}). Its merge count opens the fleet
+ * head's merge queue (`mergeQueueOpen`), its question count the Mailbox's open questions (`questionsOpen`).
+ *
  * @summary Binds the Viewport provider's roster store and the roster surface's truths (the cockpit's
- * liveness owner fills them), `instanceState` (the chrome switcher's verdict and vocabulary) and
- * `shellPlaneConfigured`, which the ViewportController publishes from the shell's plane status
- * (`false` only for a packaged shell without a plane).
+ * liveness owner fills them), the merge queue store, the open-work read's state and its questions axis, `instanceState`
+ * (the chrome switcher's verdict and vocabulary) and `shellPlaneConfigured`, which the
+ * ViewportController publishes from the shell's plane status (`false` only for a packaged shell
+ * without a plane).
  *
  * @class AgentOS.view.home.Container
  * @extends Neo.container.Base
@@ -62,9 +104,12 @@ class Container extends BaseContainer {
          * @member {Object} bind
          */
         bind: {
+            awaitingMergeStore  : 'stores.fleetAwaitingMerge',
             gridAdapterState    : data => data.gridAdapterState,
             gridDegradedReason  : data => data.gridDegradedReason,
             instanceState       : data => data.instanceState,
+            openWork            : data => data.openWork,
+            questions           : data => data.questions,
             rosterStore         : 'stores.fleetRoster',
             shellPlaneConfigured: data => data.shellPlaneConfigured
         },
@@ -77,6 +122,12 @@ class Container extends BaseContainer {
             mouseleave: 'onFieldLeave',
             mousemove : {fn: 'onFieldMove', local: true}
         },
+        /**
+         * The merge queue the cockpit's open-work read fills; the operator's line counts it.
+         * @member {AgentOS.store.FleetAwaitingMerge|null} awaitingMergeStore_=null
+         * @reactive
+         */
+        awaitingMergeStore_: null,
         /**
          * The roster surface's adapter state: `cold` until the read answers, then `live` or `stale`.
          * @member {String} gridAdapterState_='cold'
@@ -95,6 +146,20 @@ class Container extends BaseContainer {
          * @reactive
          */
         instanceState_: 'off',
+        /**
+         * The open-work read's state, the provider's `openWork` block `{coverage, observedAt, reason, state}`.
+         * @member {Object|null} openWork_=null
+         * @reactive
+         */
+        openWork_: null,
+        /**
+         * The questions axis of the operator's line, the provider's `questions` block `{count, reason, state}`
+         * as its source answers it ({@link AgentOS.util.OpenWorkRead#questions}): `ok` · `unsupported` ·
+         * `unavailable`, or every leaf `null` while unanswered.
+         * @member {Object|null} questions_=null
+         * @reactive
+         */
+        questions_: null,
         /**
          * The roster the cockpit's liveness owner fills; the team line counts it.
          * @member {AgentOS.store.FleetRoster|null} rosterStore_=null
@@ -131,6 +196,12 @@ class Container extends BaseContainer {
             items : [{
                 ntype    : 'component',
                 tag      : 'p',
+                cls      : ['fm-home-operator'],
+                hidden   : true,
+                reference: 'operator-line'
+            }, {
+                ntype    : 'component',
+                tag      : 'p',
                 cls      : ['fm-home-eyebrow'],
                 reference: 'eyebrow',
                 text     : 'Neo Agent OS'
@@ -145,7 +216,7 @@ class Container extends BaseContainer {
                 tag      : 'p',
                 cls      : ['fm-home-lede'],
                 reference: 'lede',
-                text     : 'Your fleet\'s state at a glance, its work streaming in real time, commanded from the cockpit, not a terminal.'
+                text     : PROMISE_LINE
             }, {
                 ntype    : 'component',
                 tag      : 'p',
@@ -164,12 +235,50 @@ class Container extends BaseContainer {
                     door('fa-solid fa-server',         '/system',      'Is the plane healing itself?')
                 ]
             }, {
-                module   : Button,
-                cls      : ['agent-button', 'agent-submit-button', 'fm-home-connect'],
-                handler  : 'onAttachPlane',
+                // the first run's two doors: the declared one as the primary action, joining as a text link
+                ntype    : 'container',
+                cls      : ['fm-home-first-run'],
+                flex     : 'none',
                 hidden   : true,
-                reference: 'connect-plane',
-                text     : 'Connect a plane'
+                layout   : {ntype: 'vbox', align: 'start'},
+                reference: 'first-run',
+                items    : [{
+                    module   : Button,
+                    cls      : ['agent-button', 'agent-submit-button', 'fm-home-setup'],
+                    flex     : 'none',
+                    handler  : 'onSetupInstitution',
+                    reference: 'setup-institution',
+                    text     : 'Set up your institution'
+                }, {
+                    ntype    : 'component',
+                    tag      : 'p',
+                    cls      : ['fm-home-setup-line'],
+                    flex     : 'none',
+                    reference: 'setup-line',
+                    text     : 'A GitHub token · where it runs · start.'
+                }, {
+                    // the second door: the question in plain words, only the verb is the link
+                    ntype    : 'container',
+                    cls      : ['fm-home-connect-line'],
+                    flex     : 'none',
+                    layout   : {ntype: 'hbox', align: 'baseline'},
+                    reference: 'connect-line',
+                    items    : [{
+                        ntype    : 'component',
+                        tag      : 'span',
+                        cls      : ['fm-home-connect-question'],
+                        flex     : 'none',
+                        reference: 'connect-question',
+                        text     : 'Joining a team that already runs one?'
+                    }, {
+                        module   : Button,
+                        cls      : ['fm-home-link', 'fm-home-connect'],
+                        flex     : 'none',
+                        handler  : 'onConnectInstitution',
+                        reference: 'connect-plane',
+                        text     : 'Connect to it'
+                    }]
+                }]
             }]
         }]
     }
@@ -202,6 +311,112 @@ class Container extends BaseContainer {
     }
 
     /**
+     * @summary The merge axis of the operator's line, read for what it can claim. A bridge without the
+     * open-work verb, or a read that threw, is the connection's story and stays silent; only the producer's
+     * own `unavailable` is named. A counted queue keeps its completeness and its age apart, so neither a
+     * partial nor a stale zero reads as a current one. A stale queue ages from its oldest row.
+     * @param {Object|null} openWork  The provider's `openWork` block
+     * @param {Object[]}    mergeRows The merge queue's rows (`{observedAt, stale}`)
+     * @param {Number}      now       The viewer's clock
+     * @returns {Object} `{kind: 'silent'}`, `{kind: 'numberless', phrase, reason}` or `{kind: 'counted', asOf, complete, count, reason}`
+     */
+    static mergeAxis(openWork, mergeRows, now) {
+        const state = openWork?.state ?? null;
+
+        if (state === 'unavailable') {
+            return openWork.coverage === 'unavailable' ? {kind: 'numberless', phrase: 'could not be read', reason: openWork.reason} : SILENT
+        }
+
+        if (state !== 'ok' && state !== 'stale') return SILENT;
+
+        const
+            stale      = state === 'stale' || mergeRows.some(row => row.stale === true),
+            observedAt = OpenWorkSeat.oldestObservedAt(mergeRows) ?? openWork.observedAt,
+            ageMs      = stale && observedAt ? now - Date.parse(observedAt) : NaN,
+            // a stale read that cannot say when its count held is not a complete one
+            complete   = openWork.coverage === 'complete' && (!stale || Number.isFinite(ageMs));
+
+        return {
+            kind      : 'counted',
+            asOf      : Number.isFinite(ageMs) ? ` as of ${AgentFreshness.formatAge(ageMs)}` : '',
+            complete,
+            count     : mergeRows.length,
+            // a partial read's count is the least that waits
+            lowerBound: openWork.coverage !== 'complete',
+            reason    : complete ? null : openWork.reason
+        }
+    }
+
+    /**
+     * @summary The questions axis of the operator's line, as its source answers it
+     * ({@link AgentOS.util.OpenWorkRead#questions}): `ok` counts, `unsupported` and `unavailable` name
+     * themselves with the source's reason, and no answer is silent.
+     * @param {Object|null} questions The provider's `questions` block `{count, reason, state}`
+     * @returns {Object} An axis, shaped as {@link #mergeAxis} returns one
+     */
+    static questionsAxis(questions) {
+        switch (questions?.state) {
+            case 'ok':
+                return Number.isInteger(questions.count) ? {kind: 'counted', asOf: '', complete: true, count: questions.count, reason: null} : SILENT;
+            case 'unsupported':
+                return {kind: 'numberless', phrase: 'are not listed yet', reason: questions.reason};
+            case 'unavailable':
+                return {kind: 'numberless', phrase: 'could not be read', reason: questions.reason};
+            default:
+                return SILENT
+        }
+    }
+
+    /**
+     * @summary The operator's own line: what waits for a hand (merges) and for a word (questions), one count
+     * that belongs to the operator alone. "nothing waits for you" is said only when both axes are complete
+     * and observed zero, and a stale observation keeps its age. An axis without a number leads, and so does
+     * a zero that is not complete, each with its reason in the title. The other axis keeps its number,
+     * never a 0, and a partial count reads as the least that waits ("at least 5 merges … · some could not
+     * be read"). Any axis with something to say lights the line, so a silent one never hides a known count;
+     * with nothing to say, the line is hidden. The merge count links to the fleet head's merge queue, the
+     * question count to the Mailbox's open questions.
+     * @param {Object}      facts
+     * @param {Object|null} facts.openWork  The provider's `openWork` block: the merge axis's state
+     * @param {Object[]}    facts.mergeRows The merge queue's rows (`{observedAt, stale}`)
+     * @param {Object|null} facts.questions The provider's `questions` block `{count, reason, state}`
+     * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
+     * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}} `segments` are the
+     * line's runs: `{text}`, or `{link, text}` for a count, `link` `merges` or `questions`
+     */
+    static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
+        const axes = [
+            {noun: 'question', ...Container.questionsAxis(questions)},
+            {noun: 'merge',    ...Container.mergeAxis(openWork, mergeRows, now)}
+        ];
+
+        if (axes.every(axis => axis.kind === 'counted' && axis.complete && axis.count === 0)) {
+            return lineOf([{text: `nothing waits for you${axes.find(axis => axis.asOf)?.asOf ?? ''}`}], [])
+        }
+
+        const
+            numberless = axes.filter(axis => axis.kind === 'numberless' || (axis.kind === 'counted' && axis.count === 0 && !axis.complete)),
+            waiting    = axes.filter(axis => axis.kind === 'counted' && axis.count > 0),
+            runs       = numberless.map(axis => [{text: `your ${axis.noun}s ${axis.phrase ?? 'could not all be read'}`}]);
+
+        if (waiting.length > 0) {
+            const one = waiting.length === 1 && waiting[0].count === 1;
+
+            runs.push([
+                ...waiting.flatMap((axis, index) => [
+                    ...(index ? [{text: ' · '}] : []),
+                    {link: `${axis.noun}s`, text: (axis.lowerBound ? 'at least ' : '') + counted(axis.count, axis.noun) + axis.asOf}
+                ]),
+                {text: ` ${one ? 'waits' : 'wait'} for you`}
+            ]);
+
+            waiting.some(axis => axis.lowerBound) && runs.push([{text: 'some could not be read'}])
+        }
+
+        return lineOf(runs.flatMap((run, index) => [...(index ? [{text: ' · '}] : []), ...run]), [...numberless, ...waiting])
+    }
+
+    /**
      * @summary Renders whatever the provider already holds: Home is built before the first read lands. The
      * field joins behind the hero wherever a canvas worker runs.
      * @param {...*} args
@@ -214,7 +429,7 @@ class Container extends BaseContainer {
         if (Neo.config.useCanvasWorker && !Neo.config.unitTestMode) {
             me.insert(0, {
                 module   : HomeCanvas,
-                quietIds : ['eyebrow', 'lead', 'lede', 'plane-line'].map(reference => me.getReference(reference).id),
+                quietIds : ['operator-line', 'eyebrow', 'lead', 'lede', 'plane-line'].map(reference => me.getReference(reference).id),
                 reference: 'canvas',
                 team     : me.team
             })
@@ -225,8 +440,20 @@ class Container extends BaseContainer {
 
     /** @param {...*} args */
     destroy(...args) {
+        this.awaitingMergeStore?.un({load: this.applyState, recordChange: this.applyState, scope: this});
         this.rosterStore?.un({load: this.applyState, recordChange: this.applyState, scope: this});
         super.destroy(...args)
+    }
+
+    /**
+     * @summary Follows the merge queue: each open-work answer replaces its rows, and the operator's line recounts.
+     * @param {AgentOS.store.FleetAwaitingMerge|null} value
+     * @param {AgentOS.store.FleetAwaitingMerge|null} oldValue
+     */
+    afterSetAwaitingMergeStore(value, oldValue) {
+        oldValue?.un({load: this.applyState, recordChange: this.applyState, scope: this});
+        value   ?.on({load: this.applyState, recordChange: this.applyState, scope: this});
+        this.isConstructed && this.applyState()
     }
 
     /** @param {String} value @param {String} oldValue */
@@ -241,6 +468,16 @@ class Container extends BaseContainer {
 
     /** @param {String} value @param {String} oldValue */
     afterSetInstanceState(value, oldValue) {
+        this.isConstructed && this.applyState()
+    }
+
+    /** @param {Object|null} value @param {Object|null} oldValue */
+    afterSetOpenWork(value, oldValue) {
+        this.isConstructed && this.applyState()
+    }
+
+    /** @param {Object} value @param {Object} oldValue */
+    afterSetQuestions(value, oldValue) {
         this.isConstructed && this.applyState()
     }
 
@@ -272,9 +509,10 @@ class Container extends BaseContainer {
     }
 
     /**
-     * @summary Picks the reader. A packaged shell without a plane gets the product line, the lede and
-     * *Connect a plane*. Everyone else gets the team line in the display slot, the plane line whenever
-     * the chrome's verdict is not `ok`, and the doors. The field's team comes from the team line's read.
+     * @summary Picks the reader. A packaged shell without a plane gets the product line, the promise and
+     * the first run's two doors. Everyone else gets the operator's line above everything, the team line in the
+     * display slot, the plane line whenever the chrome's verdict is not `ok`, and the doors. The field's
+     * team comes from the team line's read.
      */
     applyState() {
         const
@@ -286,16 +524,31 @@ class Container extends BaseContainer {
                 adapterState  : me.gridAdapterState,
                 degradedReason: me.gridDegradedReason,
                 states        : me.rosterStore?.items.map(record => record.state) ?? []
-            });
+            }),
+            operator = firstRun ? {hidden: true, segments: [], title: null} : Container.operatorLine({
+                openWork : me.openWork,
+                mergeRows: me.awaitingMergeStore?.items ?? [],
+                questions: me.questions
+            }),
+            operatorLine = me.getReference('operator-line');
+
+        Object.assign(operatorLine.vdom, {
+            cn: operator.segments.map(({link, text}) => link
+                ? {tag: 'button', type: 'button', cls: ['fm-home-operator-link', `is-${link}`], text}
+                : {tag: 'span', text}),
+            title: operator.title
+        });
+        operatorLine.set({hidden: operator.hidden});
+        operatorLine.update();
 
         me.getReference('lead').set({
             cls : line && !line.answered ? ['fm-home-h1', 'is-quiet'] : ['fm-home-h1'],
             text: line?.text ?? PRODUCT_LINE
         });
 
-        me.getReference('lede').hidden          = !firstRun;
-        me.getReference('connect-plane').hidden = !firstRun;
-        me.getReference('doors').hidden         = firstRun;
+        me.getReference('lede').hidden      = !firstRun;
+        me.getReference('first-run').hidden = !firstRun;
+        me.getReference('doors').hidden     = firstRun;
 
         me.getReference('plane-line').set({hidden: firstRun || state === 'ok', text: `Plane ${word}`});
 
@@ -304,10 +557,19 @@ class Container extends BaseContainer {
     }
 
     /**
-     * @summary Hands a click anywhere on Home to the field.
+     * @summary Hands a click anywhere on Home to the field. A click on the operator line's merge count
+     * asks for the fleet head's merge queue instead (`mergeQueueOpen`), one on its question count for the
+     * Mailbox's open questions (`questionsOpen`).
      * @param {Object} data
      */
     onFieldClick(data) {
+        const link = data.path?.find(node => node.cls?.includes('fm-home-operator-link'));
+
+        if (link) {
+            this.fire(link.cls.includes('is-questions') ? 'questionsOpen' : 'mergeQueueOpen');
+            return
+        }
+
         this.getReference('canvas')?.onClick(data)
     }
 

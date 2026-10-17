@@ -1,7 +1,7 @@
 import ActivityStream         from '../activity/Container.mjs';
 import AgentDetail            from '../detail/Container.mjs';
-import Button                 from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container              from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import ControlToolbar         from './ControlToolbar.mjs';
 import DockDropIndicators     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/DropIndicators.mjs';
 import DockPreview            from '../../../../../node_modules/neo.mjs/src/dashboard/dock/interaction/Preview.mjs';
 // NAMED registration import: the engine's dock LayoutAdapter emits `ntype: 'tab-container'` for tab zones
@@ -10,6 +10,7 @@ import TabContainer           from '../../../../../node_modules/neo.mjs/src/tab/
 import CatchUpPane            from '../catchup/Container.mjs';
 import DockService           from '../../../../../node_modules/neo.mjs/src/ai/client/DockService.mjs';
 import VesselContainer        from './VesselContainer.mjs';
+import {boundAgentOsBind}     from '../instances/MenuList.mjs';
 import PerspectiveLibrary     from '../../../../../node_modules/neo.mjs/src/dashboard/dock/persistence/PerspectiveLibrary.mjs';
 import FleetCockpitController from './Controller.mjs';
 import FleetGrid              from '../roster/Container.mjs';
@@ -20,8 +21,7 @@ import TasksPane              from '../tasks/Container.mjs';
 import CockpitStateProvider   from './StateProvider.mjs';
 import CockpitPerspectives    from '../../../util/CockpitPerspectives.mjs';
 import LivenessCadence        from '../../../util/LivenessCadence.mjs';
-import SpineBannerComponent   from './SpineBannerComponent.mjs';
-import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
+import StageWindow            from '../../../util/StageWindow.mjs';
 
 /**
  * The bounded window (ms) a single liveness read gets before it is treated as a degrade.
@@ -121,19 +121,21 @@ class FleetCockpit extends VesselContainer {
         panes: {
             fleet: {
                 module   : FleetGrid,
+                closable : false,
                 header   : {text: 'Fleet'},
                 reference: 'fleet-grid',
                 bind     : {
                     adapterState      : data => data.gridAdapterState,
                     daemonFault       : data => data.daemonFault,
                     openWork          : data => data.openWork,
+                    stageOutcome      : data => data.stageLaunch,
                     presenceCapability: data => data.presenceCapability,
                     store             : 'stores.fleetRoster'
                 },
                 // the bootstrap CTA (an empty fleet's path to its first agent) and the selection
                 // seam's drill (the roster controller wrote the provider truth pair; this listener
                 // drives the detail reveal)
-                listeners: {addAgentRequest: 'onAddAgentRequest', agentSelect: 'onAgentSelect'}
+                listeners: {addAgentRequest: 'onAddAgentRequest', agentSelect: 'onAgentSelect', stageRequest: 'onStageRequest'}
             },
             stream: {
                 module   : ActivityStream,
@@ -142,10 +144,13 @@ class FleetCockpit extends VesselContainer {
                 bind     : {
                     adapterState    : data => data.streamAdapterState,
                     counts          : data => data.activityCounts,
+                    guidance        : data => data.activityGuidance,
                     historyExhausted: data => data.streamHistoryExhausted,
+                    mode            : data => data.activityMode,
+                    observation     : data => data.activityObservation,
                     store           : 'stores.fleetActivityEvents'
                 },
-                listeners: {historyRequest: 'onActivityHistoryRequest'}
+                listeners: {historyRequest: 'onActivityHistoryRequest', messageOpen: 'onActivityMessageOpen', modeChange: 'onActivityModeChange'}
             },
             // south reading surfaces: per-agent session-summary recall, the WHAT axis of mission
             // control, the operator's own mailbox + compose surface, and the historical Bird-View
@@ -170,7 +175,14 @@ class FleetCockpit extends VesselContainer {
                 module   : OperatorMailbox,
                 header   : {text: 'Mailbox'},
                 reference: 'operator-mailbox',
-                listeners: {compose: 'onOperatorCompose', inboxPageRequest: 'onOperatorInboxPageRequest'}
+                bind     : {questionCount: data => data.questions},
+                listeners: {
+                    compose         : 'onOperatorCompose',
+                    inboxPageRequest: 'onOperatorInboxPageRequest',
+                    markReadRequest : 'onOperatorMarkRead',
+                    messageOpen     : 'onOperatorMessageOpen',
+                    resolveRequest  : 'onOperatorResolve'
+                }
             },
             catchUp: {
                 module   : CatchUpPane,
@@ -197,7 +209,9 @@ class FleetCockpit extends VesselContainer {
                 module    : AgentDetail,
                 header    : {text: 'Agent detail'},
                 reference : 'agent-detail',
-                autoHidden: true
+                autoHidden: true,
+                listeners : {lifecycleIntent: 'onAgentLifecycleIntent'},
+                bind      : {...boundAgentOsBind}
             },
             perspectives: {
                 module    : () => import('../perspectives/Container.mjs'),
@@ -218,6 +232,7 @@ class FleetCockpit extends VesselContainer {
                 header    : {text: 'Add agent'},
                 reference : 'define-agent',
                 autoHidden: true,
+                bind      : {...boundAgentOsBind},
                 listeners : {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'}
             },
             wakeRoutes: {
@@ -266,112 +281,18 @@ class FleetCockpit extends VesselContainer {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * The persistent chrome, DECLARED: every slot the cockpit always owns — the banner and
-         * telltale are real component classes whose slots bind provider truth (each channel a
-         * first-class config); handlers are controller-resolved strings. Static child items bind
-         * under the child provider (reviewer positive control + live re-measurement, 2026-08-29
-         * — the earlier add()-path workaround rested on a misattributed root cause). Perspectives
-         * are applied from their drawer, never from this bar; runtime injection stays limited to
-         * the one genuinely dynamic member, the dock projection shell (document-derived,
-         * instance-bound callbacks).
+         * The persistent chrome, DECLARED: the control bar ({@link AgentOS.view.fleet.cockpit.ControlToolbar})
+         * over the dock host. Static child items bind under the child provider (reviewer positive
+         * control + live re-measurement, 2026-08-29 — the earlier add()-path workaround rested on a
+         * misattributed root cause). Perspectives are applied from their drawer, never from the bar;
+         * runtime injection stays limited to the one genuinely dynamic member, the dock projection
+         * shell (document-derived, instance-bound callbacks).
          * @member {Object[]} items
          */
         items: [{
-            ntype    : 'toolbar',
-            cls      : ['fm-cockpit-bar'],
+            module   : ControlToolbar,
             flex     : 'none',
-            reference: 'fleet-control-bar',
-            items    : ['->', {
-                // THE STATE BLOCK — the bar's structural law: state never sits between action
-                // buttons; the two spine axes (fleet · wake) render as one right-aligned block
-                // before the action group. The pills run in a row wherever they carry their
-                // words; narrow widths drop to dots-with-titles — the collapse order is a
-                // container query in the cockpit SCSS, never measured here.
-                ntype : 'container',
-                cls   : ['fm-bar-state'],
-                layout: {ntype: 'hbox', align: 'center'},
-                // Both pills size to their words: the block's flexbox layout would otherwise
-                // write `flex: 1 1 0%` onto each child, which splits the row form's width equally
-                // and clipped the longer pill mid-word while the shorter one held slack.
-                items: [{
-                    // the per-SPINE honesty pill — the derived spineBanner leaves bind here at
-                    // the consumption site; status word visible, full sentence on title/aria
-                    module   : SpineBannerComponent,
-                    bind     : {
-                        bannerAriaLabel: data => data.spineBanner.ariaLabel,
-                        bannerTitle    : data => data.spineBanner.title,
-                        cls            : data => [`fm-spine-banner-${data.spineBanner.kind}`],
-                        hidden         : data => data.spineBanner.hidden,
-                        text           : data => data.spineBanner.text
-                    },
-                    flex     : '0 1 auto',
-                    reference: 'fleet-spine-banner'
-                }, {
-                    // the per-viewer wake-push telltale — every channel of the derived chip binds
-                    // here as its own first-class config (text, cls, title, aria — independently
-                    // reactive; see the component class)
-                    module   : ViewerWakeTelltaleComponent,
-                    bind     : {
-                        chipAriaLabel: data => data.viewerWakeTelltale.ariaLabel,
-                        chipTitle    : data => data.viewerWakeTelltale.title,
-                        cls          : data => data.viewerWakeTelltale.cls.slice(1),
-                        text         : data => data.viewerWakeTelltale.text
-                    },
-                    flex     : '0 1 auto',
-                    reference: 'viewer-wake-telltale'
-                }]
-            }, {
-                // the banner's action: Reconnect re-drives every liveness seam through the existing
-                // bridge; beside a running plane it becomes Connect and opens the plane card. Its
-                // visibility and its words are the banner verdict, bound from the same formula. First
-                // of the ACTION group — contextual: it exists only while the fleet pill shows.
-                module   : Button,
-                bind     : {
-                    hidden : data => data.spineBanner.hidden,
-                    iconCls: data => data.spineBanner.action === 'connect-plane' ? 'fa-solid fa-plug' : 'fa-solid fa-rotate',
-                    text   : data => data.spineBanner.action === 'connect-plane' ? 'Connect' : 'Reconnect'
-                },
-                cls      : ['fm-reconnect-button'],
-                handler  : 'onSpineAction',
-                reference: 'fleet-reconnect-button'
-            }, {
-                // The fleet-start outcome summary — written by the controller after the staged
-                // bring-up settles ("N started · U UNKNOWN · M rejected · K excluded"; per-member
-                // reasons ride the title). Empty + hidden until a start ran; renders beside the
-                // start verb whose outcome it reports.
-                ntype    : 'component',
-                cls      : ['fm-fleet-start-summary'],
-                hidden   : true,
-                reference: 'fleet-start-summary'
-            }, {
-                // exception-only chrome (the banner's class): each recall verb renders ONLY
-                // while its pane is away in a vessel — the pane carries its own toggle, but a
-                // windowed pane leaves the main view with no way home without this. Nominal
-                // state costs zero pixels; `removeDom` keeps the class-based selectors honest.
-                module   : Button,
-                cls      : ['fm-memories-window-toggle'],
-                handler  : 'onMemoriesWindowToggle',
-                hidden   : true,
-                hideMode : 'removeDom',
-                iconCls  : 'fa-solid fa-arrow-down-left',
-                reference: 'memories-recall-chrome',
-                text     : 'Return memories'
-            }, {
-                module   : Button,
-                cls      : ['fm-detail-window-toggle'],
-                handler  : 'onDetailWindowToggle',
-                hidden   : true,
-                hideMode : 'removeDom',
-                iconCls  : 'fa-solid fa-arrow-down-left',
-                reference: 'detail-recall-chrome',
-                text     : 'Reattach detail'
-            }, {
-                module : Button,
-                cls    : ['fm-fleet-start'],
-                handler: 'onStartFleet',
-                iconCls: 'fa-solid fa-play',
-                text   : 'Start fleet'
-            }]
+            reference: 'fleet-control-bar'
         }, {
             // The dock host under the control bar: the projected shell mounts at its first slot,
             // and the engine's drag feedback — the preview renderer and the drop-indicator menu —
@@ -510,6 +431,8 @@ class FleetCockpit extends VesselContainer {
 
         let me = this;
 
+        me.dockModel = CockpitPerspectives.reconcileDetailPin(me.dockModel);
+
         me.getDockHost().insert(me.dockShellIndex, me.projectDockModel());
         me.perspectiveStore = Neo.create(PerspectiveLibrary, {collection: CockpitPerspectives.emptyCollection()});
         me.publishPerspectives()
@@ -568,7 +491,8 @@ class FleetCockpit extends VesselContainer {
      * instead: validate everything before mutating anything, so a refused restore leaves the live
      * layout byte-untouched. An unknown name is a refusal too, and so is a projection that
      * rejects: on both paths the verdict settles with the commit's projection and never claims a
-     * switch the shell did not make.
+     * switch the shell did not make. Stored layouts must retain the Fleet roster; their saved
+     * close flag cannot override the current pane's non-closable policy.
      *
      * Pane continuity across a switch preserves component identity — a declared pane the switch
      * un-trees is parked, one it re-trees returns as the same instance; a surface created now
@@ -583,6 +507,7 @@ class FleetCockpit extends VesselContainer {
         let me       = this,
             declared = me.perspectiveSelection?.document(name) ?? null,
             document = declared,
+            pinned   = me.dockModel?.items?.detail?.pinned === true,
             errors   = [];
 
         if (!declared) {
@@ -593,7 +518,22 @@ class FleetCockpit extends VesselContainer {
             }
 
             // a host without a pane catalog has nothing to retire against, so it keeps every item
-            me.panes && (document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes)))
+            me.panes && (document = CockpitPerspectives.retireUndeclaredItems(document, Object.keys(me.panes)));
+
+            if (me.panes?.fleet) {
+                if (!document.items.fleet) {
+                    return me.refusePerspective(name, ['This layout has no Fleet roster. Choose Overview, Focus or Review.'])
+                }
+
+                document.items.fleet.closable = me.panes.fleet.closable
+            }
+
+            if (pinned || me.perspectiveStore?.getPerspective(name)?.metadata?.source === 'fm-cockpit-capture') {
+                document = CockpitPerspectives.reconcileDetailPin(
+                    document,
+                    pinned || document.items?.detail?.pinned === true
+                )
+            }
         }
 
         me.presetError = null;
@@ -607,6 +547,14 @@ class FleetCockpit extends VesselContainer {
                 // the write reaches afterSetActivePerspective, which seats before the engine restores
                 me.activePerspective = name;
                 ({errors} = await me.perspectiveSelection.pending)
+            }
+
+            if (!errors.length && pinned) {
+                const reconciled = CockpitPerspectives.reconcileDetailPin(me.dockModel, true);
+
+                if (reconciled !== me.dockModel) {
+                    await me.onDockZoneDocumentChange(reconciled)
+                }
             }
         } else {
             me.seatInspector(document);
@@ -655,7 +603,7 @@ class FleetCockpit extends VesselContainer {
 
         if (document && CockpitPerspectives.revealsInspector(document) && !me.detailRecord) {
             controller = me.getController();
-            controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null)
+            controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null, {syncDock: false})
         }
     }
 
@@ -896,24 +844,35 @@ class FleetCockpit extends VesselContainer {
             case 'fleet':
                 // the merge queue resolved imperatively, like the inspector's stores: a provider
                 // without it seats none, and the head's button stays hidden
-                seeds = {mergeQueueStore: me.resolveProviderStore('fleetAwaitingMerge')};
+                seeds = {mergeQueueStore: me.resolveProviderStore('fleetAwaitingMerge'),
+                    stageEnabled: !!StageWindow.entryUrl(Neo.windowConfigs?.[me.windowId] || Neo.config)};
                 break;
             case 'stream':
                 seeds = {actorDirectory: controller.buildActivityActorDirectory()};
                 break;
             case 'detail':
-                // the stores resolved imperatively keep the view provider-agnostic; the selected
-                // resident is OWNER-held so a pane created from true absence never drops the
-                // selection; the return verb (away phases only) is SHELL-owned config through the
-                // `shellTools` slot — docked, the dock header owns pop-out
+                // Store references are seeded for bare/vessel mounts; destination scalars stay live
+                // through the pane binding. The selected resident is OWNER-held so a pane created from
+                // true absence never drops the selection; the return verb (away phases only) is
+                // SHELL-owned config through the `shellTools` slot — docked, the dock header owns pop-out
                 seeds = {
                     agentDefinitions: me.resolveProviderStore('agentDefinitions'),
                     fleetTenants    : me.resolveProviderStore('fleetTenants'),
                     record          : me.detailRecord,
+                    instanceStore   : me.resolveProviderStore('fleetInstances'),
                     // the roster admission instant the owner holds: a pane projected after the
                     // roster landed ages its roster-read panes from the real observation
                     rosterObservedAt: controller.rosterObservedAt,
+                    // the owner-held recent-turns answer: a pane projected after the read landed shows
+                    // the seat's stream at once instead of waiting for the next cadence pass
+                    recentTurns     : controller.recentTurnsReader?.snapshot ?? null,
                     shellTools      : [me.buildDetailWindowToggle()]
+                };
+                break;
+            case 'defineAgent':
+                // Store references are instance-bound; destination scalars follow the live pane binding.
+                seeds = {
+                    instanceStore: me.resolveProviderStore('fleetInstances')
                 };
                 break;
             case 'operator':

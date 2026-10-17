@@ -65,7 +65,8 @@ function graphRead(scene = {}, envelope = {}) {
 
 const
     createPane     = (config = {}) => Neo.create(ObservatoryPane, {appName, ...config}),
-    lineOf         = pane => pane.getReference('observatory-head').vdom.cn[1].text,
+    // the read's complete words, which the head keeps behind Details
+    lineOf         = pane => pane.getReference('observatory-head').details,
     selectedOf     = pane => pane.getReference('observatory-selected'),
     // the selected node's label and kind as the section heads them, `null` for a part it leaves out
     headOf         = pane => selectedOf(pane).getReference('selected-head').vdom.cn.map(({removeDom, text}) => removeDom ? null : text),
@@ -100,8 +101,8 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect(lineOf(pane)).toBe('Unobserved');
         expect(pane.items.map(item => item.reference), 'the head and the body, no strip').toEqual(['observatory-head', 'observatory-body']);
-        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the team, the view, the nodes, then the selected node')
-            .toEqual(['observatory-team', 'observatory-view-section', 'observatory-nodes-title', 'observatory-nodes', 'observatory-selected']);
+        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the view, the team, the nodes, then the selected node')
+            .toEqual(['observatory-view-section', 'observatory-team', 'observatory-nodes-head', 'observatory-nodes', 'observatory-selected']);
         expect(headOf(pane)).toEqual(['No node selected', null]);
         expect(labelClsOf(pane)).toContain('is-hint');
         expect(selectedOf(pane).getReference('selected-actions').hidden, 'no node, no action').toBe(true);
@@ -217,7 +218,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.envelope   = graphRead();
 
         expect(ids()).toEqual(['pr-101']);
-        expect(title('observatory-nodes-title')).toBe('Nodes · 1 of 7 · relations reach the rest');
+        expect([title('observatory-nodes-title'), title('observatory-nodes-caption')]).toEqual(['Nodes · 1 of 7', 'changed in the last 3 days first · then by activity · relations reach the rest']);
 
         pane.onNodeSelect({node: {id: q('pr-101')}});
         expect(rowsOf(pane)).toHaveLength(1);
@@ -244,8 +245,39 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
         pane.listBudget = 500;
         pane.envelope   = graphRead({completeness: 'truncated'}, {snapshotId: 'snap-8b21'});
         expect(ids()).toHaveLength(7);
-        expect(title('observatory-nodes-title')).toBe('Nodes');
+        expect([title('observatory-nodes-title'), title('observatory-nodes-caption')]).toEqual(['Nodes', 'changed in the last 3 days first · then by activity']);
         expect(relationsTitle(pane)).toBe('Relations · 2');
+
+        pane.destroy()
+    });
+
+    test('the Nodes list orders the whole read before the budget cuts it, and its toggle reads by relations and back, keeping the selection listed', () => {
+        const
+            pane   = createPane(),
+            toggle = pane.getReference('observatory-nodes-order'),
+            ids    = () => pane.nodeStore.items.map(({id}) => id.replace('neomjs/neo#', '')),
+            state  = () => [pane.getReference('observatory-nodes-title').text, pane.getReference('observatory-nodes-caption').text, toggle.pressed, toggle.vdom['aria-pressed']];
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        pane.listBudget = 2;
+        pane.envelope   = teamRead();
+
+        expect(ids(), 'the newest change leads, though the layout places it sixth').toEqual(['issue-404', 'pr-101']);
+        expect(state()).toEqual(['Nodes · 2 of 7', 'changed in the last 3 days first · then by activity · relations reach the rest', false, 'false']);
+
+        toggle.onClick({});
+        expect(ids()).toEqual(['pr-101', 'agent-grace']);
+        expect(state()).toEqual(['Nodes · 2 of 7', 'by relations · most related first · relations reach the rest', true, 'true']);
+
+        pane.onNodeSelect({node: {id: q('issue-404')}});
+        expect(ids(), 'a selection the order leaves out takes the one extra row').toEqual(['pr-101', 'agent-grace', 'issue-404']);
+
+        toggle.onClick({});
+        expect(ids(), 'back to what changed, which lists the selection itself').toEqual(['issue-404', 'pr-101']);
+        expect(pane.selectedId).toBe(q('issue-404'));
+        expect(state()[2]).toBe(false);
 
         pane.destroy()
     });
@@ -342,12 +374,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         pane.routeEnvelope = withheld;
         expect(lineOf(pane)).toMatch(/^Current · captured .+ · 7 nodes · 4 edges · 2 in the halo · complete · route withheld · freshness-sla-breached$/);
-        expect(state(), 'the route the graph read carries still draws, and the control still drops it').toEqual(['Golden Path · withheld', false, true]);
+        expect(state(), 'the route the graph read carries still draws, and the control still drops it').toEqual(['Route · withheld', false, true]);
         expect(control.tooltip.text, 'the reason sits in the detail').toMatch(/\(freshness-sla-breached\)/);
 
         pane.routeEnvelope = GoldenPathEnvelope.fromWire({...withheld, admission: {...withheld.admission, admitted: true, fallback: 'current', reasonCode: 'current'}});
         expect(lineOf(pane)).toMatch(/ · complete$/);
-        expect(state()).toEqual(['Golden Path', false, true]);
+        expect(state()).toEqual(['Route', false, true]);
 
         pane.destroy()
     });
@@ -422,7 +454,9 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         ['geography-density', 'geography-strategic'].forEach(reference => control(reference).useRippleEffect = false);
 
-        expect(texts).toEqual(['Roadmap', 'Hubs', 'Attention', 'Golden Path', 'Messages', 'Outside wells']);
+        // the fixture carries no roadmap anchor, so the pressed Roadmap says it drew hub wells instead
+        expect(texts).toEqual(['Roadmap · no anchors', 'Hubs', 'Attention', 'Route', 'Messages', 'Outside wells']);
+        expect(control('geography-strategic').tooltip.text).toMatch(/no roadmap anchors/);
         expect(pressed(), 'the strategic wells, the route and the halo, by default').toEqual([true, false, false, true, false, true]);
         expect(control('heat-toggle').tooltip.text, 'the attention window is stated').toMatch(/in the last 3 days/);
 
@@ -431,10 +465,59 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect([pane.geography, pane.scene.geography, pane.selectedId]).toEqual(['density', 'density', q('issue-404')]);
         expect(pressed().slice(0, 2)).toEqual([false, true]);
+        expect(control('geography-strategic').text, 'unpressed, Roadmap promises nothing').toBe('Roadmap');
 
         control('geography-strategic').onClick({});
         expect([pane.geography, pressed().slice(0, 2)]).toEqual(['strategic', [true, false]]);
 
+        pane.envelope = graphRead({nodes: graphRead().scene.nodes.map(node => node.id === q('concept-dock') ? {...node, gravityWell: true, strategicWeight: 1} : node)});
+        expect(control('geography-strategic').text, 'a read with an anchor draws roadmap wells, and the control drops the note').toBe('Roadmap');
+
+        pane.destroy()
+    });
+
+    test('the head opens with the team\'s sentence, keeps the counts behind Details, and its attention item selects its node', () => {
+        const pane = createPane({envelope: teamRead()}), head = pane.getReference('observatory-head');
+
+        expect(head.brief).toMatchObject({attention: {id: q('pr-101'), text: '#101 · first route item', title: 'first route item'}, tail: 'complete'});
+        expect(head.brief.lead, 'the open issue without its time and the fresh one without its state are unknown').toMatch(/^captured .+ · last 3 days: 1 in motion · 2 unknown$/);
+        expect(head.details, 'the renderer\'s counts wait behind Details').toMatch(/^Current · captured .+ · 7 nodes · 4 edges/);
+        expect([head.detailsOpen, head.vdom.cn[4].hidden], 'folded by default').toEqual([false, true]);
+
+        head.onDetailsClick();
+        expect([head.detailsOpen, head.vdom.cn[4].hidden, head.vdom.cn[3]['aria-expanded']]).toEqual([true, null, 'true']);
+
+        head.onAttentionClick();
+        expect(pane.selectedId, 'the attention item is a way in').toBe(q('pr-101'));
+
+        pane.envelope = GraphSceneEnvelope.fromWire({capability: {state: 'unavailable', reason: 'route-read-failed'}});
+        expect([head.brief.lead, head.brief.attention, head.details]).toEqual(['Unavailable · route-read-failed', null, 'Unavailable · route-read-failed']);
+        expect(head.vdom.cn[3].removeDom, 'nothing more to disclose, no disclosure').toBe(true);
+
+        pane.destroy()
+    });
+
+    test('the head names the view and the geography the scene drew; no surface here calls itself the Golden Path', () => {
+        const
+            titleOf  = pane => pane.getReference('observatory-head').title,
+            anchored = graphRead({nodes: graphRead().scene.nodes.map(node => node.id === q('concept-dock') ? {...node, gravityWell: true, strategicWeight: 1} : node)}),
+            cold     = createPane(),
+            pane     = createPane({envelope: anchored});
+
+        expect(titleOf(cold), 'nothing drawn, no geography named').toBe('Observatory');
+        expect(titleOf(pane)).toBe('Observatory · Roadmap wells');
+
+        pane.geography = 'density';
+        expect(titleOf(pane), 'the title follows a switch').toBe('Observatory · Hub wells');
+
+        pane.set({envelope: graphRead(), geography: 'strategic'});
+        expect(titleOf(pane), 'a read without an anchor draws hub wells, and the title says so').toBe('Observatory · Hub wells');
+
+        const named = [titleOf(pane), ...['geography-strategic', 'geography-density', 'heat-toggle', 'route-toggle', 'mail-toggle', 'halo-toggle'].map(reference => pane.getReference(reference).text)];
+
+        expect(named.filter(text => text.includes('Golden Path')), 'the Golden Path is the dock pane, never a name here').toEqual([]);
+
+        InstanceManager.get(cold.id) && cold.destroy();
         pane.destroy()
     });
 
@@ -537,12 +620,12 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         expect(pane.lensPeers, 'in check order').toEqual(['@neo-opus-vega', '@tobiu', '@neo-preview']);
         expect(hue(pane, '@neo-preview'), 'checked together, the two take hues of their own').not.toBe(hue(pane, '@tobiu'));
         expect(Array.from(pane.overlays.lens.hues), 'the swatches are the hues the canvas draws').toEqual(pane.lensPeers.map(id => hue(pane, id)));
-        expect(roles(pane)[0], 'a node two checked peers share is the first-checked one\'s').toEqual(['pr-101', 'assigned · changed recently', hue(pane, '@neo-opus-vega')]);
+        expect(roles(pane).find(([id]) => id === 'pr-101'), 'a node two checked peers share is the first-checked one\'s').toEqual(['pr-101', 'assigned · changed recently', hue(pane, '@neo-opus-vega')]);
         expect(lineOf(pane)).toMatch(/ · lens · 4 nodes · 3 peers$/);
 
         click(pane, '@neo-opus-vega');
         expect(pane.lensPeers, 'a second click unchecks').toEqual(['@tobiu', '@neo-preview']);
-        expect(roles(pane)[0]).toEqual(['pr-101', 'authored · changed recently', hue(pane, '@tobiu')]);
+        expect(roles(pane).find(([id]) => id === 'pr-101')).toEqual(['pr-101', 'authored · changed recently', hue(pane, '@tobiu')]);
 
         pane.destroy()
     });
@@ -597,6 +680,35 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         pane.envelope = teamRead(outside, {snapshotId: 'snap-8b21'});
         expect(listed()).toHaveLength(4);
         expect(state(), 'without identity nodes the team is unknown, and All cannot narrow it').toEqual(['Team · unknown, all listed', 'team', true, 'true', true]);
+
+        pane.destroy()
+    });
+
+    test('a read of 161 peers opens Team on the 13 it names; All lists every one, and the team scope returns to the 13', () => {
+        const
+            logins = Array.from({length: 161}, (_, i) => `@peer-${String(i).padStart(3, '0')}`),
+            pane   = createPane({envelope: graphRead({
+                route : [],
+                nodes : [
+                    ...logins.map((login, i) => ({id: q(`issue-${9000 + i}`), label: `issue ${i}`, kind: 'issue', authoredBy: login})),
+                    ...logins.slice(0, 13).map(login => ({id: q(login), label: login, kind: 'AgentIdentity'}))
+                ],
+                edges : [],
+                counts: {nodes: 174, edges: 0, seeds: 0},
+                budget: {maxNodes: 500, maxEdges: 300, maxBytes: 65536}
+            })}),
+            toggle = pane.getReference('peer-scope-toggle');
+
+        // the ripple measures the rendered button, which the unit harness has none of
+        toggle.useRippleEffect = false;
+
+        expect([pane.openSection, team(pane).peerStore.getCount(), pane.getReference('observatory-peers-title').text]).toEqual(['team', 13, 'Team · 13 of 161']);
+
+        toggle.onClick({});
+        expect(team(pane).peerStore.getCount(), 'All lists every peer').toBe(161);
+
+        toggle.onClick({});
+        expect(team(pane).peerStore.getCount(), 'the team scope returns to the team').toBe(13);
 
         pane.destroy()
     });
@@ -700,6 +812,83 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the team l
         toggle.onClick({});
         expect(state()).toEqual([false, false, 'false', null]);
         expect(lineOf(pane)).not.toMatch(/heat/);
+
+        pane.destroy()
+    });
+});
+
+test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side panel opens one section to its height', () => {
+    const
+        // each section's flex and collapse, and whether its head reads expanded for assistive technology
+        sectionsOf = pane => Object.fromEntries([
+            ['team',     pane.getReference('observatory-team'),  pane.getReference('observatory-peers-title')],
+            ['nodes',    pane.getReference('observatory-nodes'), pane.getReference('observatory-nodes-title')],
+            ['selected', selectedOf(pane),                       selectedOf(pane).getReference('selected-section-head')]
+        ].map(([name, section, head]) => [name, [section.flex, section.cls.includes('is-collapsed'), head.vdom['aria-expanded']]])),
+        clickHead  = button => {
+            // the ripple measures the rendered button, which the unit harness has none of
+            button.useRippleEffect = false;
+            button.onClick({})
+        };
+
+    test('a read with peers opens Team, a read without opens Nodes, so no default opens an empty section', () => {
+        const peerless = createPane({envelope: graphRead()});
+
+        expect(peerless.openSection).toBe('nodes');
+        peerless.destroy()
+    });
+
+    test('Team opens first; a head opens its section and collapses the others to their heads; an unknown section changes nothing', () => {
+        const pane = createPane({envelope: teamRead()});
+
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+
+        clickHead(pane.getReference('observatory-nodes-title'));
+        expect(sectionsOf(pane)).toEqual({team: ['none', true, 'false'], nodes: [1, false, 'true'], selected: ['none', true, 'false']});
+
+        clickHead(selectedOf(pane).getReference('selected-section-head'));
+        expect(pane.openSection).toBe('selected');
+
+        clickHead(pane.getReference('observatory-peers-title'));
+        expect(pane.openSection).toBe('team');
+
+        pane.openSection = 'view';
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+
+        pane.destroy()
+    });
+
+    test('View is static: whichever section opens, it never collapses', () => {
+        const pane = createPane({envelope: teamRead()}),
+              view = pane.getReference('observatory-view-section');
+
+        ['nodes', 'selected', 'team'].forEach(section => {
+            pane.openSection = section;
+            expect(view.cls).not.toContain('is-collapsed')
+        });
+
+        pane.destroy()
+    });
+
+    test('a collapsed head still names its count, and selecting a node opens the Selected section with its whole title', () => {
+        const pane = createPane({envelope: teamRead()});
+
+        expect(pane.getReference('observatory-nodes-title').text).toMatch(/^Nodes/);
+        expect(pane.getReference('observatory-peers-title').text).toMatch(/^Team · /);
+
+        pane.selectedId = q('issue-202');
+        expect(pane.openSection).toBe('selected');
+        expect(headOf(pane)[0]).toBe('second route item');
+
+        // clearing the selection leaves the open section where the viewer is
+        pane.selectedId = null;
+        expect(pane.openSection).toBe('selected');
+
+        // a viewer browsing the node list keeps it: the keys walk the rows while the Selected head line names the node
+        pane.openSection = 'nodes';
+        pane.selectedId  = q('issue-303');
+        expect(pane.openSection).toBe('nodes');
+        expect(headOf(pane)[0]).toBe('third route item');
 
         pane.destroy()
     });

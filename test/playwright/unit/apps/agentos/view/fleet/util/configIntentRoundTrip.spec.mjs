@@ -306,6 +306,75 @@ test.describe('configIntentRoundTrip — cross-owner supersession authority (#15
         store.destroy()
     })
 
+    test('a memory consent crosses alone, lands from the readback, and a readback without one clears it (#572)', async () => {
+        const
+            store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}]),
+            received = [];
+
+        let answer = {status: 'accepted', agent: {id: 'ada', harnessType: 'claude-desktop', memoryImport: '/Users/ada/.claude/projects/ada/memory'}};
+
+        const run = intent => ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => ({configureAgent: async wire => {
+                received.push(wire);
+                return answer
+            }}),
+            intent,
+            owner        : {},
+            setSaveStatus: () => {},
+            store
+        });
+
+        await run({id: 'ada', memoryImport: '/Users/ada/.claude/projects/ada/memory', source: 'event-envelope'});
+
+        expect(received[0]).toEqual({id: 'ada', memoryImport: '/Users/ada/.claude/projects/ada/memory'});
+        expect(store.get('ada').memoryImport).toBe('/Users/ada/.claude/projects/ada/memory');
+
+        // a withdrawn consent is absent from the canonical readback, so the record drops it too
+        answer = {status: 'accepted', agent: {id: 'ada', harnessType: 'claude-desktop'}};
+        await run({id: 'ada', memoryImport: null});
+
+        expect(received[1]).toEqual({id: 'ada', memoryImport: null});
+        expect(store.get('ada').memoryImport).toBeNull();
+
+        store.destroy()
+    })
+
+    test('a rejection the Fleet answered hands the sink its code, or none, apart from an unreachable or invalid answer (#572)', async () => {
+        const
+            store  = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}]),
+            sinks  = [],
+            answer = {current: null};
+
+        const run = () => ConfigIntentRoundTrip.runConfigIntentRoundTrip({
+            bridgeResolver: () => ({configureAgent: async () => {
+                if (answer.current instanceof Error) throw answer.current;
+                return answer.current
+            }}),
+            intent       : {id: 'ada', memoryImport: 'none'},
+            owner        : {},
+            setSaveStatus: (id, state, reason, detail) => state !== 'pending' && sinks.push([state, reason, detail ?? null]),
+            store
+        });
+
+        answer.current = {status: 'rejected', code: 'FLEET_SEAT_MEMORY_IMPORT_CLOSED', reason: 'the Fleet\'s own words'};
+        await run();
+        answer.current = {status: 'rejected', reason: 'a correctable value'};
+        await run();
+        answer.current = new Error('transport closed');
+        await run();
+        answer.current = {status: 'mystery'};
+        await run();
+
+        expect(sinks).toEqual([
+            ['rejected', 'the Fleet\'s own words',                                    {code: 'FLEET_SEAT_MEMORY_IMPORT_CLOSED'}],
+            ['rejected', 'a correctable value',                                       {code: null}],
+            ['rejected', 'Could not save the configuration. Nothing was changed.',    null],
+            ['rejected', 'Configuration response was invalid. Nothing was changed.',  null]
+        ]);
+
+        store.destroy()
+    })
+
     test('an adoption takes its own facet verb by id alone, never configureAgent, and its readback is the only write', async () => {
         const
             store    = makeStore([{id: 'ada', githubUsername: 'ada', harnessType: 'codex', launchOwner: 'external'}]),
@@ -425,7 +494,7 @@ test.describe('configIntentRoundTrip — the repository set takes setRepos', () 
             store
         });
 
-        expect(statuses.at(-1)).toEqual(['ada', 'rejected', 'a repository is listed twice.']);
+        expect(statuses.at(-1)).toEqual(['ada', 'rejected', 'a repository is listed twice.', {code: null}]);
         expect(store.get('ada')['metadata.repos']).toEqual([brain]);
 
         store.destroy()

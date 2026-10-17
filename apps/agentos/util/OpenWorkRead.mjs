@@ -40,22 +40,41 @@ class OpenWorkRead extends Base {
     }
 
     /**
-     * @summary The merge queue's rows from one answer, keyed `<repo>#<number>`. An unavailable answer
-     * has none.
+     * @summary The merge queue's rows from one answer, keyed `<repo>#<number>`, each with its producer's
+     * title when the row carries one. An unavailable answer has none.
      * @param {Object|null} snapshot One `fleetOpenWork` envelope, or `null` while unanswered.
      * @returns {Object[]} Data for {@link AgentOS.store.FleetAwaitingMerge}.
      */
     static mergeRows(snapshot) {
         if (!snapshot || snapshot.state === 'unavailable') return [];
 
-        return (snapshot.awaitingMerge ?? []).map(({ci, draft, mergeable, number, observedAt, repo, stale}) => (
-            {id: `${repo}#${number}`, ci, draft, mergeable, number, observedAt, repo, stale}
+        return (snapshot.awaitingMerge ?? []).map(({ci, draft, mergeable, number, observedAt, repo, stale, title}) => (
+            {id: `${repo}#${number}`, ci, draft, mergeable, number, observedAt, repo, stale, title}
         ))
     }
 
     /**
+     * @summary The operator's questions axis from one answer, leaf-complete like the `openWork` block: the
+     * wire's own `questions` block when it carries one, else `unsupported`, because this read lists no
+     * one's open Tasks yet. An answer nobody gave (none yet, `not-wired`, `unanswered`) leaves every leaf
+     * `null`, the silence the merge axis keeps for the same answers.
+     * @param {Object|null} snapshot One `fleetOpenWork` envelope, or `null` while unanswered.
+     * @returns {{count: Number|null, reason: String|null, state: String|null}}
+     */
+    static questions(snapshot) {
+        if (!snapshot || (snapshot.state === 'unavailable' && snapshot.coverage !== 'unavailable')) {
+            return {count: null, reason: null, state: null}
+        }
+
+        const {count = null, reason = null, state = null} = snapshot.questions ?? {reason: 'questions are not listed yet', state: 'unsupported'};
+
+        return {count, reason, state}
+    }
+
+    /**
      * @summary Project the held answer onto the surfaces that show it: the provider's `openWork` block
-     * (the read's state for the fleet head), the provider's merge queue Store, and each roster record's
+     * (the read's state for the fleet head) and `questions` block (the operator line's second axis,
+     * {@link #questions}), the provider's merge queue Store, and each roster record's
      * held open work ({@link AgentOS.util.OpenWorkSeat#summarize}). Every record, the ones a view filter
      * hides included, so a card that reappears never shows an older answer. The roster's last live
      * snapshot is re-stamped too, so a source-precedence re-apply carries this answer and not the one
@@ -76,33 +95,42 @@ class OpenWorkRead extends Base {
             queue    = store('fleetAwaitingMerge'),
             roster   = store('fleetRoster');
 
-        provider?.setData('openWork', {
-            coverage  : snapshot?.coverage   ?? null,
-            observedAt: snapshot?.observedAt ?? null,
-            reason    : snapshot?.reason     ?? null,
-            state     : snapshot?.state      ?? null
+        provider?.setData({
+            openWork: {
+                coverage  : snapshot?.coverage   ?? null,
+                observedAt: snapshot?.observedAt ?? null,
+                reason    : snapshot?.reason     ?? null,
+                state     : snapshot?.state      ?? null
+            },
+            questions: OpenWorkRead.questions(snapshot)
         });
 
         queue && (queue.data = OpenWorkRead.mergeRows(snapshot));
 
         roster && (roster.allItems ?? roster).items.forEach(record => {
-            record.set({openWork: OpenWorkRead.seatOpenWork(owner, record.githubUsername)})
+            record.set(OpenWorkRead.seatOpenWork(owner, record.githubUsername))
         });
 
         if (Array.isArray(owner.lastLiveRows)) {
-            owner.lastLiveRows = owner.lastLiveRows.map(row => ({...row, openWork: OpenWorkRead.seatOpenWork(owner, row.githubUsername)}))
+            owner.lastLiveRows = owner.lastLiveRows.map(row => ({...row, ...OpenWorkRead.seatOpenWork(owner, row.githubUsername)}))
         }
     }
 
     /**
-     * @summary One seat's held open work from the owner's held answer ({@link AgentOS.util.OpenWorkSeat#summarize}),
-     * by the seat's GitHub login.
+     * @summary One seat's open-work fields for its roster record, from the owner's held answer, by the
+     * seat's GitHub login: the card chip's summary ({@link AgentOS.util.OpenWorkSeat#summarize}) and the
+     * Agent Detail's rows ({@link AgentOS.util.OpenWorkSeat#held}). One answer feeds both in one write.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @param {String|null} githubUsername The seat's login; none claims nothing.
-     * @returns {Object|null}
+     * @returns {{openWork: Object|null, openWorkHeld: Object|null}}
      */
     static seatOpenWork(owner, githubUsername) {
-        return OpenWorkSeat.summarize(owner.openWorkSnapshot, githubUsername ? `@${githubUsername}` : null)
+        const seat = githubUsername ? `@${githubUsername}` : null;
+
+        return {
+            openWork    : OpenWorkSeat.summarize(owner.openWorkSnapshot, seat),
+            openWorkHeld: OpenWorkSeat.held(owner.openWorkSnapshot, seat)
+        }
     }
 
     /**

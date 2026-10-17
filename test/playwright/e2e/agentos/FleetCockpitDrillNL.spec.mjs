@@ -1,5 +1,5 @@
-import {expect, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
-import {sampleRoster}                                   from '../../fixture/fleetSample.mjs';
+import {expect, landFleetOpenWork, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
+import {sampleOpenWork, sampleRoster}                                      from '../../fixture/fleetSample.mjs';
 
 /**
  * @summary The FM cockpit card→detail drill, proven LIVE through nested content inside the semantic
@@ -17,6 +17,37 @@ import {sampleRoster}                                   from '../../fixture/flee
  */
 test.describe('AgentOS fleet cockpit — semantic roster item→detail live drill (#14608, #15212, #17553)', () => {
     test.setTimeout(90000);
+
+    test('a retained Overview inspector reveals the newly selected resident, not its previous peer', async ({page, neuralLink}) => {
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetRoster(page, sampleRoster.slice(0, 2).map(row => ({...row, avatarUrl: null})));
+
+        const app = await neuralLink.connectToApp('AgentOS'),
+              [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+              card = name => page.locator('.fm-agent-card', {has: page.locator('.fm-card-name', {hasText: new RegExp(`^${name}$`)})}),
+              detail = page.locator('.fm-agent-detail'),
+              readDetail = () => app.queryComponent({className: 'AgentOS.view.fleet.detail.Container'}, ['id', 'record.agentId']);
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        const [original] = await readDetail();
+
+        expect((await app.callMethod(cockpit.properties.id, 'activatePerspective', ['Overview'])).errors).toEqual([]);
+        await expect(detail).toBeHidden();
+        const [parked] = await readDetail();
+        expect(parked.properties.id, 'Overview retained the existing inspector').toBe(original.properties.id);
+
+        await card('Grace').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name'), 'hidden selection reaches the returning pane').toHaveText('Grace');
+        const [revealed] = await readDetail();
+        expect(revealed.properties.id).toBe(original.properties.id);
+        expect(revealed.properties['record.agentId']).toBe('neo-opus-grace');
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name'), 'visible selection still updates in place').toHaveText('Ada');
+        expect((await readDetail())[0].properties.id).toBe(original.properties.id)
+    });
 
     test('nested avatar content selects its resident and reveals the AgentDetail inspector + four panes', async ({page, neuralLink}) => {
         await page.goto('/apps/agentos/index.html');
@@ -93,24 +124,49 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
 
         await expect(pill('lane')).toHaveText('not wired — the roster row carried no lane claim fact');
 
-        for (const [key, producer] of [['thought-stream', /policy-aware read/], ['prs', /open-work projection/]]) {
-            await expect(pill(key), key).toHaveText('not observed — source not wired');
-            await expect(pill(key), key).toHaveAttribute('title', producer)
-        }
+        // the bridge in hand carries the recent-turns verb and no plane answers it: the pane says the
+        // read went unanswered, the open-work pane's words for the same fact
+        await expect(pill('thought-stream')).toHaveText('not observed — recent-turns read unanswered');
+        await expect(pill('thought-stream')).toHaveAttribute('title', 'not observed — recent-turns read unanswered');
+        await expect(pill('prs')).toHaveText('not observed — open-work read unanswered');
+
+        // The Pull requests pane reads the cockpit's one open-work answer: the red head the seat
+        // authored before the review it owes, each reference a link to the forge, and the card's chip
+        // counting the same rows.
+        const
+            seat       = `@${expectedAgentId}`,
+            observedAt = new Date().toISOString(),
+            prRow      = (repo, number, ci, role) => ({repo, number, head: null, ci, verdict: null, mergeable: null, draft: false, reviews: [], observedAt, stale: false, holder: {role, ids: [seat]}}),
+            prs        = detail.locator('.fm-detail-pane-prs .fm-detail-pr');
+
+        await landFleetOpenWork(page, {...sampleOpenWork, observedAt, seats: {
+            [seat]: {authored: [prRow('neomjs/neo', 19501, 'red', 'author')], reviewing: [prRow('neomjs/neo-agent-brain', 802, 'green', 'reviewer')]}
+        }});
+
+        await expect(prs).toHaveCount(2, {timeout: 15000});
+        await expect(prs.nth(0).locator('.fm-detail-pr-ref')).toHaveText('neomjs/neo #19501');
+        await expect(prs.nth(0).locator('.fm-detail-pr-ref')).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/19501');
+        await expect(prs.nth(0).locator('.fm-detail-pr-line')).toHaveText(/^author · red · observed \d+s ago$/);
+        await expect(prs.nth(1).locator('.fm-detail-pr-line')).toHaveText(/^reviewer · review due · observed \d+s ago$/);
+        await expect(pill('prs')).toHaveText(/^updated \d+s ago$/);
+        await expect(targetItem.locator('.fm-card-open-work')).toHaveText('2 PRs · red');
 
         // A roster answer that carries the resident's repository fact lands on the open inspector
         // through the roster's own reconcile: the pill dates from that admission and the pane shows
         // the row's slug and clone path — one producer for the header row, the card and the pane.
-        const laneLine = 'Keeping the fixture lane visible',
-              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString();
+        const laneLine      = 'Keeping the fixture lane visible',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString(),
+              // a seat home's real length: an elided line once hid it on every card
+              repoPath      = '/Users/operator/Library/Application Support/neo-harness/brain/fleet/agents/neo-opus-ada/neomjs/neo';
 
         await landFleetRoster(page, sampleRoster.map(row => row.agentId === expectedAgentId ? {
             ...row,
-            repoSlug: 'neomjs/neo',
-            repoPath: '/seats/neo/clone',
+            harnessType: 'claude-desktop',
+            repoSlug   : 'neomjs/neo',
+            repoPath,
             laneLine,
             laneClaimedAt,
-            sources : {
+            sources    : {
                 ...row.sources,
                 repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed', reason: null},
                 lane      : {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null}
@@ -120,7 +176,21 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('repo')).toHaveText(/^updated \d+s ago$/, {timeout: 15000});
         await expect(pill('repo')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-slug')).toHaveText('neomjs/neo');
-        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText('/seats/neo/clone');
+        await expect(detail.locator('.fm-detail-pane-repo .fm-detail-repo-path')).toHaveText(repoPath);
+
+        // the path is read once, on the Repository pane, whole (it wraps, nothing is clipped) and
+        // copyable; the Seat row names the family and the Claude Desktop first-launch step; the card
+        // names no path
+        await expect(detail.getByText(repoPath, {exact: true}), 'the path appears once on the detail').toHaveCount(1);
+        expect(await detail.locator('.fm-detail-repo-path').evaluate(line => line.scrollWidth <= line.clientWidth), 'the whole path shows').toBe(true);
+        await expect(detail.locator('.fm-detail-seat-family')).toHaveText('Claude · App');
+        await expect(detail.locator('.fm-detail-seat-launch')).toHaveText('Open the repository folder below in Claude\'s Code tab, then Start on the card.');
+        await expect(targetItem, 'the roster card names no path').not.toContainText(repoPath);
+
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+        await detail.locator('.fm-detail-pane-repo .fm-detail-repo-copy').click();
+        await expect.poll(() => page.evaluate(() => navigator.clipboard.readText()), {message: 'Copy path puts the whole path on the clipboard'})
+            .toBe(repoPath);
         await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/);
 
         await expect(targetItem.locator('.fm-card-lane')).toContainText(laneLine);
@@ -129,6 +199,64 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(pill('lane')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(laneLine);
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(/claimed \d+m ago/)
+    });
+
+    test('at 1400 px the center drops (1332 -> 988 px) only while an agent is selected or detail is pinned; Escape or deselect restores 1332 px and the pre-selection dock document (#712 AC-3)', async ({page, neuralLink}) => {
+        await page.setViewportSize({width: 1400, height: 900});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetRoster(page, sampleRoster.slice(0, 2).map(row => ({...row, avatarUrl: null})));
+
+        const app           = await neuralLink.connectToApp('AgentOS'),
+              [cockpit]     = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+              [list]        = await app.queryComponent({className: 'AgentOS.view.fleet.roster.List'}, ['selectionModel.id']),
+              card          = name => page.locator('.fm-agent-card', {has: page.locator('.fm-card-name', {hasText: new RegExp(`^${name}$`)})}),
+              detail        = page.locator('.fm-agent-detail'),
+              readDockModel = async () => (await app.getComponent(cockpit.properties.id, ['dockModel'])).dockModel,
+              centerWidth   = () => page.locator('.fm-fleet-cockpit .neo-dashboard-dock-edge-row > :first-child').first()
+                  .evaluate(el => Math.round(el.getBoundingClientRect().width)),
+              dockBefore    = await readDockModel();
+
+        expect(dockBefore.items.detail.autoHidden).toBe(true);
+        await expect.poll(centerWidth).toBe(1332);
+
+        // 1. select reveals detail and drops center width 1332 -> 988 px
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+        expect((await readDockModel()).items.detail.autoHidden).toBe(false);
+
+        // 2. Escape clears selection, returns center to 1332 px, and restores the pre-selection dock document
+        await page.locator('.fm-fleet-cards').press('Escape');
+        await expect(detail).toBeHidden();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(1332);
+        expect(await readDockModel()).toEqual(dockBefore);
+
+        // 3. select again -> 988 px, then deselect -> 1332 px and pre-selection dock document
+        await card('Grace').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Grace');
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+
+        await app.callMethod(list.properties['selectionModel.id'], 'deselectAll', []);
+        await expect(detail).toBeHidden();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(1332);
+        expect(await readDockModel()).toEqual(dockBefore);
+
+        // 4. when detail is pinned, center stays at 988 px even after Escape clears the selection
+        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Agent detail'}).first().click();
+        await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        await page.locator('.fm-fleet-cards').press('Escape');
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(centerWidth).toBe(988);
+        expect((await readDockModel()).items.detail).toMatchObject({autoHidden: false, pinned: true})
     })
 });
-

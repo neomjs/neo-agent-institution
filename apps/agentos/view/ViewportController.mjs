@@ -181,6 +181,21 @@ class ViewportController extends Controller {
     }
 
     /**
+     * @summary Home's first-run door: the setup card on its Create door.
+     */
+    onSetupInstitution() {
+        this.showPlaneSetup({door: 'create'})
+    }
+
+    /**
+     * @summary Home's second door, for the team member whose plane exists: the setup card on its
+     * Connect door.
+     */
+    onConnectInstitution() {
+        this.showPlaneSetup({door: 'connect'})
+    }
+
+    /**
      * @summary Hydrates the configured-instances Store from storage, seeds the boot profile, and
      * mirrors the bound-instance fact.
      *
@@ -631,6 +646,32 @@ class ViewportController extends Controller {
      */
     onFleetRoute() {
         this.activateRoute('/fleet')
+    }
+
+    /**
+     * @summary Home's merge count opens the merge queue: the route moves to the Fleet cockpit, whose head
+     * opens its list of the pull requests awaiting the operator's merge.
+     * @returns {Promise<Object>} The cockpit's `{opened}`
+     */
+    async onHomeMergeQueueOpen() {
+        const me = this;
+
+        await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
+
+        return me.getReference('fleet-cockpit').getController().openMergeQueue()
+    }
+
+    /**
+     * @summary Home's question count opens the questions: the route moves to the Fleet cockpit, whose Mailbox
+     * shows the operator's open questions.
+     * @returns {Promise<Object>} The cockpit's `{opened}`
+     */
+    async onHomeQuestionsOpen() {
+        const me = this;
+
+        await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
+
+        return me.getReference('fleet-cockpit').getController().openOperatorQuestions()
     }
 
     /**

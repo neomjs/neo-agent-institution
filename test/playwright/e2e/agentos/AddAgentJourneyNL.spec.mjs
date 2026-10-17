@@ -64,6 +64,11 @@ async function startJourneyFleetBridge() {
                 return fleetE2ESuccess({id: request.params, state: 'running'})
             }
 
+            // a first-time operator's host: the Fleet checked, and no existing memory is there
+            if (request.method === 'fleetMemoryCandidates') {
+                return fleetE2ESuccess({capability: {state: 'wired'}, candidates: [], count: 0})
+            }
+
             if (request.method === 'fleetRoster') {
                 return fleetE2ESuccess({rows: defined.map(rosterRow)})
             }
@@ -177,7 +182,7 @@ test.describe('AgentOS S5 add-agent journey (Neural Link)', () => {
             // exists NOWHERE else: not in another request, not in any readback we injected
             const defines = fleet.requests.filter(request => request.method === 'defineAgent');
             expect(defines).toHaveLength(1);
-            expect(defines[0].params).toMatchObject({githubUsername: TEST_AGENT_ID, credential: TEST_CREDENTIAL});
+            expect(defines[0].params).toMatchObject({githubUsername: TEST_AGENT_ID, credential: TEST_CREDENTIAL, memoryImport: 'none'});
             expect(JSON.stringify(fleet.requests.filter(request => request.method !== 'defineAgent'))).not.toContain(TEST_CREDENTIAL);
 
             // ── the Body-side truths, read through the Neural Link

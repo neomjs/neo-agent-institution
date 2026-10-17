@@ -53,6 +53,7 @@
 
     border-radius: 6px;
     box-shadow   : var(--fm-shadow-overlay);
+    max-width    : 360px;
     min-width    : 240px;
     padding      : var(--fm-space-1);
 
@@ -61,11 +62,19 @@
         border-radius: 4px;
         gap          : var(--fm-space-2);
         text-align   : left;
+        white-space  : normal;
+        flex-wrap    : wrap;
     }
 
+    // a title wraps to two lines at most; the row's tooltip carries the whole of it
     .fm-awaiting-merge-ref {
-        flex: 1;
-        font: var(--fm-text-body);
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        display           : -webkit-box;
+        flex              : 1;
+        font              : var(--fm-text-body);
+        overflow          : hidden;
+        overflow-wrap     : anywhere;
     }
 
     .fm-awaiting-merge-stale {
@@ -75,5 +84,23 @@
         flex         : none;
         font         : var(--fm-text-micro);
         padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
+    }
+
+    .fm-stage-open {
+        background: transparent;
+        border: 1px solid var(--fm-line-soft);
+        border-radius: 4px;
+        color: var(--fm-ink);
+        cursor: pointer;
+        font: var(--fm-text-micro);
+        padding: var(--fm-space-1);
+        &:focus-visible { outline: 1px solid var(--fm-signal); }
+        &[aria-busy="true"] { cursor: wait; }
+    }
+
+    .fm-stage-outcome {
+        flex: 0 0 100%;
+        font: var(--fm-text-micro);
+        overflow-wrap: anywhere;
     }
 }

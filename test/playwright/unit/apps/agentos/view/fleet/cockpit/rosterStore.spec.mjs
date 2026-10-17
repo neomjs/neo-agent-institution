@@ -10,9 +10,9 @@ setup({
     }
 });
 
-import {test, expect}                                                     from '@playwright/test';
-import Neo                                                                from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core                                                          from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import {test, expect} from '@playwright/test';
+import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                         '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
@@ -74,9 +74,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                   livenessReadTimeout   : 4000
               },
               controller = makeControllerFake(FleetCockpitController, {
-                  component              : view,
-                  getReference           : reference => reference === 'fleet-grid' ? grid : null,
-                  lastLiveRows           : null,
+                  component   : view,
+                  getReference: reference => reference === 'fleet-grid' ? grid : null,
+                  lastLiveRows: null,
                   // the provider-owned roster authority: in this fixture the grid's bound store IS
                   // the provider store, so the write path and the selection re-seat read one truth
                   resolveFleetRosterStore: () => grid?.store ?? null,
@@ -304,18 +304,38 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             launchable    : null,
             openLaneCount : null,   // roster-DTO-owned tri-state: un-stamped → honest null (no badge)
             openWork      : null,   // no open-work answer held, and no login to claim it by → no chip
+            openWorkHeld  : null,   // the same: the detail's pane reads no answer, not an empty one
             laneLine      : null,
             laneClaimedAt : null,
-            // the authoritative participation fact: absent on the row → honest null, never guessed
+            // the authoritative participation fact: absent on the row → honest null, never guessed;
+            // nor its reason, date or read, nor a Start refusal
             participationStatus: null,
+            participationReason: null,
+            participationSince : null,
+            participationRead  : null,
+            launchRefusal      : null,
             // the presence axis rides the same passthrough contract as wake/throttle below
             presence: null,
-            // no start has reported its other repositories' outcome
-            repoOutcomes: null,
-            repoPath: null,
-            repoSlug: null,
-            sources : liveSources(),
-            state   : 'ok',
+            // no start has reported its other repositories' outcome, its checkouts' dependencies, the
+            // identity it resolved, nor where its session opened
+            repoOutcomes      : null,
+            dependencyOutcomes: null,
+            gitIdentity       : null,
+            // nor what it found of a declared model, nor what a Codex config is set to
+            seatModel            : null,
+            harnessSettings      : null,
+            sessionFolder        : null,
+            launchAdmission      : null,
+            exitReason           : null,
+            runtimeGeneration    : null,
+            nextRuntimeGeneration: null,
+            installedGeneration  : null,
+            mcpSettings          : null,
+            repoPath             : null,
+            repoSlug             : null,
+            repoStatus           : null,
+            sources              : liveSources(),
+            state                : 'ok',
             // the S2 telltale axes: absent on this row → honest null, never a synthesized 'unknown'.
             // The view must not manufacture the taxonomy's unknown — that value means the PRODUCER
             // looked and could not see, which is a different fact from "this row carried no axis".
@@ -326,23 +346,37 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(mapped.sources.lane).toEqual(liveSources().lane)
     });
 
+    test('mapRosterRow passes exitReason through whole when a seat exited without a Stop, and null otherwise (#683)', () => {
+        const exitReason = {
+            state      : 'harness-update',
+            exitedAt   : '2026-10-16T08:00:00.000Z',
+            logPath    : '/Users/ada/Library/Logs/Claude/main.log',
+            matchedLine: '2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall'
+        };
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', exitReason, lifecycle: {state: 'stopped'}, sources: liveSources()}).exitReason)
+            .toEqual(exitReason);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', lifecycle: {state: 'stopped'}, sources: liveSources()}).exitReason)
+            .toBeNull()
+    });
+
     test('mapRosterRow carries the lane claim and its independent source fact; a wired page without a claim stays empty', () => {
         const
             claimedAt = '2026-10-02T15:30:00.000Z',
             lane      = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null},
             mapped    = FleetCockpitController.prototype.mapRosterRow({
-                id: 'resident-key', githubUsername: 'neo-gpt-sophie',
+                id      : 'resident-key', githubUsername: 'neo-gpt-sophie',
                 laneLine: 'Review the current lane stamp', laneClaimedAt: claimedAt,
-                sources: {...liveSources(), lane}
+                sources : {...liveSources(), lane}
             }),
             empty     = FleetCockpitController.prototype.mapRosterRow({
                 id: 'resident-without-claim', sources: {...liveSources(), lane}
             });
 
         expect(mapped).toMatchObject({
-            agentId: 'resident-key', githubUsername: 'neo-gpt-sophie',
+            agentId : 'resident-key', githubUsername: 'neo-gpt-sophie',
             laneLine: 'Review the current lane stamp', laneClaimedAt: claimedAt,
-            sources: {lane}
+            sources : {lane}
         });
         expect(empty).toMatchObject({laneLine: null, laneClaimedAt: null, sources: {lane}});
     });
@@ -353,8 +387,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             harnessType: 'claude-desktop',
             lifecycle  : {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
             // the repo producer's row as `inspectFleetRepos` shapes it: the path exists before any launch
-            repoStatus : {configured: true, repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-opus-ada/neomjs/neo', exists: true, isCheckout: true, state: 'ready', provisioningAction: null},
-            sources    : liveSources()
+            repoStatus: {configured: true, repoSlug: 'neomjs/neo', repoPath: '/Users/Shared/agents/neo-opus-ada/neomjs/neo', exists: true, isCheckout: true, state: 'ready', provisioningAction: null},
+            sources   : liveSources()
         });
 
         expect(mapped).toMatchObject({
@@ -370,6 +404,22 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(bare).toMatchObject({harnessType: null, repoPath: null, repoSlug: null})
     });
 
+    test('mapRosterRow passes the participation facts and the Fleet\'s Start refusal through whole (#568)', () => {
+        const
+            facts  = {
+                participationStatus: 'operator_benched',
+                participationReason: 'the preview model behind this chair ended',
+                participationSince : '2026-10-01T00:00:00.000Z',
+                participationRead  : {state: 'read'},
+                launchRefusal      : 'the seat is benched by the operator'
+            },
+            mapped = FleetCockpitController.prototype.mapRosterRow({id: 'neo-preview', ...facts, sources: liveSources()});
+
+        expect(Object.fromEntries(Object.keys(facts).map(key => [key, mapped[key]]))).toEqual(facts);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', participationRead: {state: 'unread', reason: 'presence unreadable'}, sources: liveSources()}).participationRead)
+            .toEqual({state: 'unread', reason: 'presence unreadable'})
+    });
+
     test('mapRosterRow passes the last start\'s per-repository outcome through whole — null on a row without one', () => {
         const repoOutcomes = [
             {repoSlug: 'neomjs/neo-agent-brain',  state: 'prepared'},
@@ -378,6 +428,30 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
 
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', repoOutcomes, sources: liveSources()}).repoOutcomes).toEqual(repoOutcomes);
         expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).repoOutcomes).toBeNull()
+    });
+
+    test('mapRosterRow passes each checkout\'s dependency row through whole — null on a row without one, which is unknown, never ready (#610)', () => {
+        const dependencyOutcomes = [
+            {repoSlug: 'neomjs/neo',             state: 'installing'},
+            {repoSlug: 'neomjs/neo-agent-brain', state: 'skipped', reason: 'skipped during the install'}
+        ];
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', dependencyOutcomes, sources: liveSources()}).dependencyOutcomes).toEqual(dependencyOutcomes);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).dependencyOutcomes).toBeNull()
+    });
+
+    test('mapRosterRow passes where a desktop seat\'s session opened through whole — null on a row without one (#522)', () => {
+        const sessionFolder = {state: 'wrong', expected: '/seats/ada/neomjs/neo', observed: '/Users/ada/elsewhere'};
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', sessionFolder, sources: liveSources()}).sessionFolder).toEqual(sessionFolder);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).sessionFolder).toBeNull()
+    });
+
+    test('mapRosterRow passes the commit identity the last start resolved through whole — null before a start (#524)', () => {
+        const gitIdentity = {state: 'mismatch', found: 'other', reason: "its PAT belongs to the forge account 'other', not to the seat's 'ada'"};
+
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-opus-ada', gitIdentity, sources: liveSources()}).gitIdentity).toEqual(gitIdentity);
+        expect(FleetCockpitController.prototype.mapRosterRow({id: 'neo-gpt', sources: liveSources()}).gitIdentity).toBeNull()
     });
 
     test('mapRosterRow passes the S2 axes through WHOLE — the view never re-derives a produced fact', () => {
@@ -483,23 +557,40 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             family     : 'claude',
             // the mailbox identity authority rides the reconcile like every other DTO fact —
             // absent on this row → honest null (unverifiable), never the registry key substituted
-            githubUsername     : null,
-            harnessType        : null,
-            lastActivityAt     : null,
-            launchable         : null,
-            openLaneCount      : null,
-            openWork           : null,
-            laneLine           : null,
-            laneClaimedAt      : null,
-            participationStatus: null,
-            presence           : null,
-            repoOutcomes       : null,
-            repoPath           : null,
-            repoSlug           : null,
-            sources            : liveSources(),
-            state              : 'ok',
-            throttle           : null,
-            wake               : null
+            githubUsername       : null,
+            harnessType          : null,
+            lastActivityAt       : null,
+            launchable           : null,
+            openLaneCount        : null,
+            openWork             : null,
+            openWorkHeld         : null,
+            laneLine             : null,
+            laneClaimedAt        : null,
+            launchRefusal        : null,
+            participationRead    : null,
+            participationReason  : null,
+            participationSince   : null,
+            participationStatus  : null,
+            presence             : null,
+            repoOutcomes         : null,
+            dependencyOutcomes   : null,
+            gitIdentity          : null,
+            seatModel            : null,
+            harnessSettings      : null,
+            sessionFolder        : null,
+            launchAdmission      : null,
+            exitReason           : null,
+            runtimeGeneration    : null,
+            nextRuntimeGeneration: null,
+            installedGeneration  : null,
+            mcpSettings          : null,
+            repoPath             : null,
+            repoSlug             : null,
+            repoStatus           : null,
+            sources              : liveSources(),
+            state                : 'ok',
+            throttle             : null,
+            wake                 : null
         }]);
 
         // a resident ABSENT from the authoritative snapshot is removed — define → remove → no ghost card
@@ -520,13 +611,13 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             grid         = {adapterState: 'cold', store},
             provider     = makeProviderFake(),
             getReference = reference => reference === 'fleet-grid' ? grid : reference === 'agent-detail' ? detail : null,
-            // the REAL View selection surface: applySelection, the phase-blind pane accessors and
-            // the store-load guard run as production code over this fake — no stub drift
+            // Real selection hooks and store reconciliation; this fixture supplies the pane seam.
+            // The declaration spec covers managed-instance resolution with a real cockpit.
             view         = wireDetailRecord({
-                // no vessel on this fake: the phase-blind accessors fall through to the reference
+                // no vessel on this fake; the other accessors find no resident pane
                 vesselPane            : () => null,
                 detailRecord          : null,
-                getAgentDetailPane    : FleetCockpit.prototype.getAgentDetailPane,
+                getAgentDetailPane    : () => detail,
                 getCatchUpPane        : () => null,
                 getMemoriesPane       : FleetCockpit.prototype.getMemoriesPane,
                 getOperatorMailboxPane: () => null,
@@ -538,11 +629,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 setState(values) { Object.assign(this.selectionState, values) }
             }, FleetCockpit),
             controller = makeControllerFake(FleetCockpitController, {
-                component              : view,
+                component        : view,
                 getReference,
-                lastLiveRows           : null,
-                memoriesTarget         : null,
-                reconcilingRoster      : false,
+                lastLiveRows     : null,
+                memoriesTarget   : null,
+                reconcilingRoster: false,
                 // the provider-owned roster authority — the SAME store the grid fake binds, so the
                 // write path, the listener latch and the selection re-seat all read one truth
                 resolveFleetRosterStore: () => store
@@ -634,8 +725,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): first-live clear/add re-seats a surviving selection onto the new instance', async () => {
-        const store              = Neo.create(FleetRoster, {data: []}),
-              setCalls           = [],
+        const store    = Neo.create(FleetRoster, {data: []}),
+              setCalls = [],
               // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
               detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 4, detail);
@@ -669,8 +760,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): a later empty snapshot clears a removed resident to the honest empty state', async () => {
-        const store              = Neo.create(FleetRoster, {data: []}),
-              setCalls           = [],
+        const store    = Neo.create(FleetRoster, {data: []}),
+              setCalls = [],
               // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
               detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 5, detail);
@@ -694,8 +785,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     test('reconcileSelection (real Store): a surviving same-instance reconcile is a no-op (mutation path owns it)', async () => {
-        const store              = Neo.create(FleetRoster, {data: []}),
-              setCalls           = [],
+        const store    = Neo.create(FleetRoster, {data: []}),
+              setCalls = [],
               // the fake holds its configs like the reactive pane: a paired write leaves the clock behind
               detail             = {set(config) { setCalls.push(config); Object.assign(this, config) }},
               {controller, view} = makeLiveHost(store, 6, detail);
@@ -811,7 +902,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record: {agentId: 'ada'}});
         expect(applied).toEqual([true]);
 
-        // detail not mounted (auto-hidden, not yet revealed) → the optional chain no-ops safely
+        // detail has never materialized → there is no pane to update yet
         host.getAgentDetailPane = () => null;
         FleetCockpitController.prototype.onDetailRecordChange.call({component: host}, {record});
         expect(applied).toEqual([true])
@@ -825,7 +916,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
                 const view = wireDetailRecord({
                           vesselPane        : () => null,
                           detailRecord,
-                          getAgentDetailPane: FleetCockpit.prototype.getAgentDetailPane,
+                          getAgentDetailPane: () => detail,
                           getMemoriesPane   : () => null,
                           getReference      : name => name === 'agent-detail' ? detail : null,
                           selectionState    : {},

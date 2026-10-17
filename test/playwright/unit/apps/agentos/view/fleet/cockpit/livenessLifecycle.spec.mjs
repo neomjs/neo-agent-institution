@@ -27,7 +27,7 @@ import {
     FLEET_WIRE_RESPONSE_STATES
 } from 'neo-agent-brain/fleet-contract';
 
-const EVERY_PASS = Object.freeze({activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0});
+const EVERY_PASS = Object.freeze({activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0, openWork: 0, operatorInbox: 0});
 
 /**
  * The liveness owner's LIFECYCLE witness. A transition matrix proves the owner tells the truth while
@@ -73,15 +73,18 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             deploymentStateReadInFlight: 0,
             // the view-owned cadence configs live on the component seat now; a zero interval makes
             // every read due on every pass, so these balance fixtures drive each seam per tick
-            component              : {livenessCadence: EVERY_PASS, livenessPollInterval: 50, maxReadsInFlight: 2, getStateProvider: () => null},
+            component              : {livenessCadence: EVERY_PASS, livenessPollInterval: 50, maxReadsInFlight: 2,
+                getOperatorMailboxPane: () => null, getStateProvider: () => null},
             gridReadGeneration     : 0,
             gridReadInFlight       : 0,
             isDestroyed            : false,
+            livenessGeneration     : 0,
             livenessTimerId        : null,
             streamReadGeneration   : 0,
             streamReadInFlight     : 0,
             tasksReadGeneration    : 0,
             tasksReadInFlight      : 0,
+            openWorkReadInFlight   : 0,
             loadActivity() { this.polls++; return Promise.resolve() },
             // the third seam counts separately: the wire-read expectations stay untouched by it
             loadBrainHealth() { this.brainReads++; return Promise.resolve() },
@@ -90,6 +93,8 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             loadTasks()    { return Promise.resolve() },
             loadDeploymentState() { return Promise.resolve() },
             loadGoldenPath() { return Promise.resolve() },
+            loadOpenWork() { return Promise.resolve() },
+            refreshOperatorInbox() { return Promise.resolve() },
             // the wake rebind seam launches no wire read — modeled as a plain no-op so the
             // wire-read balance assertions stay exact
             ensureViewerWakeStream() {},
@@ -100,14 +105,16 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     };
 
     test.describe('roster connection observations through the real bridge and loader', () => {
-        let previousFleet, stores;
+        let previousFleet, stores, hosts;
 
         test.beforeEach(() => {
             previousFleet = globalThis.AgentOS?.fleet;
-            stores = []
+            stores = [];
+            hosts = []
         });
 
         test.afterEach(() => {
+            hosts.forEach(host => host.stopLiveness());
             stores.forEach(store => store.destroy());
             if (previousFleet === undefined) {
                 delete globalThis.AgentOS.fleet
@@ -147,6 +154,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             });
             delete host.loadRoster;
             stores.push(store);
+            hosts.push(host);
 
             return {grid, host, provider, store}
         };
@@ -233,6 +241,164 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.gridConnection.state).toBe('timeout');
             expect(store.get('resident')).toBeTruthy();
             expect(store.get('late')).toBeFalsy()
+        });
+
+        /** @summary Preserve mount ordering while keeping the ordinary cadence out of these recovery controls. */
+        const startInitialRead = host => {
+            Object.assign(host.component, {
+                livenessCadence: LivenessCadence.DEFAULT_INTERVALS,
+                livenessPollInterval: 60000
+            });
+            const read = host.loadRoster();
+            host.startLiveness();
+            return read
+        };
+
+        test('a late initial shell success wakes one fresh read and discards the expired rows', async () => {
+            const {host, provider, store} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+            installWire(() => ++calls === 1 ? late.promise : rosterReply('fresh'));
+
+            await startInitialRead(host);
+            expect(provider.data.gridConnection.state).toBe('timeout');
+            expect(host.gridReadInFlight).toBe(1);
+            expect(host.livenessGeneration).toBe(1);
+            late.resolve(rosterReply('discarded'));
+            await expect.poll(() => store.get('fresh')?.agentId).toBe('fresh');
+
+            expect(calls).toBe(2);
+            expect(store.get('discarded')).toBeFalsy();
+            expect(provider.data.gridAdapterState).toBe('live');
+            expect(host.gridReadInFlight).toBe(0)
+        });
+
+        test('a joining shell window does not retire the primary roster recovery', async () => {
+            const {onStart} = await import('../../../../../../../../apps/agentos/app.mjs');
+            const {host, store} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            const previous = {app: Neo.app, url: Neo.config.url, boot: Neo.bootingWindowId, request: Neo.Main.fleetRequest};
+            let calls = 0;
+
+            try {
+                Neo.config.url = {href: 'app://neo/apps/agentos/index.html', search: ''};
+                Neo.bootingWindowId = 'startup-primary';
+                Neo.apps['startup-primary'] = {};
+                Neo.app = () => {};
+                Neo.Main.fleetRequest = () => ++calls === 1 ? late.promise : rosterReply('fresh-primary');
+                onStart();
+                const bridge = host.bridge;
+                await startInitialRead(host);
+                Neo.bootingWindowId = 'startup-popup';
+                Neo.apps['startup-popup'] = {};
+                onStart();
+                expect(host.bridge).toBe(bridge);
+                late.resolve(rosterReply('expired-primary'));
+                await expect.poll(() => store.get('fresh-primary')?.agentId).toBe('fresh-primary');
+                expect(calls).toBe(2);
+                expect(store.get('expired-primary')).toBeFalsy()
+            } finally {
+                delete Neo.apps['startup-primary'];
+                delete Neo.apps['startup-popup'];
+                Neo.app = previous.app;
+                Neo.config.url = previous.url;
+                Neo.bootingWindowId = previous.boot;
+                Neo.Main.fleetRequest = previous.request
+            }
+        });
+
+        test('an already-ready initial shell read does not issue a recovery read', async () => {
+            const {host, store} = makeRosterHost();
+            let calls = 0;
+            installWire(() => { calls++; return rosterReply('ready') });
+            await startInitialRead(host);
+            expect(store.get('ready')).toBeTruthy();
+            expect(calls).toBe(1)
+        });
+
+        for (const outcome of ['rejected', 'malformed']) {
+            test(`a late ${outcome} initial shell answer cannot trigger recovery`, async () => {
+                const {host, provider} = makeRosterHost({timeout: 20});
+                const late = Promise.withResolvers();
+                let calls = 0;
+                installWire(() => { calls++; return late.promise });
+                await startInitialRead(host);
+                outcome === 'rejected' ? late.reject(new Error('unavailable'))
+                    : late.resolve(createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {rows: null}}));
+                await expect.poll(() => host.gridReadInFlight).toBe(0);
+                expect(calls).toBe(1);
+                expect(provider.data.gridAdapterState).toBe('cold')
+            });
+        }
+
+        for (const change of ['newer-read', 'bridge', 'admitted', 'stop', 'restart', 'destroy', 'hidden', 'cap', 'not-started']) {
+            test(`a ${change} fences a timed-out initial shell recovery`, async () => {
+                const {host, provider, store} = makeRosterHost({timeout: 20});
+                const late = Promise.withResolvers();
+                let calls = 0;
+                installWire(() => ++calls === 1 ? late.promise : rosterReply('newer'));
+                await (change === 'not-started' ? host.loadRoster() : startInitialRead(host));
+
+                if (change === 'newer-read') await host.loadRoster();
+                if (change === 'bridge') installWire(() => { calls++; return rosterReply('replacement') });
+                if (change === 'admitted') host.admitRoster({rows: [{agentId: 'other', displayName: 'Other'}]});
+                if (change === 'stop' || change === 'restart') host.stopLiveness();
+                if (change === 'restart') host.startLiveness();
+                if (change === 'destroy') host.isDestroyed = true;
+                if (change === 'hidden') host.livenessHidden = true;
+                if (change === 'cap') host.component.maxReadsInFlight = 0;
+
+                late.resolve(rosterReply('discarded'));
+                await expect.poll(() => host.gridReadInFlight).toBe(0);
+                expect(calls).toBe(change === 'newer-read' ? 2 : 1);
+                expect(store.get('discarded')).toBeFalsy();
+                expect(provider.data.gridAdapterState).toBe(['newer-read', 'admitted'].includes(change) ? 'live' : 'cold')
+            });
+        }
+
+        test('a late initial browser read retains the ordinary cadence fallback', async () => {
+            const {host, provider} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+            globalThis.AgentOS.fleet = {registryBridge: {
+                credentialIngress: 'worker', profileId: null,
+                fleetRoster: () => { calls++; return late.promise }
+            }};
+            await startInitialRead(host);
+            late.resolve({rows: [{id: 'discarded'}]});
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+            expect(calls).toBe(1);
+            expect(provider.data.gridAdapterState).toBe('cold')
+        });
+
+        test('a second timeout cannot turn initial shell recovery into a retry loop', async () => {
+            const {host, provider, store} = makeRosterHost({timeout: 20});
+            const first = Promise.withResolvers(), second = Promise.withResolvers();
+            let calls = 0;
+            installWire(() => ++calls === 1 ? first.promise : second.promise);
+            await startInitialRead(host);
+            first.resolve(rosterReply('expired-first'));
+            await expect.poll(() => calls).toBe(2);
+            await expect.poll(() => provider.data.gridConnection.state).toBe('timeout');
+            second.resolve(rosterReply('expired-second'));
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+            expect(calls).toBe(2);
+            expect(provider.data.gridAdapterState).toBe('cold');
+            expect(store.get('expired-first')).toBeFalsy();
+            expect(store.get('expired-second')).toBeFalsy()
+        });
+
+        test('a failed recovery read returns to the ordinary cadence without another retry', async () => {
+            const {host, provider} = makeRosterHost({timeout: 20});
+            const late = Promise.withResolvers();
+            let calls = 0;
+            installWire(() => ++calls === 1 ? late.promise : Promise.reject(new Error('unavailable')));
+            await startInitialRead(host);
+            late.resolve(rosterReply('discarded'));
+            await expect.poll(() => calls).toBe(2);
+            await expect.poll(() => host.gridReadInFlight).toBe(0);
+            expect(provider.data.gridAdapterState).toBe('cold');
+            expect(calls).toBe(2)
         });
 
         for (const newerState of ['connecting', 'refused']) {
@@ -671,23 +837,26 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     const makeCadenceHost = () => {
         const
             host     = makeTimerHost(),
-            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0},
-            ticks    = [];
+            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0, openWork: 0, operatorInbox: 0},
+            ticks    = [],
+            mailboxTicks = [],
+            mailbox = {set({now}) { mailboxTicks.push(now) }};
 
         host.component.livenessCadence  = LivenessCadence.DEFAULT_INTERVALS;
         host.component.windowId         = 7;
         host.component.getStateProvider = () => ({setData: ({systemTickAt}) => ticks.push(systemTickAt)});
+        host.component.getOperatorMailboxPane = () => mailbox;
 
         Object.keys(launched).forEach(key => {
             host[LivenessCadence.READS[key].load] = () => { launched[key]++; return Promise.resolve() }
         });
 
-        return {host, launched, ticks}
+        return {host, launched, ticks, mailboxTicks}
     };
 
     test('each read comes due on its own interval, never on the shared pass', () => {
         const
-            {host, launched, ticks} = makeCadenceHost(),
+            {host, launched, ticks, mailboxTicks} = makeCadenceHost(),
             originalSetInterval     = globalThis.setInterval;
 
         globalThis.setInterval = () => 1;
@@ -698,20 +867,22 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             const start = Date.now();
 
             expect(launched, 'arming the owner is the Brain and plane pictures\' first read')
-                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1});
+                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 0, operatorInbox: 0});
 
             host.onLivenessTick(start + 15000);
 
             expect(launched.activity + launched.roster + launched.tasks, 'a 15 s pass issues nothing a minute-scale read owns').toBe(0);
             expect(ticks, 'a pass that launches no deployment read still ages the retained picture').toHaveLength(1);
+            expect(mailboxTicks, 'the inbox clock advances before its first poll is due').toEqual([start + 15000]);
 
             host.onLivenessTick(start + 60000);
 
-            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1});
+            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 1, operatorInbox: 1});
 
             host.onLivenessTick(start + 120000);
 
-            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2})
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2});
+            expect(mailboxTicks).toEqual([start + 15000, start + 60000, start + 120000])
         } finally {
             globalThis.setInterval = originalSetInterval;
             host.livenessTimerId   = null
@@ -720,36 +891,71 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
     test('a hidden cockpit launches nothing; visibility returning launches what fell due, once', () => {
         const
-            {host, launched}    = makeCadenceHost(),
-            originalSetInterval = globalThis.setInterval;
+            {host, launched, mailboxTicks} = makeCadenceHost(),
+            originalSetInterval = globalThis.setInterval,
+            originalNow         = Date.now;
+
+        let now = 2_000_000_000_000;
 
         globalThis.setInterval = () => 1;
+        Date.now = () => now;
 
         try {
             host.startLiveness();
 
-            const start = Date.now();
+            const start = now;
 
             host.onLivenessVisibility({hidden: true, windowId: 8});
             host.onLivenessTick(start + 60000);
 
             expect(launched.roster, 'another window hiding pauses nothing here').toBe(1);
+            expect(mailboxTicks).toEqual([start + 60000]);
 
             host.onLivenessVisibility({hidden: true, windowId: 7});
             host.onLivenessTick(start + 120000);
             host.onLivenessTick(start + 180000);
 
             expect(launched.roster, 'hidden, the owner issues no read').toBe(1);
+            expect(mailboxTicks, 'hidden passes do not publish to the mailbox').toEqual([start + 60000]);
 
             // everything fell due while hidden
             host.livenessSchedule = LivenessCadence.create(start - 120000, LivenessCadence.DEFAULT_INTERVALS);
+            now = start + 180000;
             host.onLivenessVisibility({hidden: false, windowId: 7});
 
-            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2})
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2});
+            expect(mailboxTicks, 'resume immediately publishes the current clock').toEqual([start + 60000, now]);
+
+            host.onLivenessVisibility({hidden: false, windowId: 7});
+            expect(launched.operatorInbox, 'a repeated visible event does not repeat the due read').toBe(2)
         } finally {
             globalThis.setInterval = originalSetInterval;
+            Date.now              = originalNow;
             host.livenessTimerId   = null
         }
+    });
+
+    test('a capped inbox still ages on each visible pass; a destroyed owner neither reads nor clocks', () => {
+        const {host, launched, mailboxTicks} = makeCadenceHost(),
+              now = Date.now();
+
+        host.livenessSchedule = LivenessCadence.create(now - 60000, LivenessCadence.DEFAULT_INTERVALS);
+        host.operatorInbox = {readInFlight: 1};
+        host.streamReadInFlight = 1;
+
+        host.onLivenessTick(now);
+        host.onLivenessTick(now + 15000);
+
+        expect(launched.operatorInbox, 'one wire fills the inbox cap').toBe(0);
+        expect(launched.activity, 'the sibling still has its second slot').toBe(1);
+        expect(mailboxTicks, 'a held wire cannot freeze the freshness clock').toEqual([now, now + 15000]);
+
+        host.isDestroyed = true;
+        host.onLivenessTick(now + 120000);
+
+        expect(launched.operatorInbox).toBe(0);
+        expect(launched.activity).toBe(1);
+        expect(mailboxTicks).toEqual([now, now + 15000])
     });
 
     /**

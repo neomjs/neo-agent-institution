@@ -15,6 +15,7 @@ import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/Fle
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import ViewerWakeFeed       from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
+import Operations           from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/Operations.mjs';
 import {createShellProvider} from './shellProvider.mjs';
 
 /**
@@ -36,6 +37,8 @@ const createCockpit = () => Neo.create(FleetCockpit, {
 });
 
 const projected = cockpit => cockpit.getStateProvider().data.perspectives;
+
+// Out of scope: missing awaiting-merge fixture store warning (defect-note MESSAGE:e5dcc130-ea69-40ea-b5e3-da55c32fbfe2).
 
 test.describe('FleetCockpit — the perspectives drawer\'s verbs through the real relay', () => {
     let cockpit;
@@ -201,5 +204,66 @@ test.describe('FleetCockpit — the perspectives drawer\'s verbs through the rea
         expect(cockpit.presetError, 'the apply is not refused').toBeNull();
         expect(cockpit.dockModel.items.goldenPathGraph).toBeUndefined();
         expect(cockpit.dockModel.nodes['stream-tabs'].items).toEqual(['stream', 'tasks', 'memories', 'operator', 'catchUp', 'goldenPath'])
+    });
+
+    for (const closable of [true, undefined]) {
+        test(`a stored Fleet close flag of ${closable} cannot override the current pane policy`, async () => {
+            cockpit = createCockpit();
+            await cockpit.refreshPromise;
+
+            const legacy = WorkspaceDocument.clone(cockpit.getPerspectiveDocument());
+
+            if (closable === undefined) delete legacy.items.fleet.closable;
+            else legacy.items.fleet.closable = closable;
+            legacy.items.stream.closable = false;
+
+            const {layout} = CockpitPerspectives.captureSavedLayout(legacy, 'Legacy Fleet');
+
+            cockpit.perspectiveStore.savePerspective(layout);
+            expect(cockpit.activatePerspective('Legacy Fleet')).toBeInstanceOf(Promise);
+            expect(cockpit.presetError).toBeNull();
+            expect(cockpit.dockModel.items.fleet.closable).toBe(false);
+            expect(cockpit.dockModel.items.stream.closable, 'the optional pane keeps its saved policy').toBe(false);
+            expect(Operations.closeItem(cockpit.dockModel, {itemId: 'fleet'}).errors).toEqual(['item "fleet" is not closable']);
+            expect(cockpit.perspectiveStore.loadPerspective('Legacy Fleet').document.items.fleet.closable,
+                'applying a layout does not rewrite the stored capture').toBe(closable)
+        })
+    }
+
+    test('a saved layout without Fleet is refused visibly and leaves the current document intact', async () => {
+        cockpit = createCockpit();
+        await cockpit.refreshPromise;
+
+        const legacy = WorkspaceDocument.clone(cockpit.getPerspectiveDocument());
+        legacy.items.fleet.closable = true;
+
+        const {document, errors} = Operations.closeItem(legacy, {itemId: 'fleet'}),
+              {layout}           = CockpitPerspectives.captureSavedLayout(document, 'No Fleet'),
+              before             = cockpit.dockModel;
+
+        expect(errors).toEqual([]);
+        cockpit.perspectiveStore.savePerspective(layout);
+
+        const verdict = await cockpit.activatePerspective('No Fleet');
+
+        expect(verdict).toEqual({switched: false, errors: ['This layout has no Fleet roster. Choose Overview, Focus or Review.']});
+        expect(cockpit.dockModel).toBe(before);
+        expect(cockpit.presetError).toBe('No Fleet: This layout has no Fleet roster. Choose Overview, Focus or Review.');
+        expect(projected(cockpit).applyNote).toBe(`switch refused: ${cockpit.presetError}`)
+    });
+
+    test('a saved layout with Fleet detached keeps its catalog record and remains admissible', async () => {
+        cockpit = createCockpit();
+        await cockpit.refreshPromise;
+
+        const {document, errors} = Operations.detachItem(cockpit.getPerspectiveDocument(), {itemId: 'fleet'}),
+              {layout}           = CockpitPerspectives.captureSavedLayout(document, 'Detached Fleet');
+
+        expect(errors).toEqual([]);
+        cockpit.perspectiveStore.savePerspective(layout);
+        expect(cockpit.activatePerspective('Detached Fleet')).toBeInstanceOf(Promise);
+        expect(cockpit.presetError).toBeNull();
+        expect(cockpit.dockModel.items.fleet.closable).toBe(false);
+        expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'fleet')).toBeNull()
     });
 });

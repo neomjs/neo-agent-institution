@@ -1,41 +1,67 @@
 import AgentConfigCard                      from './AgentConfigComponent.mjs';
+import Button                               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container                            from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import FamilyRail                           from '../shared/FamilyRailComponent.mjs';
+import GitIdentityContainer                 from '../shared/GitIdentityContainer.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
+import ParticipationContainer               from './ParticipationContainer.mjs';
+import PullRequestList                      from './PullRequestList.mjs';
+import RepositoryBodyContainer              from './RepositoryBodyContainer.mjs';
+import SeatModelContainer                   from './SeatModelContainer.mjs';
+import SeatRuntimeContainer                 from './SeatRuntimeContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
+import ThoughtStreamBodyContainer           from './ThoughtStreamBodyContainer.mjs';
 import AgentFreshness                       from '../../../util/AgentFreshness.mjs';
-import Controller                          from './Controller.mjs';
+import Controller                           from './Controller.mjs';
+import HarnessChoice                        from '../../../util/HarnessChoice.mjs';
+import HeldPullRequests                     from '../../../store/HeldPullRequests.mjs';
+import OpenWorkSeat                         from '../../../util/OpenWorkSeat.mjs';
+import Participation                        from '../../../util/Participation.mjs';
+import SeatExitReason                       from '../../../util/SeatExitReason.mjs';
+import SeatModel                            from '../../../util/SeatModel.mjs';
+import SeatSessionFolder                    from '../../../util/SeatSessionFolder.mjs';
 import SourceHealth                         from '../../../util/SourceHealth.mjs';
 import Telltale                             from '../../../util/Telltale.mjs';
 
 /**
  * The SSOT drill-in panes (design §B3: "thought-stream, lane, repo, and PRs"), each with the honest
  * live cadence its freshness is judged against. `freshnessTtl` is the default window a pane's ledger
- * may override once its feed stamps one; the values are tunable, not contractual.
+ * may override once its feed stamps one; the values are tunable, not contractual. A pane whose body
+ * is more than its text names its own `body` config: the repository pane's is its own container, and the
+ * pull requests pane holds the sentence an answer holding nothing renders, its Store-backed list joining
+ * on the first resident shown; the thought stream pane's body is its own container too, its TTL twice the
+ * 60 s cadence that reads it, so the pill never reads stale between two reads that landed.
  * @type {Object[]}
  */
 const PANES = [
-    {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 60_000},
+    {key: 'thought-stream', title: 'Thought stream', freshnessTtl: 120_000, body: {module: ThoughtStreamBodyContainer}},
     {key: 'lane',           title: 'Current lane',   freshnessTtl: 300_000},
-    {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000},
-    {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000}
+    {key: 'repo',           title: 'Repository',     freshnessTtl: 300_000, body: {module: RepositoryBodyContainer}},
+    {key: 'prs',            title: 'Pull requests',  freshnessTtl: 300_000, body: {
+        ntype: 'container',
+        items: [{
+            ntype    : 'component',
+            cls      : ['fm-detail-prs-none'],
+            hidden   : true,
+            reference: 'prs-none',
+            text     : OpenWorkSeat.PANE_WORDS.none
+        }]
+    }}
 ];
 
 /**
  * What each pane waits for while no source has answered for it, on the freshness pill's title —
  * each names the producer that owns the pane's fact, so an operator reads a gap, never a bug: the
- * thought stream waits for a read of a resident's turns that the plane's sharing policy admits (its
- * recency read answers the caller's own turns only), the lane waits for the roster row's lane
- * stamp (the latest lane claim per seat, one derivation for the card and this pane), the pull
- * requests wait for the per-seat open-work projection.
+ * thought stream waits for a Fleet server whose bridge serves recent turns (a bridge without the verb
+ * fronts a server behind the Brain pin that added it), the lane waits for the roster row's lane stamp
+ * (the latest lane claim per seat, one derivation for the card and this pane).
  * @type {Object<String, String>}
  */
 const AWAITING = {
-    'thought-stream': 'awaiting a policy-aware read of this resident\'s turns — the plane\'s recency read answers the caller\'s own turns only',
+    'thought-stream': 'awaiting a Fleet server that serves recent turns — the bridge in hand carries no fleetRecentTurns verb',
     lane            : 'awaiting the roster row\'s lane stamp — the latest lane claim per seat lands on the roster read',
-    repo            : 'awaiting the roster read — the repository pane reads the roster row',
-    prs             : 'awaiting the per-seat open-work projection — pull requests have no source on this plane yet'
+    repo            : 'awaiting the roster read — the repository pane reads the roster row'
 };
 
 /**
@@ -70,10 +96,33 @@ const paneConfig = pane => ({
         }]
     }, {
         ntype    : 'component',
+        ...pane.body,
         cls      : ['fm-detail-pane-body'],
         reference: `pane-${pane.key}-body`
-    }]
+    }, ...(pane.key === 'repo' ? repoPathAction() : [])]
 });
+
+/**
+ * @summary The Repository pane's one action under its clone path: `Copy path`, and the unseen field
+ * it copies from. The action stays hidden until the roster row reports a path.
+ * @returns {Object[]}
+ * @private
+ */
+const repoPathAction = () => [{
+    module   : Button,
+    cls      : ['fm-detail-repo-copy'],
+    hidden   : true,
+    reference: 'detail-repo-copy',
+    text     : 'Copy path',
+    tooltip  : 'Copy the clone path',
+    ui       : 'ghost'
+}, {
+    // the copy source: an inert field the Copy action selects, unseen and unfocusable
+    ntype    : 'component',
+    cls      : ['fm-detail-repo-field'],
+    reference: 'detail-repo-field',
+    vdom     : {tag: 'input', 'aria-hidden': true, readonly: true, tabIndex: -1, type: 'text', value: ''}
+}];
 
 /**
  * The cockpit drill-in surface: one resident's detail — the identity header over the four SSOT
@@ -152,6 +201,14 @@ class AgentDetail extends Container {
          * @reactive
          */
         fleetTenants_: null,
+        /** The shell's current profile identity, mirrored from the bound bridge. @member {String|null} boundProfileId_=null @reactive */
+        boundProfileId_: null,
+        /** The provider-hosted instance roster used to resolve the bound plane endpoint. @member {Neo.data.Store|null} instanceStore_=null @reactive */
+        instanceStore_: null,
+        /** Whether the installed shell owns the current plane binding. @member {Boolean} shellCustody_=false @reactive */
+        shellCustody_: false,
+        /** The plane endpoint attached by the installed shell, or null for this machine. @member {String|null} shellPlaneBase_=null @reactive */
+        shellPlaneBase_: null,
         /**
          * The drilled-in resident: an {@link AgentOS.model.FleetAgent} record (store-backed, live)
          * or a plain field bag with the same keys. `null` renders the honest "no agent selected"
@@ -161,7 +218,7 @@ class AgentDetail extends Container {
          */
         record_: null,
         /**
-         * Per-pane freshness ledgers keyed by pane `key` — `{observedAt, freshnessTtl, lost}` the
+         * Per-pane freshness ledgers keyed by pane `key` — `{observedAt, freshnessTtl, lost, stale}` the
          * Lane-C / memory-surface feed leaves stamp as they land. `null` (today's reality) → every
          * pane degrades to the honest `unobserved`; the view sharpens to timestamped freshness with
          * no change the moment a feed wires a ledger.
@@ -169,6 +226,15 @@ class AgentDetail extends Container {
          * @reactive
          */
         paneLedgers_: null,
+        /**
+         * The shown seat's recent turns as the cockpit's read answered them — one `fleetRecentTurns`
+         * envelope, pushed by the owner on every admission and seeded on rematerialization, or `null`
+         * while no read has landed; the Thought stream pane's body renders it for the seat it shows
+         * ({@link AgentOS.view.fleet.detail.ThoughtStreamBodyContainer}).
+         * @member {Object|null} recentTurns_=null
+         * @reactive
+         */
+        recentTurns_: null,
         /**
          * The reader's clock (epoch ms) at the last roster admission — the repository pane's
          * observation instant, since that pane reads the roster row and nothing else. `null` = no
@@ -255,6 +321,34 @@ class AgentDetail extends Container {
                     ntype    : 'component',
                     cls      : ['fm-detail-id'],
                     reference: 'detail-id'
+                }, {
+                    // the seat, read deliberately here and never on the roster card: its harness
+                    // family in words, and for a Claude Desktop seat the one step its first launch
+                    // needs. The folder itself is the Repository pane's line, never repeated here
+                    ntype    : 'container',
+                    cls      : ['fm-detail-seat'],
+                    hidden   : true,
+                    layout   : {ntype: 'vbox', align: 'stretch'},
+                    reference: 'detail-seat',
+
+                    items: [{
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-family'],
+                        reference: 'detail-seat-family'
+                    }, {
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-launch'],
+                        hidden   : true,
+                        reference: 'detail-seat-launch',
+                        text     : 'Open the repository folder below in Claude\'s Code tab, then Start on the card.'
+                    }, {
+                        // after a Start, a session outside the seat's folder: its state word only;
+                        // the Repository pane says where it opened and what to do
+                        ntype    : 'component',
+                        cls      : ['fm-detail-seat-folder'],
+                        hidden   : true,
+                        reference: 'detail-seat-folder'
+                    }]
                 }]
             }]
         }, {
@@ -291,16 +385,45 @@ class AgentDetail extends Container {
                 header   : {text: 'Status'},
                 reference: 'detail-panes',
                 layout   : {ntype: 'vbox', align: 'stretch'},
-                items    : PANES.map(paneConfig)
+                items    : [{module: SeatRuntimeContainer, reference: 'seat-runtime', flex: 'none'}, ...PANES.map(paneConfig)]
             }, {
                 // object permanence (the S5 fork-1 ruling): per-agent CONFIGURATION belongs to the
                 // agent object, so it rides the detail as a tab. The card fires `configIntent`; THIS view owns the bridge
                 // round-trip through the shared runner (which arbitrates supersession per shared
                 // record, across every owner), with the card as this owner's status sink.
-                module   : AgentConfigCard,
-                emptyText: 'This agent has no stored definition yet — add it via the rail\'s Add agent zone.',
+                ntype    : 'container',
+                cls      : ['fm-detail-config'],
                 header   : {text: 'Configuration'},
-                reference: 'config-pane'
+                layout   : {ntype: 'vbox', align: 'stretch'},
+                reference: 'config-tab',
+
+                items: [{
+                    module   : AgentConfigCard,
+                    emptyText: 'This agent has no stored definition yet — add it via the rail\'s Add agent zone.',
+                    flex     : 'none',
+                    reference: 'config-pane'
+                }, {
+                    // the seat's commit identity with its one repair action, where Start's identity
+                    // refusal points
+                    module   : GitIdentityContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'identity-row'
+                }, {
+                    // the model and reasoning effort declared for the seat's harness, beside what its
+                    // config is set to, where Start's model refusal points
+                    module   : SeatModelContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'seat-model'
+                }, {
+                    // the seat's participation, as its identity node records it, and the plane-host command that
+                    // changes it
+                    module   : ParticipationContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'participation'
+                }]
             }]
         }]
     }
@@ -322,11 +445,17 @@ class AgentDetail extends Container {
         // the old identity-header placement floated the verb OVER the identity block at rail
         // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
+        this.getReference('detail-repo-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
         const configPane = this.getReference('config-pane');
 
-        if (configPane) {
-            configPane.tenantStore = this.fleetTenants
-        }
+        configPane?.set({
+            agentDefinitionsStore: this.agentDefinitions,
+            boundProfileId      : this.boundProfileId,
+            instanceStore       : this.instanceStore,
+            shellCustody        : this.shellCustody,
+            shellPlaneBase      : this.shellPlaneBase,
+            tenantStore         : this.fleetTenants
+        });
         this.applyRecord()
     }
 
@@ -337,9 +466,25 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetFleetTenants(value, oldValue) {
-        const card = this.getReference?.('config-pane');
+        this.getReference?.('config-pane')?.set({tenantStore: value})
+    }
 
-        if (card) card.tenantStore = value
+    /** @summary Forward the current bound profile to the configuration card. @protected */
+    afterSetBoundProfileId(value) {
+        this.getReference?.('config-pane')?.set({boundProfileId: value})
+    }
+    /** @summary Forward instance roster changes to the configuration card. @protected */
+    afterSetInstanceStore(value) {
+        this.getReference?.('config-pane')?.set({instanceStore: value})
+    }
+    /** @summary Forward shell custody changes to the configuration card. @protected */
+    afterSetShellCustody(value) {
+        this.getReference?.('config-pane')?.set({shellCustody: value})
+    }
+    /** @summary Forward bound plane endpoint changes to the configuration card and the Participation group. @protected */
+    afterSetShellPlaneBase(value) {
+        this.getReference?.('config-pane')?.set({shellPlaneBase: value});
+        this.getReference?.('participation')?.set({planeBase: value})
     }
 
     /**
@@ -361,6 +506,17 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetPaneLedgers(value, oldValue) {
+        this.isConstructed && this.record && this.applyPaneFreshness()
+    }
+
+    /**
+     * @summary Triggered after the recent-turns answer changed — the Thought stream re-renders its
+     * rows and its pill from the new observation without a record re-seat.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetRecentTurns(value, oldValue) {
         this.isConstructed && this.record && this.applyPaneFreshness()
     }
 
@@ -394,6 +550,7 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetAgentDefinitions(value, oldValue) {
+        this.getReference?.('config-pane')?.set({agentDefinitionsStore: value});
         this.isConstructed && this.controller.onDefinitionsStoreChange(value, oldValue)
     }
 
@@ -410,6 +567,57 @@ class AgentDetail extends Container {
         if (card) {
             card.record = (me.record?.agentId && me.agentDefinitions?.get(me.record.agentId)) || null
         }
+
+        me.applySeatModel()
+    }
+
+    /**
+     * @summary Seat the Seat group from the joined definition (what is declared, the memory consent included) and the
+     * roster record (what the harness's config is set to, and why the Fleet refused its latest start, if it did). No
+     * definition, no group.
+     */
+    applySeatModel() {
+        const
+            me         = this,
+            row        = me.getReference('seat-model'),
+            definition = me.getReference('config-pane')?.record ?? null,
+            record     = me.record;
+
+        if (!row) return;
+
+        row.set({
+            configured: record?.harnessSettings ?? null,
+            hidden    : !definition,
+            refusal   : SeatModel.refusedReason(record?.seatModel ?? null, definition),
+            seat      : definition && {
+                harnessType    : definition.harnessType,
+                id             : definition.id,
+                model          : definition.model ?? null,
+                reasoningEffort: definition.reasoningEffort ?? null
+            }
+        });
+
+        me.getReference('seat-memory').seat = definition && {id: definition.id, memoryImport: definition.memoryImport ?? null}
+    }
+
+    /**
+     * @summary Seat the Participation group from the roster record, a fresh object per read so a re-read in place
+     * re-renders it, and the plane the shell is attached to for where its command runs. No participation known (no
+     * identity node, or a Brain that reports no read), no group.
+     * @param {Object} record The drilled-in FleetAgent record.
+     */
+    applyParticipation(record) {
+        this.getReference('participation').set({
+            facts    : {
+                githubUsername     : record.githubUsername ?? null,
+                participationRead  : record.participationRead ?? null,
+                participationReason: record.participationReason ?? null,
+                participationSince : record.participationSince ?? null,
+                participationStatus: record.participationStatus ?? null
+            },
+            hidden   : Participation.stateOf(record) === null,
+            planeBase: this.shellPlaneBase
+        })
     }
 
     /**
@@ -438,6 +646,7 @@ class AgentDetail extends Container {
         // the configuration tab joins on the Fleet Registry key; a roster resident with no stored
         // definition renders the card's honest no-definition line, never a fabricated config
         me.applyConfigRecord();
+        me.getReference('seat-runtime').updateRecord(record);
 
         if (!record) {
             return
@@ -462,7 +671,9 @@ class AgentDetail extends Container {
         me.getReference('detail-engine').text = record.engineTag ?? '';
         me.getReference('detail-id').text     = agentId;
 
+        me.applySeatRow(record);
         me.renderStateLedger(record, sources, display);
+        me.applyParticipation(record);
 
         me.getReference('detail-avatar').set({
             alt: record.displayName ?? agentId,
@@ -473,11 +684,59 @@ class AgentDetail extends Container {
     }
 
     /**
+     * @summary The Seat row: the harness family in words, only for a REPORTED family (none renders no
+     * row and no placeholder). A Claude Desktop seat with a reported folder adds the one step its first
+     * launch needs, pointing at the Repository pane's path, since that Desktop cannot be launched into
+     * a folder. After a Start, a session that is not in that folder replaces the step with its state
+     * word, pointing at the Repository pane, which says where it opened and the next step
+     * ({@link AgentOS.util.SeatSessionFolder}). Every value is an inert `text` node.
+     * @param {Object} record The drilled-in FleetAgent record.
+     * @protected
+     */
+    applySeatRow(record) {
+        const
+            me          = this,
+            harnessType = typeof record.harnessType === 'string' && record.harnessType ? record.harnessType : null,
+            state       = SeatSessionFolder.stateWord(record.sessionFolder),
+            line        = me.getReference('detail-seat-folder');
+
+        me.getReference('detail-seat').hidden = harnessType === null;
+
+        if (harnessType === null) return;
+
+        me.getReference('detail-seat-family').text   = HarnessChoice.describe(harnessType) ?? harnessType;
+        me.getReference('detail-seat-launch').hidden = state !== null || !(harnessType === 'claude-desktop' && typeof record.repoPath === 'string' && record.repoPath);
+
+        line.hidden = state === null;
+        line.vdom.cn = state ? [
+            {tag: 'span', cls: ['fm-detail-seat-folder-state', `is-${record.sessionFolder.state}`], text: state},
+            {tag: 'span', text: ' · see Repository'}
+        ] : [];
+        line.update()
+    }
+
+    /**
+     * @summary The Copy path action: the clone path goes to the clipboard through the main thread's
+     * selection of the unseen field, and the focus returns to the action.
+     * @param {Object} data The click; `detail` is 0 where the keyboard pressed the action
+     */
+    async onCopyRepoPath(data) {
+        const me = this, copy = me.getReference('detail-repo-copy'), field = me.getReference('detail-repo-field'), {windowId} = me;
+
+        if (field.vdom.value) {
+            await Neo.main.DomAccess.selectNode({id: field.id, windowId});
+            await Neo.main.DomAccess.execCommand({command: 'copy', windowId});
+            copy.focus(copy.id, false, true, data?.detail ? 'pointer' : 'keyboard')
+        }
+    }
+
+    /**
      * @summary Render the ONE state ledger — every liveness/wiring axis once, as `axis · pill`
      * rows in the pane's own freshness-pill vocabulary, the one pill language of the pane.
      *
      * Rows, in order: the session (the resolved display state; an offline one names its reason),
-     * availability (participationStatus — a known status word or no row),
+     * availability (the participation: a known status word, `unobserved` for a read that did not answer, or no row;
+     * its title the date and the operator's reason, or the read's reason, and when the roster was read),
      * the wake telltale (BOTH renderings the old readout carried: a nominal axis says so, an
      * observed `unknown` keeps the producer's reason — on the pill title now), capacity
      * (the throttle axis, SOURCE-GATED: it renders only when a producer actually reported it —
@@ -500,23 +759,27 @@ class AgentDetail extends Container {
      */
     renderStateLedger(record, sources, display) {
         const
-            me     = this,
-            ledger = me.getReference('detail-ledger'),
-            rows   = [],
-            row    = (axis, word, tone, title) => rows.push(
+            me       = this,
+            ledger   = me.getReference('detail-ledger'),
+            exitLine = display.reason === 'stopped'
+                ? SeatExitReason.cardLine(record.exitReason, {now: Number.isFinite(me.now) ? me.now : Date.now()})
+                : null,
+            rows     = [],
+            row      = (axis, word, tone, title) => rows.push(
                 {tag: 'span', cls: ['fm-ledger-axis'], text: axis},
                 {tag: 'span', cls: ['fm-freshness', tone], text: word, ...(title ? {title} : {})}
             );
 
-        row('session', stateLabel(display.state, display.reason),
+        row('session', exitLine?.head ?? stateLabel(display.state, display.reason),
             display.state === 'ok' || display.state === 'idle' ? 'is-fresh'
                 : display.reason === 'unobserved' ? 'is-unobserved' : 'is-stale',
-            stateMeaning(display.state, display.reason));
+            exitLine?.title ?? stateMeaning(display.state, display.reason));
 
-        const participation = record.participationStatus ?? null;
+        const participation = Participation.stateOf(record);
 
         participation !== null && row('status', participation.replace(/_/g, ' '),
-            participation === 'active' ? 'is-fresh' : 'is-stale');
+            participation === 'active' ? 'is-fresh' : participation === 'unobserved' ? 'is-unobserved' : 'is-stale',
+            Participation.detailOf(record, me.rosterObservedAt));
 
         Telltale.describeTelltaleReadout({throttle: record.throttle, wake: record.wake})
             .forEach(({axis, reason, reported, state}) => {
@@ -558,9 +821,10 @@ class AgentDetail extends Container {
      * An explicit `paneLedgers` entry wins (a feed stamping the pane directly). Otherwise the pane's
      * owning producer decides. The lane and repository panes read their roster-row source facts;
      * wired facts observe at the roster admission instant, any other fact is the descriptor in the
-     * roster's own words, and a mount no roster read has reached says so. The thought-stream and
-     * pull-request panes have no producer on this plane yet ({@link AWAITING} names each), so they
-     * resolve to nothing and the pill states the honest unobserved.
+     * roster's own words, and a mount no roster read has reached says so. The pull-request pane reads
+     * the record's held open work: an answer observes at its own `observedAt` and stays stale while
+     * the producer says so, however recent; no answer says so in the resolver's words. The
+     * thought-stream pane's body resolves the cockpit's recent-turns answer for the seat shown.
      * @param {String} key Pane key.
      * @param {Object|null} explicitLedger The `paneLedgers` entry, if any.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
@@ -570,6 +834,18 @@ class AgentDetail extends Container {
     resolvePaneSource(key, explicitLedger, record) {
         if (explicitLedger) {
             return {descriptor: null, ledger: explicitLedger}
+        }
+
+        if (key === 'prs') {
+            const {openWorkHeld} = record;
+
+            return openWorkHeld
+                ? {descriptor: null, ledger: {observedAt: openWorkHeld.observedAt, stale: openWorkHeld.stale}}
+                : {descriptor: {state: 'not observed', reason: OpenWorkSeat.PANE_WORDS.unanswered}, ledger: null}
+        }
+
+        if (key === 'thought-stream') {
+            return ThoughtStreamBodyContainer.resolveSource(record, this.recentTurns)
         }
 
         if (key !== 'repo' && key !== 'lane') {
@@ -636,10 +912,13 @@ class AgentDetail extends Container {
      * @summary The honest body content for one pane from the record's known facts.
      *
      * The lane pane renders the lane line with its claim age when its source is wired, plus the
-     * independent open-lane count. The repository pane renders the roster row's slug and clone path.
-     * The thought-stream and pull requests panes
-     * render nothing until their producers land: each pill names what it waits for, and a body
-     * line repeating it would tell the same fact twice per section.
+     * independent open-lane count. The repository pane hands the record to its
+     * {@link AgentOS.view.fleet.detail.RepositoryBodyContainer} and shows the path's Copy action only while
+     * a path is reported.
+     * The pull requests pane loads the seat's held pull requests, worst first, into its list's Store,
+     * or says it holds none; without an answer it renders nothing, since its pill says so. The
+     * list re-words its rows' ages at the pane's clock. The thought-stream pane hands the record, the
+     * cockpit's recent-turns answer and the clock to its body, which renders the seat's turns the same way.
      * @param {String} key Pane key.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
      * @protected
@@ -648,11 +927,19 @@ class AgentDetail extends Container {
         const body = this.getReference(`pane-${key}-body`);
 
         if (key === 'repo') {
-            body.vdom.cn = [
-                {tag: 'span', cls: ['fm-detail-repo-slug'], text: record.repoSlug || 'no repository declared'},
-                ...(record.repoPath ? [{tag: 'span', cls: ['fm-detail-repo-path'], text: record.repoPath}] : [])
-            ];
-            body.update();
+            const
+                repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null,
+                field    = this.getReference('detail-repo-field');
+
+            // a roster read changes the record's fields without changing its identity
+            body.record === record ? body.refresh() : body.record = record;
+
+            this.getReference('detail-repo-copy').hidden = repoPath === null;
+
+            if (field.vdom.value !== (repoPath ?? '')) {
+                field.vdom.value = repoPath ?? '';
+                field.update()
+            }
             return
         }
 
@@ -675,7 +962,29 @@ class AgentDetail extends Container {
             return
         }
 
-        body.text = ''
+        if (key === 'prs') {
+            const
+                {openWorkHeld} = record,
+                holds          = openWorkHeld?.rows.length > 0,
+                // built for the first resident shown, so an idle cockpit carries no list
+                list           = this.getReference('pr-list') ?? body.insert(0, {
+                    module   : PullRequestList,
+                    hidden   : !holds,
+                    reference: 'pr-list',
+                    store    : {module: HeldPullRequests}
+                });
+
+            list.store.data = openWorkHeld?.rows ?? [];
+            list.now        = this.now ?? Date.now();
+            list.hidden     = !holds;
+
+            this.getReference('prs-none').hidden = !openWorkHeld || holds;
+            return
+        }
+
+        if (key === 'thought-stream') {
+            body.set({answer: this.recentTurns, now: this.now ?? Date.now(), record})
+        }
     }
 }
 

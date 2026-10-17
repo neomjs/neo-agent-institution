@@ -67,12 +67,19 @@ const BEACON_PRESENT_GLYPH = '◉';
  */
 const LANE_AGE_REFRESH_MS = 30_000;
 
-import AgentFreshness from '../../../../util/AgentFreshness.mjs';
-import FamilyTokens   from '../../../../util/FamilyTokens.mjs';
-import NameSlot       from '../../../../util/NameSlot.mjs';
-import OpenWorkSeat   from '../../../../util/OpenWorkSeat.mjs';
-import SourceHealth   from '../../../../util/SourceHealth.mjs';
-import Telltale       from '../../../../util/Telltale.mjs';
+import AgentFreshness    from '../../../../util/AgentFreshness.mjs';
+import FamilyTokens      from '../../../../util/FamilyTokens.mjs';
+import NameSlot          from '../../../../util/NameSlot.mjs';
+import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
+import Participation     from '../../../../util/Participation.mjs';
+import SeatDependencies  from '../../../../util/SeatDependencies.mjs';
+import SeatExitReason    from '../../../../util/SeatExitReason.mjs';
+import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
+import SeatLaunchAdmission from '../../../../util/SeatLaunchAdmission.mjs';
+import SeatModel         from '../../../../util/SeatModel.mjs';
+import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
+import SourceHealth      from '../../../../util/SourceHealth.mjs';
+import Telltale          from '../../../../util/Telltale.mjs';
 
 /**
  * The word boundaries a monogram reads initials across: whitespace, hyphens, underscores, dots.
@@ -156,6 +163,12 @@ class AgentCard extends Container {
          * @reactive
         */
         record_: null,
+        /**
+         * The shared roster read's state; a retained row cannot prove current launch admission.
+         * @member {String|null} rosterState_=null
+         * @reactive
+         */
+        rosterState_: null,
         /**
          * Injected wall clock for relative lane-age rendering; `null` uses `Date.now()`.
          * @member {Number|null} now_=null
@@ -348,15 +361,6 @@ class AgentCard extends Container {
                 reference: 'card-lane'
             }]
         }, {
-            // the seat's clone path — one quiet mono line, present only when the roster reports a
-            // path. A Claude Desktop seat's line leads with the one verb its operator must perform:
-            // that Desktop cannot be launched into a folder, so the Code tab opens it by hand.
-            ntype    : 'component',
-            cls      : ['fm-card-repo'],
-            flex     : 'none',
-            hidden   : true,
-            reference: 'card-repo'
-        }, {
             // ONE honest source word-line: the fm-strip-<level> cls colours the ::before dot; the text
             // is summary-default and NAMES the abnormal source. Full facts reach via the drill (detail).
             ntype    : 'component',
@@ -366,7 +370,7 @@ class AgentCard extends Container {
             vdom     : {'aria-label': 'Source health'}
         }, {
             // the honest control round-trip surface — hidden until a pending intent or a terminal
-            // reason exists; renders the B4/C2 matrix (pending "…", timeout stale, "⚠ rejected: reason")
+            // reason exists; renders the B4/C2 matrix (pending "…", unanswered timeout, "⚠ rejected: reason")
             // WITHOUT faking success. Kept distinct from the source strip so a control failure never
             // masquerades as a source fact.
             ntype    : 'component',
@@ -384,6 +388,17 @@ class AgentCard extends Container {
      * @protected
      */
     laneAgeAbortController = null
+
+    /**
+     * Owns the one wait for the instant the admission words change on their own (the end of the
+     * launcher's retry budget for an unanswered proof), retired with the words and with the card;
+     * `admissionUntil` is that instant, so an unchanged line arms no second wait.
+     * @member {AbortController|null} admissionAgeAbortController=null
+     * @protected
+     */
+    admissionAgeAbortController = null
+    /** @member {Number|null} admissionUntil=null @protected */
+    admissionUntil = null
 
     /**
      * @summary Split a long lane into a short context head + a preserved distinguishing tail with an
@@ -446,13 +461,24 @@ class AgentCard extends Container {
     }
 
     /**
-     * Triggered when the injected wall clock advances; the lane ages without a roster record change.
+     * @summary Withdraw admission guidance when the shared roster read loses freshness.
+     * @param {String|null} value
+     * @param {String|null} oldValue
+     * @protected
+     */
+    afterSetRosterState(value, oldValue) {
+        this.isConstructed && this.applyRecord()
+    }
+
+    /**
+     * Triggered when the injected wall clock advances; the lane and the admission words age without a
+     * roster record change.
      * @param {Number|null} value
      * @param {Number|null} oldValue
      * @protected
      */
     afterSetNow(value, oldValue) {
-        this.isConstructed && this.refreshLaneLine()
+        this.isConstructed && this.applyRecord()
     }
 
     /**
@@ -483,8 +509,8 @@ class AgentCard extends Container {
     }
 
     /**
-     * @summary Renders the claim as inert text, eliding the subject before appending its age so the
-     * distinguishing tail remains visible.
+     * @summary Renders the claim as inert text (no disclosure affordance on a non-interactive node),
+     * eliding the subject before appending its age so the distinguishing tail remains visible.
      * @param {Object} record
      * @param {Object} laneSource Normalized `sources.lane` fact.
      * @returns {Boolean} true when this wired subject has a parseable claim instant.
@@ -558,13 +584,55 @@ class AgentCard extends Container {
     }
 
     /**
-     * Base.timeout is destroyed with the instance; abort the lane loop first so its owner token and
-     * re-seat path settle together with the card.
+     * @summary Re-applies the record at the instant the admission words change on their own: the end
+     * of the launcher's retry budget for an unanswered proof. One wait per instant, fired or pending;
+     * a changed or absent instant retires it.
+     * @param {Number|null} until The instant the current admission line names, or null.
+     * @param {Number} now The clock the wait is measured from.
+     * @protected
+     */
+    scheduleAdmissionAging(until, now) {
+        const me = this;
+
+        if (until === me.admissionUntil) return;
+
+        me.stopAdmissionAging();
+        me.admissionUntil = until;
+
+        if (until === null) return;
+
+        const controller = new AbortController();
+
+        me.admissionAgeAbortController = controller;
+        me.timeout(Math.max(0, until - now), {signal: controller.signal}).then(() => {
+            if (me.isDestroyed || controller.signal.aborted || me.admissionAgeAbortController !== controller) return;
+
+            me.admissionAgeAbortController = null;
+            me.applyRecord()
+        }).catch(error => {
+            // Base.timeout rejects on destroy; the abort signal rejects when the words or the card retire.
+            if (!controller.signal.aborted && error !== Neo.isDestroyed) throw error
+        })
+    }
+
+    /** @summary Cancels the admission wait when its words or the card are retired. @protected */
+    stopAdmissionAging() {
+        this.admissionAgeAbortController?.abort();
+        this.admissionAgeAbortController = null;
+        this.admissionUntil = null
+    }
+
+    /**
+     * Base.timeout is destroyed with the instance; abort the card's own waits first so their owner
+     * tokens and re-seat paths settle together with the card.
      * @param {Boolean} value
      * @protected
      */
     afterSetIsDestroying(value) {
-        value && this.stopLaneAging()
+        if (value) {
+            this.stopLaneAging();
+            this.stopAdmissionAging()
+        }
     }
 
     /**
@@ -578,7 +646,8 @@ class AgentCard extends Container {
      * across strip and aggregate. The state dot is gated so missing runtime
      * evidence cannot render as live; severity adds WEIGHT to the state word, never a hue. The B4/C2
      * control seam renders the honest round-trip: unauthorized disables the cluster, timeout reads as
-     * an unfinished "…" with retry open, rejected shows "⚠ reason".
+     * an unfinished "…" with retry open, rejected shows "⚠ reason" in the Fleet's own words, and its
+     * title adds the last start's commit identity when that needs repair, as its own observation.
      */
     applyRecord() {
         let me     = this,
@@ -586,6 +655,7 @@ class AgentCard extends Container {
 
         if (!record) {
             me.stopLaneAging();
+            me.stopAdmissionAging();
             return
         }
 
@@ -602,15 +672,22 @@ class AgentCard extends Container {
             runtimeWired  = sources.runtime.state === 'wired',
             recordState   = record.state ?? 'off',
             resolved      = SourceHealth.resolveFleetDisplayState(record),
-            displayState  = pendingAction === 'stop'
+            // a Start the Fleet reports still installing: live rows only, never a retained set
+            preparation   = SeatDependencies.liveLine(record.dependencyOutcomes),
+            // a cancel stays open until the Fleet answers it, past the cockpit's own deadline too
+            cancel        = SeatDependencies.cancelState(record),
+            displayState  = pendingAction === 'stop' || cancel
                 ? 'stopping'
-                : pendingAction // 'start' | 'restart' both transition toward running
+                : pendingAction || preparation // 'start' | 'restart' both transition toward running, as does a preparing Start
                     ? 'starting'
                     : resolved.state,
-            reason        = pendingAction ? null : resolved.reason,
+            reason        = pendingAction || preparation ? null : resolved.reason,
+            now           = Number.isFinite(me.now) ? me.now : Date.now(),
+            exitLine      = reason === 'stopped' ? SeatExitReason.cardLine(record.exitReason, {now}) : null,
             // severity = weight: the exceptional resolved states take ink + weight on the word
             hot           = displayState === 'wedged' || displayState === 'limited',
-            disabled      = Boolean(pendingAction) || !runtimeWired || controlReason?.kind === 'unauthorized';
+            // a confirmed preparation keeps the toggle open as Cancel start; it closes while a cancel is in flight
+            disabled      = (Boolean(pendingAction) && !(preparation && pendingAction !== 'stop')) || !runtimeWired || controlReason?.kind === 'unauthorized';
 
         me.getReference('family-rail').family = record.family ?? null;
 
@@ -629,8 +706,9 @@ class AgentCard extends Container {
         });
 
         // the word stays short enough for the narrowest card; what "stuck" means, and why a seat is
-        // offline, ride its title (the detail pane spells the reason out)
-        cardState.changeVdomRootKey('title', stateMeaning(displayState, reason));
+        // offline, ride its title, a benched seat's with the operator's date and reason (the detail pane
+        // spells the reason out)
+        cardState.changeVdomRootKey('title', [exitLine?.head ?? stateMeaning(displayState, reason), reason === 'benched' ? Participation.detailOf(record) : null].filter(Boolean).join(' · ') || null);
 
         // The presence band: session state says what the resident's PROCESS does;
         // presence says whether the SEAT is alive anywhere (the plane's who_is_online graph
@@ -714,24 +792,6 @@ class AgentCard extends Container {
 
         me.refreshLaneLine(record, sources.lane);
 
-        // the clone path: only a REPORTED path renders (null = no repository or no repo status on
-        // the row → no line, never a placeholder). A Claude Desktop seat leads with the verb, since
-        // that Desktop cannot be launched into a folder. Inert `text` nodes, never `html`: the path
-        // is adapter-supplied data, and the title carries the whole path where the line elides it.
-        const
-            repo     = me.getReference('card-repo'),
-            repoPath = typeof record.repoPath === 'string' && record.repoPath ? record.repoPath : null;
-
-        repo.vdom.title = repoPath;
-        repo.vdom.cn    = repoPath
-            ? [
-                ...(record.harnessType === 'claude-desktop' ? [{tag: 'span', cls: ['fm-repo-verb'], text: 'Open in the Code tab'}] : []),
-                {tag: 'span', cls: ['fm-repo-path'], text: repoPath}
-            ]
-            : [];
-        repo.set({hidden: repoPath === null});
-        repoPath !== null && repo.update();
-
         // a badge only for a REPORTED positive count: null/absent = no stamped count → no badge.
         // The text is always the whole phrase; `data-count` is the narrow form the SCSS renders where
         // the line cannot hold the noun, and the title and aria pair speak the phrase in both forms.
@@ -773,18 +833,10 @@ class AgentCard extends Container {
         openWorkChip.changeVdomRootKey('aria-label', openWork.ariaLabel);
         openWorkChip.changeVdomRootKey('title', openWork.title);
 
-        // the source strip: ONE honest word-line, a PURE role=status — no ▸/disclosure affordance on a
-        // non-interactive node (selecting the item → detail IS the disclosure route). The level cls
-        // colours the ::before dot; summary.text is a controlled literal from summarizeAnsweredAbnormal.
-        // EXCEPTION-ONLY: nominal earns zero pixels (the cockpit's own doctrine, operator-falsified
-        // when this line rendered "all sources nominal" permanently) — the strip exists exactly when
-        // a source is abnormal and NAMES it; full facts stay reachable via the drill.
-        // Rendered as an inert `text` node, NEVER `html`: that literal is safe only because the
-        // summariser composes it from a frozen label map over a hardcoded key order, so `html` would
-        // make safety a property the summariser must preserve forever rather than one the card cannot
-        // get wrong — the same reason the lane above is a text node (escaping is forgettable; a text
-        // node is not). A later edit folding a source REASON into the summary is then inert by
-        // construction instead of an innerHTML path.
+        // the source strip: ONE honest word-line, a PURE role=status (selecting the item → detail IS
+        // the disclosure route). EXCEPTION-ONLY: nominal earns zero pixels; the strip exists only when
+        // a source is abnormal and NAMES it. Rendered as an inert `text` node, NEVER `html`, so safety
+        // is structural even if a later edit folds a source reason into the summary.
         const strip = me.getReference('source-strip');
 
         strip.set({
@@ -819,10 +871,15 @@ class AgentCard extends Container {
         monogram.changeVdomRootKey('aria-label', nameSlot.text);
 
         const
-            toggle  = me.getReference('control-toggle'),
-            restart = me.getReference('control-restart');
+            toggle      = me.getReference('control-toggle'),
+            restart     = me.getReference('control-restart'),
+            // while the Fleet prepares a Start, the power verb cancels it: icon, name and intent agree. An
+            // unanswered cancel can be sent again
+            cancelStart = Boolean(preparation) && pendingAction !== 'stop',
+            // the Fleet's own words for why its Start refuses this seat: Start stays closed before the click
+            refusal     = recordState === 'off' && !preparation ? record.launchRefusal ?? null : null;
 
-        toggle.set({disabled, iconCls: recordState === 'off' ? 'fa-solid fa-play' : 'fa-solid fa-stop'});
+        toggle.set({disabled: disabled || Boolean(refusal), iconCls: recordState === 'off' && !preparation ? 'fa-solid fa-play' : 'fa-solid fa-stop'});
         // restart is meaningful only while running; at every card width it stays a real, visible control
         // (no hidden overflow) — the narrow row simply keeps both verbs as light, proportional icons
         restart.set({disabled, hidden: recordState === 'off'});
@@ -830,38 +887,99 @@ class AgentCard extends Container {
         // The accessible name must reach the DOM via the vdom root: `ariaLabel` is NOT a Neo config (it
         // maps to nothing), and these controls are icon-only (`.neo-button-text` is display:none), so the
         // aria-label IS their only accessible name. The FM roster names its subject on every verb.
-        toggle.changeVdomRootKey('aria-label', `${recordState === 'off' ? 'Start' : 'Stop'} ${nameSlot.text}`);
+        toggle.changeVdomRootKey('aria-label', `${cancelStart ? 'Cancel start' : recordState === 'off' && !preparation ? 'Start' : 'Stop'} ${nameSlot.text}`);
         restart.changeVdomRootKey('aria-label', `Restart ${nameSlot.text}`);
-        // a runtime fact that closes the verb, or infers its state, says why on the verb itself, in the
-        // producer's words: a seat outside fleet supervision, or a fleet-launched seat that never ran
-        toggle.changeVdomRootKey('title', !runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null);
+        // a fact that closes the verb, or infers its state, says why on the verb itself, in the producer's
+        // words: the Fleet's refusal to start the seat, a seat outside fleet supervision, or a fleet-launched
+        // seat that never ran
+        toggle.changeVdomRootKey('title', cancelStart
+            ? cancel === 'unanswered'
+                ? 'Cancel this Start again: the Fleet has not answered the first request.'
+                : 'Cancel this Start: the Fleet stops its installs and does not launch the seat.'
+            : refusal ?? (!runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null));
 
-        // While a control round-trip is live, the second work line belongs to the status row: the
-        // lane clamps to ONE line (SCSS keys off this root cls), so a reason-carrying card still
-        // fits the roster's uniform row height at every card width — the lane stays reachable via
-        // line one, its middle elision and the title.
-        me[(pendingAction || controlReason) ? 'addCls' : 'removeCls']('fm-control-live');
+        // The status row narrates the Start: the round-trip while it is live or refused, then whether
+        // the session it launched opened in the seat's own folder (a desktop seat cannot be launched
+        // into one), and last whether it prepared the working checkout. A confirmed wrong folder
+        // outranks even a live round-trip, because a live seat in the wrong folder is the failure
+        // itself; "not opened yet" and "unknown" sit below one, which a live seat contradicts.
+        const
+            wrongFolder   = record.sessionFolder?.state === 'wrong',
+            sessionLine   = wrongFolder || !(pendingAction || controlReason || preparation) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
+            // a start the Fleet refused for the declared model says so in the design read's words: the
+            // recorded cause, shown only while this cockpit's own last outcome is that same refusal
+            modelRefusal  = !pendingAction && !preparation && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
+            admissionLine = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal)
+                ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
+                    now,
+                    canRestart : !disabled && recordState !== 'off',
+                    mcpSettings: record.mcpSettings,
+                    rosterState: me.rosterState,
+                    runtime    : sources.runtime
+                }) : null,
+            // the quietest exception: a running seat whose working checkout the last start did not prepare
+            // has no verified skills. Running is the state the card shows, so a seat it reads offline says
+            // nothing; opening the session folder is the first-launch step, so it speaks first
+            skillsLine    = resolved.state !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal || admissionLine || sessionLine)
+                ? SeatDependencies.cardLine(record.dependencyOutcomes, record.repoSlug) : null;
 
-        // the control round-trip only — the runtime-source gating is already shown by the disabled
-        // controls + the source strip ("RUN not nominal"), so the status line never duplicates it
+        // admission words that change on their own name their instant; the card re-applies the record then
+        me.scheduleAdmissionAging(admissionLine?.until ?? null, now);
+
+        restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
+
+        // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
+        // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
+        // row height at every card width — the lane stays reachable via line one, its middle elision
+        // and the title.
+        me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine || exitLine) ? 'addCls' : 'removeCls']('fm-control-live');
+
+        // the runtime-source gating is already shown by the disabled controls + the source strip
+        // ("RUN not nominal"), so the status line never duplicates it
         const
             controlStatus     = me.getReference('control-status'),
             // pending takes visual priority over a prior reason, so a new attempt never shows a stale
-            // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠"
-            controlStatusText = pendingAction
-                ? `${pendingAction}…`
-                : !controlReason
-                    ? ''
-                    : controlReason.kind === 'timeout'
-                        ? `${controlReason.action}… stale — no response`
-                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`;
+            // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠".
+            // The Fleet's own report of a preparing Start refines both: it is an answer, not silence
+            controlStatusText = wrongFolder
+                ? sessionLine.text
+                : cancel
+                    ? cancel === 'sent' ? 'canceling start…' : 'canceling start… no answer yet'
+                    : preparation
+                        ? `${pendingAction === 'restart' ? 'restart' : 'start'}… ${preparation.text}`
+                        : pendingAction
+                            ? `${pendingAction}…`
+                            : modelRefusal
+                                ? modelRefusal.text
+                                : !controlReason
+                                    ? exitLine?.text ?? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
+                                    : controlReason.kind === 'timeout'
+                                        ? `${controlReason.action}… no answer yet`
+                                        : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
+            timeoutTitle      = !wrongFolder && !pendingAction && !preparation && !modelRefusal && controlReason?.kind === 'timeout'
+                ? `${controlStatusText}. The outcome is unknown until the Fleet answers.` : null,
+            // the last start's commit identity, when it needs repair, rides beside a refusal as its own
+            // observation: the wire carries no refusal code, so it never stands in as the cause
+            identityNote      = controlReason && !pendingAction && SeatGitIdentity.needsRepair(record.gitIdentity)
+                ? ` · The last start's commit identity: ${SeatGitIdentity.describe(record.gitIdentity)} Repair it in Detail › Configuration.`
+                : '';
 
         controlStatus.set({
-            hidden: !pendingAction && !controlReason,
+            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : []), ...(exitLine && !controlReason && !wrongFolder && !modelRefusal ? [`is-exit-${exitLine.state}`] : [])],
+            hidden: !pendingAction && !controlReason && !preparation && !sessionLine && !modelRefusal && !admissionLine && !skillsLine && !exitLine,
             text  : controlStatusText
         });
-        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full reason
-        controlStatus.changeVdomRootKey('title', controlStatusText || null);
+        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words; a preparing
+        // Start names each checkout's live row there
+        controlStatus.changeVdomRootKey('title', timeoutTitle || (cancel
+            ? cancel === 'sent'
+                ? 'Cancel requested: the Fleet stops the installs and does not launch the seat.'
+                : 'Cancel requested, and the Fleet has not answered yet while the Start still prepares. Its answer settles the card.'
+            : preparation
+                ? preparation.title
+                : modelRefusal
+                    ? modelRefusal.title + identityNote
+                    : exitLine?.title ?? admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
 
         me.update()
     }

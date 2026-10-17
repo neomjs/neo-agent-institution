@@ -42,6 +42,9 @@ class ShellPlane extends Base {
             app: [
                 'attachPlane',
                 'planeStatus',
+                'seatRootConsent',
+                'seatRootPlan',
+                'seatRootStatus',
                 'setupAnswer',
                 'setupCredential',
                 'setupEffect',
@@ -77,6 +80,38 @@ class ShellPlane extends Base {
     }
 
     /**
+     * @summary Reads this installation's root, pending inputs and boot outcome, even with Fleet held.
+     * @returns {Promise<Object>} Main's result, or a named no-shell refusal
+     */
+    seatRootStatus() {
+        return globalThis.neoShell?.seatRootStatus
+            ? globalThis.neoShell.seatRootStatus()
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Reviews the shell-owned roots and every row of the proposed placement transition.
+     * @returns {Promise<Object>} Main's plan or refusal
+     */
+    seatRootPlan() {
+        return globalThis.neoShell?.seatRootPlan
+            ? globalThis.neoShell.seatRootPlan()
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Returns only the reviewed fingerprint; main owns every path and the relaunch.
+     * @param {Object} data
+     * @param {String} data.fingerprint
+     * @returns {Promise<Object>} Consented or refused
+     */
+    seatRootConsent({fingerprint}) {
+        return globalThis.neoShell?.seatRootConsent
+            ? globalThis.neoShell.seatRootConsent({fingerprint})
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+    }
+
+    /**
      * @summary Records a consent for one question. A credential answer is the path main produced;
      * a value is refused by main, never recorded.
      * @param {Object} data
@@ -104,10 +139,11 @@ class ShellPlane extends Base {
      * the re-evaluated steps.
      * @param {Object} data
      * @param {String} data.effectId
+     * @param {Boolean} [data.newAttempt] `true` consents to writing the witness again; it crosses only as `true`
      * @returns {Promise<Object>}
      */
-    setupEffect({effectId}) {
-        return forwardSetup('setupEffect', {effectId})
+    setupEffect({effectId, newAttempt}) {
+        return forwardSetup('setupEffect', newAttempt === true ? {effectId, newAttempt: true} : {effectId})
     }
 
     /**

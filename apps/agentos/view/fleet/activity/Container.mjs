@@ -1,9 +1,12 @@
-import BufferedList from '../../../../../node_modules/neo.mjs/src/list/Buffered.mjs';
-import Button       from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Component    from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import Container    from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import RowContainer from './RowContainer.mjs';
-import ViewerTime   from '../../../util/ViewerTime.mjs';
+import BufferedList    from '../../../../../node_modules/neo.mjs/src/list/Buffered.mjs';
+import Button          from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Component       from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container       from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import DetailContainer from '../mailbox/DetailContainer.mjs';
+import RowContainer    from './RowContainer.mjs';
+import Splitter        from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
+import ViewerTime      from '../../../util/ViewerTime.mjs';
+import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 const
     COUNT_SCOPES   = new Set(['last24h', 'total']),
@@ -11,14 +14,23 @@ const
     QUIET_AFTER_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * @summary The Activity modes in the head's order, each with the word its chip and the source line use: the
+ * viewer's own `mailbox`, or the observer reads `involves me` and `all A2A` ({@link AgentOS.util.ActivityObserver}).
+ * @type {Object}
+ */
+export const ACTIVITY_MODE_LABELS = Object.freeze({mailbox: 'mailbox', 'involves-me': 'involves me', all: 'all A2A'});
+
+/**
  * @summary Formats only complete, source-qualified activity count rows.
  *
- * No aggregate is inferred. A mailbox total stays labelled `mailbox`; an absent/incomplete row
- * renders nothing. The full producer source and capture times remain in the title.
+ * No aggregate is inferred. A mailbox total stays labelled with the population it counts (`mailbox`, or
+ * the observer mode's word); an absent/incomplete row renders nothing. The full producer source and
+ * capture times remain in the title.
  * @param {Object[]} counts
+ * @param {String} [mailboxLabel='mailbox'] The word for the mailbox source's population
  * @returns {{text:String,title:String}|null}
  */
-export function describeActivityCounts(counts) {
+export function describeActivityCounts(counts, mailboxLabel = 'mailbox') {
     const complete = Array.isArray(counts) ? counts.filter(row =>
         typeof row?.source === 'string' && row.source
         && COUNT_SCOPES.has(row.scope)
@@ -42,7 +54,7 @@ export function describeActivityCounts(counts) {
         }
     });
 
-    const display = source => source === 'memory-core:mailbox' ? 'mailbox' : source;
+    const display = source => source === FLEET_COCKPIT_SOURCES.a2a ? mailboxLabel : source;
 
     return {
         text: [...groups].map(([source, rows]) => {
@@ -57,6 +69,36 @@ export function describeActivityCounts(counts) {
             .map(row => `${row.source} ${row.scope}=${row.value} captured ${row.capturedAt}`)
             .join('\n')
     }
+}
+
+/**
+ * @summary States what an observer mode's read could not admit, or the sharing policy that bounds it. The
+ * policy line names the limit and never a count of what it hides; a successful empty read needs no line,
+ * since its source count reads zero.
+ * @param {String} mode The Activity mode
+ * @param {Object|null} observation `{clamped, policy, reason, state}` as the provider holds it
+ * @returns {{cls:String,text:String,title:String|null}|null} `null` for the mailbox mode and for a team read
+ */
+export function describeActivityObservation(mode, observation) {
+    const label = ACTIVITY_MODE_LABELS[mode];
+
+    if (mode === 'mailbox' || !label) {
+        return null
+    }
+
+    if (observation?.state === 'unavailable') {
+        return {cls: 'is-unavailable', text: `${label} unavailable · ${observation.reason}`, title: null}
+    }
+
+    if (observation?.state === 'admitted' && mode === 'all' && observation.policy !== 'team') {
+        return {
+            cls  : 'is-limited',
+            text : `${label} · ${observation.policy} sharing policy: only messages you may already read`,
+            title: observation.clamped ? `The team breadth was asked; this deployment answers with its ${observation.policy} policy.` : null
+        }
+    }
+
+    return null
 }
 
 /**
@@ -114,6 +156,13 @@ export function describeQuietSince(occurredAt, now = Date.now()) {
  * affordance; at the top they arrive normally. Recycled history is excluded from the polite live
  * region, while one isolated announcer speaks only genuinely new producer ids.
  *
+ * The head's chips choose the A2A population the feed reads, the provider-owned {@link #mode}: the
+ * viewer's own mailbox, or the observer reads involves me and all A2A. A chip only asks; the owner
+ * switches the mode and retires the old population. In an observer mode a message row opens beside
+ * the list in the mailbox's shared {@link AgentOS.view.fleet.mailbox.DetailContainer}, entered as
+ * `observer`, so it is read-only. The owner reads the body and writes it back as {@link #messageRead}; the detail
+ * closes when its row leaves the store, which every change of authority empties.
+ *
  * @class AgentOS.view.fleet.activity.Container
  * @extends Neo.container.Base
  */
@@ -157,6 +206,12 @@ class ActivityStream extends Container {
          */
         counts_: [],
         /**
+         * Partial-feed guidance derived once from `capability.slots` by admission and bound from the provider.
+         * @member {Object|null} guidance_=null
+         * @reactive
+         */
+        guidance_: null,
+        /**
          * Whether the mailbox answered an older page with no row: the stream then stops asking.
          * @member {Boolean} historyExhausted_=false
          * @reactive
@@ -170,6 +225,24 @@ class ActivityStream extends Container {
          * @member {Number} itemHeight=32
          */
         itemHeight: 32,
+        /**
+         * The owner's body read of the open message, passed to the detail. Owner-written, never fetched here.
+         * @member {Object|null} messageRead_=null
+         * @reactive
+         */
+        messageRead_: null,
+        /**
+         * The A2A population the feed reads ({@link ACTIVITY_MODE_LABELS}), bound from the provider.
+         * @member {'mailbox'|'involves-me'|'all'} mode_='mailbox'
+         * @reactive
+         */
+        mode_: 'mailbox',
+        /**
+         * What the observer read answered, bound from the provider: `{clamped, policy, reason, state}`.
+         * @member {Object|null} observation_=null
+         * @reactive
+         */
+        observation_: null,
         /**
          * Provider-owned activity Store shared across pane projections.
          * @member {AgentOS.store.FleetActivityEvents|null} store_=null
@@ -186,6 +259,13 @@ class ActivityStream extends Container {
     pendingNewEventCount = 0
     /** @member {Number} announcementSequence=0 @protected */
     announcementSequence = 0
+    /**
+     * The open message row's producer id, kept here so the detail follows its record and closes once the
+     * store no longer holds it.
+     * @member {String|null} selectedEventId=null
+     * @protected
+     */
+    selectedEventId = null
 
     /**
      * @param {Object} config
@@ -218,6 +298,22 @@ class ActivityStream extends Container {
                 module   : Component,
                 cls      : ['fm-stream-state'],
                 reference: 'state'
+            }, {
+                // the A2A population the feed reads: the shell's ghost chips, the pressed one in view
+                module   : Container,
+                cls      : ['fm-pane-actions', 'fm-stream-modes'],
+                flex     : 'none',
+                layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
+                reference: 'modes',
+                items    : Object.entries(ACTIVITY_MODE_LABELS).map(([mode, text]) => ({
+                    module         : Button,
+                    cls            : ['fm-stream-mode-chip'],
+                    handler        : me.onModeClick.bind(me, mode),
+                    reference      : `mode-${mode}`,
+                    text,
+                    ui             : 'ghost',
+                    useRippleEffect: false
+                }))
             }]
         }, {
             // the sources' own populations, below the head: never the feed's count
@@ -226,30 +322,57 @@ class ActivityStream extends Container {
             flex     : 'none',
             reference: 'counts'
         }, {
+            // what an observer read could not admit, or the policy bounding it
+            module   : Component,
+            cls      : ['fm-pane-meta', 'fm-stream-observer'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'observer-note'
+        }, {
             module   : Component,
             cls      : ['fm-stream-empty'],
             hidden   : true,
             reference: 'empty-note',
             text     : 'no activity yet'
         }, {
-            module          : BufferedList,
-            autoDestroyStore: false,
-            bufferRowRange  : 4,
-            cls             : ['fm-activity-list'],
-            disableSelection: true,
-            flex            : 1,
-            itemConfig      : () => ({module: RowContainer, actorDirectory: me.actorDirectory}),
-            itemHeight      : me.itemHeight,
-            itemsFocusable  : false,
-            reference       : 'list',
-            useInternalId   : false,
-            vdom            : {'aria-label': 'Fleet activity history', 'aria-live': 'off'}
+            // the rows beside the open message, the mailbox's reading split: the list two shares, the detail one
+            module   : Container,
+            cls      : ['fm-stream-body'],
+            flex     : 1,
+            layout   : {ntype: 'hbox', align: 'stretch'},
+            reference: 'stream-body',
+            items    : [{
+                module          : BufferedList,
+                autoDestroyStore: false,
+                bufferRowRange  : 4,
+                cls             : ['fm-activity-list'],
+                disableSelection: true,
+                flex            : 2,
+                itemConfig      : () => ({module: RowContainer, actorDirectory: me.actorDirectory}),
+                itemHeight      : me.itemHeight,
+                itemsFocusable  : false,
+                reference       : 'list',
+                useInternalId   : false,
+                vdom            : {'aria-label': 'Fleet activity history', 'aria-live': 'off'}
+            }, {
+                module      : Splitter,
+                cls         : ['fm-stream-splitter'],
+                hidden      : true,
+                reference   : 'stream-splitter',
+                resizeTarget: 'previous'
+            }, {
+                module   : DetailContainer,
+                flex     : 1,
+                hidden   : true,
+                reference: 'stream-detail'
+            }]
         }, {
             module   : Button,
             cls      : ['fm-stream-new-events'],
             handler  : me.onNewEventsClick.bind(me),
             hidden   : true,
-            reference: 'new-events'
+            reference: 'new-events',
+            ui       : 'ghost'
         }, {
             module   : Component,
             cls      : ['fm-stream-announcer'],
@@ -259,9 +382,21 @@ class ActivityStream extends Container {
         }])
     }
 
-    /** @param {String} value @param {String} oldValue @protected */
+    /**
+     * Triggered after the feed's liveness changed. A cold feed was retired or never answered: it shows no
+     * row ({@link #updateHeader}), so nothing it held stays open.
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
     afterSetAdapterState(value, oldValue) {
-        this.isConstructed && this.updateHeader()
+        const me = this;
+
+        if (me.isConstructed) {
+            value === 'cold' && (me.selectedEventId = null);
+            me.applyDetail();
+            me.updateHeader()
+        }
     }
 
     /** @param {Object} value @param {Object} oldValue @protected */
@@ -280,6 +415,45 @@ class ActivityStream extends Container {
 
     /** @param {Boolean} value @param {Boolean} oldValue @protected */
     afterSetHistoryExhausted(value, oldValue) {
+        this.isConstructed && this.updateHeader()
+    }
+
+    /** @param {Object|null} value @param {Object|null} oldValue @protected */
+    afterSetMessageRead(value, oldValue) {
+        this.isConstructed && this.applyDetail()
+    }
+
+    /**
+     * Triggered after the provider's mode changed. The new population's first page is this stream's
+     * baseline, never news: no announcement, no pending pill, no open message of the old one, and the
+     * list reads it from its newest row.
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetMode(value, oldValue) {
+        const me = this;
+
+        me.toggleCls('is-observing', value !== 'mailbox');
+
+        if (me.isConstructed) {
+            me.getReference('list')?.scrollToIndex(0);
+            me.hasObservedStore     = false;
+            me.pendingNewEventCount = 0;
+            me.selectedEventId      = null;
+            me.updateNewEventsButton();
+            me.applyDetail();
+            me.updateHeader()
+        }
+    }
+
+    /** @param {Object|null} value @param {Object|null} oldValue @protected */
+    afterSetGuidance(value, oldValue) {
+        this.isConstructed && this.updateHeader()
+    }
+
+    /** @param {Object|null} value @param {Object|null} oldValue @protected */
+    afterSetObservation(value, oldValue) {
         this.isConstructed && this.updateHeader()
     }
 
@@ -321,7 +495,7 @@ class ActivityStream extends Container {
 
         Object.assign(me.vdom, {'aria-label': 'Live fleet activity', role: 'log', tabIndex: 0});
 
-        list?.on('createItems', me.onListCreateItems, me);
+        list?.on({createItems: me.onListCreateItems, itemClick: me.onListItemClick, scope: me});
         list && (list.store = me.store);
 
         me.syncKnownEventIds(false);
@@ -329,12 +503,84 @@ class ActivityStream extends Container {
     }
 
     /**
-     * @summary Tracks genuinely new producer ids and keeps recycled history out of announcements.
+     * @summary Tracks genuinely new producer ids and keeps recycled history out of announcements; an open
+     * message whose row left the store closes.
      * @protected
      */
     onActivityStoreLoad() {
         this.syncKnownEventIds(true);
+        this.applyDetail();
         this.updateHeader()
+    }
+
+    /**
+     * @summary Hand the detail the open message row as the store holds it now, or close it: in the mailbox
+     * mode, and once the store no longer holds the row.
+     * @protected
+     */
+    applyDetail() {
+        const
+            me       = this,
+            record   = me.mode !== 'mailbox' && me.selectedEventId ? me.store?.get(me.selectedEventId) ?? null : null,
+            detail   = me.getReference('stream-detail'),
+            splitter = me.getReference('stream-splitter');
+
+        record || (me.selectedEventId = null);
+
+        if (!detail || !splitter) {
+            return
+        }
+
+        splitter.hidden = !record;
+
+        detail.set({
+            entry : 'observer',
+            hidden: !record,
+            read  : me.messageRead,
+            row   : record ? me.rowOf(record) : null
+        })
+    }
+
+    /**
+     * @summary A row was clicked: in an observer mode an admitted message opens beside the list, and the owner
+     * is asked for its body; a click on the open row closes it. A retracted message has no body to ask for.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onListItemClick({record}) {
+        const me = this;
+
+        if (me.mode === 'mailbox' || record?.source !== FLEET_COCKPIT_SOURCES.a2a || !record.payload?.messageId) {
+            return
+        }
+
+        const open = record.eventId !== me.selectedEventId;
+
+        me.selectedEventId = open ? record.eventId : null;
+        me.applyDetail();
+
+        open && record.payload.status !== 'retracted' && me.fire('messageOpen', {messageId: record.payload.messageId})
+    }
+
+    /**
+     * @summary Ask the owner to switch the A2A population; the provider's mode answers through the binding.
+     * @param {String} mode
+     * @protected
+     */
+    onModeClick(mode) {
+        mode !== this.mode && this.fire('modeChange', {mode})
+    }
+
+    /**
+     * @summary The plain row the detail renders, from an A2A activity record's producer payload.
+     * @param {Object} record
+     * @returns {Object}
+     * @protected
+     */
+    rowOf(record) {
+        const {from, messageId, priority, relatedTickets, status, subject, taskState} = record.payload;
+
+        return {from, messageId, priority, relatedTickets, sentAt: record.occurredAt, status, subject, taskState}
     }
 
     /**
@@ -414,6 +660,8 @@ class ActivityStream extends Container {
     /**
      * @summary Updates stable header components from liveness, source-count and local-retention truth.
      * A live feed over an old newest event says so beside its connection word ({@link describeQuietSince}).
+     * The pressed chip is the mode in view, the mailbox count is labelled with its population, and an
+     * observer read's limit or refusal takes its own line ({@link describeActivityObservation}).
      * @protected
      */
     updateHeader() {
@@ -422,21 +670,36 @@ class ActivityStream extends Container {
             header     = me.getReference('header'),
             countsCell = me.getReference('counts'),
             stateCell  = me.getReference('state'),
-            retained   = me.store?.count ?? 0,
+            noteCell   = me.getReference('observer-note'),
+            note       = describeActivityObservation(me.mode, me.observation),
+            // a cold feed shows no row (Container.scss): rows a retired authority left for its successor's replace are not held
+            retained   = me.adapterState === 'cold' ? 0 : me.store?.count ?? 0,
             dropped    = me.store?.droppedCount ?? 0,
-            countView  = describeActivityCounts(me.counts),
-            stateWord  = {cold: 'not answered yet', partial: 'partial — some sources unavailable',
+            countView  = describeActivityCounts(me.counts, ACTIVITY_MODE_LABELS[me.mode]),
+            stateWord  = {cold: 'not answered yet',
+                partial: (typeof me.guidance?.head === 'string' && me.guidance.head.trim()) || 'partial — some sources unavailable',
                 stale: retained ? 'stale — reconnecting' : 'unavailable'}[me.adapterState],
             stateCls   = {cold: 'is-cold', partial: 'is-partial', stale: 'is-stale'}[me.adapterState] ?? 'is-live',
             // cold and stale already say their rows are not current; only a live feed can mislead
             quiet      = stateWord ? null : describeQuietSince(me.store?.getAt(0)?.occurredAt),
             stateText  = stateWord ?? (quiet ? `● streaming · ${quiet.text}` : '● streaming');
 
-        if (!header || !countsCell || !stateCell) {
+        if (!header || !countsCell || !stateCell || !noteCell) {
             return
         }
 
         header.cls = ['fm-pane-head', 'fm-stream-head', stateCls, ...(quiet ? ['is-quiet'] : [])];
+
+        Object.keys(ACTIVITY_MODE_LABELS).forEach(mode => {
+            me.getReference(`mode-${mode}`).pressed = mode === me.mode
+        });
+
+        noteCell.vdom.title = note?.title ?? null;
+        noteCell.set({
+            cls   : ['fm-pane-meta', 'fm-stream-observer', ...(note ? [note.cls] : [])],
+            hidden: !note,
+            text  : note?.text ?? ''
+        });
 
         // the feed's own empty state: an ANSWER with no events says so in the list region; a cold
         // feed (no answer yet) leaves the region quiet — the head already says "not answered yet"
@@ -458,7 +721,14 @@ class ActivityStream extends Container {
             retained
         });
 
-        stateCell.vdom.title = quiet?.title ?? null;
+        const
+            headTitle    = typeof me.guidance?.headTitle === 'string' && me.guidance.headTitle.trim(),
+            recheck      = typeof me.guidance?.recheck === 'string' && me.guidance.recheck.trim(),
+            partialTitle = headTitle || (recheck ? `${recheck} · Recheck now is in the banner · no direct producer repair here` : null);
+
+        stateCell.vdom.title = me.adapterState === 'partial'
+            ? partialTitle
+            : (quiet?.title ?? null);
         stateCell.text       = stateText
     }
 
@@ -483,7 +753,7 @@ class ActivityStream extends Container {
         const me = this;
 
         me.store?.un('load', me.onActivityStoreLoad, me);
-        me.getReference('list')?.un('createItems', me.onListCreateItems, me);
+        me.getReference('list')?.un({createItems: me.onListCreateItems, itemClick: me.onListItemClick, scope: me});
 
         super.destroy(...args)
     }

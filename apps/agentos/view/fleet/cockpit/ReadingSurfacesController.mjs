@@ -1,3 +1,4 @@
+import ActivityObserver        from '../../../util/ActivityObserver.mjs';
 import FleetAdmission          from '../../../util/FleetAdmission.mjs';
 import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
@@ -32,30 +33,44 @@ class ReadingSurfacesController extends LivenessController {
     }
 
     /**
+     * The observer admission the activity rows belong to ({@link AgentOS.util.ActivityObserver}), `null` in the
+     * mailbox mode and before an observer answer.
+     * @member {String|null} activityAdmissionKey=null
+     * @protected
+     */
+    activityAdmissionKey = null
+    /**
+     * The observer population's next older page, `{slots, offset}` as the Brain issued it, or `null` once it ended.
+     * @member {Object|null} activityContinuation=null
+     * @protected
+     */
+    activityContinuation = null
+    /**
      * Read-fence for the activity feed's older pages.
      * @member {Number} activityHistoryGeneration=0
      * @protected
      */
     activityHistoryGeneration = 0
     /**
-     * The generation of the older-page read in flight, or `null`. A read from before a profile switch
-     * stops counting, so it can neither block nor release the new profile's reads.
+     * The generation of the older-page read in flight, or `null`. A read from before the feed's authority
+     * changed stops counting ({@link AgentOS.util.TargetBinding#clearActivity}), so it can neither block nor
+     * release the new authority's reads.
      * @member {Number|null} activityHistoryFlight=null
      * @protected
      */
     activityHistoryFlight = null
     /**
-     * The profile the paging state belongs to. Once the store answers for another, that state resets.
-     * @member {String|null} activityHistoryProfileId=null
-     * @protected
-     */
-    activityHistoryProfileId = null
-    /**
-     * The store's count when an older page added no row; no page is asked again until it moves.
+     * The store's count when an older mailbox page added no row; no page is asked again until it moves.
      * @member {Number|null} activityHistoryStalledAt=null
      * @protected
      */
     activityHistoryStalledAt = null
+    /**
+     * Read-fence for the message the Activity detail opened.
+     * @member {Number} activityMessageReadGeneration=0
+     * @protected
+     */
+    activityMessageReadGeneration = 0
     /**
      * Read-fence + owner-held snapshot for the catch-up history surface.
      * @member {Number} catchUpReadGeneration=0
@@ -107,17 +122,36 @@ class ReadingSurfacesController extends LivenessController {
     }
 
     /**
+     * @summary Relay an admitted message row the Activity stream opened ({@link AgentOS.util.ActivityObserver#open}).
+     * @param {Object} data `{messageId}`
+     * @returns {Promise<void>}
+     */
+    onActivityMessageOpen(data) {
+        return ActivityObserver.open(this, data)
+    }
+
+    /**
+     * @summary Relay the Activity header's mode choice ({@link AgentOS.util.ActivityObserver#switchMode}).
+     * @param {Object} data `{mode}`
+     * @returns {Boolean} Whether the mode changed
+     */
+    onActivityModeChange(data) {
+        return ActivityObserver.switchMode(this, data.mode)
+    }
+
+    /**
      * @summary READ-OBSERVE: the activity feed's next older page. The mailbox is the one lane that pages,
-     * so the read asks it alone (`slots: ['a2a']`) at the offset of the mailbox rows the store holds: a
-     * message lands as one row, and ids dedupe the overlap that new arrivals shift in. One page is in
-     * flight at a time. Nothing is asked once the ring is full, since the page would be the tail it
-     * evicts; once the mailbox answers no older row; or while a page that added nothing has not been
-     * followed by a change in the store. The page lands through
-     * {@link AgentOS.util.FleetAdmission#admitActivityHistory}; a failed read changes nothing.
+     * so the read asks it alone (`slots: ['a2a']`). An observer mode asks where the held canonical
+     * continuation points, and its page lands only under the admission that issued it
+     * ({@link AgentOS.util.ActivityObserver#admitHistory}); its population has ended once the continuation does.
+     * The mailbox feed has no continuation, so it asks at the offset of the mailbox rows the store holds: a
+     * message lands as one row, and ids dedupe the overlap that new arrivals shift in. It has ended once it
+     * answers no older row, and a page that added nothing is not followed until the store moves.
      *
-     * Every outcome belongs to the profile that asked. Once the store holds another profile, a late
-     * answer is dropped whole, an empty page's end-of-history included, and the old profile's stall and
-     * in-flight read no longer apply.
+     * One page is in flight at a time. Nothing is asked once the ring is full, since the page would be the tail
+     * it evicts. The page lands through {@link AgentOS.util.FleetAdmission#admitActivityHistory}; a failed read
+     * changes nothing. Every outcome belongs to the authority that asked: once the feed answers for another
+     * profile, mode or admission, a late answer is dropped whole, an empty page's end-of-history included.
      * @param {Number} [limit=50] Rows per page.
      * @returns {Promise<Object|null>} The ingest result, or `null` when nothing was asked or landed.
      */
@@ -127,14 +161,8 @@ class ReadingSurfacesController extends LivenessController {
             {bridge}  = me,
             provider  = me.component.getStateProvider(),
             store     = me.resolveFleetActivityEventsStore(),
-            profileId = bridge?.profileId ?? null;
-
-        if (me.activityHistoryProfileId !== me.activityProfileId) {
-            me.activityHistoryProfileId = me.activityProfileId;
-            me.activityHistoryStalledAt = null;
-            me.activityHistoryFlight    = null;
-            me.activityHistoryGeneration++
-        }
+            profileId = bridge?.profileId ?? null,
+            selector  = ActivityObserver.selectorOf(me);
 
         if (!store || !me.activityWired || me.activityHistoryFlight !== null || provider?.getData('streamHistoryExhausted')
             || store.count >= store.maxRecords || store.count === me.activityHistoryStalledAt
@@ -142,9 +170,14 @@ class ReadingSurfacesController extends LivenessController {
             return null
         }
 
-        const
-            generation = ++me.activityHistoryGeneration,
-            offset     = store.items.filter(record => record.source === FLEET_COCKPIT_SOURCES.a2a).length;
+        const request = selector ? ActivityObserver.historyRequest(me, {limit, selector})
+            : {limit, offset: store.items.filter(record => record.source === FLEET_COCKPIT_SOURCES.a2a).length, slots: ['a2a']};
+
+        if (!request) {
+            return null
+        }
+
+        const generation = ++me.activityHistoryGeneration;
 
         let answer;
 
@@ -152,7 +185,7 @@ class ReadingSurfacesController extends LivenessController {
 
         try {
             answer = await me.boundedRead(
-                Promise.resolve().then(() => bridge.fleetActivity({limit, offset, slots: ['a2a']})),
+                Promise.resolve().then(() => bridge.fleetActivity(request)),
                 () => { me.activityHistoryFlight === generation && (me.activityHistoryFlight = null) }
             )
         } catch (error) {
@@ -166,14 +199,19 @@ class ReadingSurfacesController extends LivenessController {
 
         const events = (answer.events || []).filter(event => event?.source === FLEET_COCKPIT_SOURCES.a2a);
 
-        if (!events.length) {
+        if (selector) {
+            if (!ActivityObserver.admitHistory(me, answer, selector)) {
+                return null
+            }
+        } else if (!events.length) {
             provider?.setData({streamHistoryExhausted: true});
             return null
         }
 
         const landed = FleetAdmission.admitActivityHistory(me, {events, profileId});
 
-        me.activityHistoryStalledAt = landed?.added === 0 ? store.count : null;
+        // an observer page always advances its continuation, so only the mailbox feed can stall
+        me.activityHistoryStalledAt = !selector && landed?.added === 0 ? store.count : null;
 
         return landed
     }
@@ -264,6 +302,38 @@ class ReadingSurfacesController extends LivenessController {
         pane.openSession({sessionId, title});
 
         return {opened: true, sessionId}
+    }
+
+    /**
+     * @summary Open the operator's open questions for a view outside the cockpit (Home's question count): the
+     * Mailbox tab comes forward showing `for you · open`, read anew.
+     * @returns {Promise<{opened: Boolean}>}
+     */
+    async openOperatorQuestions() {
+        const me = this;
+
+        await me.revealResidentTab('operator');
+
+        const mailbox = me.component.getOperatorMailboxPane();
+
+        mailbox?.showOpenQuestions();
+
+        return {opened: !!mailbox}
+    }
+
+    /**
+     * @summary Open the fleet head's merge queue for a view outside the cockpit (Home's merge count): the
+     * roster's tab comes forward and its awaiting-merge button opens its list, when there is one.
+     * @returns {Promise<{opened: Boolean}>}
+     */
+    async openMergeQueue() {
+        const me = this;
+
+        await me.revealResidentTab('fleet');
+
+        const button = me.getReference('fleet-grid')?.getReference('awaiting-merge');
+
+        return {opened: button ? await button.openMenu() : false}
     }
 
     /**

@@ -8,7 +8,7 @@ import GraphSceneEnvelope from '../../../apps/agentos/util/GraphSceneEnvelope.mj
  * instant sits on the visual suite's pinned 2026-07-05 day. Every distinct URL executes once (module cache),
  * so a spec varies the `t` parameter per call.
  *
- * `?state=current|team|truncated|degraded|routeless|unavailable[&select=<qualified id>]&t=<n>`
+ * `?state=current|team|crowded|truncated|degraded|routeless|unavailable[&select=<qualified id>]&t=<n>`
  */
 const
     params   = new URL(import.meta.url).searchParams,
@@ -92,7 +92,27 @@ const
             .map(([login, label]) => ({id: q(login), label, kind: 'AgentIdentity'})),
         {id: q('issue-19400'), label: 'A first contribution', kind: 'ISSUE', authoredBy: '@a-contributor', assignedTo: [], state: 'OPEN', lastActivityAt: now - 5 * hour}
     ],
+    // the side panel at full scale: 161 peers author 487 issues, 13 of them named, so the read lists 500 nodes;
+    // the first issue's title runs to ninety characters
+    logins     = Array.from({length: 161}, (_, i) => `@peer-${String(i).padStart(3, '0')}`),
+    crowd      = {
+        route : [],
+        nodes : [
+            ...Array.from({length: 487}, (_, i) => ({
+                id        : q(`issue-${20000 + i}`),
+                label     : i ? `crowded issue ${i}` : 'A ninety-character node title reads whole in this list, however many lines it has to take.',
+                kind      : 'ISSUE',
+                authoredBy: logins[i % logins.length]
+            })),
+            ...logins.slice(0, 13).map(login => ({id: q(login), label: login, kind: 'AgentIdentity'}))
+        ],
+        edges       : [],
+        counts      : {nodes: 500, edges: 0, seeds: 0},
+        budget      : {maxNodes: 500, maxEdges: 300, maxBytes: 65536},
+        completeness: 'complete'
+    },
     wires      = {
+        crowded    : {capability: {state: 'current', reason: null}, scene: crowd, snapshotId: 'snap-c161', capturedAt},
         team       : {capability: {state: 'current', reason: null}, scene: {...scene, nodes: [...scene.nodes.map(node => ({...node, ...team[node.id.replace('neomjs/neo#', '')]})), ...named]}, snapshotId: 'snap-9c32', capturedAt},
         current    : {capability: {state: 'current', reason: null}, scene, snapshotId: 'snap-7f3a', capturedAt},
         truncated  : {capability: {state: 'current', reason: null}, scene: {...scene, completeness: 'truncated'}, snapshotId: 'snap-8b21', capturedAt},

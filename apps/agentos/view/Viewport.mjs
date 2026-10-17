@@ -1,22 +1,22 @@
-import Accounts           from './accounts/Panel.mjs';
-import AgentDefinitions   from '../store/AgentDefinitions.mjs';
-import BaseViewport       from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
-import Dashboard          from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
+import Accounts            from './accounts/Panel.mjs';
+import AgentDefinitions    from '../store/AgentDefinitions.mjs';
+import BaseViewport        from '../../../node_modules/neo.mjs/src/container/Viewport.mjs';
+import Dashboard           from '../../../node_modules/neo.mjs/src/dashboard/Container.mjs';
 import DeploymentStateRead from '../util/DeploymentStateRead.mjs';
-import FleetAwaitingMerge from '../store/FleetAwaitingMerge.mjs';
-import FleetCockpit       from './fleet/cockpit/Container.mjs';
-import FleetInstances     from '../store/FleetInstances.mjs';
-import FleetRoster        from '../store/FleetRoster.mjs';
-import FleetTenants       from '../store/FleetTenants.mjs';
-import GoldenPathEnvelope from '../util/GoldenPathEnvelope.mjs';
-import GraphSceneEnvelope from '../util/GraphSceneEnvelope.mjs';
-import HomeView           from './home/Container.mjs';
-import InstanceSwitcher   from './fleet/instances/SwitcherButton.mjs';
-import ObservatoryPane    from './fleet/goldenpath/ObservatoryContainer.mjs';
-import StateProvider      from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
-import SystemView         from './system/Container.mjs';
-import TabContainer       from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
-import ViewportController from './ViewportController.mjs';
+import FleetAwaitingMerge  from '../store/FleetAwaitingMerge.mjs';
+import FleetCockpit        from './fleet/cockpit/Container.mjs';
+import FleetInstances      from '../store/FleetInstances.mjs';
+import FleetRoster         from '../store/FleetRoster.mjs';
+import FleetTenants        from '../store/FleetTenants.mjs';
+import GoldenPathEnvelope  from '../util/GoldenPathEnvelope.mjs';
+import GraphSceneEnvelope  from '../util/GraphSceneEnvelope.mjs';
+import HomeView            from './home/Container.mjs';
+import InstanceSwitcher    from './fleet/instances/SwitcherButton.mjs';
+import ObservatoryPane     from './fleet/goldenpath/ObservatoryContainer.mjs';
+import StateProvider       from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
+import SystemView          from './system/Container.mjs';
+import TabContainer        from '../../../node_modules/neo.mjs/src/tab/Container.mjs';
+import ViewportController  from './ViewportController.mjs';
 
 /**
  * @summary A keeper-rail tab header. Its tooltip opens to the icon's right (`l-r`), clear of the rail; the
@@ -95,6 +95,7 @@ class Viewport extends BaseViewport {
                 // HERE so Home reads them too: the adapter state (`'cold'` until a source answers,
                 // then `'live'` or `'stale'`), the read's own observation, and its retained degrade
                 // reason, per surface, since one shared field cannot know whose cause it holds
+                activityGuidance  : {head: null, headTitle: null, missing: null, reason: null, recheck: null, remaining: null, repair: null, summary: null},
                 gridAdapterState  : 'cold',
                 gridConnection    : {state: null, reason: null},
                 gridDegradedReason: null,
@@ -102,6 +103,9 @@ class Viewport extends BaseViewport {
                 // and bound by the fleet head's awaiting-merge button; leaf-complete by construction,
                 // every leaf null until the first answer lands
                 openWork: {coverage: null, observedAt: null, reason: null, state: null},
+                // the operator line's questions axis, projected by the same read owner from the same
+                // answer: its source's state and reason, leaf-complete like `openWork`
+                questions: {count: null, reason: null, state: null},
                 // the connected instance's deployment-state picture — the System keeper-view's plane
                 // truth, written by the cockpit's read owner through setData's closest-owner walk and
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
@@ -169,11 +173,12 @@ class Viewport extends BaseViewport {
                 module   : InstanceSwitcher,
                 reference: 'instance-switcher',
                 bind     : {
-                    boundProfileId: data => data.boundProfileId,
-                    instanceState : data => data.instanceState,
-                    instanceStore : 'stores.fleetInstances',
-                    shellCustody  : data => data.shellCustody,
-                    shellPlaneBase: data => data.shellPlaneBase
+                    activityGuidance: data => data.activityGuidance,
+                    boundProfileId  : data => data.boundProfileId,
+                    instanceState   : data => data.instanceState,
+                    instanceStore   : 'stores.fleetInstances',
+                    shellCustody    : data => data.shellCustody,
+                    shellPlaneBase  : data => data.shellPlaneBase
                 },
                 listeners: {
                     attachplane    : 'onAttachPlane',
@@ -211,11 +216,11 @@ class Viewport extends BaseViewport {
                 }
             }]
         }, {
-            module               : TabContainer,
-            cls                  : ['agent-shell'],
-            flex                 : 1,
-            reference            : 'shell',
-            tabBarPosition       : 'left',
+            module        : TabContainer,
+            cls           : ['agent-shell'],
+            flex          : 1,
+            reference     : 'shell',
+            tabBarPosition: 'left',
             // the icon rail marks its active place with a pressed button: no indicator, no strip beside it
             tabStrip             : {hidden: true},
             useActiveTabIndicator: false,
@@ -224,6 +229,7 @@ class Viewport extends BaseViewport {
             items: [{
                 module   : HomeView,
                 header   : railHeader('fa-solid fa-house', '/home', 'Home'),
+                listeners: {mergeQueueOpen: 'onHomeMergeQueueOpen', questionsOpen: 'onHomeQuestionsOpen'},
                 reference: 'home-view'
             }, {
                 module   : FleetCockpit,
@@ -249,16 +255,20 @@ class Viewport extends BaseViewport {
             }, {
                 // Accounts is likewise a dashboard.Panel — its own dashboard.Container host so the
                 // identity panel keeps the pop-out affordance and stays structurally idiomatic.
-                module   : Dashboard,
-                cls      : ['agent-accounts-dashboard'],
-                header   : railHeader('fa-solid fa-id-badge', '/accounts', 'Accounts'),
-                popupUrl : 'apps/agentos/childapps/widget/index.html',
-                sortGroup: 'neo-connected-dashboard',
+                module        : Dashboard,
+                cls           : ['agent-accounts-dashboard'],
+                header        : railHeader('fa-solid fa-id-badge', '/accounts', 'Accounts'),
+                popupUrl      : 'apps/agentos/childapps/widget/index.html',
+                sortGroup     : 'neo-connected-dashboard',
+                sortZoneConfig: {dragHandleSelector: '.fm-accounts-drag-handle'},
 
                 items: [{
                     module   : Accounts,
                     flex     : 1,
-                    listeners: {agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'},
+                    listeners: {
+                        agentDefinitionAccepted   : 'up.onAgentDefinitionAccepted',
+                        repositoryOperationSettled: 'up.onRepositoryOperationSettled'
+                    },
                     reference: 'accounts'
                 }]
             }, {
@@ -304,6 +314,11 @@ class Viewport extends BaseViewport {
         await cockpit.loadRoster();
 
         return true
+    }
+
+    /** @summary Reconcile checkout effects through the existing roster-read owner. @returns {Promise<*>|undefined} */
+    onRepositoryOperationSettled() {
+        return this.getReference('fleet-cockpit')?.loadRoster()
     }
 }
 

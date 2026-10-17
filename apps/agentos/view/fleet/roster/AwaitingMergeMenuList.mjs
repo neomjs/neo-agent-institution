@@ -27,6 +27,16 @@ class AwaitingMergeMenuList extends MenuList {
          */
         autoDestroyStore: false,
         /**
+         * @member {Boolean} stageEnabled_=false Optional dev action.
+         * @reactive
+         */
+        stageEnabled_: false,
+        /**
+         * @member {Object|null} stageOutcome_=null Addressed launch feedback.
+         * @reactive
+         */
+        stageOutcome_: null,
+        /**
          * @member {Object} _vdom
          */
         _vdom: {
@@ -68,20 +78,35 @@ class AwaitingMergeMenuList extends MenuList {
     }
 
     /**
-     * @summary One row: the pull request's reference, and `stale` when the producer has not observed it
+     * @summary One row: an anchor to the pull request, and `stale` when the producer has not observed it
      * lately. Every row in the queue is approved on its head, green and mergeable, so the list's name says
-     * that once. Every fragment is an inert `text` node: the repository name is remote data.
+     * that once. A row whose producer carries a title reads `#N · <title>`, wrapping to two lines at most,
+     * with the repository and the whole title in its tooltip; one without reads its reference and keeps the
+     * link as its tooltip. The anchor's text is an inert `text` node (the repository name and the title are
+     * remote data) and its `href` is composed from the record's two fields, never taken from the wire;
+     * `target="_blank"` reaches the shell's window policy, which hands an allowlisted `https://github.com`
+     * link to the system browser and opens no window (the shell ADR's external hand-off).
      * @param {AgentOS.model.OpenPullRequest} record
      * @returns {Object}
      */
     createItemContent(record) {
+        const
+            href = `https://github.com/${record.repo}/pull/${record.number}`,
+            ref  = `${record.repo} #${record.number}`;
+
         return {
             cls  : ['fm-awaiting-merge-row', ...(record.stale ? ['is-stale'] : [])],
             role : 'menuitem',
-            title: `https://github.com/${record.repo}/pull/${record.number}`,
+            title: record.title ? `${ref} · ${record.title}` : href,
             cn   : [
-                {tag: 'span', cls: ['fm-awaiting-merge-ref'], text: `${record.repo} #${record.number}`},
-                ...(record.stale ? [{tag: 'span', cls: ['fm-awaiting-merge-stale'], text: 'stale'}] : [])
+                {tag: 'a', cls: ['fm-awaiting-merge-ref'], href, rel: 'noopener', target: '_blank', text: record.title ? `#${record.number} · ${record.title}` : ref},
+                ...(record.stale ? [{tag: 'span', cls: ['fm-awaiting-merge-stale'], text: 'stale'}] : []),
+                ...(this.stageEnabled ? [{id: `${this.id}__stage-${this.store.getInternalId(record)}`, tag: 'button', type: 'button', role: 'menuitem',
+                    cls: ['fm-stage-open'], text: 'Open in Stage', 'data-action': 'stage',
+                    'aria-disabled': this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening' ? 'true' : null,
+                    'aria-busy': this.stageOutcome?.recordId === record.id && this.stageOutcome.state === 'opening' ? 'true' : null}] : []),
+                ...(this.stageOutcome?.recordId === record.id && this.stageOutcome.message ?
+                    [{id: `${this.id}__outcome-${this.store.getInternalId(record)}`, tag: 'span', cls: ['fm-stage-outcome'], role: 'status', text: this.stageOutcome.message}] : [])
             ]
         }
     }
@@ -92,7 +117,30 @@ class AwaitingMergeMenuList extends MenuList {
      * @param {Object} data
      */
     onItemClick(node, data) {
+        if (this.stageEnabled && data.path.some(item => item.data?.action === 'stage')) {
+            const id = this.getItemRecordId(node.id),
+                record = this.useInternalId ? this.store.getByInternalId(id) : this.store.get(id);
+            if (record) {
+                const recordId = this.store.getKey(record);
+                if (this.stageOutcome?.recordId !== recordId || this.stageOutcome.state !== 'opening') {
+                    this.fire('stageRequest', {recordId})
+                }
+            }
+            return
+        }
         this.unmount()
+    }
+
+    /** @summary Repaints the optional action from its given capability and addressed result. */
+    afterSetStageEnabled() { this.isConstructed && this.createItems() }
+
+    /** @summary Repaints feedback without unmounting or stealing focus from the open menu. */
+    afterSetStageOutcome() { this.isConstructed && this.createItems() }
+
+    /** @summary Escape returns to this menu's exact trigger even after asynchronous row feedback. */
+    onKeyDownEscape(data) {
+        super.onKeyDownEscape(data);
+        this.parentComponent?.focus()
     }
 
     /**

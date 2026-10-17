@@ -5,6 +5,7 @@ setup({appConfig: {name: 'FleetSpineBannerTest'}});
 import {test, expect} from '@playwright/test';
 import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import FleetAdmission from '../../../../../../../../apps/agentos/util/FleetAdmission.mjs';
 import PlaneVerdict   from '../../../../../../../../apps/agentos/util/PlaneVerdict.mjs';
 import SpineBanner    from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
 
@@ -26,20 +27,128 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
     const STATES = ['cold', 'stale', 'live'];
 
-    test('partial activity names its source failure without claiming stale or fully live data', () => {
-        const result = SpineBanner.deriveSpineBanner({
+    test('partial activity names missing and available sources from guidance, falls back honestly, and offers Recheck without claiming stale data', () => {
+        const fallback = SpineBanner.deriveSpineBanner({
             grid: {state: 'live'}, stream: {state: 'partial', reason: 'pr-lane: unavailable'}
         });
-        expect(result.hidden).toBe(false);
-        expect(result.kind).toBe('degraded');
-        expect(result.text).toBe('feed partial');
-        expect(result.title).toContain('pr-lane: unavailable');
-        expect(result.title).not.toContain('last-known');
+        expect(fallback).toEqual({
+            action   : 'recheck',
+            ariaLabel: 'Activity feed partial — some sources unavailable · pr-lane: unavailable',
+            hidden   : false,
+            kind     : 'degraded',
+            lead     : 'Activity feed partial — some sources unavailable',
+            text     : 'feed partial',
+            title    : 'Activity feed partial — some sources unavailable · pr-lane: unavailable'
+        });
+
+        const guided = SpineBanner.deriveSpineBanner({
+            grid  : {state: 'live'},
+            stream: {
+                state   : 'partial',
+                reason  : 'pr-lane: neo: ENOENT',
+                guidance: {summary: 'PR lanes unavailable · mailbox available', reason: 'pr-lane: neo: ENOENT'}
+            }
+        });
+        expect(guided).toEqual({
+            action   : 'recheck',
+            ariaLabel: 'Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT',
+            hidden   : false,
+            kind     : 'degraded',
+            lead     : 'Activity feed partial — PR lanes unavailable · mailbox available',
+            text     : 'feed partial',
+            title    : 'Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT'
+        });
+        expect(guided.title).not.toContain('last-known');
+        expect(guided.title).not.toContain('complete');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, stream: {state: 'partial'}}).kind).toBe('cold');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'stale'}, stream: {state: 'partial'}}).text).toBe('fleet degraded');
     });
 
-    const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', text: '', title: '', ariaLabel: ''};
+    test('FleetAdmission.deriveActivityGuidance covers reserved keys, 32-char unknown labels, malformed slots, producer.coverage, sanitized reasons, and intervalMs cadence', () => {
+        // (a) reserved keys (__proto__, constructor) in slots -> generic summary and head
+        const protoSlots = Object.defineProperty({}, '__proto__', {
+            configurable: true, enumerable: true, value: {state: 'degraded'}, writable: true
+        });
+        for (const slots of [protoSlots, {constructor: {state: 'degraded'}}, {prototype: {state: 'wired'}}]) {
+            const res = FleetAdmission.deriveActivityGuidance({partial: true, capability: {slots}});
+            expect(res.head).toBe('partial — some sources unavailable');
+            expect(res.summary).toBe('some sources unavailable');
+            expect(res.remaining).toBeNull();
+        }
+        expect(FleetAdmission.formatActivitySlotLabel('__proto__')).toBe('');
+        expect(FleetAdmission.formatActivitySlotLabel('constructor')).toBe('');
+
+        // (b) unknown slot key -> its key bounded to 32 characters as the label
+        const longKey = 'custom-telemetry-source-name-exceeding-thirty-two-chars',
+              bounded = longKey.slice(0, 32),
+              unknown = FleetAdmission.deriveActivityGuidance({
+                  partial   : true,
+                  capability: {slots: {[longKey]: {state: 'unavailable'}, a2a: {state: 'wired'}}}
+              });
+        expect(FleetAdmission.formatActivitySlotLabel(longKey)).toBe(bounded);
+        expect(bounded).toHaveLength(32);
+        expect(unknown.head).toBe(`partial — ${bounded} unavailable`);
+        expect(unknown.summary).toBe(`${bounded} unavailable · mailbox available`);
+
+        // (c) malformed slots (an array, an empty object, a slot with an unknown state) -> generic
+        for (const slots of [[{state: 'degraded'}], {}, {a2a: {state: 'mystery'}}, {a2a: null}]) {
+            const res = FleetAdmission.deriveActivityGuidance({partial: true, capability: {slots}});
+            expect(res.head).toBe('partial — some sources unavailable');
+            expect(res.summary).toBe('some sources unavailable');
+            expect(res.remaining).toBeNull();
+        }
+
+        // (d) degraded slot with producer.coverage: 'partial' -> partial; same slot with no coverage and no events -> unavailable
+        expect(FleetAdmission.slotSuppliedEvents('pr-lane', {state: 'degraded', producer: {coverage: 'partial'}}, [])).toBe(true);
+        expect(FleetAdmission.slotSuppliedEvents('pr-lane', {state: 'degraded'}, [])).toBe(false);
+
+        const withCoverage = FleetAdmission.deriveActivityGuidance({
+            partial   : true,
+            capability: {slots: {'pr-lane': {state: 'degraded', producer: {coverage: 'partial'}}, a2a: {state: 'wired'}}},
+            events    : []
+        });
+        expect(withCoverage.head).toBe('partial — PR lanes partial');
+        expect(withCoverage.summary).toBe('PR lanes partial · mailbox available');
+
+        const withoutCoverage = FleetAdmission.deriveActivityGuidance({
+            partial   : true,
+            capability: {slots: {'pr-lane': {state: 'degraded'}, a2a: {state: 'wired'}}},
+            events    : []
+        });
+        expect(withoutCoverage.head).toBe('partial — PR lanes unavailable');
+        expect(withoutCoverage.summary).toBe('PR lanes unavailable · mailbox available');
+
+        // (e) composite reason preferred over per-slot reasons, both through the sanitizer
+        const sanitize = value => typeof value === 'string'
+            ? value.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim().slice(0, 240) || null
+            : null;
+        const compositePreferred = FleetAdmission.deriveActivityGuidance({
+            partial       : true,
+            reason        : 'composite\u0007\n\ttimeout',
+            capability    : {slots: {'pr-lane': {state: 'degraded', reason: 'slot-reason'}}},
+            sanitizeReason: sanitize
+        });
+        expect(compositePreferred.reason).toBe('composite timeout');
+
+        const slotFallback = FleetAdmission.deriveActivityGuidance({
+            partial       : true,
+            reason        : '   ',
+            capability    : {slots: {'pr-lane': {state: 'degraded', reason: 'neo:\u0000\r\nENOENT'}, a2a: {state: 'wired'}}},
+            sanitizeReason: sanitize
+        });
+        expect(slotFallback.reason).toBe('pr-lane: neo: ENOENT');
+
+        // (f) intervalMs -> "rechecks every N s"
+        const customCadence = FleetAdmission.deriveActivityGuidance({
+            partial   : true,
+            intervalMs: 30000,
+            capability: {slots: {'pr-lane': {state: 'unavailable'}, a2a: {state: 'wired'}}}
+        });
+        expect(customCadence.recheck).toBe('rechecks every 30 s');
+        expect(customCadence.headTitle).toBe('rechecks every 30 s · Recheck now is in the banner · no direct producer repair here');
+    });
+
+    const HIDDEN_LIVE = {action: null, hidden: true, kind: 'live', lead: '', text: '', title: '', ariaLabel: ''};
 
     test.describe('connection observations belong to the deciding read', () => {
         const cases = [
@@ -113,6 +222,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 ariaLabel: 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch',
                 hidden   : false,
                 kind     : 'cold',
+                lead     : 'The plane refused this shell — connect it again',
                 text     : 'plane refused',
                 title    : 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch'
             })
@@ -204,6 +314,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 ariaLabel: 'A plane already runs on this machine — connect this shell to it · Chroma holds localhost:8000',
                 hidden   : false,
                 kind     : 'cold',
+                lead     : 'A plane already runs on this machine — connect this shell to it',
                 text     : 'plane here',
                 title    : 'A plane already runs on this machine — connect this shell to it · Chroma holds localhost:8000'
             })
@@ -297,7 +408,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             });
 
             expect(Array.isArray(episode)).toBe(false);
-            expect(Object.keys(episode).sort()).toEqual(['action', 'ariaLabel', 'hidden', 'kind', 'text', 'title']);
+            expect(Object.keys(episode).sort()).toEqual(['action', 'ariaLabel', 'hidden', 'kind', 'lead', 'text', 'title']);
             expect(episode.title.match(/Agent OS/g)).toHaveLength(1);
 
             // And it is IDEMPOTENT across re-derivation: a polling consumer re-deriving the same
@@ -527,6 +638,58 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}, daemon: {state: 'stopped'}, transport}).title).toContain('Agent OS stopped');
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'cold'}, transport}).title).toBe('Activity feed pending — roster is live');
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}, transport})).toEqual(HIDDEN_LIVE)
+        })
+    });
+
+    test.describe('the lead — the reason the bar shows beside the pill, never only on hover', () => {
+        // a retained cause that must stay on title and aria: an endpoint, an error class, a config leaf
+        const CAUSE     = '[fleet] plane mode refused (http://127.0.0.1:3102): TypeError — fix fleet.planeBase',
+              FORBIDDEN = /\d{1,3}(\.\d{1,3}){3}:\d+|localhost:\d+|npm run|TypeError|fleet\.planeBase/;
+
+        const branches = {
+            'organism beside a plane': {daemon: {cause: 'organism-beside-plane', reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}},
+            'plane refused the shell': {daemon: {cause: 'plane-refused', reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}},
+            'boot refusal'           : {daemon: {cause: 'plane-credential-refused', reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}},
+            'runtime refusal'        : {grid: {state: 'stale', reason: CAUSE}, plane: {cause: 'plane-identity-changed'}, stream: {state: 'live'}},
+            'cold with a cause'      : {grid: {state: 'cold', reason: CAUSE}, stream: {state: 'cold'}},
+            'cold read refused'      : {grid: {state: 'cold', connection: {state: 'refused', reason: CAUSE}}, stream: {state: 'cold'}},
+            'cold, transport failed' : {grid: {state: 'cold'}, stream: {state: 'cold'}, transport: {phase: 'settled', up: false, error: CAUSE}},
+            'daemon down'            : {daemon: {state: 'stopped', reason: CAUSE}, grid: {state: 'live'}, stream: {state: 'live'}},
+            'stale feed'             : {grid: {state: 'stale', reason: CAUSE}, stream: {state: 'live'}},
+            'partial feed'           : {grid: {state: 'live'}, stream: {state: 'partial', reason: CAUSE}},
+            'pending feed'           : {grid: {state: 'live'}, stream: {state: 'cold', reason: CAUSE}}
+        };
+
+        for (const [name, input] of Object.entries(branches)) {
+            test(`${name}: the lead is product words, and the title adds the cause to it`, () => {
+                const verdict = SpineBanner.deriveSpineBanner(input);
+
+                expect(verdict.hidden).toBe(false);
+                expect(verdict.lead.length, 'a non-live state always has a lead').toBeGreaterThan(0);
+                expect(verdict.lead, 'no endpoint, error class, config leaf or command reaches the visible line').not.toMatch(FORBIDDEN);
+                expect(verdict.title.startsWith(verdict.lead)).toBe(true);
+                expect(verdict.ariaLabel).toBe(verdict.title)
+            })
+        }
+
+        test('every refusal leads with the connect card\'s own words, at boot and while the shell runs', () => {
+            const words = {
+                'plane-credential-refused': PlaneVerdict.sentences.rejected,
+                'plane-not-a-plane'       : PlaneVerdict.sentences['not-a-plane'],
+                'plane-unreachable'       : PlaneVerdict.sentences.unreachable
+            };
+
+            for (const [cause, sentence] of Object.entries(words)) {
+                expect(SpineBanner.deriveSpineBanner({daemon: {cause, reason: CAUSE}, grid: {state: 'cold'}, stream: {state: 'cold'}}).lead.startsWith(sentence), cause).toBe(true);
+                expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, plane: {cause}, stream: {state: 'cold'}}).lead.startsWith(sentence), `${cause} at runtime`).toBe(true)
+            }
+
+            expect(SpineBanner.deriveSpineBanner({daemon: {cause: 'plane-identity-changed'}, grid: {state: 'cold'}, stream: {state: 'cold'}}).lead)
+                .toBe('The plane now names that PAT as another account. Connect again to confirm it.')
+        });
+
+        test('a live spine has no lead', () => {
+            expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}}).lead).toBe('')
         })
     })
 });

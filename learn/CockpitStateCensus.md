@@ -51,18 +51,25 @@ with one of its sources down while the others answer.
 | stale | Pill `fleet degraded`, sentence `Fleet feed degraded — showing last-known data · <reason>`; with a connection observation on the deciding surface: `fleet <connection word>` · `Roster <sentence> — showing last-known data`. **No next step**: "showing last-known data" states what is shown, not what to do. |
 | degraded (daemon fault) | Pill `agent os degraded` or `agent os stopped`, sentence `Agent OS <degraded/stopped> — showing the cockpit over a partial organism · <reason>`, fallback `· check the tray state and the daemon log` (`DAEMON_FAULT_STATES`). The fallback names where to look; a retained reason replaces it and then **no next step is named**. |
 | unreachable | Through the connection observation: `fleet unreachable` · `Roster connection unavailable — no fleet data yet` (cold grid) or `— showing last-known data` (stale grid); **no next step**. Through the plane probe: `plane unreachable` · `No plane answered at that address. Bring that plane back, or connect to another.` with `connect-plane` — complete. |
-| one source failing | Pill `feed partial`, sentence `Activity feed partial — some sources unavailable · <reason>`. A cold stream over a live grid: `feed pending` · `Activity feed pending — roster is live · <reason>`. **No next step.** |
+| one source failing | Pill `feed partial`, sentence `Activity feed partial — <missing> · <remaining> · <reason>` (fallback `Activity feed partial — some sources unavailable · <reason>`) with action `recheck` (`Recheck` button in `ControlToolbar`, re-reading the feed now via `reconnectFleet` without claiming to repair the producer) (`FleetAdmission.deriveActivityGuidance`). A cold stream over a live grid: `feed pending` · `Activity feed pending — roster is live · <reason>`. |
+
+*Added 2026-10-04 (#533), after this read:* every non-live verdict also shows its **lead** beside the pill, on one line that ellipsizes. The lead is the sentence before its ` · <reason>`; for the plain-browser silence it is `Fleet server offline`, and for a plane refusal the whole sentence. The sentences above are unchanged and stay on the title (`SpineBanner` — the verdict's `lead`).
 
 ### Instance switcher — `apps/agentos/view/fleet/instances/SwitcherButton.mjs` (`updateSwitcher`, `INSTANCE_STATE_WORDS`)
+
+The word follows the spine banner's kind (`view/fleet/cockpit/StateProvider.mjs`, the
+`instanceState` formula): no banner reads `connected`, a degraded banner `degraded`, a cold one
+`not connected`. The stale and one-source-failing cells were re-read by the walkthrough's fixture
+arm at `e1a9dbe`.
 
 | State | Rendered |
 |---|---|
 | cold / unreachable | Dot + label; title and `aria-label` `<label> — not connected` (`off`). Word only: **no reason, no next step** in the button; the menu lists the other instances. |
 | live | `<label> — connected` (`ok`). |
-| stale | `cannot enter` — the switcher has no stale word; staleness is the feeds'. |
+| stale | `<label> — degraded` (`limited`): the stale feed's degraded banner. Word only. |
 | degraded | `<label> — degraded` (`limited`). Word only. |
 | switching | `<label> — switching` (`starting`). |
-| one source failing | `cannot enter`. |
+| one source failing | `<label> — degraded: <summary>` (`limited`, e.g. `<label> — degraded: PR lanes unavailable · mailbox available`) on both the switcher trigger (`title` and `aria-label`) and the bound row's `title` in `MenuList` (#706). |
 
 ### Home's live field — `apps/agentos/view/home/Container.mjs` (`teamLine`, `updateField`)
 
@@ -86,7 +93,30 @@ with one of its sources down while the others answer.
 | unreachable | Rendered as cold or stale by adapter state; the connection word lives on the banner. |
 | one source failing | `cannot enter` — one source. |
 
-### Activity feed — `apps/agentos/view/fleet/activity/Container.mjs` (`updateHead`, `empty-note`, `describeActivityCounts`)
+
+### Native tool launch admission — `SeatLaunchAdmission.cardLine` in the existing roster card status line
+
+Added by #590. The issuer's `launchAdmission` is carried by `RosterRow.mapRosterRow` and
+`FleetAgent`. A live roster read and wired, observed runtime are required; losing either
+withdraws this guidance on the same card. This is admission for **new children**, not tool connectivity.
+
+| Issuer observation | Card and next step |
+|---|---|
+| Missing/unknown snapshot or `none` | No admission line and no inferred health. `none` means no generation or not applicable. |
+| `reserved` | `Preparing tool access`; no restart advice. |
+| `active`, no current credential refusal or revoked enabled grant | No admission line; active is not a connection test. |
+| `active`, a revoked server grant | The current public MCP intent comes from the same roster row, resolved through the shared forge-aware catalog. An intentionally disabled server stays quiet. An enabled server revoked for `server-disabled` or `plan-changed` names the server and recommends the existing admitted Restart. A `credential-missing` grant names the missing startup credential without a restart cure. Missing/malformed intent makes no enablement claim. |
+| `active`, latest attempt for a server refused for a credential | `New <server> connection refused`; title names the seat's repository or plane credential as missing/unverified. Existing tools may still work. Credential repair is unavailable in this cockpit; restart is not its remedy (Brain #815 remains separate). |
+| Running seat with `stale/revoked` admission | `New tool connections are blocked`; title names the closed generation reason and preserves the already-running-tools distinction. Existing Restart is recommended only when its normal running/current/authorized/not-pending guard permits it. |
+| Stopped seat, including a retained `revoked` generation | No admission guidance or admission-specific Restart advice; the stopped state retains its existing Start control. |
+| Newer admitted attempt on that server, replacement generation or absent snapshot | Obsolete warning and restart guidance clear. Another server's success does not clear this server's failure. |
+
+Confirmed wrong folder, pending lifecycle actions and existing refusal feedback keep precedence;
+admission guidance may replace only the ordinary folder fallback. The audit is generation-scoped,
+with each server's newest outcome superseding its earlier attempts. #477/#12 retain the installed
+card/recovery witness; source fixtures are not installed acceptance.
+
+### Activity feed — `apps/agentos/view/fleet/activity/Container.mjs` (`updateHeader`, `empty-note`, `describeActivityCounts`)
 
 | State | Rendered |
 |---|---|
@@ -95,7 +125,7 @@ with one of its sources down while the others answer.
 | stale | Head `stale — reconnecting` when rows are retained, else `unavailable` with the note `Activity unavailable`. **No reason, no next step.** |
 | degraded | `cannot enter` as its own word — a daemon fault reaches the banner, not the feed. |
 | unreachable | As cold or stale by adapter state. |
-| one source failing | Head `partial — some sources unavailable`; the sources line carries the per-source counts (the reason by enumeration); rows from the answering sources stay (#263). **Next step: none.** |
+| one source failing | Head `partial — <missing>` (e.g. `partial — PR lanes unavailable`, fallback `partial — some sources unavailable`) with `title` `rechecks every 60 s · Recheck now is in the banner · no direct producer repair here`; the sources line carries the per-source counts; rows from the answering sources stay (#263, #706). |
 
 ### Mailbox — `apps/agentos/view/fleet/mailbox/Container.mjs` (`honestState`, the honest-state line)
 

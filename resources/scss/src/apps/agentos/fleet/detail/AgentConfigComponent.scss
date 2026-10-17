@@ -52,6 +52,16 @@
         }
     }
 
+    .fm-config-destination {
+        color       : var(--fm-ink);
+        font        : var(--fm-text-body);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-config-connection-edit {
+        align-self: flex-start;
+    }
+
     /* label, then its value right beside it (#245): a value at the card's far edge read as
        belonging to nothing on a wide Accounts detail. A fixed label column aligns the values. */
     .fm-config-row {
@@ -92,7 +102,20 @@
     }
 
     .fm-config-toggle {
-        cursor : pointer;
+        appearance : none;
+        background : transparent;
+        border     : 0;
+        color      : inherit;
+        cursor     : pointer;
+        font       : inherit;
+        padding    : 0;
+        text-align : left;
+        width      : 100%;
+
+        &:focus-visible {
+            outline       : 2px solid var(--fm-signal);
+            outline-offset: 1px;
+        }
 
         &:hover .fm-config-value {
             text-decoration : underline;

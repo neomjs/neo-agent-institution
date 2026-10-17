@@ -2,6 +2,9 @@ import AgentSessionSummaries from '../../../store/AgentSessionSummaries.mjs';
 import AgentSessionTurns     from '../../../store/AgentSessionTurns.mjs';
 import Button                from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container             from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import ReaderComponent       from './ReaderComponent.mjs';
+import ReadingController     from './ReadingController.mjs';
+import Splitter              from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 import SummaryGrid           from './SummaryGrid.mjs';
 import TurnGrid              from './TurnGrid.mjs';
 import ViewerTime            from '../../../util/ViewerTime.mjs';
@@ -31,6 +34,14 @@ import ViewerTime            from '../../../util/ViewerTime.mjs';
  * the grid conversion unchanged: the selected target is part of the rendered snapshot KEY (a
  * foreign-target envelope is never adopted), the open session is part of the rendered drill KEY,
  * and `page.offset > 0` continuations extend only an already-accepted page zero of the same key.
+ *
+ * **Reading is a selection**: the registers keep their clamped previews for scanning, and
+ * the {@link AgentOS.view.fleet.memories.ReaderComponent} beside them renders the selected record
+ * whole — a summary's full text, a turn's prompt, thought and response. Selecting collapses the
+ * open register to its rail so the text gets the width; ↑/↓ move the selection, Escape closes the
+ * reading, and *show all* reads every loaded record of the register in list order. Records arrive
+ * whole on the wire, so reading fetches nothing. The pane renders the zones; its
+ * {@link AgentOS.view.fleet.memories.ReadingController} decides what is read.
  *
  * @class AgentOS.view.fleet.memories.Container
  * @extends Neo.container.Base
@@ -88,10 +99,27 @@ class MemoriesPane extends Container {
          */
         drillSnapshot_: null,
         /**
+         * The reading orchestration: which record the reader shows and how the register makes room.
+         * @member {AgentOS.view.fleet.memories.ReadingController} controller=ReadingController
+         */
+        controller: ReadingController,
+        /**
+         * Escape closes the reading (or leaves *show all*).
+         * @member {Object} keys={Escape: 'onEscape'}
+         */
+        keys: {Escape: 'onEscape'},
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
         layout: {ntype: 'vbox', align: 'stretch'},
+        /**
+         * *Show all*: the reading surface renders every loaded record of the open register, in
+         * list order, instead of the one selected.
+         * @member {Boolean} showAll_=false
+         * @reactive
+         */
+        showAll_: false,
         /**
          * @member {Object[]} items
          */
@@ -105,15 +133,25 @@ class MemoriesPane extends Container {
                 cls  : ['fm-pane-title'],
                 text : 'What they remember'
             }, {
-                ntype: 'component',
-                cls  : ['fm-pane-meta'],
-                text : 'session summaries · query-time · not authority'
+                ntype    : 'component',
+                cls      : ['fm-pane-meta'],
+                reference: 'memories-provenance',
+                text     : 'Summaries are made at read time from the agent\'s own records; they are not the record.',
+                vdom     : {title: 'query-time · not authority'}
             }, {
                 ntype    : 'container',
                 cls      : ['fm-pane-actions'],
                 layout   : {ntype: 'hbox', align: 'center'},
                 reference: 'memories-actions',
                 items    : [{
+                    module   : Button,
+                    reference: 'memories-show-all',
+                    text     : 'Show all',
+                    iconCls  : 'fa fa-align-left',
+                    ui       : 'ghost',
+                    hidden   : true,
+                    handler  : 'onShowAllClick'
+                }, {
                     module   : Button,
                     reference: 'memories-refresh',
                     text     : 'Refresh',
@@ -132,12 +170,13 @@ class MemoriesPane extends Container {
         }, {
             // the drill chrome: back (an INTENT, like the open) · session identity · the AUTHORED
             // provenance chip — these rows are the agent's own prompt/response trail, visually
-            // distinct from the DERIVED summaries one register up
+            // distinct from the DERIVED summaries one register up — and one muted legend line
+            // under the title so the provenance vocabulary carries its key within one glance
             ntype    : 'container',
             cls      : ['fm-memories-drill-head'],
             flex     : 'none',
             hidden   : true,
-            layout   : {ntype: 'hbox', align: 'center'},
+            layout   : {ntype: 'hbox', align: 'center', wrap: 'wrap'},
             reference: 'memories-drill-head',
             items    : [{
                 module : Button,
@@ -154,25 +193,58 @@ class MemoriesPane extends Container {
             }, {
                 ntype: 'component',
                 cls  : ['fm-memories-provenance', 'is-authored'],
-                text : 'authored records'
+                text : 'authored records',
+                vdom : {title: 'the agent\'s own prompt · thought · response'}
+            }, {
+                ntype    : 'component',
+                cls      : ['fm-memories-drill-legend'],
+                flex     : '1 0 100%',
+                reference: 'memories-drill-legend',
+                text     : 'authored records: the agent\'s own prompt · thought · response. derived: a summary made from them.'
             }]
         }, {
-            // the ONE honest-state line for both registers — never rendered beside rows
-            ntype    : 'component',
-            cls      : ['fm-memories-empty'],
-            flex     : 'none',
-            reference: 'memories-state',
-            text     : 'Session summaries render here once an agent is chosen.'
-        }, {
-            module   : SummaryGrid,
+            // the list beside its reading surface: the rail/reading split is the engine's Splitter
+            ntype    : 'container',
+            cls      : ['fm-memories-body'],
             flex     : 1,
-            hidden   : true,
-            reference: 'memories-summary-grid'
-        }, {
-            module   : TurnGrid,
-            flex     : 1,
-            hidden   : true,
-            reference: 'memories-turn-grid'
+            layout   : {ntype: 'hbox', align: 'stretch'},
+            reference: 'memories-body',
+            items    : [{
+                ntype    : 'container',
+                cls      : ['fm-memories-list'],
+                flex     : 2,
+                layout   : {ntype: 'vbox', align: 'stretch'},
+                reference: 'memories-list',
+                items    : [{
+                    // the ONE honest-state line for both registers — never rendered beside rows
+                    ntype    : 'component',
+                    cls      : ['fm-memories-empty'],
+                    flex     : 'none',
+                    reference: 'memories-state',
+                    text     : 'Session summaries render here once an agent is chosen.'
+                }, {
+                    module   : SummaryGrid,
+                    flex     : 1,
+                    hidden   : true,
+                    reference: 'memories-summary-grid'
+                }, {
+                    module   : TurnGrid,
+                    flex     : 1,
+                    hidden   : true,
+                    reference: 'memories-turn-grid'
+                }]
+            }, {
+                module      : Splitter,
+                cls         : ['fm-memories-splitter'],
+                hidden      : true,
+                reference   : 'memories-splitter',
+                resizeTarget: 'previous'
+            }, {
+                module   : ReaderComponent,
+                flex     : 1,
+                hidden   : true,
+                reference: 'memories-reader'
+            }]
         }]
     }
 
@@ -285,11 +357,17 @@ class MemoriesPane extends Container {
             return
         }
 
+        me.controller.clearReading('summary');
         me.getReference('memories-summary-grid').applyBags([]);
         me.renderedTarget = null;
         me.pendingOffset  = null;
         me.applySnapshot();
         value && me.fire('memoriesRequest', {agentIdentity: value})
+    }
+
+    /** @param {Boolean} value @param {Boolean} oldValue */
+    afterSetShowAll(value, oldValue) {
+        this.isConstructed && this.syncZones()
     }
 
     /** @param {Object|null} value @param {Object|null} oldValue */
@@ -348,6 +426,7 @@ class MemoriesPane extends Container {
 
         if (!sessionId || me.drillSession?.sessionId === sessionId) return;
 
+        me.controller.clearReading('turn');
         me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
         me.drillPendingOffset   = null;
@@ -364,6 +443,7 @@ class MemoriesPane extends Container {
         const me = this;
 
         me.drillSession = null;
+        me.controller.clearReading('turn');
         me.getReference('memories-turn-grid').applyBags([]);
         me.renderedDrillSession = null;
         me.drillPendingOffset   = null;
@@ -508,6 +588,9 @@ class MemoriesPane extends Container {
             append   = wired && adopted.page?.offset > 0 && adopted.sessionId === me.renderedDrillSession;
 
         if (wired) {
+            // the cells fall back to the drill's target when the wire carries no per-turn
+            // identity field — set BEFORE the bags seat, like the summary twin
+            turnGrid.target         = me.activeAgent ?? me.snapshot?.target ?? null;
             me.renderedDrillSession = adopted.sessionId;
 
             const incoming = adopted.turns.filter(turn => turn?.id).map(turn => ({...turn}));
@@ -568,6 +651,8 @@ class MemoriesPane extends Container {
                         ? `The session-memories source did not answer${detail ? ` · ${detail}` : ''}. Nothing here claims to be history.`
                         : 'No turn records in this session.'
             }
+
+            me.controller.syncReader(rows)
         } else {
             const
                 snapshot = me.snapshot,
@@ -591,7 +676,17 @@ class MemoriesPane extends Container {
                             ? 'The memories source did not answer. Nothing here claims to be history.'
                             : 'No sessions in this corpus.'
             }
+
+            me.controller.syncReader(rows)
         }
+    }
+
+    /**
+     * @summary Escape belongs to the reading: the pane's keys resolve on the pane, so it hands the
+     * key to {@link AgentOS.view.fleet.memories.ReadingController#onEscape}.
+     */
+    onEscape() {
+        this.controller.onEscape()
     }
 
     /**

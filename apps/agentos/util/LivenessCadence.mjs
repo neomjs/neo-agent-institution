@@ -9,11 +9,14 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * health over minutes. Every one of them but the open work is a Memory Core call behind the fleet
  * server, so one shared fast tick made an open cockpit the plane's heaviest caller, and a slow plane
  * then queued every other seat behind it. The open work reads the fleet server's own producer, which
- * observes GitHub once a minute, so a faster read would only repeat its answer.
+ * observes GitHub once a minute, so a faster read would only repeat its answer. The shown seat's recent
+ * turns (the Agent Detail's Thought stream) read on the open work's interval and only while the detail
+ * shows a seat: an idle cockpit launches nothing for them.
  *
  * A due read still launches while an earlier one of its wires hangs, up to the in-flight cap: that
  * probe is what notices a recovered transport. The bounded read window is far shorter than any
  * interval, so by the time a read comes due again its previous attempt has already been reported.
+ * The inbox serializes one wire instead: a timeout ages the retained window until that wire settles.
  *
  * The schedule is plain data and every method is pure: the controller holds the state, this class
  * decides.
@@ -31,7 +34,9 @@ class LivenessCadence extends Base {
         brainHealth    : 120000,
         tasks          : 120000,
         deploymentState: 120000,
-        openWork       : 60000
+        openWork       : 60000,
+        operatorInbox  : 60000,
+        recentTurns    : 60000
     })
 
     /**
@@ -45,7 +50,8 @@ class LivenessCadence extends Base {
     /**
      * Each liveness read: the controller method that launches it and the controller counter of its
      * unsettled wire reads.
-     * @type {Object<String, {load: String, inFlight: String}>}
+     * An absent per-read cap uses the cockpit's shared cap.
+     * @type {Object<String, Object>}
      */
     static READS = Object.freeze({
         activity       : Object.freeze({load: 'loadActivity',        inFlight: 'streamReadInFlight'}),
@@ -53,7 +59,9 @@ class LivenessCadence extends Base {
         brainHealth    : Object.freeze({load: 'loadBrainHealth',     inFlight: 'brainHealthReadInFlight'}),
         tasks          : Object.freeze({load: 'loadTasks',           inFlight: 'tasksReadInFlight'}),
         deploymentState: Object.freeze({load: 'loadDeploymentState', inFlight: 'deploymentStateReadInFlight'}),
-        openWork       : Object.freeze({load: 'loadOpenWork',        inFlight: 'openWorkReadInFlight'})
+        openWork       : Object.freeze({load: 'loadOpenWork',        inFlight: 'openWorkReadInFlight'}),
+        operatorInbox  : Object.freeze({load: 'refreshOperatorInbox', inFlight: 'operatorInboxReadInFlight', cap: 1}),
+        recentTurns    : Object.freeze({load: 'loadRecentTurns',     inFlight: 'recentTurnsReadInFlight'})
     })
 
     static config = {
@@ -95,7 +103,7 @@ class LivenessCadence extends Base {
             if (now < next[key]) return;
 
             next[key] = now + intervals[key];
-            inFlight(key) < cap && launch.push(key)
+            inFlight(key) < (LivenessCadence.READS[key].cap ?? cap) && launch.push(key)
         });
 
         return {launch, dueAt: next}

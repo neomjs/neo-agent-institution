@@ -1,5 +1,6 @@
-import fs   from 'node:fs';
-import path from 'node:path';
+import crypto from 'node:crypto';
+import fs     from 'node:fs';
+import path   from 'node:path';
 
 /**
  * @module harness/planeConfig
@@ -14,6 +15,15 @@ import path from 'node:path';
  * a unit: its bearer never travels to a plane base that came from somewhere else, and its identity
  * travels with its bearer, because the plane admits the fleet child only when the claimed identity is
  * the bearer's subject.
+ *
+ * The record also keeps the plane's verdict on the bearer's class: the `authSource` its `/fleet/probe`
+ * answered at attach. It is no secret, so it sits in `plane.json`, and it travels only with its bearer. A
+ * forge PAT's class lets the fleet child present that one bearer to the plane's `/fleet` surface as well
+ * (`NEO_FLEET_PLANE_BEARER_CLASS`). The shell never infers the class from the bytes.
+ *
+ * `plane.json` names the exact encrypted bearer it was written with (`bearerSha256`, the digest of those
+ * bytes). A record whose bearer file is gone or was replaced without it, by a write that failed halfway,
+ * reads as unconfigured. So the plane, identity and class are never read with another bearer.
  */
 
 /**
@@ -74,58 +84,84 @@ export function canonicalIdentity(value) {
 }
 
 /**
- * @summary Reads the configured plane. A missing or unreadable record reads as unconfigured, and a
- * bearer that no longer decrypts (a reset keychain, another user) reads as absent instead of failing
- * the boot. A record stored before the identity was recorded reads `identity: null`.
+ * @summary A bearer class as the plane names it (`github-pat`, `gitlab-pat`, …), or `null`. Only a plain
+ * token passes, because it travels on into an env variable.
+ * @param {*} value
+ * @returns {String|null}
+ */
+function authSourceOf(value) {
+    return typeof value === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(value) ? value : null
+}
+
+/**
+ * @summary Reads the configured plane. A missing or unreadable record reads as unconfigured, and so does
+ * one whose bearer file is not the one it was written with. A bearer that no longer decrypts (a reset
+ * keychain, another user) reads as absent instead of failing the boot. A record stored before the identity
+ * was recorded reads `null` for it. A class only travels with the bearer it was recorded for: a record that
+ * names no bearer (stored before the binding) carries none.
  * @param {Object} options
  * @param {String} options.dir Directory holding the record (Electron `userData`).
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Object} [options.fsModule=fs]
- * @returns {{planeBase: String|null, bearer: String|null, identity: String|null}}
+ * @returns {{planeBase: String|null, bearer: String|null, identity: String|null, authSource: String|null}}
  */
 export function readPlaneConfig({dir, safeStorage, fsModule = fs}) {
-    let planeBase, identity, bearer = null;
+    const unconfigured = {planeBase: null, bearer: null, identity: null, authSource: null};
+    let record, planeBase, identity, sealed = null, bearer = null;
 
     try {
-        const record = JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'));
-
+        record    = JSON.parse(fsModule.readFileSync(path.join(dir, PLANE_CONFIG_FILE), 'utf8'));
         planeBase = normalizePlaneBase(record.planeBase);
         identity  = canonicalIdentity(record.identity)
     } catch {
-        return {planeBase: null, bearer: null, identity: null}
+        return unconfigured
     }
 
     try {
-        if (safeStorage.isEncryptionAvailable()) {
-            bearer = safeStorage.decryptString(fsModule.readFileSync(path.join(dir, PLANE_BEARER_FILE))) || null
+        sealed = fsModule.readFileSync(path.join(dir, PLANE_BEARER_FILE))
+    } catch {}
+
+    const bound = typeof record.bearerSha256 === 'string';
+
+    if (bound && (!sealed || sha256(sealed) !== record.bearerSha256)) return unconfigured;
+
+    try {
+        if (sealed && safeStorage.isEncryptionAvailable()) {
+            bearer = safeStorage.decryptString(sealed) || null
         }
     } catch {
         bearer = null
     }
 
-    return {planeBase, bearer, identity}
+    return {planeBase, bearer, identity, authSource: bound ? authSourceOf(record.authSource) : null}
 }
 
 /**
  * @summary Stores the plane record. Refuses when the OS cannot encrypt: a plain-text PAT under
- * `userData` is the launcher's stopgap, not the product. The bearer is written first, so `plane.json`
- * — the file that marks the shell as configured — never points at a credential that is missing. The
- * identity is the one the plane named for this bearer; it is not a secret, so it sits in `plane.json`.
+ * `userData` is the launcher's stopgap, not the product. Each file is replaced whole (a temp file renamed
+ * over it). `plane.json` is written first and names the digest of the encrypted bearer written after it.
+ * A failure before it lands leaves the old record whole. A failure after it leaves a record whose bearer
+ * does not match, which reads as unconfigured; that holds even over a record from before the binding. So
+ * the new bearer is never paired with the old plane, identity or class. The
+ * identity is the one the plane named for this bearer, and the class the one its fleet surface named;
+ * neither is a secret, so both sit in `plane.json`. A class the plane didn't name is not recorded.
  * @param {Object} options
  * @param {String} options.dir
  * @param {Object} options.safeStorage
  * @param {String} options.planeBase
  * @param {String} options.bearer
  * @param {String} options.identity The bearer's canonical `@login`, from {@link probePlaneCredential}.
+ * @param {String|null} [options.authSource=null] The bearer's class, from {@link probePlaneBearerClass}.
  * @param {Object} [options.fsModule=fs]
  * @returns {{planeBase: String, identity: String}}
  * @throws {Error} When encryption is unavailable, or on an invalid plane base, an empty bearer, or an
  * identity that names no viewer.
  */
-export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity, fsModule = fs}) {
+export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity, authSource = null, fsModule = fs}) {
     const
         base   = normalizePlaneBase(planeBase),
-        viewer = canonicalIdentity(identity);
+        viewer = canonicalIdentity(identity),
+        source = authSourceOf(authSource);
 
     if (typeof bearer !== 'string' || !bearer.trim()) {
         throw new TypeError('plane bearer must be a non-empty string')
@@ -139,11 +175,46 @@ export function writePlaneConfig({dir, safeStorage, planeBase, bearer, identity,
         throw new Error('the OS cannot encrypt credentials for this user, so the plane credential was not stored')
     }
 
+    const
+        sealed = safeStorage.encryptString(bearer.trim()),
+        record = {...(source && {authSource: source}), bearerSha256: sha256(sealed), identity: viewer, planeBase: base};
+
     fsModule.mkdirSync(dir, {recursive: true});
-    fsModule.writeFileSync(path.join(dir, PLANE_BEARER_FILE), safeStorage.encryptString(bearer.trim()), {mode: 0o600});
-    fsModule.writeFileSync(path.join(dir, PLANE_CONFIG_FILE), JSON.stringify({identity: viewer, planeBase: base}, null, 4) + '\n', {mode: 0o600});
+    replaceFile({file: path.join(dir, PLANE_CONFIG_FILE), data: JSON.stringify(record, null, 4) + '\n', fsModule});
+    replaceFile({file: path.join(dir, PLANE_BEARER_FILE), data: sealed, fsModule});
 
     return {identity: viewer, planeBase: base}
+}
+
+/**
+ * @summary Replaces a file whole: a temp file beside it, owner-only, renamed over it.
+ * @param {Object} options
+ * @param {String} options.file
+ * @param {String|Buffer} options.data
+ * @param {Object} options.fsModule
+ * @private
+ */
+function replaceFile({file, data, fsModule}) {
+    const temp = `${file}.${process.pid}.tmp`;
+
+    fsModule.writeFileSync(temp, data, {mode: 0o600});
+
+    try {
+        fsModule.renameSync(temp, file)
+    } catch (error) {
+        fsModule.rmSync(temp, {force: true});
+        throw error
+    }
+}
+
+/**
+ * @summary The hex sha256 of an encrypted bearer's bytes: what binds `plane.json` to them.
+ * @param {Buffer} bytes
+ * @returns {String}
+ * @private
+ */
+function sha256(bytes) {
+    return crypto.createHash('sha256').update(bytes).digest('hex')
 }
 
 /**
@@ -170,8 +241,12 @@ export function forgetPlaneConfig({dir, fsModule = fs}) {
  * refused. A stored bearer without its identity (a record from before the identity was recorded) is
  * therefore no record either: the shell boots on its own, and the plane card offers to attach again.
  * An env bearer keeps the env's identity.
+ *
+ * The stored bearer brings its recorded class the same way, `''` when none was recorded, with both
+ * admission variables empty: the Brain derives the fleet-surface credential from a bearer whose class
+ * is a forge PAT, so an admission credential the launch left behind cannot reach the record's plane.
  * @param {Object} options
- * @param {{planeBase: String|null, bearer: String|null, identity: String|null}} options.planeConfig
+ * @param {{planeBase: String|null, bearer: String|null, identity: String|null, authSource: String|null}} options.planeConfig
  * @param {Object} options.env The process env.
  * @returns {Object}
  */
@@ -185,9 +260,12 @@ export function planeEnvFragment({planeConfig, env}) {
     }
 
     return planeConfig.bearer && planeConfig.identity ? {
-        NEO_AGENT_IDENTITY    : planeConfig.identity,
-        NEO_FLEET_PLANE_BASE  : planeConfig.planeBase,
-        NEO_FLEET_PLANE_BEARER: planeConfig.bearer
+        NEO_AGENT_IDENTITY                   : planeConfig.identity,
+        NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
+        NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+        NEO_FLEET_PLANE_BASE                 : planeConfig.planeBase,
+        NEO_FLEET_PLANE_BEARER               : planeConfig.bearer,
+        NEO_FLEET_PLANE_BEARER_CLASS         : planeConfig.authSource ?? ''
     } : {}
 }
 
@@ -342,6 +420,39 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
 }
 
 /**
+ * @summary Asks the plane's fleet surface which class it admitted a bearer as. `/fleet/probe` answers the
+ * admission context, whose `authSource` names a forge PAT (`github-pat`, `gitlab-pat`) or another source.
+ * A refusal, a plane without a fleet surface, or any other answer reads as `null`: the class is never
+ * guessed.
+ * @param {Object} options
+ * @param {String} options.planeBase A normalized plane base.
+ * @param {String} options.bearer
+ * @param {Function} [options.fetchFn=fetch]
+ * @param {Number} [options.timeoutMs=8000]
+ * @returns {Promise<String|null>}
+ */
+export async function probePlaneBearerClass({planeBase, bearer, fetchFn = fetch, timeoutMs = 8000}) {
+    try {
+        const response = await fetchFn(`${planeBase}/fleet/probe`, {
+            headers: {Accept: 'application/json', Authorization: `Bearer ${bearer}`},
+            method : 'GET',
+            signal : AbortSignal.timeout(timeoutMs)
+        });
+
+        if (response.status !== 200) {
+            await response.text().catch(() => '');
+            return null
+        }
+
+        const answer = await response.json();
+
+        return answer?.ok === true ? authSourceOf(answer.result?.identity?.authSource) : null
+    } catch {
+        return null
+    }
+}
+
+/**
  * @summary The main-process handlers behind the preload's `planeStatus()`, `attachPlane()` and
  * `verifyPlane()`. Each refuses an untrusted sender, and no reply ever carries the credential: the PAT
  * exists only between the credential prompt or the stored record, the probe, and the encrypted write.
@@ -426,7 +537,9 @@ export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportF
                 return refuse(verdict)
             }
 
-            writePlaneConfig({bearer, dir, fsModule, identity, planeBase, safeStorage});
+            const authSource = await probePlaneBearerClass({planeBase, bearer, fetchFn});
+
+            writePlaneConfig({authSource, bearer, dir, fsModule, identity, planeBase, safeStorage});
             relaunch();
 
             return {ok: true, reason: null, relaunching: true}

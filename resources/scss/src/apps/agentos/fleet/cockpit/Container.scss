@@ -141,6 +141,19 @@
             min-width: 0;
         }
 
+        /* The lead: the banner's reason, visible beside the pill at every width, the marks form
+           included. It holds no minimum and shrinks to an ellipsis, so a sentence can never set
+           the cockpit's width floor again; its zero flex basis (Container.mjs) makes it the row's
+           slack, so it ellipsizes before a pill or a button gives up a pixel. */
+        .fm-spine-banner-lead {
+            min-width    : 0;
+            overflow     : hidden;
+            color        : var(--fm-ink-dim);
+            font         : var(--fm-text-detail);
+            text-overflow: ellipsis;
+            white-space  : nowrap;
+        }
+
         /* Button hierarchy (ledger D1): the SSOT's quiet, panel-toned base — the default theme's
            same-weight blue slab never reaches the bar. Mirrors the chrome's agent-button pair
            (Viewport.scss); only the primary action reaches for the signal. The shell-owned pop-out
@@ -277,24 +290,30 @@
         --dock-transition-duration-fast  : var(--fm-motion-fast);
     }
 
-    /* ── the declared collapse order — two designed forms, no mid-word clipping ever:
-       (1) wide (default rules above): the two state pills in one row, right-aligned;
-       (2) narrow: state text drops to marks-with-titles, action labels drop to icons.
-       Every step is a designed form and the T5 titles carry the full truth at every width.
+    /* ── the declared collapse order — two designed forms, no pill or button ever cut mid-word:
+       (1) wide (default rules above): the two state pills in one row, right-aligned, the lead
+           between them on what the row leaves;
+       (2) narrow: the fleet pill's word drops to its mark while the lead keeps its reason on one
+           truncated line; the wake chip drops to its mark only while live, since a degraded wake
+           has no lead and a bare mark would hide its state; action labels drop to icons.
+       Every step is a designed form: the lead's ellipsis is its form, and the T5 titles repeat
+       the whole sentence at every width.
 
        The row→narrow step sits at 760px, not the first-cut 730px: measured on the live bar, the
        two pills need 179px at their content widths ("fleet offline" 102 + "wake off" 69 + gap)
        and the state block yields to the buttons first (`min-width: 0`), so at a 749px container
        (an 800px viewport) it holds 170px — no honest row form fits there, and a pill cut short
        is the exact form this order forbids. 760 gives the row form its floor; below it the marks
-       form carries the words in the T5 titles. (The content widths are the cockpit's doing: the
+       carry the state and the lead the reason. (The content widths are the cockpit's doing: the
        state block's items opt out of the layout's equal `flex: 1 1 0%` split.) */
     @container fm-cockpit (max-width: 760px) {
         .fm-cockpit-bar {
             /* state drops its words, keeps its marks: the chip's left-mark geometry IS the dot
-               form of the family — the word retracts, the mark and the T5 title stay. */
+               form of the family — the word retracts; the mark, the lead and the T5 title stay.
+               No non-live state becomes a bare mark: the fleet pill's lead carries its reason,
+               and a degraded wake chip, which has no lead, keeps its word. */
             .fm-spine-banner,
-            .fm-viewer-wake {
+            .fm-viewer-wake-live {
                 font-size: 0;
                 min-width: 0;
                 width    : 14px;

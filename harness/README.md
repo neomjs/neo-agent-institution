@@ -39,11 +39,12 @@ than treating broad disk access as an installation prerequisite. See Apple's
 After launch, check the agent's window and the capability you need. A **working** roster entry
 proves neither that a model turn ran nor that every tool is ready. If the chat is blank and waiting,
 send its first prompt. If necessary access remains blocked, review the matching permission above;
-after changing it, follow any macOS relaunch request and retry the affected feature. **Quitting
-Neo Harness currently also stops the peer harnesses it launched**, including when quitting for a
-permission change or app update. Checkpoint those peers first; reopening FM does not itself prove
-that their sessions resumed. Closing the cockpit window only hides it and keeps the tray running.
-Retain each peer's existing profile and login when using Fleet's Stop/Restart controls.
+after changing it, follow any macOS relaunch request and retry the affected feature. **Provisioned
+desktop app harnesses run detached and survive an FM quit or restart.** Fleet re-adopts their
+matching process leases when it returns. Stopping or restarting a seat is a separate, explicit
+Fleet action; retain its existing profile and login. This desktop survival contract does not
+describe CLI harnesses whose launcher holds their stdio pipes. Closing the cockpit window only
+hides it and keeps the tray running.
 
 If the cause is unclear or the entry is missing, retain the notification text, macOS version and
 app build receipt for diagnosis; do not infer the denied operation from the launcher name alone.
@@ -71,16 +72,31 @@ had 17 registered copies on one machine). `--dry-run` prints the plan and change
 installed bundle; `--artifact <bundle.app>` names a bundle explicitly. Equal receipts end the run
 with nothing replaced.
 
-A running Neo Harness is a refusal: `--quit` is the only way the leg stops it, through the app's
-own quit addressed to the canonical bundle by path (an identifier-addressed quit would pick one
-of the registered copies and launch it if it was not running), and **quitting also stops the peer
-harnesses it launched** — checkpoint those seats first. Closing the cockpit window only hides it. A Neo Harness running from any bundle other than
-the canonical one — a renamed previous copy, a dist copy — is refused by path, with or without
-`--quit`; the census reads every process inside a bundle named `Neo Harness….app`.
+The installer's census includes every process executing from a `Neo Harness….app` bundle.
+`--quit` asks the canonical FM app to quit by path (an identifier-addressed quit could pick another
+registered copy); it does not stop detached desktop harnesses. A process using a different bundle
+path is refused with or without `--quit`.
 
-The leg never writes the application's userData (`~/Library/Application Support/neo-harness/`:
-the saved plane record, the `brain/fleet/` custody files, encrypted credentials). Its only reads
-there hash the custody set twice — the plane record (`plane.json`, `plane-bearer.bin`,
+Generation-capable builds copy and verify their execution payload under
+`<userData>/brain/runtime/<generation-id>/` before serving Fleet or starting seats. The host
+holds a read-only reference for its lifetime, and each managed Start retains its original runtime
+and admission binding. Replacing the installed package does not migrate a surviving seat.
+Older seats may still execute launchers or MCP servers from the replaceable bundle; the installer
+continues to refuse those holders. Repositories and profiles outside FM do not remove that file
+dependency. Any separately planned seat shutdown requires a checkpoint and an explicit Stop or
+harness quit; `--open` only reopens FM and does not prove a stopped seat resumed.
+
+The installer publishes its installed, rollback and interrupted-restore slot record before
+opening the successor. Normal packaged FM maintenance retires only verified generations whose
+complete admission snapshot and process census prove no holder, excluding new reference
+acquisition throughout the decision. Installed and rollback packages, retained prior locations,
+the current host, seats, remaining children and unknown evidence prevent removal. An interrupted
+removal resumes only from its private, inode-bound retirement receipt.
+
+The leg does not rewrite the saved plane record, the `brain/fleet/` custody files or encrypted
+credentials under `~/Library/Application Support/neo-harness/`. It publishes runtime copies and
+package-slot evidence separately from that custody set. It hashes the custody set twice — the
+plane record (`plane.json`, `plane-bearer.bin`,
 `seat-root.json`) and `brain/fleet/`'s own files (registry, credentials, keys, tenants), plus the
 names of the seats under `brain/fleet/agents/` — once after the app has stopped, once after the
 slots moved and before any `--open`; a difference stops the run with the app down and nothing
@@ -128,6 +144,88 @@ replacement, verify the saved-plane boot separately: the smoke's isolated transp
 establish admission to the operator's real Agent OS. Retain the observed source states and any
 failures in the delivery receipt. Installation success must not conceal a remaining live-data
 defect.
+
+### Reading and changing a seat's runtime
+
+Select a roster seat and open **Agent detail → Status → Runtime**. Its current binding (or last
+released / unverified binding), **Next Start**, and **Installed** are separate facts. Next Start
+comes from the connected Fleet owner; Installed comes from a fresh read of the installer-owned
+slot. A reused older Fleet may report different values. **Show generation IDs** expands the
+complete opaque identities without guessing source revisions from them. Missing or unavailable
+readback stays unreported or last reported.
+
+**Restart on installed generation** is offered when the observed installed identity matches that
+owner's Next Start and the seat needs migration or has an unverified binding. It uses the existing
+lifecycle control with the displayed identity as a precondition: Fleet refuses a mismatch before
+Stop, and checks again before Start. If the target changes during cleanup, the seat can already be
+stopped when the new Start is refused. The UI reports the refusal; it never retries without the
+precondition or treats a completed request as proof of migration. The next observed held pin
+establishes the resulting runtime. Ordinary roster Start and Restart retain their existing behavior.
+
+The installed continuity acceptance remains tracked on
+[Institution #12](https://github.com/neomjs/neo-agent-institution/issues/12): surviving seats,
+a later MCP-child reconnect without restarting them, an operator-paced explicit restart, rollback,
+eligible retirement and unknown-liveness retention. Source checks and package smoke do not replace
+those witnesses or authorize an uncoordinated update.
+
+### Retained admission issuer lock
+
+`FILE_LEASE_HELD` during Fleet boot means normal acquisition found a held issuer lease or could
+not verify that it was available. Use the exact `issuer.lock` path in the refusal: the registry's
+`admissionDirectory()` selects its custody directory. A similarly named path in another profile
+or plane is not the same owner.
+
+Before recovery, take the coordinated checkpoint and retain the refusal, selected profile and
+package identity. Inspect the recorded holder on the **same host and PID namespace**. `startedAt`
+and `lastPulse` record acquisition and pulse times, not OS process birth. Age is not proof of death;
+birth-after-acquisition is not cleanup authority either, because acquisition-clock discontinuity
+can produce that ordering for a genuine live owner.
+
+Set `ISSUER_PID` to the positive PID from the refusal. This read-only probe sends no terminating
+signal and distinguishes definite absence from permission or other errors:
+
+```bash
+node -e 'const pid = Number(process.argv[1]); if (!Number.isSafeInteger(pid) || pid <= 0) throw Error("positive PID required"); try { process.kill(pid, 0); console.log("present: retain the lock"); } catch (error) { console.log(error.code === "ESRCH" ? "absent: normal acquisition may retry" : `${error.code}: unknown; retain the lock`); }' "$ISSUER_PID"
+```
+
+This is a point-in-time observation, not permission to unlink a file. Normal acquisition rechecks
+the holder under its lifecycle guard.
+
+| Holder evidence | Supported next step |
+| --- | --- |
+| A legitimate issuer is still alive | Let that owner complete its coordinated shutdown and release. Do not start a competing owner. |
+| The recorded PID is definitely absent (`ESRCH`) | Retry the intended Fleet boot through normal acquisition. It performs guarded stale reclaim; manual lock deletion is unnecessary. |
+| The PID is alive but may have been reused after a crash | Retain the refusal. The PID-only lease cannot distinguish a live stranger from the original holder. Collect owner/process evidence for maintainer diagnosis; do not stop an unrelated process. |
+| The holder record is unreadable/corrupt, the probe is denied, or custody is uncertain | Retain the refusal and resolve the named evidence/custody failure. Age and a generic failed probe do not establish absence. |
+
+Keep `issuer.json` and `fence.json` intact. Reclaiming a dead `issuer.lock` does not manufacture a
+clean handoff: a successor reports an active record with matching issuer/fence identity and epoch
+as `unclean-issuer-exit`; mismatched valid records remain `handoff-replayed`. Neither authorizes
+recovery. Existing MCP children may still work while admission for new children is stale. When
+original admission cannot be recovered, an explicit managed Start/Restart creates new admission
+after the Fleet owner is available; restarting a seat cannot bypass a blocked issuer lock.
+
+After recovery, verify the owner started and inspect each affected seat's launch-admission state.
+A successful boot alone does not prove later-child continuity; retain the installed witness on
+[#12](https://github.com/neomjs/neo-agent-institution/issues/12).
+
+The [isolated walkthrough](https://github.com/neomjs/neo-agent-institution/issues/704#issuecomment-6205116138)
+checks active-holder retention, guarded reclaim after an exited helper, simulated PID reuse and
+an unverifiable holder. Actual OS PID reuse was not observed in the originating review. Brain's
+[`holdFileLease`](https://github.com/neomjs/neo-agent-brain/blob/dev/ai/daemons/shared/fileLease.mjs)
+and [`launchAdmissionJournal`](https://github.com/neomjs/neo-agent-brain/blob/dev/ai/services/fleet/launchAdmissionJournal.mjs)
+own the fail-closed behavior; this guide adds no manual-unlock command.
+
+### Packaged executable and legacy transition
+
+In packaged mode, Brain JavaScript children, including the config resolver, use the verified
+generation's executable. The shell replaces `NEO_HARNESS_NODE_BIN` with that binding; a supplied
+override does not select a different packaged executable.
+
+`--legacy-migration` is explicit intent for the discontinuous checkpoint → Stop all seats → install
+→ Start transition when the source or destination is a recognized legacy package. The flag does
+not stop seats itself and does not bypass custody or bundle-use refusals. Use the coordinated
+migration window for that transition; it does not establish generation-to-generation continuity.
 
 ## Run
 
@@ -191,7 +289,7 @@ declaration is resolved through the config SSOT before host liveness can select 
   check): the harness starts only the missing Fleet transport and stops exactly what IT started.
 - **own** — no plane is declared and no host orchestrator is live (the true fresh-machine /
   packaged-app shape): the harness starts the whole organism on the default canonical-layout paths,
-  and quitting tears the full tree down.
+  and quitting tears that supervised Agent OS tree down, not the detached desktop seats.
 
 This order is the safety property. The orchestrator performs single-instance TAKEOVER and its
 supervisor REAPS foreign listeners on singleton ports; temporary plane unavailability must never

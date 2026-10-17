@@ -41,7 +41,7 @@ async function loadLanding(page) {
 }
 
 /**
- * @summary The mounted Viewport provider's `setupRun` leaves (`{decisions, manualActions, preset, runId}`),
+ * @summary The mounted Viewport provider's `setupRun` leaves (`{dataRoot, decisions, manualActions, planeId, preset, runId}`),
  * read inside the App worker through the landing.
  * @param {Object} page The Playwright page.
  * @returns {Promise<Object|null>}
@@ -55,8 +55,8 @@ export async function readSetupRun(page) {
 /**
  * @summary Sets the landing's configs inside the App worker, then `Neo.worker.App.setConfigs` carries the payload.
  * @param {Object} page The Playwright page.
- * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, `{tasks: {snapshot}}`, `{mailbox: {events}}`
- *     and/or `{definitions: {rows}}`.
+ * @param {Object} configs `{roster: {rows}}`, `{activity: {events}}`, `{tasks: {snapshot}}`, `{mailbox: {events}}`,
+ *     `{definitions: {rows}}` and/or `{brainHealth: {response}}`.
  * @returns {Promise<void>}
  */
 async function landFleet(page, configs) {
@@ -71,13 +71,38 @@ async function landFleet(page, configs) {
 
 /**
  * @summary Serves a mailbox the mounted cockpit reads through its bridge: every `fleetActivity` read answers
- * the events' page at its offset. The spec reads the reads with `readMailboxReads` on `fm-fleet-landing`.
+ * the events' page at its offset, and an observer read its scope's population in `observers`, with the message
+ * reads to open them. The spec reads the reads with `readMailboxReads` on `fm-fleet-landing`, or with
+ * {@link readFleetMailboxReads} from the page.
  * @param {Object} page The Playwright page.
  * @param {Object[]} events The stream's snapshot shape, newest first.
+ * @param {Object|null} [observers=null] Observer scope → population, newest first.
  * @returns {Promise<void>}
  */
-export async function serveFleetMailbox(page, events) {
-    await landFleet(page, {mailbox: {events}})
+export async function serveFleetMailbox(page, events, observers = null) {
+    await landFleet(page, {mailbox: {events, observers}})
+}
+
+/**
+ * @summary The params of every read the served mailbox answered, read inside the App worker through the landing.
+ * @param {Object} page The Playwright page.
+ * @returns {Promise<{activity: Array<Object|null>, messages: Object[]}>}
+ */
+export async function readFleetMailboxReads(page) {
+    const [activity, messages] = await page.evaluate(() => Neo.worker.App.getConfigs({id: 'fm-fleet-landing', keys: ['mailboxReads', 'messageReads']}));
+
+    return {activity, messages}
+}
+
+/**
+ * @summary Lands one answer of the shell's Brain-health wire in the mounted cockpit, through the liveness
+ * owner's `applyBrainHealth`: a typed boot refusal reads `{state: 'degraded', cause: {source, detail}}`.
+ * @param {Object} page The Playwright page.
+ * @param {Object} response The lifecycle owner's `{state, cause}` payload.
+ * @returns {Promise<void>}
+ */
+export async function landBrainHealth(page, response) {
+    await landFleet(page, {brainHealth: {response}})
 }
 
 /**
@@ -132,6 +157,17 @@ export async function landFleetTasks(page, snapshot) {
  */
 export async function landFleetOpenWork(page, snapshot) {
     await landFleet(page, {openWork: {snapshot}})
+}
+
+/**
+ * @summary Lands one `fleetRecentTurns` envelope in the mounted cockpit as the owner's answer for the shown
+ * seat: the Agent Detail's Thought stream follows it when the envelope's `target` is the seat it shows.
+ * @param {Object} page The Playwright page.
+ * @param {Object} snapshot The envelope.
+ * @returns {Promise<void>}
+ */
+export async function landFleetRecentTurns(page, snapshot) {
+    await landFleet(page, {recentTurns: {snapshot}})
 }
 
 /**

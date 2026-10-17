@@ -7,7 +7,8 @@ import Model from '../../../node_modules/neo.mjs/src/data/Model.mjs';
  * @summary The cockpit fleet-roster record contract: one row per resident, keyed by the durable
  * `agentId`. The `fields` array IS the card's data contract — display state (`displayName`,
  * `avatarUrl`, `engineTag`, `family`, `laneLine`, `laneClaimedAt`), the roster-DTO tri-state truths (`launchable`,
- * `openLaneCount`, `participationStatus` — stamped Brain-side, null = not stamped, never guessed),
+ * `openLaneCount`, `participationStatus` with its reason, date and read, `launchRefusal` — stamped Brain-side,
+ * null = not stamped, never guessed),
  * session `state` (what the resident is doing now, never identity), per-source `sources`
  * provenance, and the B4/C2 lifecycle-control seam (`pendingAction`, `controlReason`) all live on
  * the record, so one Store of these records is the per-row reactive layer for the whole fleet
@@ -125,11 +126,74 @@ class FleetAgent extends Model {
             name        : 'repoPath',
             defaultValue: null
         }, {
+            // The working checkout's filesystem observation; additional repositories use repoOutcomes.
+            name        : 'repoStatus',
+            defaultValue: null
+        }, {
             // the last start's outcome for each of the seat's other repositories,
             // `[{repoSlug, state: 'prepared' | 'failed', reason?}]`, kept on the Fleet's launch record
             // (the roster DTO's `repoOutcomes`), so it outlives a roster read and an app reload. A new
             // start replaces it. Null = no start yet, or a Brain that does not report it
             name        : 'repoOutcomes',
+            defaultValue: null
+        }, {
+            // each checkout's dependency row, `[{repoSlug, state, reason?}]`, from the latest start that reached its
+            // install (the roster DTO's `dependencyOutcomes`; see AgentOS.util.SeatDependencies): live while that
+            // start is pending, final after it. Null = no start has reported one, or a Brain that does not report
+            // it: unknown, never ready
+            name        : 'dependencyOutcomes',
+            defaultValue: null
+        }, {
+            // the commit identity the last start resolved, a refused start's included
+            // (`{state, name?, email?, reason?}`, the roster DTO's `gitIdentity`), so the card can say a
+            // refused start was about the identity. Null = no start yet, or a Brain that does not report it
+            name        : 'gitIdentity',
+            defaultValue: null
+        }, {
+            // what the last start found of the seat's declared model in its harness's catalog
+            // (`{state, model, reasoningEffort, reason}`, the roster DTO's `seatModel`), so the card can say a
+            // refused start was about the model. Null = no start read a catalog, or a Brain that does not report it
+            name        : 'seatModel',
+            defaultValue: null
+        }, {
+            // the model and effort a Codex seat's config is set to now (`{model, reasoningEffort}`, the
+            // roster DTO's `harnessSettings`): configured state, never what a chat runs on. Null for every
+            // other family, and from a Brain that does not report it
+            name        : 'harnessSettings',
+            defaultValue: null
+        }, {
+            // where a running Claude Desktop seat's session opened, against its checkout
+            // (`{state, expected, observed?, reason?}`, the roster DTO's `sessionFolder`; see
+            // AgentOS.util.SeatSessionFolder). Null for every other row, and from a Brain that does not report it
+            name        : 'sessionFolder',
+            defaultValue: null
+        }, {
+            // why a supervised seat exited without a Stop from Fleet Manager
+            // (`{state: 'harness-update'|'unknown', exitedAt, logPath?, matchedLine?, reason?}`, see
+            // AgentOS.util.SeatExitReason). Null for intentional Stops, running seats, and older Brains
+            name        : 'exitReason',
+            defaultValue: null
+        }, {
+            // Issuer-owned native MCP generation and bounded audit; null before a producer answers.
+            // Admission describes new children, never tool connectivity.
+            name        : 'launchAdmission',
+            defaultValue: null
+        }, {
+            // The original Start's generation and held/released/unknown pin, never inferred from installed state.
+            name        : 'runtimeGeneration',
+            defaultValue: null
+        }, {
+            // The connected Fleet's observation of the installer-owned package slot, separate from its boot selection.
+            name        : 'installedGeneration',
+            defaultValue: null
+        }, {
+            // The connected Fleet's verified boot runtime selected for the next provisioned Start.
+            name        : 'nextRuntimeGeneration',
+            defaultValue: null
+        }, {
+            // Current public MCP intent from the same roster DTO; null means not read, while
+            // mcpServers:null inside a present snapshot follows the canonical catalog defaults.
+            name        : 'mcpSettings',
             defaultValue: null
         }, {
             // open assigned lanes for the resident (measured density evidence: 7–17 per active
@@ -148,6 +212,13 @@ class FleetAgent extends Model {
             name        : 'openWork',
             defaultValue: null
         }, {
+            // the same answer's rows for the Agent Detail's Pull requests pane
+            // (`AgentOS.util.OpenWorkSeat.held`: `{rows, stale, observedAt}`), written beside `openWork`;
+            // typeless so `null` survives — null = the read has not answered, an empty `rows` = it
+            // answered and the seat holds nothing
+            name        : 'openWorkHeld',
+            defaultValue: null
+        }, {
             // the newest attributable per-agent activity instant (ISO string), stamped Brain-side
             // by the cockpit DTO assembler (activity-event fold merged with the presence
             // producer's lastSeenAt) and passed through whole — the roster's recency sort axis.
@@ -157,12 +228,29 @@ class FleetAgent extends Model {
             name        : 'lastActivityAt',
             defaultValue: null
         }, {
-            // the AUTHORITATIVE swarm-participation fact from the identity roots ('active' |
-            // 'operator_benched' | 'temporarily_unreachable'), resolved Brain-side through the
-            // identity join seam; typeless so null (no identity root / not stamped) survives —
-            // fleet-level eligibility excludes any KNOWN non-active status before a lifecycle
-            // write (null stays eligible: the open-set case for forks/custom residents)
+            // the AUTHORITATIVE swarm-participation fact from the seat's identity node ('active' |
+            // 'operator_benched' | 'temporarily_unreachable'), read Brain-side from the presence report;
+            // typeless so null (no node, a read that did not answer, not stamped) survives — fleet-level
+            // eligibility excludes any KNOWN non-active status before a lifecycle write, and
+            // `participationRead` tells an unanswered read from no node
             name        : 'participationStatus',
+            defaultValue: null
+        }, {
+            // the operator's reason and date (ISO) for that status, as the identity node records them;
+            // null = none recorded, or a Brain that does not report them
+            name        : 'participationReason',
+            defaultValue: null
+        }, {
+            name        : 'participationSince',
+            defaultValue: null
+        }, {
+            // whether the node's read answered: `{state: 'read'}`, or `{state: 'unread', reason}`, which leaves
+            // the status null without meaning "no node". Null from a Brain that does not report it
+            name        : 'participationRead',
+            defaultValue: null
+        }, {
+            // why the Fleet's Start refuses the seat, in its own words; null = it may start
+            name        : 'launchRefusal',
             defaultValue: null
         }, {
             // the verb whose lifecycle round-trip is in flight, written by the C2 adapter;

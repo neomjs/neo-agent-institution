@@ -40,7 +40,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         return store.get(data.agentId)
     };
 
-    const createCard = data => Neo.create(AgentCard, {appName, record: makeRecord(data)});
+    const createCard = data => Neo.create(AgentCard, {appName, record: makeRecord(data), rosterState: 'live'});
 
     // in the cockpit composition the GRID routes the store's recordChange to the card; standalone
     // card units drive the same seam directly: mutate the record, then apply it.
@@ -88,28 +88,19 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('the clone-path line: a Claude Desktop seat leads with the Code-tab verb, another harness shows the bare path, no path means no line', () => {
+    test('the roster card names no filesystem path, for any harness family: seat facts live on the Agent Detail', () => {
         const
             repoPath = '/Users/Shared/agents/neo-opus-ada/neomjs/neo',
             card     = createCard({agentId: 'ada', displayName: 'Ada', harnessType: 'claude-desktop', repoPath, repoSlug: 'neomjs/neo', state: 'ok'}),
-            line     = card.getReference('card-repo'),
-            texts    = () => line.vdom.cn.map(node => node.text);
+            rendered = () => JSON.stringify(card.vdom);
 
-        // a Claude Desktop seat cannot be launched into its folder: the verb leads, the path follows, the
-        // title carries the whole path — every fragment an inert text node, never html
-        expect(line.hidden).toBe(false);
-        expect(texts()).toEqual(['Open in the Code tab', repoPath]);
-        expect(line.vdom.title).toBe(repoPath);
-        expect(line.vdom.cn.every(node => node.html === undefined)).toBe(true);
+        expect(card.getReference('card-repo')).toBeFalsy();
 
-        // another harness family opens its own folder (Codex gets --open-project): the path alone
-        applySet(card, {harnessType: 'codex-desktop'});
-        expect(texts()).toEqual([repoPath]);
-
-        // no reported path → no line and no placeholder, whatever the harness
-        applySet(card, {repoPath: null});
-        expect(line.hidden).toBe(true);
-        expect(line.vdom.cn).toEqual([]);
+        for (const harnessType of ['claude-desktop', 'codex-desktop', 'codex', 'claude-code']) {
+            applySet(card, {harnessType});
+            expect(rendered(), harnessType).not.toContain(repoPath);
+            expect(rendered(), harnessType).not.toContain('Open in the Code tab')
+        }
 
         card.destroy()
     });
@@ -355,7 +346,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         expect(chip().hidden).toBe(false);
         expect(chip().text).toBe('2 PRs · red');
-        expect(chip().vdom['aria-label']).toBe('Open work: 2 pull requests waiting on this seat, worst red.');
+        expect(chip().vdom['aria-label']).toBe('Open work: 2 pull requests waiting on this seat, worst: red.');
         expect(chip().vdom.title).toBe('2 pull requests waiting on this seat · worst: red');
         expect(chip().cls).not.toContain('is-stale');
 
@@ -376,7 +367,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
 
         expect(chip.cls).toContain('is-stale');
         expect(chip.text).toBe('1 PR · review due');
-        expect(chip.vdom['aria-label']).toBe('Open work: 1 pull request waiting on this seat, worst review due, stale.');
+        expect(chip.vdom['aria-label']).toBe('Open work: 1 pull request waiting on this seat, worst: review due, stale.');
 
         card.destroy()
     });
@@ -529,6 +520,32 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
+    test('a seat the Fleet refuses to start shows Start closed in the Fleet\'s words before the click; a benched seat\'s state names the operator\'s date and reason (#568)', () => {
+        const
+            refusal = 'the seat is benched by the operator',
+            card    = createCard({
+                agentId            : 'preview',
+                state              : 'off',
+                launchRefusal      : refusal,
+                participationStatus: 'operator_benched',
+                participationReason: 'the preview model behind this chair ended',
+                participationSince : '2026-10-01T00:00:00.000Z'
+            }),
+            toggle  = card.down({reference: 'control-toggle'});
+
+        expect([toggle.disabled, toggle.vdom.title]).toEqual([true, refusal]);
+        expect(card.down({reference: 'card-state'}).vdom.title).toBe('benched by the operator · since 2026-10-01 · the preview model behind this chair ended');
+
+        // the refusal gone, Start opens again; a running seat's Stop is never closed by a start refusal
+        applySet(card, {launchRefusal: null, participationStatus: 'active', participationReason: null, participationSince: null});
+        expect([toggle.disabled, toggle.vdom.title ?? null]).toEqual([false, null]);
+
+        applySet(card, {launchRefusal: refusal, state: 'ok'});
+        expect(toggle.disabled).toBe(false);
+
+        card.destroy()
+    });
+
     test('ADR-0032: avatar/name/engine are display state over the durable id — a record write re-renders in place, never a re-key', () => {
         const card     = createCard({agentId: 'vega', displayName: 'Vega', avatarUrl: 'a.png', engineTag: 'opus-4.8', state: 'ok'});
         const beforeId = card.id;
@@ -590,6 +607,289 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.getController().onLifecycleIntent({component: restart});
         expect(fired).toMatchObject([{action: 'restart', agentId: 'vega'}]);
 
+        card.destroy()
+    });
+
+
+    test('launch admission follows the real mapper/model/card and existing restart adapter', async () => {
+        const {default: RosterRow} = await import('../../../../../../../../../apps/agentos/util/RosterRow.mjs'),
+              {default: Adapter} = await import('../../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs'),
+              admission = {state: 'stale', reason: 'issuer-replaced', generation: null, since: null, servers: [], recent: []},
+              mapped = RosterRow.mapRosterRow({
+                  id: 'vega', displayName: 'Vega', sources: observedSources,
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                  launchAdmission: admission
+              }),
+              card = createCard(mapped),
+              status = card.getReference('control-status'),
+              restart = card.getReference('control-restart'),
+              calls = [];
+        let dispatched;
+
+        expect(card.record.launchAdmission).toEqual(admission);
+        expect(card.record.state).toBe('ok');
+        expect(status.hidden).toBe(false);
+        expect(status.text).toContain('New tool connections');
+        expect(status.vdom.title).toContain('already-running tools may still work');
+        expect(restart.disabled).toBe(false);
+        expect(restart.vdom.title).toContain('Restart this seat');
+        card.on('lifecycleIntent', intent => {
+            dispatched = Adapter.handleFleetLifecycleIntent(intent, card.record, {
+                bridge: {restartAgent: async id => { calls.push(id); return {status: 'running'} }}
+            })
+        });
+        card.getController().onLifecycleIntent({component: restart});
+        await dispatched;
+        expect(calls).toEqual(['vega']);
+        expect(card.record.pendingAction).toBeNull();
+        expect(card.record.state).toBe('ok');
+
+        applySet(card, {launchAdmission: {...admission, state: 'revoked', reason: 'stop-requested', generation: 'generation-a'}});
+        expect(status.text).toContain('New tool connections');
+        applySet(card, {state: 'off'});
+        expect(status.hidden).toBe(true);
+        expect(restart.hidden).toBe(true);
+        expect(restart.vdom.title).toBeFalsy();
+        expect(status.vdom.title).toBeFalsy();
+        card.destroy()
+    });
+
+    test('active admission names credential owners without turning Restart into a repair', () => {
+        const snapshot = {
+            state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+            servers: [{key: 'memory-core', state: 'active', reason: null}], recent: []
+        }, card = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+           status = card.getReference('control-status'), restart = card.getReference('control-restart');
+
+        expect(status.hidden).toBe(true);
+        for (const [code, owner, words] of [
+            ['credential-unproven', 'seat-pat', "seat's repository credential"],
+            ['credential-missing', 'plane-bearer', "seat's plane credential"]
+        ]) {
+            const failure = {at: '2026-10-07T10:01:00Z', server: 'memory-core', outcome: 'refused', code, reason: owner};
+            applySet(card, {launchAdmission: {...snapshot, recent: [failure]}});
+            expect(status.hidden).toBe(false);
+            expect(status.text).toContain('Memory Core');
+            expect(status.vdom.title).toContain(words);
+            expect(status.vdom.title).toContain('restarting will not repair');
+            expect(status.vdom.title).not.toMatch(/seat-pat|plane-bearer|credential-unproven/);
+            expect(restart.vdom.title).toBeFalsy();
+            expect(restart.disabled).toBe(false);
+            expect(card.record.state).toBe('ok');
+
+            // Another server's success cannot clear this server's warning.
+            applySet(card, {launchAdmission: {...snapshot, recent: [failure, {
+                at: '2026-10-07T10:02:00Z', server: 'knowledge-base', outcome: 'admitted', code: null, reason: null
+            }]}});
+            expect(status.hidden).toBe(false);
+            // A later success on this server supersedes its retained failure in the audit.
+            applySet(card, {launchAdmission: {...snapshot, recent: [failure, {
+                at: '2026-10-07T10:03:00Z', server: 'memory-core', outcome: 'admitted', code: null, reason: null
+            }]}});
+            expect(status.hidden).toBe(true);
+            expect(status.vdom.title).toBeFalsy()
+        }
+        card.destroy()
+    });
+
+    test('a proof the plane did not answer reads as waiting on the card, with the producer\'s diagnostic and no raw code; a later admitted entry clears it (#655)', () => {
+        const snapshot = {
+            state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+            servers: [{key: 'memory-core', state: 'active', reason: null}], recent: []
+        }, card = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+           status = card.getReference('control-status'),
+           waiting = {at: new Date().toISOString(), server: 'memory-core', outcome: 'refused', code: 'proof-unavailable', reason: 'plane endpoint unreachable'};
+
+        applySet(card, {launchAdmission: {...snapshot, recent: [waiting]}});
+        expect(status.hidden).toBe(false);
+        expect(status.text).toBe('New Memory Core connection waiting');
+        expect(status.vdom.title).toContain('plane endpoint unreachable');
+        expect(status.vdom.title).toContain('retries an unanswered proof');
+        expect(status.vdom.title).not.toMatch(/proof-unavailable|plane-bearer/);
+        expect(card.record.state).toBe('ok');
+
+        // a reason outside the contract's public diagnostics never reaches the card
+        applySet(card, {launchAdmission: {...snapshot, recent: [{...waiting, reason: 'UNRECOGNIZED_PROBE_SENTINEL'}]}});
+        expect(status.text).toBe('New Memory Core connection waiting');
+        expect(status.vdom.title).not.toMatch(/UNRECOGNIZED|\(/);
+
+        applySet(card, {launchAdmission: {...snapshot, recent: [waiting, {
+            at: new Date(Date.now() + 1000).toISOString(), server: 'memory-core', outcome: 'admitted', code: null, reason: null
+        }]}});
+        expect(status.hidden).toBe(true);
+        card.destroy()
+    });
+
+    test('the waiting words age on the card\'s own wait: at the launcher\'s budget they turn to still unanswered with no record change; the wait retires with the words and with the card (#655)', async () => {
+        const
+            first      = Date.parse('2026-10-07T10:00:10.000Z'),
+            snapshot   = {
+                state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                servers: [{key: 'memory-core', state: 'active', reason: null}], recent: []
+            },
+            unanswered = at => ({at: new Date(at).toISOString(), server: 'memory-core', outcome: 'refused', code: 'proof-unavailable', reason: 'plane endpoint unreachable'}),
+            waits      = [],
+            originalNow = Date.now;
+        let now = first + 59_000;
+
+        Date.now = () => now;
+        try {
+            const
+                card    = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+                status  = card.getReference('control-status'),
+                restart = card.getReference('control-restart');
+
+            card.timeout = (ms, {signal} = {}) => new Promise((resolve, reject) => {
+                const wait = {ms, signal, resolve, reject};
+                waits.push(wait);
+                signal?.addEventListener('abort', () => reject(signal.reason), {once: true})
+            });
+
+            // three answers of one run: the wait is measured from the run's first answer, not its latest
+            applySet(card, {launchAdmission: {...snapshot, recent: [unanswered(first), unanswered(first + 30_000), unanswered(first + 59_000)]}});
+            expect(status.text).toBe('New Memory Core connection waiting');
+            expect(restart.vdom.title).toBeFalsy();
+            expect(waits).toHaveLength(1);
+            expect(waits[0].ms).toBe(1_000);
+
+            // the same line applied again arms no second wait
+            card.applyRecord();
+            expect(waits).toHaveLength(1);
+            expect(waits[0].signal.aborted).toBe(false);
+
+            const record = card.record;
+            now += 1_000;
+            waits[0].resolve();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(card.record).toBe(record);
+            expect(status.text).toBe('New Memory Core connection still unanswered');
+            expect(status.vdom.title).toContain('Restart this seat');
+            expect(restart.vdom.title).toContain('Restart this seat');
+            expect(waits).toHaveLength(1);
+
+            // a later admitted entry clears the words; a new run arms its own wait, retired with the card
+            applySet(card, {launchAdmission: {...snapshot, recent: [unanswered(first), {
+                at: new Date(now).toISOString(), server: 'memory-core', outcome: 'admitted', code: null, reason: null
+            }]}});
+            expect(status.hidden).toBe(true);
+            expect(waits).toHaveLength(1);
+            applySet(card, {launchAdmission: {...snapshot, recent: [unanswered(now)]}});
+            expect(status.text).toBe('New Memory Core connection waiting');
+            expect(waits).toHaveLength(2);
+            expect(waits[1].ms).toBe(60_000);
+            card.destroy();
+            expect(waits[1].signal.aborted).toBe(true)
+        } finally {
+            Date.now = originalNow
+        }
+    });
+
+    test('the injected clock ages the admission words too: past the budget they turn to still unanswered with the record unchanged (#655)', () => {
+        const
+            first  = Date.parse('2026-10-07T10:00:10.000Z'),
+            card   = createCard({agentId: 'vega', state: 'ok', launchAdmission: {
+                state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                servers: [{key: 'memory-core', state: 'active', reason: null}],
+                recent: [{at: new Date(first).toISOString(), server: 'memory-core', outcome: 'refused', code: 'proof-unavailable', reason: 'plane endpoint unreachable'}]
+            }}),
+            status = card.getReference('control-status'),
+            record = card.record;
+
+        card.now = first + 59_000;
+        expect(status.text).toBe('New Memory Core connection waiting');
+        card.now = first + 60_000;
+        expect(card.record).toBe(record);
+        expect(status.text).toBe('New Memory Core connection still unanswered');
+        card.destroy()
+    });
+
+
+    test('enabled per-server revocation is distinct from an intentionally disabled MCP server', async () => {
+        const {default: RosterRow} = await import('../../../../../../../../../apps/agentos/util/RosterRow.mjs'),
+              snapshot = {
+                  state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+                  servers: [{key: 'memory-core', state: 'revoked', reason: 'server-disabled'}], recent: []
+              },
+              row = mcpServers => ({
+                  id: 'vega', displayName: 'Vega', agent: {id: 'vega', forge: 'github', mcpServers},
+                  lifecycle: {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                  sources: observedSources, launchAdmission: snapshot
+              }),
+              card = createCard(RosterRow.mapRosterRow(row({'memory-core': false}))),
+              status = card.getReference('control-status'), restart = card.getReference('control-restart');
+        expect(status.hidden).toBe(true);
+        applySet(card, RosterRow.mapRosterRow(row({'memory-core': true})));
+        expect(status.hidden).toBe(false);
+        expect(status.text).toContain('Memory Core');
+        expect(restart.vdom.title).toContain('Restart this seat');
+        expect(card.record.state).toBe('ok');
+
+        applySet(card, RosterRow.mapRosterRow({...row(null), launchAdmission: {
+            ...snapshot, servers: [{key: 'memory-core', state: 'revoked', reason: 'plan-changed'}]
+        }}));
+        expect(status.hidden).toBe(false);
+        expect(restart.vdom.title).toContain('Restart this seat');
+        applySet(card, RosterRow.mapRosterRow({...row(null), launchAdmission: {
+            ...snapshot, servers: [{key: 'memory-core', state: 'revoked', reason: 'credential-missing'}]
+        }}));
+        expect(status.text).toContain('credential');
+        expect(status.vdom.title).toContain('cannot repair');
+        expect(restart.vdom.title).toBeFalsy();
+
+
+        const workflowSnapshot = {...snapshot, servers: [{key: 'github-workflow', state: 'revoked', reason: 'server-disabled'}]};
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: {id: 'vega', forge: 'gitlab', mcpServers: null}, launchAdmission: workflowSnapshot}));
+        expect(status.hidden).toBe(true);
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: {id: 'vega', forge: 'github', mcpServers: null}, launchAdmission: workflowSnapshot}));
+        expect(status.hidden).toBe(false);
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: {id: 'another-seat', forge: 'github', mcpServers: null}}));
+        expect(status.hidden).toBe(true);
+
+        applySet(card, RosterRow.mapRosterRow({...row(null), agent: undefined}));
+        expect(status.hidden).toBe(true);
+        expect(restart.vdom.title).toBeFalsy();
+        card.destroy()
+    });
+
+    test('admission guidance clears on new snapshots, source loss and seat replacement without overriding existing status', () => {
+        const snapshot = {
+            state: 'active', reason: null, generation: 'generation-a', since: '2026-10-07T10:00:00Z',
+            servers: [{key: 'memory-core', state: 'active', reason: null}],
+            recent: [{at: '2026-10-07T10:01:00Z', server: 'memory-core', outcome: 'refused', code: 'credential-unproven', reason: 'seat-pat'}]
+        }, card = createCard({agentId: 'vega', state: 'ok', launchAdmission: snapshot}),
+           status = card.getReference('control-status'), restart = card.getReference('control-restart');
+
+        for (const launchAdmission of [null, {state: 'unexpected'}, {state: 'none'}, {
+            ...snapshot, generation: 'generation-b', since: '2026-10-07T10:02:00Z'
+        }, {...snapshot, recent: []}]) {
+            applySet(card, {launchAdmission});
+            expect(status.hidden).toBe(true);
+            expect(restart.vdom.title).toBeFalsy()
+        }
+        applySet(card, {launchAdmission: {...snapshot, state: 'reserved', recent: []}});
+        expect(status.text).toContain('Preparing');
+        expect(restart.vdom.title).toBeFalsy();
+        applySet(card, {launchAdmission: snapshot});
+        expect(status.hidden).toBe(false);
+        card.rosterState = 'stale';
+        expect(status.hidden).toBe(true);
+        card.rosterState = 'live';
+        expect(status.hidden).toBe(false);
+        applySet(card, {sources: {...observedSources, runtime: {...observedSources.runtime, confidence: 'inferred'}}});
+        expect(status.hidden).toBe(true);
+        applySet(card, {sources: observedSources, pendingAction: 'restart'});
+        expect(status.text).toBe('restart…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'restart', kind: 'unauthorized', reason: 'not allowed'}});
+        expect(status.text).toContain('not allowed');
+        expect(restart.disabled).toBe(true);
+        applySet(card, {controlReason: null, sessionFolder: {state: 'wrong', expected: '/seat', observed: '/elsewhere'}});
+        expect(status.text).toContain('wrong folder');
+        applySet(card, {sessionFolder: {state: 'pending', expected: '/seat'}});
+        expect(status.text).toContain('Memory Core');
+        card.record = makeRecord({agentId: 'ada', state: 'ok'});
+        expect(status.hidden).toBe(true);
+        expect(restart.vdom.title).toBeFalsy();
         card.destroy()
     });
 
@@ -685,6 +985,288 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // clear-on-new-intent nuance, render side)
         applySet(card, {pendingAction: 'start'});
         expect(status().text).toBe('start…');
+
+        card.destroy()
+    });
+
+    test('a Start refused by a memory import that did not converge shows the Brain\'s own words, never parsed (#521 AC-4)', () => {
+        const
+            card   = createCard({agentId: 'mnemosyne', state: 'off'}),
+            status = () => card.down({reference: 'control-status'}),
+            reason = 'the memory import did not converge: the source holds no memory to copy. The seat does not start.';
+
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason}, pendingAction: null});
+
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(`⚠ rejected: ${reason}`);
+        // the one-line status ellipsizes; its title repeats the whole refusal
+        expect(status().vdom.title).toBe(`⚠ rejected: ${reason}`);
+
+        card.destroy()
+    });
+
+    test('the status row ends a Start with where its session opened: the wrong folder, not yet, or unknown; never the path (#522)', () => {
+        const
+            expected = '/seats/vega/neomjs/neo',
+            card     = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop'}),
+            status   = () => card.down({reference: 'control-status'});
+
+        // AC-1: one line with one next-action word; the card names no path, not even in its title
+        applySet(card, {sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe('session opened in the wrong folder · reopen');
+        expect(status().cls).toContain('is-session-wrong');
+        expect(status().vdom.title).not.toContain('/');
+        expect(card.cls).toContain('fm-control-live');
+
+        // AC-2: pending and unknown read as themselves
+        applySet(card, {sessionFolder: {state: 'pending', expected}});
+        expect(status().text).toBe('session not opened yet · open the folder');
+        applySet(card, {sessionFolder: {state: 'unknown', expected, reason: 'the session records could not be read'}});
+        expect(status().text).toBe('session folder unknown: the session records could not be read');
+
+        // a live round-trip outranks "not yet" and "unknown", which a live seat contradicts...
+        applySet(card, {pendingAction: 'restart'});
+        expect(status().text).toBe('restart…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+
+        // ...but never a confirmed wrong folder: a live seat in the wrong folder is the failure itself
+        applySet(card, {controlReason: null, pendingAction: 'restart', sessionFolder: {state: 'wrong', expected, observed: '/Users/vega/elsewhere'}});
+        expect(status().text).toBe('session opened in the wrong folder · reopen');
+        expect(status().cls).toContain('is-session-wrong');
+
+        // ok adds no line, and AC-3: a row without the fact renders nothing new
+        for (const sessionFolder of [{state: 'ok', expected}, null]) {
+            applySet(card, {pendingAction: null, sessionFolder});
+            expect(status().hidden).toBe(true);
+            expect(card.cls).not.toContain('fm-control-live')
+        }
+
+        card.destroy()
+    });
+
+    test('a Start the Fleet reports installing refines the pending label with its count, the toggle cancels it, and a sent cancel reads canceling (#616)', () => {
+        const
+            card    = createCard({agentId: 'vega', displayName: 'Vega', state: 'off'}),
+            status  = () => card.down({reference: 'control-status'}),
+            toggle  = () => card.down({reference: 'control-verbs'}).items[0],
+            fired   = [],
+            live    = [
+                {repoSlug: 'neomjs/neo',             state: 'installing'},
+                {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'},
+                {repoSlug: 'neomjs/create-app',      state: 'installing'}
+            ];
+
+        card.on('lifecycleIntent', data => fired.push(data));
+
+        // this cockpit's Start is pending and the Fleet reports its installs: the count refines `start…`
+        applySet(card, {pendingAction: 'start', dependencyOutcomes: live});
+        expect(status().text).toBe('start… preparing dependencies (1/3 done)');
+        expect(status().vdom.title).toBe('neomjs/neo: installing · neomjs/neo-agent-brain: prepared · neomjs/create-app: installing');
+        expect(card.down({reference: 'card-state'}).text).toBe('starting');
+
+        // the power verb cancels the Start: open although a Start is pending, stop icon, its own name, a stop intent
+        expect(toggle().disabled).toBe(false);
+        expect(toggle().iconCls).toBe('fa-solid fa-stop');
+        expect(toggle().vdom['aria-label']).toBe('Cancel start Vega');
+        card.getController().onToggleLifecycle();
+        expect(fired).toMatchObject([{action: 'stop', agentId: 'vega'}]);
+
+        // live progress lost while the Start is pending: the plain pending label, and the verb closes again
+        applySet(card, {dependencyOutcomes: null});
+        expect(status().text).toBe('start…');
+        expect(toggle().disabled).toBe(true);
+        expect(toggle().vdom['aria-label']).toBe('Start Vega');
+        applySet(card, {dependencyOutcomes: live});
+
+        // the Fleet's report is an answer: it replaces the local timeout's "no answer yet"
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'timeout', reason: 'start timed out after 30000ms'}});
+        expect(status().text).toBe('start… preparing dependencies (1/3 done)');
+
+        // and without it the local timeout speaks again
+        applySet(card, {dependencyOutcomes: null});
+        expect(status().text).toBe('start… no answer yet');
+        applySet(card, {dependencyOutcomes: live});
+
+        // a sent cancel closes the verb and says so until the Start settles
+        applySet(card, {controlReason: null, pendingAction: 'stop'});
+        expect(status().text).toBe('canceling start…');
+        expect(toggle().disabled).toBe(true);
+        expect(card.down({reference: 'card-state'}).text).toBe('stopping');
+
+        // settled: no row installs any more, so nothing reads as live; the card is an ordinary offline seat
+        fired.length = 0;
+        applySet(card, {pendingAction: null, dependencyOutcomes: live.map(row => ({...row, state: row.state === 'installing' ? 'canceled' : row.state}))});
+        expect(status().hidden).toBe(true);
+        expect(toggle().iconCls).toBe('fa-solid fa-play');
+        expect(toggle().vdom['aria-label']).toBe('Start Vega');
+        card.getController().onToggleLifecycle();
+        expect(fired).toMatchObject([{action: 'start', agentId: 'vega'}]);
+
+        card.destroy()
+    });
+
+    test('a cancel the Fleet has not answered by the cockpit\'s deadline still reads canceling, can be sent again, and settles on the late answer (#616)', async () => {
+        const
+            {default: Adapter} = await import('../../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs'),
+            card    = createCard({agentId: 'vega', displayName: 'Vega', state: 'off'}),
+            status  = () => card.down({reference: 'control-status'}),
+            toggle  = () => card.down({reference: 'control-verbs'}).items[0],
+            timers  = [],
+            live    = [{repoSlug: 'neomjs/neo', state: 'installing'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'installed'}];
+        let answer;
+
+        applySet(card, {pendingAction: 'start', dependencyOutcomes: live});
+
+        // the cancel goes out through the real adapter; its deadline fires by hand
+        const cancel = Adapter.handleFleetLifecycleIntent({action: 'stop', agentId: 'vega'}, card.record, {
+            bridge        : {stopAgent: () => new Promise(resolve => answer = resolve)},
+            clearTimeoutFn: () => {},
+            setTimeoutFn  : fn => timers.push(fn),
+            timeoutMs     : 30000
+        });
+
+        card.applyRecord();
+        expect(status().text).toBe('canceling start…');
+        expect(toggle().disabled).toBe(true);
+
+        // the deadline passes while the installs still run: the cancel stays open, never plain preparation
+        await new Promise(resolve => setTimeout(resolve, 0));
+        timers[0]();
+        expect((await cancel).status).toBe('timeout');
+        card.applyRecord();
+        expect(card.record.pendingAction).toBeNull();
+        expect(status().text).toBe('canceling start… no answer yet');
+        expect(status().vdom.title).toBe('Cancel requested, and the Fleet has not answered yet while the Start still prepares. Its answer settles the card.');
+        expect(card.down({reference: 'card-state'}).text).toBe('stopping');
+        // the cancel can be sent again, under its own name
+        expect(toggle().disabled).toBe(false);
+        expect(toggle().vdom['aria-label']).toBe('Cancel start Vega');
+        expect(toggle().vdom.title).toBe('Cancel this Start again: the Fleet has not answered the first request.');
+
+        // the Fleet's late answer settles it, and its canceled installs leave an ordinary offline seat
+        answer({id: 'vega', state: 'stopped', canceled: true});
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(card.record.controlReason).toBeNull();
+        applySet(card, {dependencyOutcomes: live.map(row => ({...row, state: row.state === 'installing' ? 'canceled' : row.state}))});
+        expect(status().hidden).toBe(true);
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
+        expect(toggle().vdom['aria-label']).toBe('Start Vega');
+
+        card.destroy()
+    });
+
+    test('a running seat whose working checkout the last start did not prepare says skills not verified, below every other line; another repository\'s failure stays off the card (#610)', () => {
+        const
+            card    = createCard({agentId: 'vega', state: 'ok', harnessType: 'claude-desktop', repoSlug: 'neomjs/neo'}),
+            status  = () => card.down({reference: 'control-status'}),
+            skipped = [{repoSlug: 'neomjs/neo', state: 'skipped', reason: 'skipped during the install'}];
+
+        applySet(card, {dependencyOutcomes: skipped});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe('skills not verified');
+        expect(status().vdom.title).toBe('Skills not verified. The working checkout neomjs/neo reads Skipped after the last start (skipped during the install). Detail › Repositories shows each checkout.');
+        expect(card.cls).toContain('fm-control-live');
+
+        // opening the session folder is the first-launch step, so it speaks first
+        applySet(card, {sessionFolder: {state: 'pending', expected: '/seats/vega/neomjs/neo'}});
+        expect(status().text).toBe('session not opened yet · open the folder');
+        applySet(card, {sessionFolder: null});
+        expect(status().text).toBe('skills not verified');
+
+        // so do a live round-trip and a refusal
+        applySet(card, {pendingAction: 'restart'});
+        expect(status().text).toBe('restart…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'restart', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+        applySet(card, {controlReason: null});
+        expect(status().text).toBe('skills not verified');
+
+        // a prepared working checkout, another repository's failure, and no rows all say nothing
+        for (const dependencyOutcomes of [
+            [{repoSlug: 'neomjs/neo', state: 'installed'}],
+            [{repoSlug: 'neomjs/neo', state: 'present'}, {repoSlug: 'neomjs/neo-agent-brain', state: 'failed', reason: 'npm ci exited 1'}],
+            null
+        ]) {
+            applySet(card, {dependencyOutcomes});
+            expect(status().hidden).toBe(true);
+            expect(card.cls).not.toContain('fm-control-live')
+        }
+
+        // an offline card says nothing either, whether stopped or unobserved: the Repository pane keeps the
+        // last attempt's rows
+        applySet(card, {dependencyOutcomes: skipped, state: 'off'});
+        expect(status().hidden).toBe(true);
+        applySet(card, {state: 'ok', sources: {...observedSources, runtime: {source: 'fleet:runtimeStatus', state: 'not-wired', confidence: 'none'}}});
+        expect(card.down({reference: 'card-state'}).text).toBe('offline');
+        expect(status().hidden).toBe(true);
+
+        card.destroy()
+    });
+
+    test('AC-4 (#524): a refused start keeps the Fleet\'s own words; a last start\'s identity that needs repair rides the title as its own observation, never as the cause', () => {
+        const
+            card     = createCard({agentId: 'vega', state: 'off'}),
+            status   = () => card.down({reference: 'control-status'}),
+            missing  = {state: 'missing', reason: 'its forge account offers no email this PAT can read'},
+            note     = " · The last start's commit identity: No commit identity: its forge account offers no email this PAT can read. Repair it in Detail › Configuration.",
+            identity = "agent 'vega' has no Git identity to commit under: its forge account offers no email this PAT can read. Nothing was changed. Declare the name and email its commits carry (gitName and gitEmail), then start it again.";
+
+        // the identity refusal: the Fleet's words name the next step, the title names the row
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: identity}, gitIdentity: missing});
+        expect(status().text).toBe(`⚠ rejected: ${identity}`);
+        expect(status().vdom.title).toBe(`⚠ rejected: ${identity}${note}`);
+
+        // an unrelated refusal while an older identity still needs repair: its own words stay the
+        // line, and the identity is not claimed as the cause
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: "the seat's home could not be prepared"}});
+        expect(status().text).toBe("⚠ rejected: the seat's home could not be prepared");
+        expect(status().text).not.toContain('identity');
+        expect(status().vdom.title).toBe(`⚠ rejected: the seat's home could not be prepared${note}`);
+
+        // a resolved identity, or a Brain that reports none, adds nothing
+        for (const gitIdentity of [{state: 'derived', name: 'Vega', email: 'vega@example.com'}, null]) {
+            applySet(card, {gitIdentity});
+            expect(status().vdom.title).toBe("⚠ rejected: the seat's home could not be prepared")
+        }
+
+        card.destroy()
+    });
+
+    test('AC-2 (#559): a Start refused for the declared model reads as its reason, the title says where to change it, and the card says nothing about the model otherwise', () => {
+        const
+            card     = createCard({agentId: 'vega', state: 'off'}),
+            status   = () => card.down({reference: 'control-status'}),
+            refused  = {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'},
+            line     = 'start refused: model gpt-6-astra is not available',
+            brain    = "agent 'vega' cannot start: model gpt-6-astra is not available. Nothing was changed. Change it in Detail › Configuration, then start it again.";
+
+        // a read that could not say, or nothing read, puts nothing on the card
+        for (const seatModel of [{state: 'partial', reason: 'rate limited'}, {state: 'complete', reason: null}, null]) {
+            applySet(card, {seatModel});
+            expect(status().hidden, JSON.stringify(seatModel)).toBe(true)
+        }
+
+        // this cockpit's own Start, refused for the model: the design words replace the Fleet's sentence
+        applySet(card, {controlReason: {action: 'start', kind: 'rejected', reason: brain}, seatModel: refused});
+        expect(status().hidden).toBe(false);
+        expect(status().text).toBe(line);
+        expect(status().vdom.title).toBe(`${line} — change it in Detail › Configuration`);
+        expect(status().cls).toContain('is-model-refused');
+        expect(card.cls).toContain('fm-control-live');
+
+        // another cockpit's Start, or this one reloaded: the recorded refusal stands alone
+        applySet(card, {controlReason: null});
+        expect(status().text).toBe(line);
+
+        // a new attempt is pending, then refused for another cause before the roster reads the seat again: the
+        // earlier model refusal is never claimed as the cause
+        applySet(card, {pendingAction: 'start'});
+        expect(status().text).toBe('start…');
+        applySet(card, {pendingAction: null, controlReason: {action: 'start', kind: 'rejected', reason: 'harness offline'}});
+        expect(status().text).toBe('⚠ rejected: harness offline');
+        expect(status().cls).not.toContain('is-model-refused');
 
         card.destroy()
     });
@@ -1013,7 +1595,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         snapshot.destroy()
     });
 
-    test('B4 honest state: unauthorized disables the whole cluster with its reason; timeout renders stale-pending with retry still open (#14611)', () => {
+    test('B4 honest state: unauthorized disables the cluster; timeout remains unanswered with retry open (#608)', () => {
         const card   = createCard({agentId: 'vega', state: 'ok'});
         const verbs  = () => card.down({reference: 'control-verbs'}).items;
         const status = () => card.down({reference: 'control-status'});
@@ -1024,10 +1606,11 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(verbs().every(button => button.disabled)).toBe(true);
         expect(status().text).toBe('⚠ unauthorized: Fleet Registry bridge unavailable');
 
-        // timeout → the outcome is UNKNOWN (the verb may still be running, we lost the answer) → stale-pending:
+        // timeout → the outcome is UNKNOWN (the verb may still be running; its answer remains observed):
         // an unfinished "…", NOT a resolved "⚠" failure, and retry stays OPEN (the cluster re-enables)
         applySet(card, {controlReason: {action: 'restart', kind: 'timeout', reason: 'restart timed out after 30000ms'}, pendingAction: null});
-        expect(status().text).toBe('restart… stale — no response');
+        expect(status().text).toBe('restart… no answer yet');
+        expect(status().vdom.title).toBe('restart… no answer yet. The outcome is unknown until the Fleet answers.');
         expect(verbs()[0].disabled).toBe(false);
 
         card.destroy()
@@ -1302,5 +1885,82 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         // goldens witness the width modes. This spec owns the structural half — the verbs exist, stay in
         // flow, and stay visible regardless of lifecycle state.
         card.destroy()
+    });
+
+    test('a seat that exited without a Stop shows why on the card and its title, and an intentional Stop or subsequent Start clears it (#683)', () => {
+        const
+            exitedAt      = '2026-10-16T08:00:00.000Z',
+            now           = Date.parse('2026-10-16T08:02:00.000Z'),
+            harnessUpdate = {
+                state      : 'harness-update',
+                exitedAt,
+                logPath    : '/Users/ada/Library/Logs/Claude/main.log',
+                matchedLine: '2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall'
+            },
+            unknownNoMatch = {
+                state   : 'unknown',
+                exitedAt,
+                logPath : '/Users/ada/Library/Logs/Claude/main.log'
+            },
+            unknownUnreadable = {
+                state   : 'unknown',
+                exitedAt,
+                logPath : '/Users/ada/Library/Logs/Claude/main.log',
+                reason  : 'ENOENT: no such file or directory'
+            },
+            unknownNoLog = {
+                state: 'unknown',
+                exitedAt
+            },
+            card      = createCard({agentId: 'ada', displayName: 'Ada', state: 'off', exitReason: harnessUpdate}),
+            cardState = () => card.down({reference: 'card-state'}),
+            status    = () => card.down({reference: 'control-status'});
+
+        card.now = now;
+
+        // AC-1: harness-update names the cause, the viewer-local + UTC time, and the next action;
+        // card-state title never claims "Fleet stopped its process", and the single matched line + path ride the title.
+        expect(cardState().text).toBe('offline');
+        expect(cardState().vdom.title).toBe('stopped · harness update');
+        expect(status().hidden).toBe(false);
+        expect(status().cls).toContain('is-exit-harness-update');
+        expect(card.cls).toContain('fm-control-live');
+        expect(status().text).toContain('stopped · harness update — Claude Desktop quit this seat to install its own update (');
+        expect(status().text).toContain('08:00:00Z). FM did not stop it, and nothing of its work was stopped on purpose.');
+        expect(status().text).toContain('Start the seat again once the update has finished. If Claude keeps quitting, close every Claude window first so the update can complete.');
+        expect(status().vdom.title).toContain('2026-10-16 07:59:58 [info] AutoUpdater: quitAndInstall (/Users/ada/Library/Logs/Claude/main.log)');
+
+        // AC-2: unknown with no matched line
+        applySet(card, {exitReason: unknownNoMatch});
+        expect(cardState().vdom.title).toBe('stopped · reason unknown');
+        expect(status().cls).toContain('is-exit-unknown');
+        expect(status().text).toContain('stopped · reason unknown — The seat\'s process exited at ');
+        expect(status().text).toContain('08:00:00Z without a Stop from FM, and its harness log names no reason. Start the seat. If it exits again, read its harness log before a third Start.');
+        expect(status().vdom.title).toContain('/Users/ada/Library/Logs/Claude/main.log');
+
+        // AC-2: unknown when the harness log could not be read
+        applySet(card, {exitReason: unknownUnreadable});
+        expect(status().text).toContain('without a Stop from FM, and its harness log could not be read: ENOENT: no such file or directory.');
+
+        // AC-2: unknown when no harness log path exists (non-Claude-Desktop harnesses)
+        applySet(card, {exitReason: unknownNoLog});
+        expect(status().text).toContain('08:00:00Z without a Stop from FM; Fleet Manager reads no harness log for this seat\'s harness yet. Start the seat. If it exits again, read its harness log before a third Start.');
+        expect(status().text).not.toContain('its harness log names no reason');
+        expect(status().vdom.title).not.toContain('/Users/');
+
+        // AC-3: an intentional Stop (exitReason: null) keeps "Fleet stopped its process" and hides the status row
+        applySet(card, {exitReason: null});
+        expect(cardState().vdom.title).toBe('Fleet stopped its process');
+        expect(status().hidden).toBe(true);
+        expect(card.cls).not.toContain('fm-control-live');
+
+        // AC-3: a subsequent Start clears the unplanned-exit wording
+        applySet(card, {exitReason: harnessUpdate});
+        expect(status().hidden).toBe(false);
+        applySet(card, {state: 'ok', exitReason: null});
+        expect(status().hidden).toBe(true);
+
+        card.destroy()
     })
 });
+

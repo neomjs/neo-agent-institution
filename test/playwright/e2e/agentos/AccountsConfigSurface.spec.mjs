@@ -1,9 +1,9 @@
-import {test, expect, loadAgentOsModule, loadNeuralLinkModules}  from '../../fixtures.mjs';
-import {authenticatedFleetOptions, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
-import {listHarnessProducts}                                     from 'neo-agent-brain/fleet-contract';
-import fs                                                        from 'fs';
-import os                                                        from 'os';
-import path                                                      from 'path';
+import {test, expect, landAgentDefinitions, loadAgentOsModule, loadNeuralLinkModules}                            from '../../fixtures.mjs';
+import {authenticatedFleetOptions, fleetE2EFailure, fleetE2ESuccess, reloadRoster, wireAuthenticatedFleetBridge} from './authenticatedFleetHarness.mjs';
+import {listHarnessProducts}                                                                                     from 'neo-agent-brain/fleet-contract';
+import fs                                                                                                        from 'fs';
+import os                                                                                                        from 'os';
+import path                                                                                                      from 'path';
 
 const [
     {NeuralLink_DataService},
@@ -30,7 +30,104 @@ const [
 test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
     test.setTimeout(120000);
 
-    test('cold-loads, saves config, adds an emergent resident, and freshly rehydrates over the real Fleet wire', async ({page, neuralLink}) => {
+    /**
+     * @summary Body gestures keep their native meaning; only the Accounts header admits a
+     * dashboard drag. The native selection guard and App-worker sort state must agree.
+     */
+    test('Accounts body gestures stay native and its header still tears out', async ({page, neuralLink}, testInfo) => {
+        await page.setViewportSize({width: 1400, height: 700});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+        const app = await neuralLink.connectToApp('AgentOS');
+        await landAgentDefinitions(page);
+        await page.getByRole('tab', {name: 'Accounts', exact: true}).click();
+
+        const
+            panel       = page.locator('.agent-panel-accounts'),
+            [accounts]  = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id', 'parentId']),
+            dashboardId = accounts.properties.parentId;
+        await expect(panel).toBeVisible();
+        await expect.poll(async () => (await app.getComponent(dashboardId, ['sortZone.id']))['sortZone.id']).toBeTruthy();
+        const sortZoneId = (await app.getComponent(dashboardId, ['sortZone.id']))['sortZone.id'];
+
+        for (const [label, target, whitespace] of [
+            ['body whitespace', panel.locator('.fm-accounts-master'), true],
+            ['list text', panel.locator('.fm-accounts-list .neo-list-item').first(), false],
+            ['detail text', panel.locator('.fm-config-name'), false]
+        ]) {
+            await target.scrollIntoViewIfNeeded();
+            const box = await target.boundingBox(), before = await panel.boundingBox();
+            const x   = whitespace ? box.x + box.width - 4 : box.x + 4;
+            const y   = box.y + (whitespace ? box.height - 12 : box.height / 2);
+            await page.evaluate(() => getSelection().removeAllRanges());
+            await page.mouse.move(x, y);
+            await page.mouse.down();
+            try {
+                expect(await page.evaluate(() => document.body.classList.contains('neo-drag-active')), label).toBe(false);
+                await page.mouse.move(x + (whitespace ? -50 : 80), y, {steps: 15});
+                expect((await app.getComponent(sortZoneId, ['currentIndex'])).currentIndex, label).toBe(-1);
+                expect(await panel.boundingBox(), label).toEqual(before);
+                expect(page.context().pages(), label).toHaveLength(1)
+            } finally {
+                await page.mouse.up()
+            }
+            if (label === 'detail text') {
+                expect(await page.evaluate(() => getSelection().toString())).not.toBe('')
+            }
+        }
+
+        await panel.locator('.fm-accounts-add').click();
+        const input = panel.getByRole('textbox', {name: 'Username', exact: true});
+        await input.fill('selection-stays-native');
+        await input.scrollIntoViewIfNeeded();
+        const inputBox = await input.boundingBox();
+        await page.mouse.move(inputBox.x + 8, inputBox.y + inputBox.height / 2);
+        await page.mouse.down();
+        try {
+            expect(await page.evaluate(() => document.body.classList.contains('neo-drag-active'))).toBe(false);
+            await page.mouse.move(inputBox.x + 90, inputBox.y + inputBox.height / 2, {steps: 15})
+        } finally {
+            await page.mouse.up()
+        }
+        await expect(input).toHaveValue('selection-stays-native');
+        await page.setViewportSize({width: 1400, height: 420});
+        const detail = panel.locator('.fm-accounts-detail');
+        await expect.poll(() => detail.evaluate(node => node.scrollHeight - node.clientHeight)).toBeGreaterThan(0);
+        await detail.hover();
+        await page.mouse.wheel(0, 400);
+        await expect.poll(() => detail.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+        expect((await app.getComponent(sortZoneId, ['currentIndex'])).currentIndex).toBe(-1);
+        expect(page.context().pages()).toHaveLength(1);
+
+        await page.setViewportSize({width: 1400, height: 700});
+        const handle = panel.locator('.fm-accounts-drag-handle');
+        await handle.scrollIntoViewIfNeeded();
+        const box          = await handle.boundingBox();
+        const motion       = app.observeMotion([accounts.properties.id], 800, 50);
+        const popupPromise = page.waitForEvent('popup', {timeout: 15000});
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        try {
+            await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2, {steps: 20});
+            await expect.poll(async () => (await app.getComponent(sortZoneId, ['dragComponent.id']))['dragComponent.id']).toBe(accounts.properties.id);
+            expect(await page.evaluate(() => document.body.classList.contains('neo-drag-active'))).toBe(true);
+            await page.mouse.move(4, 4, {steps: 40});
+            const popup = await popupPromise;
+            await expect(popup.locator('.agent-panel-accounts')).toBeVisible({timeout: 30000});
+            await expect(popup.locator('.agent-panel-accounts')).toHaveAttribute('id', accounts.properties.id);
+            await expect(popup.getByRole('textbox', {name: 'Username', exact: true})).toHaveValue('selection-stays-native');
+            expect((await app.getComponent(accounts.properties.id, ['windowId'])).windowId)
+                .not.toBe((await app.getComponent(dashboardId, ['windowId'])).windowId);
+            await popup.screenshot({path: testInfo.outputPath('accounts-header-popup.png')})
+        } finally {
+            await page.mouse.up();
+            await testInfo.attach('header-motion', {body: JSON.stringify(await motion), contentType: 'application/json'});
+            await testInfo.attach('header-drag-trace', {body: JSON.stringify(await app.getDragTrace()), contentType: 'application/json'})
+        }
+    });
+
+    test('cold-loads, saves config, adds an emergent resident, and freshly rehydrates over the real Fleet wire', async ({page, neuralLink}, testInfo) => {
+        await page.setViewportSize({width: 1400, height: 900});
         const
             priorDataDir    = FleetRegistryService.dataDir,
             tmpDir          = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-config-e2e-')),
@@ -98,6 +195,35 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
 
             const memoryCore = page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'});
             await expect(memoryCore).toHaveClass(/is-enabled/);
+
+            const
+                configView   = accountsView.locator('.fm-agent-config-card'),
+                [configCard] = await appHandle.queryComponent({id: await configView.getAttribute('id')}, ['id']),
+                edit         = configView.locator('.fm-config-connection-edit');
+
+            await expect(configView.locator('.fm-config-plane-credential')).toHaveCount(0);
+            await expect(configView.locator('.fm-target-choice')).toHaveCount(0);
+            await expect(edit).toHaveText('Edit connection');
+            await edit.click();
+            await expect(edit).toBeFocused();
+
+            const target = configView.getByRole('button', {name: /^This fleet ·/});
+            await target.click();
+
+            const focusedId = await target.getAttribute('id');
+            expect(await page.evaluate(() => document.activeElement?.id)).toBe(focusedId);
+
+            // Drive the same card method the real round-trip calls, while the browser owns focus.
+            for (const state of ['pending', 'rejected', 'accepted']) {
+                await appHandle.callMethod(configCard.properties.id, 'setSaveStatus', [agentId, state, `Focus witness: ${state}`]);
+                await expect(configView.locator('.fm-config-save-status')).toContainText(`Focus witness: ${state}`);
+                expect(await page.evaluate(() => document.activeElement?.id), state).toBe(focusedId)
+            }
+
+            await appHandle.callMethod(configCard.properties.id, 'setSaveStatus', [agentId, 'idle', '']);
+            await target.press('Enter');
+            await expect(target).toBeFocused();
+            await configView.getByRole('button', {name: 'Close connection options', exact: true}).click();
             // Docked keeper views may render beyond the browser viewport while remaining the live
             // mounted surface. Dispatch through the real DOM listener instead of weakening the
             // component path with a direct method call.
@@ -120,6 +246,9 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
 
             await addAction.click();
             await expect(form).toBeVisible();
+            await expect(form.locator('.fm-add-destination')).toContainText('Agent OS:');
+            await expect(form.locator('.fm-add-credential-help')).toHaveText('This token gives the agent access to its repositories and the connected Agent OS.');
+            await page.screenshot({path: testInfo.outputPath('add-agent-and-configuration.png'), fullPage: true});
             await usernameField.fill(createdAgentId);
             await credentialField.fill(createdSecret);
             await productChip.click();
@@ -297,17 +426,18 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await expect(rows.first()).toContainText('neomjs/neo');
             await expect(rows.first()).toContainText('Working');
 
-            // an add crosses the wire as one setRepos with the whole list, and the readback renders it
+            // Enter crosses the wire as one setRepos with the whole list, and the readback renders it
             await field.fill(extra);
-            await add.dispatchEvent('click');
+            await field.press('Enter');
             await expect(status).toHaveClass(/is-accepted/);
             await expect(rows).toHaveCount(2);
+            await expect(field).toHaveValue('');
             expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([{repoSlug: extra, cloneUrl: `https://github.com/${extra}.git`}]);
 
             // a refused list shows the Fleet's own reason, keeps the typed slug, and the rows keep
             // what the registry holds
             await field.fill(extra);
-            await add.dispatchEvent('click');
+            await field.press('Enter');
             await expect(status).toHaveClass(/is-rejected/);
             await expect(status).toHaveText('a repository is listed twice.');
             await expect(field).toHaveValue(extra);
@@ -318,11 +448,86 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await rows.filter({hasText: extra}).locator('.fm-repo-remove').dispatchEvent('click');
             await expect(status).toHaveClass(/is-accepted/);
             await expect(rows).toHaveCount(1);
-            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([])
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([]);
+
+            // The existing button path remains available beside the keyboard shortcut.
+            await field.fill(extra);
+            await add.dispatchEvent('click');
+            await expect(status).toHaveClass(/is-accepted/);
+            await expect(rows).toHaveCount(2);
+            expect(FleetRegistryService.getDefinition(agentId).metadata.repos).toEqual([{repoSlug: extra, cloneUrl: `https://github.com/${extra}.git`}])
         } finally {
             server && await new Promise(resolve => server.close(resolve));
             FleetRegistryService.dataDir = priorDataDir;
             fs.rmSync(tmpDir, {recursive: true, force: true})
+        }
+    });
+
+    test('a running seat prepares now, unlists, sees a delete refusal, then retires the checkout (#642)', async ({page, neuralLink}, testInfo) => {
+        const id         = 'repository-witness', extra = 'example/new-repository', requests = [];
+        let   repos      = [], allowDelete = false;
+        const definition = {id, githubUsername: id, harnessType: 'codex', metadata: {repo: {repoSlug: 'example/work'}, repos: []}};
+        const options    = authenticatedFleetOptions({dispatch: async request => {
+            requests.push(request);
+            switch (request.method) {
+                case 'listAgents': return fleetE2ESuccess([definition]);
+                case 'fleetRoster': return fleetE2ESuccess({rows: [{
+                    id, displayName: 'Repository Witness', family: 'gpt', avatarUrl: '', repoOutcomes: repos,
+                    dependencyOutcomes: [{repoSlug: 'example/work', state: 'installed'}],
+                    lifecycle         : {source: 'fleet:runtimeStatus', state: 'running', confidence: 'observed'},
+                    sources           : {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}}
+                }]});
+                case 'setRepos':
+                    definition.metadata.repos = request.params.repos;
+                    return fleetE2ESuccess({status: 'accepted', agent: definition});
+                case 'prepareRepos':
+                    repos = [...new Map([...repos, ...definition.metadata.repos.map(repo => ({...repo, state: 'prepared', via: 'prepare', at: '2026-10-11T03:00:00Z'}))]
+                        .map(row => [row.repoSlug, row])).values()];
+                    return fleetE2ESuccess({state: 'complete', repos});
+                case 'removeRepoCheckout':
+                    if (!allowDelete) return fleetE2ESuccess({removed: false, reason: 'The checkout contains unpushed commits.'});
+                    repos = repos.filter(row => row.repoSlug !== request.params.repoSlug);
+                    return fleetE2ESuccess({removed: true});
+                case 'fleetActivity': return fleetE2ESuccess({capability: {source: 'fleet:test', state: 'wired', confidence: 'observed'}, events: []});
+                default: return fleetE2EFailure('not supplied by repository witness')
+            }
+        }});
+        const server = await startFleetBridgeServer(options);
+        try {
+            await page.goto('/apps/agentos/index.html');
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: `http://127.0.0.1:${server.address().port}/fleet`, bearerToken: options.bearerToken});
+            await reloadRoster(app);
+            await page.getByRole('tab', {name: 'Accounts', exact: true}).click();
+            const [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']);
+            await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+            const [component] = await app.queryComponent({className: 'AgentOS.view.fleet.detail.AgentReposContainer'}, ['id']);
+            const card        = page.locator('.fm-agent-repos-card'), row = card.locator('.neo-list-item').filter({hasText: extra});
+            await card.getByRole('textbox', {name: 'Add a repository', exact: true}).fill(extra);
+            await card.locator('.fm-repos-add-button').click();
+            await expect(row).toContainText('checkout ready · now');
+            await expect(row).toContainText('skills at the next Start');
+            expect(requests.filter(row => ['setRepos', 'prepareRepos'].includes(row.method)).map(row => row.method)).toEqual(['setRepos', 'prepareRepos']);
+            expect(await app.callMethod(component.properties.id, 'getCheckoutRows')).toMatchObject([{repoSlug: extra, via: 'prepare'}]);
+            await row.locator('.fm-repo-remove').click();
+            await expect(row).toContainText('checkout kept on disk');
+            await expect(row).toContainText('skills unverified');
+            await expect(row).not.toContainText('skills at the next Start');
+            await expect(card.getByRole('button', {name: `Delete checkout ${extra}`, exact: true})).toBeEnabled();
+            await row.locator('.fm-repo-delete').click();
+            await expect(row).toContainText('The checkout contains unpushed commits.');
+            await page.setViewportSize({width: 1100, height: 700});
+            await card.screenshot({path: testInfo.outputPath('repositories-refusal.png')});
+            await testInfo.attach('repositories-refusal', {path: testInfo.outputPath('repositories-refusal.png'), contentType: 'image/png'});
+            allowDelete = true;
+            await row.locator('.fm-repo-delete').click();
+            await expect(row).toHaveCount(0);
+            await reloadRoster(app);
+            expect(await app.callMethod(component.properties.id, 'getCheckoutRows')).toEqual([]);
+            expect(requests.some(row => ['startAgent', 'stopAgent', 'restartAgent'].includes(row.method))).toBe(false)
+        } finally {
+            await new Promise(resolve => server.close(resolve))
         }
     });
 

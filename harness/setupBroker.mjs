@@ -40,7 +40,8 @@ export const SETUP_MODULE_PATHS = Object.freeze({
     presets      : 'ai/services/fleet/placementPresets.mjs',
     probe        : 'ai/services/fleet/probePlacement.mjs',
     recipe       : 'ai/services/fleet/firstRunRecipe.mjs',
-    record       : 'ai/services/fleet/setupRunRecord.mjs'
+    record       : 'ai/services/fleet/setupRunRecord.mjs',
+    verify       : 'ai/services/fleet/verifyEffect.mjs'
 });
 
 /**
@@ -202,13 +203,16 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
      * one. A record bound to another target or recipe version retires its proof the way the CLI
      * does.
      * @param {Object} modules
-     * @param {Object|null} requested A target the renderer named (`{planeId, dataRoot, endpoint}`)
+     * @param {Object|null} requested A target the renderer named (`{planeId, dataRoot, endpoint}`). The card
+     *     names none: the run then keeps its record's binding, and a new run binds the plane the profile's
+     *     layout declares (the Brain's `runTarget` decides, as it does for the CLI)
      * @returns {Promise<{host: Object, record: Object, recordPath: String, target: Object}>}
      */
     async function resolveRun(modules, requested) {
         const
-            {hostEffects, record: recordModule, recipe} = modules,
-            host                                        = hostEffects.createHost({fsModule, now});
+            {cli, hostEffects, record: recordModule, recipe} = modules,
+            host                                             = hostEffects.createHost({fsModule, now}),
+            targetOf                                         = record => recordModule.runTarget({record, named: requested ?? {}, profile: cli.hostLayout({stateRoot}).target});
 
         let record, recordPath = boundRecordPath;
 
@@ -228,7 +232,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             } else {
                 const runId = randomUUID();
 
-                record     = recordModule.createSetupRecord({runId, target: requested ?? {}, recipeVersion: recipe.RECIPE_VERSION, now});
+                record     = recordModule.createSetupRecord({runId, target: targetOf(null), recipeVersion: recipe.RECIPE_VERSION, now});
                 recordPath = recordModule.setupRecordPath(setupRoot, runId);
                 await hostEffects.persistSetupRecord(recordPath, record, host)
             }
@@ -237,9 +241,8 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             boundRecordPath = recordPath
         }
 
-        // a resume names what it names; the record's bound target fills the rest
         const
-            target  = recordModule.resumeTarget(record, requested ?? {}),
+            target  = targetOf(record),
             binding = recordModule.describeBinding(record, {target, recipeVersion: recipe.RECIPE_VERSION});
 
         if (binding !== 'bound') {
@@ -441,12 +444,16 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
          * the one named effect in the recipe's order rules — the settle pass first, an earlier
          * effect that is not `ok` halts it, a refusal (the preset's env set, the credential
          * composition) writes nothing and answers in the orchestration's words — and the reply is
-         * the re-evaluated run. One serialized operation over the record as disk holds it, so an
-         * effect whose acknowledgement write was rejected is found `pending` by the next request and
-         * settled by observation, never run again; never a second implementation of the effects
-         * here.
+         * the re-evaluated run. An effect that ran answers the run whatever came of it: its receipt
+         * moved and its row carries the reason, so the card never shows a refusal over a stale row;
+         * only a report that moved nothing is a refusal. One serialized operation over the record as
+         * disk holds it, so an effect whose acknowledgement write was rejected is found `pending` by
+         * the next request and settled by observation, never run again; never a second
+         * implementation of the effects here. `newAttempt: true` is the operator's consent to write
+         * the witness again: it reaches the orchestration only when the effect's evaluated row lists
+         * a new attempt among its `exits`, and is refused by name anywhere else.
          * @param {Electron.IpcMainInvokeEvent} event
-         * @param {{effectId: String}} request
+         * @param {{effectId: String, newAttempt: Boolean}} request
          * @returns {Promise<Object>} `{ok: true, evaluation}`, or `{ok: false, reason, effectId}`
          */
         async effect(event, request = {}) {
@@ -455,8 +462,9 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
             if (!admitted.modules) return admitted;
 
             const
-                {cli, orchestration} = admitted.modules,
-                effectId             = request?.effectId ?? null;
+                {cli, orchestration, verify} = admitted.modules,
+                effectId                     = request?.effectId ?? null,
+                newAttempt                   = request?.newAttempt === true;
 
             if (!orchestration.EFFECT_ORDER.includes(effectId)) {
                 return refuse(`'${effectId}' is not an effect of this recipe`, {effectId})
@@ -474,14 +482,23 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                         layout                             = cli.hostLayout({stateRoot}),
                         reported                           = [];
 
+                    if (newAttempt && !evaluation.steps.find(step => step.effectId === effectId)?.exits?.includes(verify.VERIFY_EXITS.newAttempt)) {
+                        return refuse(`new-attempt: '${effectId}' does not name a new attempt as its exit, so nothing runs`, {effectId})
+                    }
+
                     const performed = await orchestration.performEffects({
                         record, recordPath, host, layout, target, evaluation,
                         configSourcePath,
+                        newAttempt,
                         effectIds: [effectId],
                         report   : line => reported.push(String(line))
                     });
 
-                    if (reported.length > 0) {
+                    const
+                        receiptOf = from => JSON.stringify((from?.receipts ?? []).find(receipt => receipt.effectId === effectId) ?? null),
+                        moved     = receiptOf(performed) !== receiptOf(record);
+
+                    if (reported.length > 0 && !moved) {
                         return refuse(reported.join('; '), {effectId})
                     }
 

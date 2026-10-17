@@ -10,16 +10,19 @@
     grid-template-columns: auto auto auto auto minmax(0, 1fr);
     padding              : var(--fm-space-1) 0;
 
-    .fm-ev-time,
-    .fm-ev-recipient {
+    .fm-ev-time {
         color      : var(--fm-ink-dim);
         font       : var(--fm-text-micro);
         white-space: nowrap;
     }
 
+    /* The recipient is the sender's chip; only a broadcast keeps its signal ink. */
     .fm-ev-recipient.is-broadcast {
-        color      : color-mix(in srgb, var(--fm-signal) 70%, var(--fm-ink-dim));
-        font-weight: 600;
+        .fm-actor-chip-lead,
+        .fm-actor-chip-text {
+            color      : color-mix(in srgb, var(--fm-signal) 70%, var(--fm-ink-dim));
+            font-weight: 600;
+        }
     }
 
     .is-empty {

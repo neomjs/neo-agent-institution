@@ -1,15 +1,13 @@
-import BaseList from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
-
-const OUTCOME_TEXT = Object.freeze({failed: 'Failed', prepared: 'Prepared'});
+import BaseList         from '../../../../../node_modules/neo.mjs/src/list/Base.mjs';
+import SeatDependencies from '../../../util/SeatDependencies.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.RepositoryList
  * @extends Neo.list.Base
  *
- * @summary The rows of the Accounts Repositories card, one per {@link AgentOS.model.SeatRepository}:
- * the slug, the last start's outcome, then either the working repository's tag or a Remove button.
- * The rows are affordances, not a selection. A Remove click fires `removeRepository` with the row's slug, and
- * the card turns it into the seat's new list; the list itself never changes a record.
+ * @summary Render {@link AgentOS.model.SeatRepository} rows. Accounts supplies independent checkout
+ * and dependency facts plus Remove or Delete checkout; Agent Detail retains its dependency-only
+ * presentation (`editable: false`). Row actions emit intents and never modify records here.
  */
 class RepositoryList extends BaseList {
     static config = {
@@ -30,7 +28,13 @@ class RepositoryList extends BaseList {
         /**
          * @member {Boolean} disableSelection=true
          */
-        disableSelection: true
+        disableSelection: true,
+        /**
+         * Whether each row carries its edit: the working tag, Remove or Delete checkout. A surface that
+         * only reads the outcomes sets it to `false`.
+         * @member {Boolean} editable=true
+         */
+        editable: true
     }
 
     /**
@@ -44,33 +48,40 @@ class RepositoryList extends BaseList {
             click   : this.onRemoveClick,
             delegate: 'fm-repo-remove',
             scope   : this
+        });
+        this.addDomListeners({
+            click   : this.onDeleteClick,
+            delegate: 'fm-repo-delete',
+            scope   : this
         })
     }
 
     /**
-     * @summary The slug, the last start's outcome, then the working repository's tag or a Remove
-     * button, and a failed start's reason on its own line. The working repository is set when the
-     * agent is added, so this card offers no way to drop it. An outcome this card does not know
-     * shows nothing.
+     * @summary The slug, the last start's outcome, then on an editable list the working repository's tag or a
+     * Remove button, and the outcome's reason whole on its own line. The working repository is set when the
+     * agent is added, so the card offers no way to drop it. An outcome this list does not know shows nothing.
      * @param {Object} record An {@link AgentOS.model.SeatRepository} record.
      * @returns {Object[]} vdom child nodes
      */
     createItemContent(record) {
-        const outcome = OUTCOME_TEXT[record.state];
+        const outcome = SeatDependencies.label(record.state);
+        const facts   = [record.checkout, record.dependency].filter(Boolean);
 
         return [
             {cls: ['fm-repo-slug'], text: record.repoSlug, title: record.cloneUrl},
-            outcome && {cls: ['fm-repo-outcome', `is-${record.state}`], text: outcome, title: 'At the last start'},
-            record.working
+            !facts.length && outcome && {cls: ['fm-repo-outcome', `is-${record.state}`], text: outcome, title: record.state === 'installing' ? 'This start' : 'At the last start'},
+            this.editable && (record.working
                 ? {cls: ['fm-repo-working'], text: 'Working'}
-                : {
+                : (!record.retained || record.canDelete) && {
                     tag         : 'button',
                     type        : 'button',
-                    cls         : ['fm-repo-remove'],
-                    'aria-label': `Remove ${record.repoSlug}`,
-                    text        : 'Remove'
-                },
-            record.state === 'failed' && record.reason && {cls: ['fm-repo-reason'], text: record.reason}
+                    cls         : [record.retained ? 'fm-repo-delete' : 'fm-repo-remove'],
+                    'aria-label': `${record.retained ? 'Delete checkout' : 'Remove'} ${record.repoSlug}`,
+                    text        : record.retained ? 'Delete checkout' : 'Remove'
+                }),
+            ...facts.map(fact => ({cls: ['fm-repo-fact', `is-${fact.state ?? 'unknown'}`],
+                text: `${fact.text}${fact.reason ? ` · ${fact.reason}` : ''}`, title: fact.title})),
+            !facts.length && outcome && record.reason && {cls: ['fm-repo-reason', `is-${record.state}`], text: record.reason}
         ].filter(Boolean)
     }
 
@@ -85,7 +96,15 @@ class RepositoryList extends BaseList {
             item   = data.path?.find(node => node.cls?.includes(me.itemCls)),
             record = item && me.store.get(me.getItemRecordId(item.id));
 
-        record && !record.working && me.fire('removeRepository', {repoSlug: record.repoSlug})
+        record && !record.working && !record.retained && me.fire('removeRepository', {repoSlug: record.repoSlug})
+    }
+
+    /** @summary Resolve the guarded delete affordance to its retained row. @param {Object} data @protected */
+    onDeleteClick(data) {
+        const item   = data.path?.find(node => node.cls?.includes(this.itemCls));
+        const record = item && this.store.get(this.getItemRecordId(item.id));
+
+        record?.retained && record.canDelete && this.fire('deleteCheckout', {repoSlug: record.repoSlug})
     }
 }
 

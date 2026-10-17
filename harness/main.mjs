@@ -16,18 +16,20 @@
 //
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
-import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, Tray} from 'electron';
-import {createReadStream}                                                        from 'node:fs';
-import {fileURLToPath}                                                           from 'node:url';
-import path                                                                      from 'node:path';
+import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
+import {createReadStream, readFileSync}                                                              from 'node:fs';
+import {fileURLToPath}                                                                               from 'node:url';
+import path                                                                                          from 'node:path';
 import {
     ADAPTER_STATE_NAMES,
     ROSTER_CROSSING_WINDOW_MS,
     computeFirstPaintVerdict
 } from './adapterWitness.mjs';
-import {createAppLifecycle}     from './appLifecycle.mjs';
-import {createCredentialPrompt} from './credentialPrompt.mjs';
-import {createAbsentFleetCapability, createFleetCapability} from './fleetCapability.mjs';
+import {createAppLifecycle}                                                                              from './appLifecycle.mjs';
+import {loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, loadRuntimeMaintenanceContracts} from './runtimeGeneration.mjs';
+import {retireRuntimeGenerations, startRuntimeMaintenance}                                               from './runtimeMaintenance.mjs';
+import {createCredentialPrompt}                                                                          from './credentialPrompt.mjs';
+import {createAbsentFleetCapability, createFleetCapability}                                              from './fleetCapability.mjs';
 import {
     APP_HOST,
     CONTENT_SECURITY_POLICY,
@@ -35,7 +37,7 @@ import {
     createHarnessAssetResolver,
     isAllowedHarnessAssetPath,
     isHarnessDocumentUrl,
-    isHarnessPopupUrl
+    windowOpenDisposition
 } from './contentPolicy.mjs';
 import {
     allocatePort,
@@ -55,12 +57,13 @@ import {
     probePort,
     registerOwnedChild,
     resolveBrainMode,
-    resolveLauncherRuntimeRoot,
+    resolveLauncherRuntime,
     resolveUiFleetTransport,
     resolveBrainPaths,
     resolveProductBrainPlan,
     resolveSmokeRoot,
     loadFleetRuntimeContracts,
+    runBrainScript,
     runtimePlaneCause,
     startBrainChild,
     stopBrainTree,
@@ -68,8 +71,9 @@ import {
     typePlaneRefusal,
     writeRunState
 } from './brain.mjs';
-import {createSmokeSafeStorage, startFixturePlane}            from './fixturePlane.mjs';
-import {carriesSecret, createMainLog}                         from './mainLog.mjs';
+import {createSmokeSafeStorage, FIXTURE_PLANE_ID, startFixturePlane} from './fixturePlane.mjs';
+import {resolveSmokeHold, watchPlaneControl, writeWalkManifest}      from './walkControl.mjs';
+import {carriesSecret, createMainLog}                                from './mainLog.mjs';
 import {
     createPlaneBroker,
     launchedPlaneRecord,
@@ -77,7 +81,9 @@ import {
     probePlaneCredential,
     readPlaneConfig
 } from './planeConfig.mjs';
-import {settleSeatRoot, writeSeatRootRecord}                  from './seatRootRecord.mjs';
+import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
+import {findFleetWriters, runSeatMoveStep, seatMoveBootHold, settleSeatRootMove}                    from './seatRootMove.mjs';
+import {SEAT_ROOT_CHANNELS, createSeatRootBroker, createSeatRootRuntime}                           from './seatRootBroker.mjs';
 import {CONFIG_SOURCE_PATH, SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
     WAKE_RECEIVER_LAUNCH_AGENT,
@@ -105,16 +111,9 @@ const
     // The fixture-plane arm: the Brain smoke attaches to a plane of its own, through a record whose
     // bearer only this run can decrypt, so the OS keychain is never touched.
     smokePlaneMode        = smokeMode && brainMode && process.env.NEO_HARNESS_SMOKE_PLANE === '1',
+    // A walker's held run (`NEO_HARNESS_SMOKE_HOLD=1`): the fixture-plane arm only, refused anywhere else.
+    smokeHold             = resolveSmokeHold({env: process.env, smokePlaneMode}),
     planeSafeStorage      = smokePlaneMode ? createSmokeSafeStorage() : safeStorage,
-    // Brain executables resolve through their own explicit runtime root in checkout mode; the
-    // packaged artifact supplies one assembled organism root; a checkout with the Brain leg OFF and
-    // no root boots as the UI alone — no root, no contracts, no transport (the resolver's rule).
-    agentosRuntimeRoot    = resolveLauncherRuntimeRoot({brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot}),
-    fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null,
-    // ONE main-owned secret per Electron boot. It crosses only into the Fleet child environment
-    // and main-process Authorization headers; preload/renderer/App-Worker receive no getter or byte.
-    // `null` when this boot carries no transport: nothing to protect, nothing to censor.
-    fleetBearerToken = fleetRuntimeContracts ? fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}) : null,
     smokeState       = {
         assetFailures : new Set(),
         assetsSeen    : new Set(),
@@ -130,10 +129,18 @@ const
     // before anything reads it, so neither a stored plane record nor the smoke shot is the installed app's.
     smokeRoot         = diagnosticMode ? resolveSmokeRoot({env: process.env, harnessDir, packaged: packagedMode, tempDir: app.getPath('temp')}) : null;
 
+// A hold outside the fixture-plane arm would attach to or own this machine's organism: stop before any of it.
+if (smokeHold.refusal) {
+    console.log('HARNESS_SMOKE_HOLD_REFUSED ' + smokeHold.refusal);
+    app.exit(2)
+}
+
 smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
 let
-    brainBootPromise = Promise.resolve(null),
+    brainBootPromise   = Promise.resolve(null),
+    runtimeMaintenance = null,
+    fleetBearerToken   = null,
     resolveHarnessAsset,
     // The shell's transport-boot fact for the cockpit banner — attached to every brain-health
     // answer so the renderer can name WHICH shell case is live instead of guessing "offline".
@@ -145,10 +152,13 @@ let
     storedPlaneBearer = null,
     // The stored record this boot launched its fleet child with (`launchedPlaneRecord`), or `null` when
     // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs.
-    launchedPlane = null;
+    launchedPlane = null,
+    // How this boot settled a consented move of the seats (`settleSeatRootMove`), or `null` outside a
+    // packaged product boot: the outcome the shell reports, also when the Fleet could not start over it.
+    seatMoveOutcome = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
-const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, storedPlaneBearer];
+const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, process.env.NEO_FLEET_PLANE_ADMISSION_BEARER, storedPlaneBearer];
 
 // A Finder launch has no terminal: every line main prints also lands in `main.log` in the platform's logs
 // folder, with each secret main holds redacted at the file boundary. A diagnostic run logs under its own
@@ -163,6 +173,28 @@ try {
 } catch (error) {
     console.error(`HARNESS_MAIN_LOG_UNAVAILABLE ${error?.message ?? error}`)
 }
+
+protocol.registerSchemesAsPrivileged([
+    {scheme: 'app', privileges: {standard: true, secure: true, supportFetchAPI: true}}
+]);
+
+// Select the profile before publishing a runtime, and the runtime before importing private contracts.
+const launcherRuntime = await resolveLauncherRuntime({
+    brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot,
+    bundlePath: packagedMode ? path.resolve(process.resourcesPath, '..', '..') : undefined,
+    executable: process.execPath,
+    userData  : app.getPath('userData')
+}).catch(error => {
+    console.error(`HARNESS_RUNTIME_REFUSED ${error.code ?? error.name}: ${error.message}`);
+    app.exit(1);
+    // Keep module evaluation terminal until native exit; the later boot error boundary does not exist yet.
+    return new Promise(() => {})
+});
+const agentosRuntimeRoot = launcherRuntime.runtimeRoot;
+const fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null;
+
+// This main-owned bearer crosses only into the Fleet child and authenticated main-process requests.
+fleetBearerToken = fleetRuntimeContracts ? fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}) : null;
 
 /**
  * @summary Normalizes a settled transport/Brain boot outcome into the wire-safe banner fact.
@@ -187,15 +219,10 @@ function normalizeTransportFact(boot) {
     }
 }
 
-// Packaged mode: every parent-side child spawn (Brain children, the config resolver) runs on the
-// bundled Electron runtime — the packaged env fragments add ELECTRON_RUN_AS_NODE per child.
-if (packagedMode && !process.env.NEO_HARNESS_NODE_BIN) {
-    process.env.NEO_HARNESS_NODE_BIN = process.execPath
+// Packaged child execution always uses the verified generation, including the config resolver.
+if (packagedMode) {
+    process.env.NEO_HARNESS_NODE_BIN = launcherRuntime.executable
 }
-
-protocol.registerSchemesAsPrivileged([
-    {scheme: 'app', privileges: {standard: true, secure: true, supportFetchAPI: true}}
-]);
 
 /**
  * @summary Returns the renderer flags that are explicit invariants for every harness window.
@@ -282,7 +309,12 @@ async function serveHarnessContent(request) {
  */
 function configureWebContents(contents) {
     contents.setWindowOpenHandler(({url: target}) => {
-        if (!isHarnessPopupUrl(target)) {
+        const disposition = windowOpenDisposition(target);
+
+        if (disposition.action === 'deny') {
+            // An allowlisted https link leaves for the operator's browser; the shell still opens
+            // nothing for it (shell ADR §2.3 item 2, the external hand-off).
+            disposition.openExternal && shell.openExternal(target);
             return {action: 'deny'}
         }
 
@@ -330,8 +362,8 @@ function configureWebContents(contents) {
  * @type {Object}
  */
 const MACOS_TITLE_BAR = Object.freeze({
-    titleBarOverlay     : true,
-    titleBarStyle       : 'hiddenInset',
+    titleBarOverlay: true,
+    titleBarStyle  : 'hiddenInset',
     // the lights' 14px frame centred in the 50px `.agent-top-toolbar`
     trafficLightPosition: Object.freeze({x: 16, y: 18})
 });
@@ -345,8 +377,8 @@ const MACOS_TITLE_BAR = Object.freeze({
  */
 function createHarnessWindow(url) {
     const win = new BrowserWindow({
-        height        : 900,
-        width         : 1400,
+        height: 900,
+        width : 1400,
         ...(process.platform === 'darwin' ? MACOS_TITLE_BAR : {}),
         webPreferences: getSecureWebPreferences()
     });
@@ -890,7 +922,7 @@ process.on('unhandledRejection', async error => {
     }
 });
 
-const brainState = {children: [], isolationRoot: null, planeIngress: null};
+const brainState = {children: [], isolationRoot: null, planeIngress: null, walkControl: null};
 
 function brainLog(line) {
     if (carriesSecret(line, mainSecrets())) {
@@ -905,10 +937,14 @@ function brainLog(line) {
  * @summary Full-tree teardown of every child the harness started (and only those — §2.1.1 one
  * lifecycle owner), then clears the smoke run-state: a record surviving a CLEAN stop would make
  * a later sweep signal whatever now owns the recycled process-group ids. Callable from every
- * exit path: will-quit, smoke completion, the smoke nets.
+ * exit path: will-quit, smoke completion, the smoke nets. A held run's walk control closes first: no
+ * plane request starts after it and the one in flight settles, so a plane it started is in the drain.
  * @returns {Promise<Object|null>} per-child stop report, or null when nothing was supervised
  */
 async function teardownBrain() {
+    await brainState.walkControl?.close();
+    brainState.walkControl = null;
+
     if (!brainState.children.length) {
         return null
     }
@@ -967,8 +1003,13 @@ const appLifecycle = createAppLifecycle({
     // Quit during boot waits for that bounded readiness contract before draining children. Without
     // this join, an early will-quit can observe an empty owner and a late spawn becomes an orphan.
     teardownBrain: async () => {
-        await brainBootPromise;
-        return teardownBrain()
+        try {
+            await brainBootPromise;
+            await runtimeMaintenance?.close();
+            return await teardownBrain()
+        } finally {
+            await launcherRuntime.release?.()
+        }
     }
 });
 
@@ -1001,21 +1042,49 @@ function registerBrainChild(entry) {
 async function bootProductBrain() {
     // Packaged mode: the organism ships read-only(ish), so every mutable path moves to the
     // per-user data root, and Brain children (plus shebang grandchildren via the organism's node
-    // shim) run on the BUNDLED Electron runtime — a stranger's machine carries no Node. A plane the
+    // shim) run on the verified generation's Electron runtime. A plane the
     // user attached from the cockpit joins as the env the launcher would export; set env still wins.
     const storedPlane = packagedMode ? readPlaneConfig({dir: app.getPath('userData'), safeStorage}) : null;
 
     storedPlaneBearer = storedPlane?.bearer ?? null;
 
+    const
+        dataRoot     = path.join(app.getPath('userData'), 'brain'),
+        fleetPort    = Number(process.env.NEO_FLEET_PORT) || 8083,
+        brainBaseEnv = {
+            ...buildPackagedBrainEnv({backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
+            ELECTRON_RUN_AS_NODE    : '1',
+            NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable
+        };
+
+    // A consented move of the seats settles first: before the first-launch choice reads the root record, and
+    // before any Brain child could hold the registry (seatRootMove.mjs). One that can neither go on nor come
+    // back holds the boot, as does a committed one whose old folders could not be archived, so no Fleet
+    // starts over a half-moved installation.
+    seatMoveOutcome = packagedMode ? await settleSeatRootMove({
+        dir        : app.getPath('userData'),
+        checkWriter: () => findFleetWriters({fleetEntry: path.join(agentosRuntimeRoot, FLEET_SERVER_ENTRY), fleetPort, probePortFn: probePort}),
+        runStep    : step => runSeatMoveStep({...step, runScript: ({env, ...script}) => runBrainScript({...script, env: {...brainBaseEnv, ...env}, repoRoot: agentosRuntimeRoot})}),
+        log        : entry => console.log(`HARNESS_SEAT_MOVE ${JSON.stringify(entry)}`)
+    }) : null;
+
+    if (seatMoveOutcome && seatMoveOutcome.state !== 'none') {
+        console.log(`HARNESS_SEAT_MOVE_OUTCOME ${JSON.stringify(seatMoveOutcome)}`)
+    }
+
+    const seatMoveHold = seatMoveBootHold(seatMoveOutcome);
+
+    if (seatMoveHold) {
+        throw new Error(`the consented move of the seats is held: ${seatMoveHold}`)
+    }
+
     // Where the seats live is the installation's record, never this launch's environment
     // (seatRootRecord.mjs); a fresh installation records the root the Brain resolves below.
-    const
-        dataRoot = path.join(app.getPath('userData'), 'brain'),
-        seatRoot = packagedMode ? settleSeatRoot({
-            dir       : app.getPath('userData'),
-            envRoot   : process.env.NEO_FLEET_AGENTS_ROOT,
-            legacyRoot: path.join(dataRoot, 'fleet', 'agents')
-        }) : null;
+    const seatRoot = packagedMode ? settleSeatRoot({
+        dir       : app.getPath('userData'),
+        envRoot   : process.env.NEO_FLEET_AGENTS_ROOT,
+        legacyRoot: path.join(dataRoot, 'fleet', 'agents')
+    }) : null;
 
     if (seatRoot?.ignoredEnvRoot) {
         console.warn(`HARNESS_SEAT_ROOT_ENV_IGNORED ${JSON.stringify({environment: seatRoot.ignoredEnvRoot, recorded: seatRoot.record.root})}`)
@@ -1026,18 +1095,16 @@ async function bootProductBrain() {
 
     launchedPlane = launchedPlaneRecord(storedPlane, planeFragment);
 
-    const packagedEnv   = packagedMode
+    const packagedEnv = packagedMode
         ? {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
             ...planeFragment,
             ELECTRON_RUN_AS_NODE    : '1',
-            NEO_HARNESS_ELECTRON_BIN: process.execPath
+            NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable
         }
         : {};
 
-    const
-        fleetPort = Number(process.env.NEO_FLEET_PORT) || 8083,
-        paths     = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot});
+    const paths = await resolveBrainPaths({env: packagedEnv, repoRoot: agentosRuntimeRoot});
 
     if (packagedMode) {
         const seatRecord = seatRoot.record ?? writeSeatRootRecord({dir: app.getPath('userData'), root: paths.fleetAgentsRoot, origin: 'default'});
@@ -1105,6 +1172,7 @@ async function bootProductBrain() {
 
         const fleet = startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
+            args    : launcherRuntime.launchArgs,
             env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
             onLog   : line => {fleetLastLine = line; brainLog(line)},
             repoRoot: agentosRuntimeRoot
@@ -1163,7 +1231,8 @@ async function bootUiFleetTransport() {
         repoRoot           : agentosRuntimeRoot,
         spawn              : ({fleetPort}) => startBrainChild({
             entry   : FLEET_SERVER_ENTRY,
-            env     : {NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
+            args    : launcherRuntime.launchArgs,
+            env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
             onLog   : brainLog,
             repoRoot: agentosRuntimeRoot
         })
@@ -1192,7 +1261,7 @@ async function bootSmokeBrain() {
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
         [chromaPort, fleetPort] = await Promise.all([allocatePort(), allocatePort()]),
-        runtimeEnv              = packagedMode ? {ELECTRON_RUN_AS_NODE: '1', NEO_HARNESS_ELECTRON_BIN: process.execPath} : {},
+        runtimeEnv              = packagedMode ? {ELECTRON_RUN_AS_NODE: '1', NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable} : {},
         planeEnv                = smokePlaneMode
             ? await attachSmokePlane({isolationRoot, runtimeEnv})
             : {NEO_FLEET_PLANE_BASE: '', NEO_FLEET_PLANE_BEARER: ''},
@@ -1220,9 +1289,10 @@ async function bootSmokeBrain() {
     const
         orchestrator = plan.startOrchestrator ? startBrainChild({entry: ORCHESTRATOR_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot}) : null,
         fleet        = startBrainChild({
-            entry   : FLEET_SERVER_ENTRY,
-            env     : profile,
-            onLog   : line => {
+            entry: FLEET_SERVER_ENTRY,
+            args : launcherRuntime.launchArgs,
+            env  : profile,
+            onLog: line => {
                 fleetLastLine = line;
                 planeAdmitted ||= line.includes(`bound to the containerized plane at ${plan.planeBase} `);
                 brainLog(line)
@@ -1272,6 +1342,7 @@ async function bootSmokeBrain() {
  */
 async function attachSmokePlane({isolationRoot, runtimeEnv}) {
     brainState.planeIngress = await startFixturePlane({
+        holdMode     : smokeHold.hold,
         isolationRoot,
         onLog        : brainLog,
         recordDir    : app.getPath('userData'),
@@ -1279,10 +1350,10 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
             registerBrainChild(entry);
             recordSmokeRunState(isolationRoot)
         },
-        repoRoot     : agentosRuntimeRoot,
+        repoRoot   : agentosRuntimeRoot,
         runtimeEnv,
-        safeStorage  : planeSafeStorage,
-        startChild   : startBrainChild
+        safeStorage: planeSafeStorage,
+        startChild : startBrainChild
     });
 
     const
@@ -1304,7 +1375,55 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
     }
 }
 
+/**
+ * @summary The held run's candidate: a packaged run's build receipt, or the checkout's runtime root.
+ * @returns {Object}
+ */
+function readHeldCandidate() {
+    if (!packagedMode) {
+        return {runtimeRoot: agentosRuntimeRoot, source: 'checkout'}
+    }
+
+    try {
+        return {source: 'packaged', ...JSON.parse(readFileSync(path.join(packagedOrganismRoot, 'organism-build-info.json'), 'utf8'))}
+    } catch (error) {
+        return {error: `organism-build-info.json unreadable (${error.code ?? error.message})`, source: 'packaged'}
+    }
+}
+
+/**
+ * @summary A held run (`NEO_HARNESS_SMOKE_HOLD=1`): the organism stays attached to its fixture plane and
+ * the window stays open for a walker, instead of the teardown and the verdict. It names its candidate and
+ * auth mode, writes the walk manifest `walkControl.mjs` acts on, and answers plane stop/start through the
+ * fixture plane's own handles. Closing the window quits through `window-all-closed` → `will-quit`, which
+ * runs the same owned-Brain teardown `exitTerminal` runs, so the organism and the plane stop with it.
+ * @returns {Promise<never>}
+ */
+async function holdForWalk() {
+    const
+        plane    = brainState.planeIngress,
+        manifest = writeWalkManifest({smokeRoot, manifest: {
+            auth        : 'seat-token: the fixture plane\'s own seat, never a forge PAT',
+            candidate   : readHeldCandidate(),
+            identities  : plane.identities,
+            ingressPort : plane.ingressPort,
+            pid         : process.pid,
+            planeBase   : plane.planeBase,
+            planeId     : FIXTURE_PLANE_ID,
+            planePort   : plane.planePort,
+            registryPath: plane.registryPath,
+            runtimeRoot : agentosRuntimeRoot
+        }});
+
+    brainState.walkControl = watchPlaneControl({handlers: {'plane-start': plane.startPlane, 'plane-stop': plane.stopPlane}, onLog: brainLog, smokeRoot});
+    console.log('HARNESS_SMOKE_HOLD ' + JSON.stringify({auth: manifest.auth, candidate: manifest.candidate, planeBase: manifest.planeBase, smokeRoot: manifest.smokeRoot}));
+
+    return new Promise(() => {})
+}
+
 app.whenReady().then(async () => {
+    if (smokeHold.refusal) return;
+
     resolveHarnessAsset = await createHarnessAssetResolver(productRoot);
     await protocol.handle('app', serveHarnessContent);
 
@@ -1372,6 +1491,22 @@ app.whenReady().then(async () => {
         ipcMain.handle(channel, setupBroker[name])
     }
 
+    // Register before boot: a held transition must remain readable from System.
+    const seatRootBroker = createSeatRootBroker({
+        ...(agentosRuntimeRoot
+            ? createSeatRootRuntime({repoRoot: agentosRuntimeRoot, userData: app.getPath('userData')})
+            : {resolveDestination: null}),
+        dir            : app.getPath('userData'),
+        getOutcome     : () => seatMoveOutcome,
+        isTrustedSender: isTrustedIpcSender,
+        packaged       : packagedMode,
+        relaunch       : () => setTimeout(() => { app.relaunch(); app.quit() }, 250)
+    });
+
+    for (const [name, channel] of Object.entries(SEAT_ROOT_CHANNELS)) {
+        ipcMain.handle(channel, seatRootBroker[name])
+    }
+
     const win1 = createHarnessWindow(APP_URL);
 
     appLifecycle.attachCockpitWindow(win1);
@@ -1419,6 +1554,31 @@ app.whenReady().then(async () => {
                     uiTransportFact = normalizeTransportFact(boot);
                     return boot
                 }));
+
+    if (packagedMode && !diagnosticMode) {
+        brainBootPromise = brainBootPromise.then(async boot => {
+            try {
+                const source                            = {bundlePath: path.resolve(process.resourcesPath, '..', '..'), runtimeRoot: packagedOrganismRoot};
+                const [verifier, references, contracts] = await Promise.all([
+                    loadRuntimeGenerationVerifier(source), loadRuntimeGenerationReferences(source), loadRuntimeMaintenanceContracts(source)
+                ]);
+                runtimeMaintenance = startRuntimeMaintenance(() => retireRuntimeGenerations({
+                    directory       : path.dirname(launcherRuntime.generation.directory), currentGeneration: launcherRuntime.generation,
+                    journalDirectory: path.join(app.getPath('userData'), 'brain', 'fleet', 'launch-admission'),
+                    verifier, references, ...contracts
+                }), {
+                    onResult: result => {
+                        const removed = result.generations.filter(row => row.state === 'removed');
+                        if (removed.length) console.log('HARNESS_RUNTIME_RETIRED ' + JSON.stringify(removed.map(row => row.id)));
+                    },
+                    onError: error => console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message))
+                });
+            } catch (error) {
+                console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message));
+            }
+            return boot;
+        });
+    }
 
     if (!smokeMode) {
         try {
@@ -1541,6 +1701,7 @@ app.whenReady().then(async () => {
             const
                 expectedShellKeys = [
                     'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus',
+                    'seatRootConsent', 'seatRootPlan', 'seatRootStatus',
                     'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe',
                     'shellVersion', 'verifyPlane'
                 ],
@@ -1577,6 +1738,13 @@ app.whenReady().then(async () => {
 
                 process.env.NEO_HARNESS_SMOKE_PLANE_LEAK === '1' && probePlaneLeaks(win1)
             }
+        }
+
+        // A held run stops here with the organism attached; a boot that never attached has nothing to hold.
+        if (smokeHold.hold) {
+            plane?.status?.attached === true
+                ? await holdForWalk()
+                : console.log('HARNESS_SMOKE_HOLD_UNAVAILABLE the organism did not attach to its fixture plane; the run reports its verdict instead')
         }
 
         const
@@ -1684,7 +1852,8 @@ app.whenReady().then(async () => {
 });
 
 // Smoke safety net — on timeout, capture compositor state before exiting.
-(smokeMode || lifecycleWitnessMode) && setTimeout(async () => {
+// A held run has no deadline: the walker's window close ends it.
+(smokeMode || lifecycleWitnessMode) && !smokeHold.hold && setTimeout(async () => {
     console.log('HARNESS_SMOKE_TIMEOUT');
 
     try {

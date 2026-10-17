@@ -34,6 +34,9 @@ function containsSensitiveValue(value, sensitiveValues, visited=new WeakSet()) {
  * Unknown fields are dropped by construction: command, args, env, executable paths, viewer claims,
  * and credential-shaped extras therefore have no route into the Brain request. `launchOwner` is a
  * public declaration; the Brain owns its vocabulary and refuses any other value before a write.
+ * Forge and instance remain part of that declaration; dropping them would turn a GitLab add into
+ * the default GitHub account while the operator supplies a GitLab token. So does the operator's
+ * `memoryImport` choice; dropping it would start an adopted seat empty. The Brain validates it.
  * @param {*} intent
  * @returns {Object|null}
  */
@@ -48,10 +51,21 @@ export function projectPublicAgentIntent(intent) {
 
     if (!githubUsername || !harnessType) return null;
 
+    const declared = {};
+
+    for (const key of ['forge', 'forgeHost', 'memoryImport']) {
+        if (Object.hasOwn(intent, key)) {
+            if (typeof intent[key] !== 'string' || !intent[key].trim()) return null;
+
+            declared[key] = intent[key].trim()
+        }
+    }
+
     return {
         ...(id ? {id} : {}),
         githubUsername,
         harnessType,
+        ...declared,
         ...(launchOwner ? {launchOwner} : {})
     }
 }

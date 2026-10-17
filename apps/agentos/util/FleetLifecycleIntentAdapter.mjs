@@ -34,6 +34,9 @@ const SECRET_PATTERNS = [
  * @extends Neo.core.Base
  */
 class FleetLifecycleIntentAdapter extends Base {
+    /** @type {WeakMap<Object, Object>} Latest intent per roster record, including locally refused intents. */
+    static #attempts = new WeakMap()
+
     static DEFAULT_LIFECYCLE_TIMEOUT_MS = DEFAULT_LIFECYCLE_TIMEOUT_MS
     static LIFECYCLE_ACTION_METHODS     = LIFECYCLE_ACTION_METHODS
 
@@ -81,6 +84,64 @@ class FleetLifecycleIntentAdapter extends Base {
             action,
             kind,
             reason: FleetLifecycleIntentAdapter.sanitizeControlReason(reason, `${action || 'lifecycle'} request ${kind}`)
+        }
+    }
+
+    /**
+     * @summary Whether a settled round-trip can have changed what the roster reads: a lifecycle change, or a refusal
+     * the Fleet answered, which may record its cause on the seat. Never a timeout, whose outcome is unknown, nor a
+     * rejection that never left this cockpit. A re-poll keeps the card's own reason: the roster rows carry none.
+     * @param {Object|null} result A {@link handleFleetLifecycleIntent} answer
+     * @returns {Boolean}
+     */
+    static rosterMayRead(result) {
+        return Boolean((!result?.isCurrent || result.isCurrent()) &&
+            (result?.ok || (result?.accepted && result.status === 'rejected')))
+    }
+
+    /**
+     * @summary Whether the bridge offers the Fleet's Skip verb, `skipAgentDependencies`. Its methods come from the
+     * pinned Brain's wire list, so an older pin has none, and the pane then offers no Skip at all.
+     * @param {Object|null} [bridge=getFleetRegistryBridge()]
+     * @returns {Boolean}
+     */
+    static canSkip(bridge=FleetLifecycleIntentAdapter.getFleetRegistryBridge()) {
+        return typeof bridge?.skipAgentDependencies === 'function'
+    }
+
+    /**
+     * @summary Ask the Fleet to skip a pending Start's remaining dependency installs. This is a side request, not
+     * a lifecycle round-trip: it never claims the record's pending verb, so the Start it serves keeps its own
+     * attempt, and that Start's late answer still settles the card. The Fleet answers `{id, skippedStarts}`;
+     * `0` means no install was left to skip. A bridge without the verb, or a Fleet that refuses it, reads as
+     * unavailable; no answer within the timeout reads as unanswered, since its outcome is unknown.
+     * @param {Object} intent
+     * @param {String} intent.agentId Durable fleet agent id.
+     * @param {String} [intent.expectedRuntimeGeneration] Exact target for a guarded restart; never weakened to an id-only request.
+     * @param {Object} [options]
+     * @param {Object|null} [options.bridge=getFleetRegistryBridge()] Test seam or injected registry bridge.
+     * @param {Number} [options.timeoutMs=30000]
+     * @returns {Promise<{reason: String|null, state: 'requested'|'none'|'unavailable'|'unanswered'}>}
+     */
+    static async handleSkipIntent({agentId}={}, options={}) {
+        options ||= {};
+
+        const bridge = Object.hasOwn(options, 'bridge') ? options.bridge : FleetLifecycleIntentAdapter.getFleetRegistryBridge();
+
+        if (!agentId || !FleetLifecycleIntentAdapter.canSkip(bridge)) {
+            return {reason: 'this Fleet does not offer Skip', state: 'unavailable'}
+        }
+
+        try {
+            const result = await FleetLifecycleIntentAdapter.#withTimeout(Promise.resolve().then(() => bridge.skipAgentDependencies(agentId)), 'skip', options);
+
+            return result?.skippedStarts > 0
+                ? {reason: null, state: 'requested'}
+                : {reason: 'no install was still running', state: 'none'}
+        } catch (error) {
+            return error?.isFleetLifecycleTimeout
+                ? {reason: 'the Fleet has not answered yet', state: 'unanswered'}
+                : {reason: FleetLifecycleIntentAdapter.sanitizeControlReason(error?.message, 'the Fleet did not accept Skip'), state: 'unavailable'}
         }
     }
 
@@ -145,6 +206,8 @@ class FleetLifecycleIntentAdapter extends Base {
      * @summary Consume one per-card lifecycle intent and write honest record state for B4 to render.
      * A refusal the Fleet answers as data (`{status: 'rejected', reason}`, the bridge's domain outcome)
      * ends `rejected` like a throw, never `settled`.
+     * Late reconciliation needs the live promise. Reloaded cockpits recreate this transient record
+     * overlay from their roster read; they do not persist or resume a previous timeout's promise.
      * @param {Object} intent
      * @param {'start'|'stop'|'restart'} intent.action
      * @param {String} intent.agentId Durable fleet agent id.
@@ -152,7 +215,10 @@ class FleetLifecycleIntentAdapter extends Base {
      * @param {Object} [options]
      * @param {Object|null} [options.bridge=getFleetRegistryBridge()] Test seam or injected registry bridge.
      * @param {Number} [options.timeoutMs=30000] Timeout for settle-or-reject honesty.
-     * @returns {Promise<Object>} Result metadata for controller/tests.
+     * @param {Function} [options.isCurrent] Whether the caller still owns this record's target.
+     * @returns {Promise<Object>} Local result metadata, with an `isCurrent()` fence. A timeout also
+     *     carries `settlement`: the actual answer, still observed and applied if current. Neither the
+     *     deadline nor a later intent cancels the bridge operation; superseded answers write nothing.
      */
     static async handleFleetLifecycleIntent(intent={}, record, options={}) {
         options ||= {};
@@ -160,14 +226,19 @@ class FleetLifecycleIntentAdapter extends Base {
         const
             {action, agentId} = intent,
             method            = FleetLifecycleIntentAdapter.LIFECYCLE_ACTION_METHODS[action],
-            bridge            = Object.hasOwn(options, 'bridge') ? options.bridge : FleetLifecycleIntentAdapter.getFleetRegistryBridge();
+            bridge            = Object.hasOwn(options, 'bridge') ? options.bridge : FleetLifecycleIntentAdapter.getFleetRegistryBridge(),
+            attempt           = {},
+            isCurrent         = () => !record.isDestroyed && FleetLifecycleIntentAdapter.#attempts.get(record) === attempt &&
+                (!options.isCurrent || options.isCurrent());
+
+        FleetLifecycleIntentAdapter.#attempts.set(record, attempt);
 
         if (!method) {
             const controlReason = FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', `Unsupported lifecycle action '${action}'`);
 
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason});
 
-            return {accepted: false, action, method: null, ok: false, status: 'rejected', controlReason}
+            return {accepted: false, action, method: null, ok: false, status: 'rejected', controlReason, isCurrent}
         }
 
         if (!agentId) {
@@ -175,7 +246,7 @@ class FleetLifecycleIntentAdapter extends Base {
 
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason});
 
-            return {accepted: false, action, method, ok: false, status: 'rejected', controlReason}
+            return {accepted: false, action, method, ok: false, status: 'rejected', controlReason, isCurrent}
         }
 
         if (typeof bridge?.[method] !== 'function') {
@@ -183,7 +254,7 @@ class FleetLifecycleIntentAdapter extends Base {
 
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason});
 
-            return {accepted: false, action, method, ok: false, status: 'unauthorized', controlReason}
+            return {accepted: false, action, method, ok: false, status: 'unauthorized', controlReason, isCurrent}
         }
 
         FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {
@@ -191,30 +262,35 @@ class FleetLifecycleIntentAdapter extends Base {
             pendingAction: action
         });
 
-        try {
-            const result = await FleetLifecycleIntentAdapter.#withTimeout(
-                Promise.resolve().then(() => bridge[method](agentId)),
-                action,
-                options
-            );
-
-            const controlReason = result?.status === 'rejected'
-                ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason)
-                : null;
+        const complete = (result, controlReason=null) => {
+            if (!isCurrent()) {
+                return {accepted: true, action, method, ok: false, status: 'superseded', isCurrent}
+            }
 
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {controlReason, pendingAction: null});
 
             return controlReason
-                ? {accepted: true, action, method, ok: false, status: 'rejected', controlReason}
-                : {accepted: true, action, method, ok: true, status: 'settled', result}
+                ? {accepted: true, action, method, ok: false, status: controlReason.kind, controlReason, isCurrent}
+                : {accepted: true, action, method, ok: true, status: 'settled', result, isCurrent}
+        };
+
+        let answer;
+
+        // Observe the operation itself: Promise.race only bounds how long the caller waits.
+        const params = action === 'restart' && Object.hasOwn(intent, 'expectedRuntimeGeneration')
+            ? {agentId, expectedRuntimeGeneration: intent.expectedRuntimeGeneration} : agentId;
+        const settlement = Promise.resolve().then(() => bridge[method](params)).then(
+            result => answer = complete(result, result?.status === 'rejected'
+                ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason) : null),
+            error => answer = complete(null, FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', error?.message))
+        );
+
+        try {
+            return await FleetLifecycleIntentAdapter.#withTimeout(settlement, action, options)
         } catch (error) {
-            const
-                kind          = error?.isFleetLifecycleTimeout ? 'timeout' : 'rejected',
-                controlReason = FleetLifecycleIntentAdapter.createControlReason(action, kind, error?.message);
+            if (!error?.isFleetLifecycleTimeout) throw error;
 
-            FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason});
-
-            return {accepted: true, action, method, ok: false, status: kind, controlReason}
+            return answer || {...complete(null, FleetLifecycleIntentAdapter.createControlReason(action, 'timeout', error.message)), settlement}
         }
     }
 }

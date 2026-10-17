@@ -19,13 +19,12 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * surface holds neither the read seam nor the verb — identity stays a transport fact end-to-end,
  * never authored here.
  *
- * **Capability today = the shipped read-only pane.** The pane is read-only by its own MUST-NOT
- * (operator mark-read would mutate an agent's turn-start signal). The operator's OWN inbox is the
- * one place mark-read is legitimate (own-inbox capability, keyed by the server-stamped viewer↔target
- * relation) — but that write verb is NOT wired here, and this surface does not fake it: own-inbox
- * mark-read is an EXPLICIT deferred acceptance criterion (tracked as remaining ticket work), never
- * silently claimed as landing elsewhere. What ships is the honest read (the pane's four states) + live
- * compose with per-recipient outcomes; the surface is complete and inert-safe for what it does not yet do.
+ * **The own-inbox entry.** The pane is read-only by its own MUST-NOT (operator mark-read would
+ * mutate an agent's turn-start signal). The operator's OWN inbox is the one place a write is
+ * legitimate, keyed by the server-stamped viewer, so this host declares `detailEntry: 'own'`: a
+ * selected message opens to its full body with `Mark read` · `Reply` · `Resolve`. Mark read
+ * and Resolve relay to the owner as `markReadRequest` / `resolveRequest`; Reply opens the compose
+ * reveal for the sender, the subject and `inReplyTo`. A reply never resolves.
  *
  * The container owns no `state.Provider` (the cockpit scopes it) — `record` / `snapshot` /
  * `recipientOptions` are injected by the cockpit from state it already holds, and passed straight
@@ -38,6 +37,11 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * what is left (the floor lives in the skin). A send keeps the form open with its outcome rows; the
  * chip, or Escape inside the form, closes it. The page's open slot — inline reveal or an own south
  * tab — stays open: if compose becomes a tab, the chip routes there and the rows do not move.
+ *
+ * **What waits for your word.** Beside compose, two chips switch the list: `all mail`, or `for you · 3 open`,
+ * the operator's open questions. The count is Home's own (the provider's `questions` block), so a number shows
+ * only when that read produced one; unavailable, the chip reads `for you · open` with the reason on its title.
+ * The switch is session view state, never persisted, and every switch reads the first window of its list.
  *
  * @class AgentOS.view.fleet.mailbox.OperatorContainer
  * @extends Neo.container.Base
@@ -88,6 +92,20 @@ class OperatorMailbox extends Container {
          */
         composeOutcome_: null,
         /**
+         * The owner's body read of the open message (`{messageId, state, message?, code?, reason?}`),
+         * passed straight to the inbox pane's detail.
+         * @member {Object|null} messageRead_=null
+         * @reactive
+         */
+        messageRead_: null,
+        /**
+         * The owner's settled Mark read / Resolve on the open message (`{messageId, action, state,
+         * code?, reason?}`), passed straight to the inbox pane's detail.
+         * @member {Object|null} actionOutcome_=null
+         * @reactive
+         */
+        actionOutcome_: null,
+        /**
          * Whether the compose form is revealed. `false` keeps it out of the layout; the head's
          * `✎ compose` chip toggles it, Escape inside the form closes it, a send never does.
          * @member {Boolean} composeOpen_=false
@@ -107,6 +125,38 @@ class OperatorMailbox extends Container {
          */
         identityPosture_: null,
         /**
+         * Which list the inbox shows, passed straight to the pane: `all` mail, or the operator's `open`
+         * questions. Set by the head's chips, and by a navigation that opens the questions (Home's count).
+         * @member {'all'|'open'} view_='all'
+         * @reactive
+         */
+        view_: 'all',
+        /**
+         * The owner's open-questions read (`fleetOwnQuestions`), passed straight to the pane.
+         * @member {Object|null} questions_=null
+         * @reactive
+         */
+        questions_: null,
+        /**
+         * The cockpit's cadence clock, forwarded without a snapshot projection.
+         * @member {Number|null} now_=null
+         * @reactive
+         */
+        now_: null,
+        /**
+         * The current list's latest read outcome; retained rows cannot look fresh after failure.
+         * @member {Boolean} readFailed_=false
+         * @reactive
+         */
+        readFailed_: false,
+        /**
+         * The open-question count the chip shows, bound to the provider's `questions` block
+         * `{count, reason, state}`, the one Home's line counts.
+         * @member {Object|null} questionCount_=null
+         * @reactive
+         */
+        questionCount_: null,
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
@@ -115,10 +165,11 @@ class OperatorMailbox extends Container {
          * @member {Object[]} items
          */
         items: [{
-            module   : MailboxPane,
-            flex     : 1,
-            header   : {text: 'Your inbox'},
-            reference: 'operator-inbox-pane'
+            module     : MailboxPane,
+            detailEntry: 'own',
+            flex       : 1,
+            header     : {text: 'Your inbox'},
+            reference  : 'operator-inbox-pane'
         }, {
             // the seat-conflation truth marker — hidden until a conflated posture is injected;
             // placed directly above the compose surface so the fact sits where the writing starts
@@ -165,11 +216,20 @@ class OperatorMailbox extends Container {
         // the pane's scroll-edge requests (the next window while `page.hasMore`) relay through the same
         // read intent the construction fire uses — one event, one cockpit handler, no chrome
         inbox?.on('pageRequest', me.onInboxPageRequest, me);
+        // the open message's intents: the owner reads and writes, reply stays a compose reveal here
+        inbox?.on({
+            markReadRequest: data => me.fire('markReadRequest', {messageId: data.messageId}),
+            messageOpen    : data => me.fire('messageOpen',     {messageId: data.messageId}),
+            replyRequest   : me.onReplyRequest,
+            resolveRequest : data => me.fire('resolveRequest',  {expectedCurrentState: data.expectedCurrentState, messageId: data.messageId}),
+            scope          : me
+        });
         form?.on('compose', me.onCompose, me);
 
         if (inbox) {
             me.record   && (inbox.record   = me.record);
-            me.snapshot && (inbox.snapshot = me.snapshot)
+            me.snapshot && (inbox.snapshot = me.snapshot);
+            inbox.set({now: me.now, questions: me.questions, readFailed: me.readFailed, view: me.view})
         }
         form && me.recipientOptions?.length && (form.recipientOptions = me.recipientOptions);
         me.applyIdentityPosture();
@@ -184,6 +244,21 @@ class OperatorMailbox extends Container {
             layout: {ntype: 'hbox', align: 'center'},
             items : [{
                 module         : Button,
+                cls            : ['fm-mailbox-view-chip'],
+                handler        : 'onAllMailClick',
+                handlerScope   : me,
+                reference      : 'view-all',
+                text           : 'all mail',
+                useRippleEffect: false
+            }, {
+                module         : Button,
+                cls            : ['fm-mailbox-view-chip'],
+                handler        : 'onOpenQuestionsClick',
+                handlerScope   : me,
+                reference      : 'view-open',
+                useRippleEffect: false
+            }, {
+                module         : Button,
                 cls            : ['fm-compose-affordance'],
                 handler        : 'onComposeToggle', // a string: the button resolves it against handlerScope
                 handlerScope   : me,
@@ -195,6 +270,7 @@ class OperatorMailbox extends Container {
         });
         form?.addDomListeners({keydown: me.onComposeKeyDown, scope: me});
         me.applyComposeOpen();
+        me.applyViewChips();
 
         // a construction-time identity lands its first inbox read without a page gesture (afterSetRecord
         // was skipped pre-construct, so this is the single fire for the identity-before-pane ordering)
@@ -224,6 +300,8 @@ class OperatorMailbox extends Container {
             chip = me.getReference('compose-toggle');
 
         form && (form.hidden = !open);
+        // a folded form answers nothing: the next reveal starts as a new message
+        form && !open && (form.inReplyTo = null);
         chip && (chip.pressed = open);
         me.toggleCls('is-composing', open)
     }
@@ -322,6 +400,153 @@ class OperatorMailbox extends Container {
      */
     afterSetComposeOutcome(value, oldValue) {
         this.isConstructed && (this.getReference('operator-compose-form').composeOutcome = value)
+    }
+
+    /**
+     * Triggered after the owner's settled action changed — passed straight to the pane's detail.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetActionOutcome(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').actionOutcome = value)
+    }
+
+    /**
+     * Triggered after the owner's body read changed — passed straight to the pane's detail.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetMessageRead(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').messageRead = value)
+    }
+
+    /**
+     * Triggered after the owner's open-questions read changed — passed straight to the pane.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetQuestions(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').questions = value)
+    }
+
+    /**
+     * @summary Forward the cadence clock to the inbox's freshness-only projection.
+     * @param {Number|null} value
+     * @param {Number|null} oldValue
+     * @protected
+     */
+    afterSetNow(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').now = value)
+    }
+
+    /**
+     * @summary Forward the owner's failure marker without replacing retained rows.
+     * @param {Boolean} value
+     * @param {Boolean} oldValue
+     * @protected
+     */
+    afterSetReadFailed(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').readFailed = value)
+    }
+
+    /**
+     * @summary Ask the inbox whether an automatic refresh can preserve its reading window.
+     * @returns {Boolean}
+     */
+    canRefreshFirstPage() {
+        return this.getReference('operator-inbox-pane').canRefreshFirstPage()
+    }
+
+    /**
+     * Triggered after the provider's open-question count changed — the chip recounts.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetQuestionCount(value, oldValue) {
+        this.isConstructed && this.applyViewChips()
+    }
+
+    /**
+     * Triggered after the list switched: the pane shows it, and the owner reads its first window.
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetView(value, oldValue) {
+        if (!this.isConstructed) return;
+
+        this.getReference('operator-inbox-pane').view = value;
+        this.applyViewChips();
+        this.record && this.onInboxPageRequest({offset: 0})
+    }
+
+    /**
+     * @summary Render the view chips: the pressed one is the list in view, and the questions chip counts only
+     * what its read produced (`for you · 3 open`), plain `for you · open` with the reason on its title otherwise.
+     * @protected
+     */
+    applyViewChips() {
+        const
+            me                     = this,
+            {count, reason, state} = me.questionCount ?? {},
+            counted                = state === 'ok' && Number.isInteger(count),
+            open                   = me.getReference('view-open');
+
+        me.getReference('view-all')?.set({pressed: me.view === 'all'});
+
+        if (open) {
+            open.set({pressed: me.view === 'open', text: counted ? `for you · ${count} open` : 'for you · open'});
+            // the reason rides the native title, as on Home's line
+            open.vdom.title = counted ? null : reason || null;
+            open.update()
+        }
+    }
+
+    /**
+     * @summary Show the operator's open questions, read anew: the entry for a navigation (Home's question count).
+     */
+    showOpenQuestions() {
+        if (this.view !== 'open') {
+            this.view = 'open'
+        } else if (this.record) {
+            this.onInboxPageRequest({offset: 0})
+        }
+    }
+
+    /**
+     * @summary The `all mail` chip's handler; selecting it again explicitly returns to the first
+     * window after automatic refresh deferred an older reading window.
+     * @protected
+     */
+    onAllMailClick() {
+        if (this.view !== 'all') {
+            this.view = 'all'
+        } else if (this.record) {
+            this.onInboxPageRequest({offset: 0})
+        }
+    }
+
+    /**
+     * @summary The `for you · open` chip's handler.
+     * @protected
+     */
+    onOpenQuestionsClick() {
+        this.view = 'open'
+    }
+
+    /**
+     * @summary Reply from the open message: the compose reveal opens for its sender, with its subject
+     * and `inReplyTo`. The send is the operator's; replying never moves the message's Task.
+     * @param {Object} data `{messageId, subject, to}`
+     * @protected
+     */
+    onReplyRequest(data) {
+        this.composeOpen = true;
+        this.getReference('operator-compose-form').replyTo({inReplyTo: data.messageId, subject: data.subject, to: data.to})
     }
 
     /**

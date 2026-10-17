@@ -16,19 +16,27 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 // the spec file stands in for the thread ENTRYPOINT (src/worker/App.mjs in production), which is
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                     '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
-import {wiredSources} from './cockpitFakes.mjs';
+import {wiredSources}              from './cockpitFakes.mjs';
+import FleetLifecycleIntentAdapter from '../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs';
 
 /**
- * Covers the cockpit's whole-fleet control (B4, #14611): `onStartFleet` fans a start intent out to
+ * Covers the cockpit's whole-fleet control: `onStartFleet` fans a start intent out to
  * every resident card through the C2 adapter (the collapsed-idle fold skipped; no bridge → an honest
  * `unauthorized` reason onto each record, never an optimistic fleet-wide success),
  * `getRosterRecords` treats a present Store as authoritative over the rendered cards, overlapping
  * activations join one active batch (one bridge call per member, one authoritative summary), the
  * next activation excludes a timeout-bearing member instead of retrying an unknown operation, the
- * wire's partition keeps excluded members off `pending` and renders their reasons (#14612), and a
+ * wire's partition keeps excluded members off `pending` and renders their reasons, and a
  * card's own lifecycle intent resolves the firing card before it drives the adapter. Prototype-call
  * harness on the REAL controller; the adapter and the bridge are the collaborators the arms fake.
  */
+/**
+ * @summary The toolbar's fleet button as the controller writes it: configs land on the fake, the
+ * title on its `vdom` like the real Button's root node.
+ * @returns {Object}
+ */
+const fakeButton = () => ({disabled: false, vdom: {}, set(values) { Object.assign(this, values) }, update() {}});
+
 test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
     let FleetCockpit, FleetCockpitController;
 
@@ -37,6 +45,104 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             import('../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs').then(module => module.default),
             import('../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs').then(module => module.default)
         ])
+    });
+
+    test('a changed settled roster replaces the previous fleet result with eight current started seats', () => {
+        const records = Array.from({length: 12}, (_, index) => ({
+            agentId            : `seat-${index}`, sources: wiredSources(), state: index < 4 ? 'ok' : 'off',
+            participationStatus: index < 8 ? 'active' : 'operator_benched',
+            set(values) { Object.assign(this, values) }
+        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype);
+
+        controller.getReference = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.renderStartSummary({started: 4, unknown: [], rejected: [], excluded: records.slice(4).map(record => ({agentId: record.agentId, reason: 'excluded'}))});
+        expect(slot.hidden).toBe(false);
+
+        records.slice(0, 8).forEach(record => record.set({state: 'ok'}));
+        controller.onRosterSettled();
+
+        expect(button.text).toBe('Stop fleet · 8');
+        expect(slot).toMatchObject({hidden: false, text: '8\u00a0started · 4\u00a0excluded'})
+    });
+
+    test('an unchanged roster keeps current counts and a retired target clears them', () => {
+        const record     = {agentId: 'seat-a', sources: wiredSources(), state: 'ok'},
+              button     = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype);
+
+        controller.getReference = name => ({'fleet-grid': {store: {items: [record]}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.renderStartSummary({started: 1, unknown: [], rejected: [], excluded: []});
+        controller.onRosterSettled();
+        expect(slot.hidden).toBe(false);
+        expect(slot.text).toBe('1\u00a0started');
+
+        controller.onRosterRetired();
+        expect(slot).toMatchObject({hidden: true, text: ''})
+    });
+
+    test('unbenching a stopped seat changes excluded from four to three and offers one fleet start', () => {
+        const records = Array.from({length: 12}, (_, index) => ({
+            agentId            : `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
+            participationStatus: index < 8 ? 'active' : 'operator_benched',
+            set(values) { Object.assign(this, values) }
+        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype);
+
+        controller.getReference = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.renderStartSummary({started: 8, unknown: [], rejected: [], excluded: records.slice(8).map(record => ({agentId: record.agentId, reason: 'not active'}))});
+        records[8].set({participationStatus: 'active'});
+        controller.onRosterSettled();
+
+        expect(button.text).toBe('Start fleet · 1');
+        expect(slot).toMatchObject({hidden: false, text: '8\u00a0started · 3\u00a0excluded'})
+    });
+
+    test('fleet status and its button use full membership when the visible roster hides stopped and benched seats', () => {
+        const records = Array.from({length: 12}, (_, index) => ({
+            agentId            : `seat-${index}`, sources: wiredSources(), state: index < 8 ? 'ok' : 'off',
+            participationStatus: index < 9 ? 'active' : 'operator_benched'
+        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype),
+              store = {items: records.slice(0, 8).reverse(), allItems: {items: records}};
+
+        controller.getReference = name => ({'fleet-grid': {store}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.onRosterSettled();
+
+        expect(button.text).toBe('Start fleet · 1');
+        expect(slot.text).toBe('8\u00a0started · 3\u00a0excluded');
+        expect(controller.getRosterRecords()).toEqual([...store.items, ...records.slice(8)])
+    });
+
+    test('a matching armed stop cohort refreshes excluded membership and reasons without extending confirmation or sending Stop', () => {
+        const records = [
+            {agentId: 'up', state: 'ok', sources: wiredSources()},
+            {agentId: 'bench', state: 'off', sources: wiredSources(), participationStatus: 'operator_benched'}
+        ], slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+              controller = Object.create(FleetCockpitController.prototype),
+              store = {items: records}, calls = [];
+
+        controller.getReference = name => ({'fleet-grid': {store}, 'fleet-start-summary': slot})[name] ?? null;
+        controller.resolveFleetRosterStore = () => store;
+        controller.requestFleetLifecycle = intent => calls.push(intent);
+
+        try {
+            controller.onStopFleet();
+            const timer = controller.stopFleetArmTimer;
+            expect(slot.text).toContain('1\u00a0excluded');
+
+            records[1].participationStatus = 'temporarily_unreachable';
+            records.push({agentId: 'new-bench', state: 'off', sources: wiredSources(), participationStatus: 'operator_benched'});
+            controller.onRosterSettled();
+
+            expect(slot.text).toContain('2\u00a0excluded');
+            expect(slot.vdom.title).toContain("bench: not active — authoritative participation status 'temporarily_unreachable'");
+            expect(controller.stopFleetArmed.plan.excluded).toHaveLength(2);
+            expect(controller.stopFleetArmTimer).toBe(timer);
+            expect(calls).toEqual([])
+        } finally {
+            controller.disarmStopFleet()
+        }
     });
 
     test('onStartFleet fans out start to every resident card via the C2 adapter (fold skipped; no bridge → fail-closed per card, never optimistic)', () => {
@@ -64,6 +170,267 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         expect(vega.writes.some(write => write.controlReason?.kind === 'unauthorized')).toBe(true);
         expect(ada.writes.some(write => write.controlReason?.kind === 'unauthorized')).toBe(true)
+    });
+
+    test('onStopFleet is a two-press: the first press renders the plan and sends nothing; the second sends one stop intent per planned seat and the summary reads N stopped; a fleet start takes the first press back (#618 AC-3)', async () => {
+        const
+            calls   = [],
+            records = ['ada', 'euclid', 'vega'].map((agentId, index) => ({
+                agentId,
+                controlReason: null,
+                pendingAction: null,
+                sources      : wiredSources(),
+                state        : index < 2 ? 'ok' : 'off',
+                set(values) { Object.assign(this, values) }
+            })),
+            summaries  = [],
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                stopAgent(agentId) {
+                    calls.push(agentId);
+                    return Promise.resolve({state: 'off'})
+                }
+            }
+        };
+
+        controller.getReference          = name => name === 'fleet-grid' ? {store: {items: records}} : null;
+        controller.refreshRosterOnSettle = settledOk => settledOk;
+        controller.renderStartSummary    = (summary, verb) => summaries.push({summary, verb});
+        controller.renderSummarySlot     = line => lines.push(line);
+
+        const lines = [];
+
+        try {
+            // the first press: the plan where the summaries live, nothing sent
+            const plan = controller.onStopFleet();
+
+            expect(plan.eligible.map(record => record.agentId)).toEqual(['ada', 'euclid']);
+            expect(calls).toEqual([]);
+            expect(lines.at(-1)).toEqual({text: 'Stop fleet · 2\u00a0seats: ada, euclid · 1\u00a0excluded', detail: expect.stringContaining('vega: already down')});
+            expect(controller.stopFleetArmed.plan).toBe(plan);
+
+            // the second press: one stop intent per planned seat, the summary in the stop direction
+            const summary = await controller.onStopFleet();
+
+            expect(calls).toEqual(['ada', 'euclid']);
+            expect(summary.started).toBe(2);
+            expect(summaries.some(({summary, verb}) => verb === 'stopped' && summary?.started === 2)).toBe(true);
+            expect(controller.stopFleetPromise).toBeNull();
+            expect(controller.stopFleetArmed).toBeNull();
+
+            // a fleet start takes the first press back
+            controller.executeStartFleetBatch = async () => ({});
+            controller.onStopFleet();
+            expect(controller.stopFleetArmed).not.toBeNull();
+            await controller.onStartFleet();
+            expect(controller.stopFleetArmed).toBeNull()
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the fleet button reads its plan on settled rosters only: the last words and a disabled button during a batch, the settled plan after it; a plain label carries its reason on the title (#618 AC-1, AC-2)', async () => {
+        const
+            releases   = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'off', set(values) { Object.assign(this, values) }})),
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent: () => new Promise(resolve => releases.push(() => resolve({state: 'ok'})))
+            }
+        };
+
+        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button})[name] ?? null;
+        controller.renderStartSummary    = () => {};
+        // the settle re-poll: registry truth replaces the round-trip residue and the roster settles
+        // while the batch is still in flight — the button keeps its words and stays disabled
+        controller.refreshRosterOnSettle = async () => {
+            records.forEach(record => record.set({controlReason: null, pendingAction: null, state: 'ok'}));
+            controller.onRosterSettled();
+            expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'})
+        };
+
+        try {
+            controller.onRosterSettled();
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-play', text: 'Start fleet · 2'});
+            expect(button.vdom.title).toBeUndefined();
+
+            // in flight: the last settled words stay and the button is disabled (the adapter reaches
+            // the bridge after its own awaits — a tick lets both round-trips open before they are released)
+            const batch = controller.onFleetButton();
+
+            expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'});
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(releases).toHaveLength(2);
+            expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'});
+
+            releases.forEach(release => release());
+            await batch;
+
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · 2'});
+
+            // the plain label: every row unwired — the reason rides the title, no count
+            records.forEach(record => record.set({sources: {}}));
+            controller.onRosterSettled();
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-play', text: 'Start fleet'});
+            expect(button.vdom.title).toContain('wired')
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the first press arms for a bounded window: a settled roster whose plan differs takes it back, a matching one keeps it, the window\'s end takes it back — nothing sent until the second press (#618 AC-3, AC-4)', async () => {
+        const
+            calls      = [],
+            lines      = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, displayName: agentId[0].toUpperCase() + agentId.slice(1), controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => (calls.push(agentId), Promise.resolve({state: 'off'}))}};
+
+        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button})[name] ?? null;
+        controller.refreshRosterOnSettle = settledOk => settledOk;
+        controller.renderStartSummary    = () => {};
+        controller.renderSummarySlot     = line => lines.push(line);
+        controller.stopFleetArmMs        = 20;
+
+        try {
+            controller.onRosterSettled();
+            expect(button.text).toBe('Stop fleet · 2');
+
+            // the first press: the plan where the summaries live, the chip the second press, nothing sent
+            controller.onFleetButton();
+            expect(calls).toEqual([]);
+            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · press again'});
+            expect(lines.at(-1)).toEqual({detail: '', text: 'Stop fleet · 2\u00a0seats: Ada, Euclid'});
+
+            // a settled roster whose plan matches keeps the arm; one whose plan differs takes it back
+            controller.onRosterSettled();
+            expect(controller.stopFleetArmed).not.toBeNull();
+            records[1].set({state: 'off'});
+            controller.onRosterSettled();
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(lines.at(-1)).toMatchObject({text: '1\u00a0started', detail: expect.stringContaining('euclid: ready to start')});
+            expect(button.text).toBe('Start fleet · 1');
+
+            // armed again with both up: the window's end takes it back, the button reads its plan
+            records[1].set({state: 'ok'});
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            expect(controller.stopFleetArmed).not.toBeNull();
+            await new Promise(resolve => setTimeout(resolve, 60));
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(button.text).toBe('Stop fleet · 2');
+            expect(calls).toEqual([]);
+
+            // the second press inside the window sends one stop intent per planned seat
+            controller.onFleetButton();
+            await controller.onFleetButton();
+            expect(calls).toEqual(['ada', 'euclid'])
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the second press is bound to the Fleet it confirmed: a replaced profile or a retired roster withdraws the arm before any Stop is sent, and nothing of the old plan reaches the new bridge', async () => {
+        const
+            calls      = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            store      = {items: records, get: id => store.items.find(record => record.agentId === id)},
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => (calls.push(agentId), Promise.resolve({state: 'off'}))}};
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.resolveFleetRosterStore = () => store;
+        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-button': button})[name] ?? null;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.renderStartSummary      = () => {};
+        controller.renderSummarySlot       = () => {};
+        controller.stopFleetArmMs          = 10000;
+
+        try {
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            expect(controller.stopFleetArmed).toMatchObject({profileId: 'profile-a', store});
+
+            // the real switch retires the roster before the new bridge is read: the arm goes with it
+            controller.bridgeProfileId = 'profile-b';
+            store.items = [];
+            controller.onRosterRetired();
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(calls).toEqual([]);
+
+            // the same switch without the retirement hook: the second press re-reads the target and sends nothing
+            store.items = records;
+            controller.bridgeProfileId = 'profile-a';
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            controller.bridgeProfileId = 'profile-b';
+            expect(controller.onFleetButton()).toBeNull();
+            expect(calls).toEqual([]);
+            expect(controller.stopFleetArmed).toBeNull();
+
+            // the unchanged target and plan still send one Stop per planned seat
+            controller.bridgeProfileId = 'profile-a';
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            await controller.onFleetButton();
+            expect(calls).toEqual(['ada', 'euclid'])
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('the second press re-reads eligibility: a seat whose own Stop is pending has left the plan, so the stale confirmation is withdrawn and no duplicate Stop is sent', async () => {
+        const
+            calls      = [],
+            held       = [],
+            records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            store      = {items: records, get: id => store.items.find(record => record.agentId === id)},
+            button     = fakeButton(),
+            controller = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => { calls.push(agentId); return new Promise(resolve => held.push(() => resolve({state: 'off'}))) }}};
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.resolveFleetRosterStore = () => store;
+        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-button': button})[name] ?? null;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.renderStartSummary      = () => {};
+        controller.renderSummarySlot       = () => {};
+        // the prototype harness runs no field initializers: the arm's window is the production one
+        controller.stopFleetArmMs          = 10000;
+
+        try {
+            controller.onRosterSettled();
+            controller.onFleetButton();
+            expect(controller.stopFleetArmed).not.toBeNull();
+
+            // the card's own Stop: the adapter writes `pending` before the bridge answers
+            const card = controller.requestFleetLifecycle({action: 'stop', agentId: 'ada'}, records[0]);
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(records[0].pendingAction).toBe('stop');
+            expect(calls).toEqual(['ada']);
+
+            // the second press before any roster settles: withdrawn, nothing more sent, the plan re-read
+            expect(controller.onFleetButton()).toBeNull();
+            expect(calls).toEqual(['ada']);
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(button.text).toBe('Stop fleet · 1');
+
+            held.forEach(release => release());
+            await card
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
     });
 
     test('getRosterRecords treats a present empty Store as authoritative and falls back to cards only when the Store composition is absent', () => {
@@ -150,6 +517,240 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         }
     });
 
+    test('a fleet start sends its seats in waves: the next wave leaves once the previous one answered, the running line counts the rest as pending, and a retired batch sends no further wave (#654 AC-3)', async () => {
+        const
+            calls    = [],
+            releases = new Map(),
+            records  = ['ada', 'grace', 'vega', 'mnemo', 'euclid'].map(agentId => ({
+                agentId,
+                controlReason: null,
+                pendingAction: null,
+                sources      : wiredSources(),
+                state        : 'off',
+                set(values) { Object.assign(this, values) }
+            })),
+            summaries  = [],
+            controller = Object.create(FleetCockpitController.prototype),
+            settle     = async (ticks = 12) => { for (let tick = 0; tick < ticks; tick++) await Promise.resolve() };
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent(agentId) {
+                    calls.push(agentId);
+                    return new Promise(resolve => releases.set(agentId, resolve))
+                }
+            }
+        };
+
+        controller.startFleetWaveSize    = 2;
+        controller.getReference          = name => name === 'fleet-grid' ? {store: {items: records}} : null;
+        controller.refreshRosterOnSettle = settledOk => settledOk;
+        controller.renderStartSummary    = summary => summaries.push(summary);
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await settle();
+
+            expect(calls, 'the first wave leaves alone').toEqual(['ada', 'grace']);
+
+            releases.get('ada')({state: 'running'});
+            releases.get('grace')({state: 'running'});
+            await settle();
+
+            expect(calls, 'the second wave leaves once the first answered').toEqual(['ada', 'grace', 'vega', 'mnemo']);
+
+            const running = summaries.filter(Boolean).at(-1);
+
+            expect(running.started).toBe(2);
+            expect(running.pending.map(({agentId}) => agentId), 'the unsent seats read pending, not rejected').toEqual(['vega', 'mnemo', 'euclid']);
+            expect(running.rejected).toEqual([]);
+
+            // a newer batch owns the slot: the third wave never leaves, and this batch writes no further line
+            controller.startFleetBatch = {};
+            releases.get('vega')({state: 'running'});
+            releases.get('mnemo')({state: 'running'});
+
+            const summary = await batch;
+
+            expect(calls).toEqual(['ada', 'grace', 'vega', 'mnemo']);
+            expect(summary.started).toBe(4);
+            expect(summary.pending.map(({agentId}) => agentId)).toEqual(['euclid']);
+            expect(summaries.filter(Boolean)).toHaveLength(1)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    /**
+     * A wave batch over a recording bridge whose answers are held until released: three seats, waves of
+     * two, a profile the test can retire — the harness the concurrency arms below share.
+     */
+    const waveFixture = () => {
+        const
+            records  = ['a', 'b', 'c'].map(agentId => ({
+                agentId,
+                controlReason: null,
+                pendingAction: null,
+                sources      : wiredSources(),
+                state        : 'off',
+                set(values) { Object.assign(this, values) }
+            })),
+            store      = {items: records, get(id) { return this.items.find(record => record.agentId === id) }, clear() { this.items = [] }},
+            calls      = [],
+            held       = [],
+            summaries  = [],
+            controller = Object.create(FleetCockpitController.prototype),
+            release    = id => held.filter(item => item.agentId === id).forEach(item => item.resolve({state: 'running'})),
+            waitFor    = async (test, label) => {
+                const end = Date.now() + 2000;
+                while (!test() && Date.now() < end) await new Promise(resolve => setTimeout(resolve, 2));
+                expect(test(), label).toBe(true)
+            };
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent(agentId) {
+                    calls.push(agentId);
+                    return new Promise(resolve => held.push({agentId, resolve}))
+                }
+            }
+        };
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.startFleetWaveSize      = 2;
+        controller.getReference            = name => name === 'fleet-grid' ? {store} : null;
+        controller.resolveFleetRosterStore = () => store;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.renderStartSummary      = summary => summaries.push(summary && structuredClone(summary));
+
+        return {calls, controller, records, release, store, summaries, waitFor}
+    };
+
+    test('a retired target\'s unresolved batch does not suppress the replacement roster or restore its historical line', async () => {
+        const {calls, controller, release, store, waitFor} = waveFixture(),
+              slot                                         = {vdom: {}, set(values) { Object.assign(this, values) }};
+
+        controller.getReference = name => ({'fleet-grid': {store}, 'fleet-start-summary': slot})[name] ?? null;
+
+        try {
+            const batch = controller.onStartFleet();
+            await waitFor(() => calls.length === 2, 'the old target has unresolved requests');
+            store.clear();
+            controller.onRosterRetired();
+            controller.bridgeProfileId = 'profile-b';
+            store.items = [{agentId: 'new-target', state: 'ok', sources: wiredSources()}];
+            controller.onRosterSettled();
+
+            expect(controller.startFleetPromise).not.toBeNull();
+            expect(slot).toMatchObject({hidden: false, text: '1\u00a0started'});
+            release('a');
+            release('b');
+            await batch;
+
+            expect(slot).toMatchObject({hidden: false, text: '1\u00a0started'});
+            expect(calls).toEqual(['a', 'b'])
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('a seat its own card starts while an earlier wave is held is not sent twice by the batch: its slot reads superseded with the partition\'s reason, the card\'s own Start stands (#654, falsifier 1)', async () => {
+        const {calls, controller, records, release, waitFor} = waveFixture();
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await waitFor(() => calls.length === 2, 'the first wave left');
+            expect(records[2].pendingAction).toBeNull();
+
+            const card = controller.requestFleetLifecycle({action: 'start', agentId: 'c'}, records[2]);
+
+            await waitFor(() => calls.length === 3, 'the card\'s own Start left');
+            expect(records[2].pendingAction).toBe('start');
+
+            release('a');
+            release('b');
+
+            const summary = await batch;
+
+            expect(calls, 'c left once, through its card').toEqual(['a', 'b', 'c']);
+            expect(summary.started).toBe(2);
+            expect(summary.rejected).toEqual([{agentId: 'c', reason: "superseded: 'start' round-trip already in flight"}]);
+
+            release('c');
+            expect((await card).ok).toBe(true)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('a retired roster ends the batch even when the same profile id returns: no further wave leaves, no further line is written (#654, falsifier 2)', async () => {
+        const {calls, controller, release, store, summaries, waitFor} = waveFixture();
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await waitFor(() => calls.length === 2, 'the first wave left');
+
+            // the liveness layer's retirement path: the store is cleared, the controller told; then A again
+            controller.bridgeProfileId = 'profile-b';
+            store.clear();
+            controller.onRosterRetired();
+            controller.bridgeProfileId = 'profile-a';
+
+            release('a');
+            release('b');
+
+            const summary = await batch;
+
+            expect(calls, 'the third seat never left').toEqual(['a', 'b']);
+            // the retired roster's own answers are superseded by the adapter (their records left the store)
+            expect(summary.started).toBe(0);
+            expect(summary.rejected.map(({agentId, reason}) => `${agentId}:${reason.split(':')[0]}`)).toEqual(['a:superseded', 'b:superseded']);
+            expect(summary.pending.map(({agentId}) => agentId)).toEqual(['c']);
+            expect(summaries.filter(Boolean), 'the retired batch wrote no line').toHaveLength(0)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('an earlier wave\'s late answers land on the running line while the next wave is still held, not after it (#654, falsifier 3)', async () => {
+        const
+            {calls, controller, records, release, summaries, waitFor} = waveFixture(),
+            original                                                  = FleetLifecycleIntentAdapter.handleFleetLifecycleIntent;
+
+        // the first wave's intents time out at once on the adapter's bound; the third seat's never does
+        FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = function(intent, record, options) {
+            return original.call(this, intent, record, {...options, timeoutMs: intent.agentId === 'c' ? -1 : 5})
+        };
+
+        try {
+            const batch = controller.onStartFleet();
+
+            await waitFor(() => calls.length === 3, 'the second wave left after the timeout answers');
+
+            release('a');
+            release('b');
+            await waitFor(() => records[0].controlReason === null && records[1].controlReason === null, 'the late answers landed on the records');
+
+            const running = summaries.filter(Boolean).at(-1);
+
+            expect(running.started, 'the line counts the late answers while c is held').toBe(2);
+            expect(running.unknown).toEqual([]);
+            expect(running.pending.map(({agentId}) => agentId)).toEqual(['c']);
+
+            release('c');
+
+            const summary = await batch;
+
+            expect(summary.started).toBe(3)
+        } finally {
+            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent = original;
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
     test('the next fleet activation excludes a timeout-bearing member instead of silently retrying an unknown operation', async () => {
         const
             calls  = [],
@@ -202,9 +803,10 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             unreachable = mkRecord({agentId: 'flaky',  state: 'off', sources: wiredSources(), participationStatus: 'temporarily_unreachable'}),
             unwired     = mkRecord({agentId: 'silent', state: 'off'}),   // no sources → runtime normalizes not-wired
             slot        = {
-                sets: [],
-                vdom: {},
-                set(values) { this.sets.push(values) },
+                sets  : [],
+                titles: [],
+                vdom  : {},
+                set(values) { this.sets.push(values); this.titles.push(this.vdom.title) },
                 update() {}
             };
 
@@ -240,12 +842,12 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         expect(slot.sets[0]).toEqual({hidden: true, text: ''});
         expect(slot.sets[1].hidden).toBe(false);
         expect(slot.sets[1].text).toContain('rejected');
-        expect(slot.sets[1].text).toContain('6 excluded');
-        expect(slot.vdom.title).toContain('native: not launchable');
-        expect(slot.vdom.title).toContain("ada: already up — session state 'ok'");
-        expect(slot.vdom.title).toContain("gemini: not active — authoritative participation status 'operator_benched'");
-        expect(slot.vdom.title).toContain("flaky: not active — authoritative participation status 'temporarily_unreachable'");
-        expect(slot.vdom.title).toContain("silent: runtime source 'not-wired'")
+        expect(slot.sets[1].text).toContain('6\u00a0excluded');
+        expect(slot.titles[1]).toContain('native: not launchable');
+        expect(slot.titles[1]).toContain("ada: already up — session state 'ok'");
+        expect(slot.titles[1]).toContain("gemini: not active — authoritative participation status 'operator_benched'");
+        expect(slot.titles[1]).toContain("flaky: not active — authoritative participation status 'temporarily_unreachable'");
+        expect(slot.titles[1]).toContain("silent: runtime source 'not-wired'")
     });
 
     test('onAgentLifecycleIntent resolves the firing card + drives the C2 adapter — no bridge → fail-closed onto the card record, never optimistic', () => {
@@ -263,6 +865,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         try {
             const controller = Object.create(FleetCockpitController.prototype);
+            controller.getReference = () => null;
             controller.onAgentLifecycleIntent({action: 'start', agentId: 'vega', source: 'fm-card-x'})
         } finally {
             Neo.getComponent = origGet

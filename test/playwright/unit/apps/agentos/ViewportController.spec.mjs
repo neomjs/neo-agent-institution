@@ -6,18 +6,18 @@ setup({
     }
 });
 
-import {test, expect}     from '@playwright/test';
-import Neo                from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core          from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import AgentDefinitions   from '../../../../../apps/agentos/store/AgentDefinitions.mjs';
-import CockpitStateProvider from '../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
-import FleetCockpit       from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
-import FleetRoster        from '../../../../../apps/agentos/store/FleetRoster.mjs';
-import FleetTenants       from '../../../../../apps/agentos/store/FleetTenants.mjs';
+import {test, expect}         from '@playwright/test';
+import Neo                    from '../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core              from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import AgentDefinitions       from '../../../../../apps/agentos/store/AgentDefinitions.mjs';
+import CockpitStateProvider   from '../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
+import FleetCockpit           from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
+import FleetRoster            from '../../../../../apps/agentos/store/FleetRoster.mjs';
+import FleetTenants           from '../../../../../apps/agentos/store/FleetTenants.mjs';
 import {deriveFleetProfileId} from '../../../../../apps/agentos/fleet/connectionProfiles.mjs';
-import SetupPanel         from '../../../../../apps/agentos/view/setup/Panel.mjs';
-import Viewport           from '../../../../../apps/agentos/view/Viewport.mjs';
-import ViewportController from '../../../../../apps/agentos/view/ViewportController.mjs';
+import SetupPanel             from '../../../../../apps/agentos/view/setup/Panel.mjs';
+import Viewport               from '../../../../../apps/agentos/view/Viewport.mjs';
+import ViewportController     from '../../../../../apps/agentos/view/ViewportController.mjs';
 
 test.describe('AgentOS.view.ViewportController — route → keeper-view tab', () => {
     function createController() {
@@ -303,7 +303,10 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
             accounts     = accountsHost.items.find(item => item.reference === 'accounts');
 
         expect(fleetConfig.reference).toBe('fleet-cockpit');
-        expect(accounts.listeners).toEqual({agentDefinitionAccepted: 'up.onAgentDefinitionAccepted'})
+        expect(accounts.listeners).toEqual({
+            agentDefinitionAccepted   : 'up.onAgentDefinitionAccepted',
+            repositoryOperationSettled: 'up.onRepositoryOperationSettled'
+        })
     });
 
     test('refreshes the separate Fleet roster only for a valid accepted definition', async () => {

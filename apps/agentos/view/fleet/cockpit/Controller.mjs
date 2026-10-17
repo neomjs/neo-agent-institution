@@ -1,9 +1,11 @@
-import ReadingSurfacesController   from './ReadingSurfacesController.mjs';
+import FleetBatchController        from './FleetBatchController.mjs';
 import CockpitPerspectives         from '../../../util/CockpitPerspectives.mjs';
 import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapter.mjs';
-import FleetStartPlan              from '../../../util/FleetStartPlan.mjs';
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
+import OperatorInbox               from '../../../util/OperatorInbox.mjs';
+import RecentTurnsRead             from '../../../util/RecentTurnsRead.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
+import StageWindow                 from '../../../util/StageWindow.mjs';
 import TargetBinding               from '../../../util/TargetBinding.mjs';
 
 /**
@@ -18,7 +20,7 @@ import TargetBinding               from '../../../util/TargetBinding.mjs';
  *
  * State split (the operator's partial-provider ruling): truths MORE THAN ONE surface reads live
  * on {@link AgentOS.view.fleet.cockpit.StateProvider} and the surfaces bind. Per-pane snapshots
- * (operator inbox, memories + drill, wake routes, tasks) are CONTROLLER state below,
+ * (operator inbox, memories + drill, wake routes, tasks, the shown seat's recent turns) are CONTROLLER state below,
  * written to their one pane directly at WRITE time through the view's phase-blind accessors (a
  * pane torn into a vessel or parked in a returning window still receives the truth; a destroyed
  * one never swallows it).
@@ -27,9 +29,9 @@ import TargetBinding               from '../../../util/TargetBinding.mjs';
  * unavailable fallback (never a fabricated success), and only the newest generation writes.
  *
  * @class AgentOS.view.fleet.cockpit.Controller
- * @extends AgentOS.view.fleet.cockpit.ReadingSurfacesController
+ * @extends AgentOS.view.fleet.cockpit.FleetBatchController
  */
-class Controller extends ReadingSurfacesController {
+class Controller extends FleetBatchController {
     static config = {
         /**
          * @member {String} className='AgentOS.view.fleet.cockpit.Controller'
@@ -85,6 +87,25 @@ class Controller extends ReadingSurfacesController {
      */
     operatorInboxReadGeneration = 0
     /**
+     * The lazily created inbox reader, destroyed with this cockpit.
+     * @member {AgentOS.util.OperatorInbox|null} operatorInbox=null
+     * @protected
+     */
+    operatorInbox = null
+    /**
+     * Read-fence for the open message's body: a read that settles after another message opened lands
+     * nowhere.
+     * @member {Number} operatorMessageReadGeneration=0
+     * @protected
+     */
+    operatorMessageReadGeneration = 0
+    /**
+     * The message the detail shows, set by each open: a refresh after an action re-reads only this one.
+     * @member {String|null} operatorOpenMessageId=null
+     * @protected
+     */
+    operatorOpenMessageId = null
+    /**
      * @member {Object|null} operatorSnapshot=null
      * @protected
      */
@@ -109,13 +130,6 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     operatorIdentityPosture = null
-    /**
-     * The active fleet-start batch — repeated activations join it until its summary and one
-     * roster reconciliation settled.
-     * @member {Promise<Object>|null} startFleetPromise=null
-     * @protected
-     */
-    startFleetPromise = null
     /**
      * Read-fence + in-flight accounting + owner-held snapshot for the tasks surface.
      * @member {Number} tasksReadGeneration=0
@@ -155,6 +169,28 @@ class Controller extends ReadingSurfacesController {
      * @protected
      */
     openWorkProfileId = null
+    /**
+     * The lazily created recent-turns reader (the Agent Detail's Thought stream), destroyed with this
+     * cockpit; it holds the read's fence, in-flight count, held answer, answering profile and seat
+     * ({@link AgentOS.util.RecentTurnsRead}).
+     * @member {AgentOS.util.RecentTurnsRead|null} recentTurnsReader=null
+     * @protected
+     */
+    recentTurnsReader = null
+
+    /** @member {AgentOS.util.StageWindow|null} stageWindow=null Optional sibling launch owner. */
+    stageWindow = null
+
+    /**
+     * @summary Resolves the clicked queue key against this controller's held source snapshot.
+     * @param {Object} data
+     * @param {String} data.recordId
+     * @returns {Promise<Object>}
+     */
+    onStageRequest({recordId}) {
+        this.stageWindow ||= Neo.create(StageWindow, {owner: this});
+        return this.stageWindow.open(recordId)
+    }
     /**
      * Read-fence + owner-held snapshot for the wake-routes surface.
      * @member {Number} wakeRoutesReadGeneration=0
@@ -196,32 +232,35 @@ class Controller extends ReadingSurfacesController {
     onAgentLifecycleIntent(data) {
         const card = Neo.getComponent(data.source);
 
-        return card && this.refreshRosterOnSettle(
-            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent(data, card.record).then(result => Boolean(result?.ok))
-        )
+        if (!card) return card;
+
+        this.disarmStopFleet();
+
+        const request = this.requestFleetLifecycle(data, card.record);
+
+        this.renderFleetState();
+
+        return request.then(result => {
+            this.renderFleetState();
+            return this.refreshRosterOnSettle(Promise.resolve(FleetLifecycleIntentAdapter.rosterMayRead(result)), result.isCurrent)
+        })
     }
 
     /**
-     * @summary Drill into a resident: resolve the record from the provider-owned store, seat it
-     * through the view's ONE selection-write site, and reveal the auto-hidden detail pane.
+     * @summary Drill into a resident (or clear when `agentId` is null): resolve the record from the
+     * provider-owned store and seat it through the view's ONE selection-write site.
      * @param {Object} data The `agentSelect` payload `{agentId}`.
      */
     onAgentSelect(data) {
         const
-            cockpit = this.component,
-            record  = this.resolveFleetRosterStore()?.get(data.agentId);
+            agentId = data?.agentId ?? null,
+            record  = agentId ? this.resolveFleetRosterStore()?.get(agentId) : null;
 
-        if (!record) {
+        if (agentId && !record) {
             return
         }
 
-        this.applySelection(record);
-
-        if (cockpit.dockModel?.items?.detail?.autoHidden) {
-            const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
-
-            result && !result.errors?.length && cockpit.onDockZoneDocumentChange(result.document)
-        }
+        this.applySelection(record)
     }
 
     /**
@@ -264,6 +303,33 @@ class Controller extends ReadingSurfacesController {
      */
     onOperatorInboxPageRequest(data) {
         return this.loadOperatorInbox({offset: data.offset})
+    }
+
+    /**
+     * @summary Relay: read the open message in full ({@link AgentOS.util.OperatorInbox#open}).
+     * @param {Object} data `{messageId, refresh?, source}`
+     * @returns {Promise<void>}
+     */
+    onOperatorMessageOpen(data) {
+        return OperatorInbox.open(this, data)
+    }
+
+    /**
+     * @summary Relay: mark the open message read ({@link AgentOS.util.OperatorInbox#markRead}).
+     * @param {Object} data `{messageId, source}`
+     * @returns {Promise<Boolean>}
+     */
+    onOperatorMarkRead(data) {
+        return OperatorInbox.markRead(this, data)
+    }
+
+    /**
+     * @summary Relay: resolve the open message's Task ({@link AgentOS.util.OperatorInbox#resolve}).
+     * @param {Object} data `{expectedCurrentState, messageId, source}`
+     * @returns {Promise<Boolean>}
+     */
+    onOperatorResolve(data) {
+        return OperatorInbox.resolve(this, data)
     }
 
     /**
@@ -351,7 +417,7 @@ class Controller extends ReadingSurfacesController {
      * @returns {{saved: Boolean, layoutId: String|null, name: String|null, errors: String[]}}
      */
     capturePerspective(name) {
-        let view    = this.component,
+        let view = this.component,
             verdict;
 
         // A capture that throws is still a verdict the drawer must show — a silent failure would
@@ -418,17 +484,21 @@ class Controller extends ReadingSurfacesController {
      * @summary The ONE selection-write site: seat a resident record (or null) as the cockpit's
      * selection truth everywhere it lives — the view-owned {@link AgentOS.view.fleet.cockpit.Container#detailRecord}
      * reactive config (its afterSet hook pushes the live pane; dock rematerialization reads it),
-     * the provider pair (`selectedAgentId` / `selectedAgentIdentity`), and the memories
+     * the provider pair (`selectedAgentId` / `selectedAgentIdentity`), the memories
      * write-through (the one-picker contract: a selected resident with a verifiable mailbox
      * identity re-targets the pane through the view's phase-blind accessor, so a vesseled pane
-     * re-targets exactly like a docked one).
+     * re-targets exactly like a docked one), and the paired dock reveal/hide
+     * ({@link AgentOS.util.CockpitPerspectives#syncDetailAutoHidden}).
      *
      * A null identity keeps the pane's LAST target: the summary corpus outlives the seat, so a
      * resident without identity authority (or a cleared selection) never blanks a valid read —
-     * the provider pair still reports the honest null.
+     * the provider pair still reports the honest null. The detail's Thought stream follows the seat
+     * instead: one read per newly shown seat, none without one.
      * @param {Object|null} record The selected {@link AgentOS.model.FleetAgent} record, or null.
+     * @param {Object} [options={}]
+     * @param {Boolean} [options.syncDock=true] False when seating during a perspective transition whose own document owns the placement.
      */
-    applySelection(record) {
+    applySelection(record, {syncDock = true} = {}) {
         const
             me       = this,
             cockpit  = me.component,
@@ -445,86 +515,36 @@ class Controller extends ReadingSurfacesController {
             me.memoriesTarget = identity;
             cockpit.getMemoriesPane()?.set({activeAgent: identity})
         }
-    }
 
-    /* ── the fleet-start batch ── */
-
-    /**
-     * @summary Join the active one-click fleet-start batch, or create exactly one new batch.
-     * @returns {Promise<Object>} The one authoritative batch outcome summary.
-     */
-    onStartFleet() {
-        const me = this;
-
-        if (!me.startFleetPromise) {
-            me.startFleetPromise = me.executeStartFleetBatch().finally(() => {
-                me.startFleetPromise = null
-            })
+        // the detail's Thought stream reads the seat it shows: a newly shown seat with a mailbox
+        // identity is read at once and the liveness cadence keeps it; a re-seat of the same seat reads
+        // nothing new; no seat, or one the roster names no identity for, drops the held stream so no
+        // other seat's turns wait under the next record
+        if (!identity) {
+            me.recentTurnsReader?.clear()
+        } else if (identity !== me.recentTurnsReader?.target) {
+            me.loadRecentTurns({agentIdentity: identity})
         }
 
-        return me.startFleetPromise
+        syncDock && CockpitPerspectives.syncDetailAutoHidden(cockpit, Boolean(record))
     }
 
-    /**
-     * @summary Execute the STAGED fleet bring-up: partition the full roster truth through the
-     * pure eligibility rules (every fact from the wire, every exclusion named), drive each
-     * eligible record's own honest round-trip, render the outcome summary, then re-poll the
-     * roster once when anything genuinely started.
-     * @returns {Promise<Object>} The outcome summary.
-     * @protected
-     */
-    async executeStartFleetBatch() {
-        const
-            me      = this,
-            records = me.getRosterRecords(),
-            plan    = FleetStartPlan.partitionFleetStart(records);
-
-        me.renderStartSummary(null);
-
-        const results = await Promise.all(plan.eligible.map(record =>
-            FleetLifecycleIntentAdapter.handleFleetLifecycleIntent({action: 'start', agentId: record.agentId}, record)
-        ));
-
-        const summary = FleetStartPlan.summarizeFleetStart(plan, results);
-
-        me.renderStartSummary(summary);
-
-        await me.refreshRosterOnSettle(Promise.resolve(results.some(result => result?.ok)));
-
-        return summary
-    }
+    /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */
 
     /**
-     * @summary The full roster truth for fleet-level actions: the grid store's records (a folded
-     * idle card is still a member); the rendered-cards fallback covers compositions without the
-     * grid store reference.
+     * @summary Full roster truth for fleet actions and counts, in visible grid order followed by
+     * filtered members. Folded cards remain members; without a grid, fall back to rendered cards.
      * @returns {Object[]}
      */
     getRosterRecords() {
         const store = this.getReference('fleet-grid')?.store;
 
-        return store ? [...(store.items ?? [])] : this.getAgentCards().map(card => card.record).filter(Boolean)
-    }
+        if (!store) return this.getAgentCards().map(card => card.record).filter(Boolean);
 
-    /**
-     * @summary Write the fleet-start outcome into the chrome summary slot — counts as text,
-     * per-member reasons on the title; hidden again when cleared.
-     * @param {Object|null} summary
-     */
-    renderStartSummary(summary) {
-        const slot = this.getReference('fleet-start-summary');
+        const records = [...(store.items ?? [])],
+              visible = new Set(records);
 
-        if (!slot) return;
-
-        if (!summary) {
-            slot.set({hidden: true, text: ''});
-            return
-        }
-
-        const {detail, text} = FleetStartPlan.renderFleetStartSummary(summary);
-
-        slot.vdom.title = detail;
-        slot.set({hidden: false, text})
+        return [...records, ...(store.allItems?.items ?? []).filter(record => !visible.has(record))]
     }
 
     /**
@@ -775,58 +795,55 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
+     * @summary READ-OBSERVE: the shown seat's newest public turn summaries, the Agent Detail's Thought
+     * stream ({@link AgentOS.util.RecentTurnsRead#read}) — one read when a seat is first shown, one per
+     * liveness cadence pass while it stays shown, never per roster row.
+     * @param {Object} [params] `{agentIdentity}` retargets the read; none re-reads the seat shown.
+     * @returns {Promise<Object|null>} The envelope, or `null` when no seat is shown.
+     */
+    loadRecentTurns(params = {}) {
+        if (this.isDestroyed) return Promise.resolve(null);
+        this.recentTurnsReader ||= Neo.create(RecentTurnsRead, {owner: this});
+        return this.recentTurnsReader.read(params)
+    }
+
+    /**
+     * @summary Admit one recent-turns answer ({@link AgentOS.util.RecentTurnsRead#admit}).
+     * @param {Object|null} snapshot One `fleetRecentTurns` envelope or the unobserved state.
+     * @param {String|null} [profileId] The profile the answering bridge is bound to.
+     */
+    admitRecentTurns(snapshot, profileId = this.bridge?.profileId ?? null) {
+        (this.recentTurnsReader ||= Neo.create(RecentTurnsRead, {owner: this})).admit(snapshot, profileId)
+    }
+
+    /**
+     * @summary The reader's unsettled wires, the liveness cadence's in-flight count for this read.
+     * @returns {Number}
+     * @protected
+     */
+    get recentTurnsReadInFlight() {
+        return this.recentTurnsReader?.readInFlight ?? 0
+    }
+
+    /**
      * @summary A roster row as its record, carrying the seat's held open work, so a roster refresh never
-     * drops the card's open-work chip ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
+     * drops the card's open-work chip or the detail's rows ({@link AgentOS.util.OpenWorkRead#seatOpenWork}).
      * @param {Object} row One roster DTO row.
      * @returns {Object}
      */
     mapRosterRow(row) {
         const mapped = super.mapRosterRow(row);
 
-        return {...mapped, openWork: OpenWorkRead.seatOpenWork(this, mapped.githubUsername)}
+        return {...mapped, ...OpenWorkRead.seatOpenWork(this, mapped.githubUsername)}
     }
 
     /**
-     * @summary WRITE: route one operator-composed message — one target, several (fan-out, one
-     * authenticated call and one honest outcome per recipient), or the `AGENT:*` broadcast (a
-     * single call; the server expands the sentinel). The sender is server-stamped at the
-     * authenticated ingress, never carried here. The inbox re-polls exactly ONCE for the batch,
-     * and only when a real send landed and the profile that sent it is still the bridge in hand.
-     * @param {Object} message `{to, subject, body, priority?, wakeSuppressed?, relatedTickets?}`
+     * @summary WRITE: route one operator-composed message ({@link AgentOS.util.OperatorInbox#compose}).
+     * @param {Object} message `{to, subject, body, priority?, wakeSuppressed?, relatedTickets?, inReplyTo?}`
      * @returns {Promise<Object>} `{results: [{to, outcome}]}` in order.
      */
-    async composeOperatorMessage(message) {
-        const
-            me        = this,
-            {bridge}  = me,
-            profileId = me.bridgeProfileId,
-            targets   = Array.isArray(message.to) ? message.to : (message.to == null ? [] : [message.to]),
-            wired     = typeof bridge?.composeOperatorMessage === 'function',
-            results   = [];
-
-        for (const to of targets) {
-            if (!wired) {
-                results.push({to, outcome: {status: 'not-wired', reason: 'fleet: operator compose verb not wired'}});
-                continue
-            }
-
-            let outcome;
-
-            try {
-                // one target per call; the spread never mutates the caller's payload
-                outcome = await bridge.composeOperatorMessage({...message, to})
-            } catch (error) {
-                outcome = {status: 'error', reason: error?.message || 'compose failed'}
-            }
-
-            results.push({to, outcome})
-        }
-
-        if (results.some(result => result.outcome?.messageId) && me.bridgeProfileId === profileId) {
-            await me.loadOperatorInbox({offset: 0})
-        }
-
-        return {results}
+    composeOperatorMessage(message) {
+        return OperatorInbox.compose(this, message)
     }
 
     /**
@@ -908,45 +925,49 @@ class Controller extends ReadingSurfacesController {
     }
 
     /**
-     * @summary READ-OBSERVE: the operator's own mailbox mirror. The gate IS the honest outcome
-     * (no pane / no bound subject / no verb → the pane's `unobserved` state stands); a throwing
-     * bridge KEEPS the last-known snapshot — the pane never renders "no mail" for a read that did
-     * not happen. Fence bumped before the gate: a refused intent still invalidates older
-     * in-flight reads. A bridge bound to another profile first retires the held identity and window,
-     * so no page is read as the previous instance's viewer.
+     * @summary READ-OBSERVE: one window of the list the operator's own mailbox shows, all mail or its open
+     * questions ({@link AgentOS.util.OperatorInbox#read}).
      * @param {Object} [params]
      * @param {Number} [params.offset=0]
+     * @returns {Promise<void>}
      * @protected
      */
-    async loadOperatorInbox({offset = 0} = {}) {
-        const
-            me       = this,
-            {bridge} = me;
+    loadOperatorInbox(params = {}) {
+        if (this.isDestroyed) return Promise.resolve();
+        this.operatorInbox ||= Neo.create(OperatorInbox, {owner: this});
+        return this.operatorInbox.read(params)
+    }
 
-        TargetBinding.retireOperatorMailbox(me, {profileId: me.bridgeProfileId});
+    /**
+     * @summary The shared cadence's first-window read; no queued work while a wire is held.
+     * @returns {Promise<void>}
+     * @protected
+     */
+    refreshOperatorInbox() {
+        return this.loadOperatorInbox({automatic: true, offset: 0})
+    }
 
-        const
-            pane       = me.component.getOperatorMailboxPane(),
-            subject    = me.operatorRecord?.agentIdentityNodeId,
-            generation = ++me.operatorInboxReadGeneration;
+    /**
+     * @summary Unsettled inbox wires, including a wire whose bounded wait already timed out.
+     * @returns {Number}
+     * @protected
+     */
+    get operatorInboxReadInFlight() {
+        return this.operatorInbox?.readInFlight ?? 0
+    }
 
-        if (!pane || !subject || typeof bridge?.fleetMailboxMirror !== 'function') {
-            return
-        }
-
-        try {
-            const snapshot = await bridge.fleetMailboxMirror({subjectAgentId: subject, offset});
-
-            if (generation === me.operatorInboxReadGeneration && !me.isDestroyed) {
-                me.operatorSnapshot = snapshot;
-
-                const livePane = me.component.getOperatorMailboxPane();
-
-                livePane && (livePane.snapshot = snapshot)
-            }
-        } catch (error) {
-            // fail-closed: the last-known snapshot stays
-        }
+    /**
+     * @summary Destroy the owned inbox and recent-turns readers before retiring the cockpit's liveness owner.
+     * @param {...*} args
+     */
+    destroy(...args) {
+        this.stageWindow?.destroy();
+        this.stageWindow = null;
+        this.operatorInbox?.destroy();
+        this.operatorInbox = null;
+        this.recentTurnsReader?.destroy();
+        this.recentTurnsReader = null;
+        super.destroy(...args)
     }
 
     /* ── the liveness reads (provider-written surfaces; the banner + chrome bind) ── */

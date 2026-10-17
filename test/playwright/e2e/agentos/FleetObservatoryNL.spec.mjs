@@ -85,7 +85,8 @@ async function openObservatory(page, neuralLink) {
     const locate = id => app.callMethod(canvas.properties.id, 'locate', [id]);
 
     return {
-        currency : pane.locator('.fm-observatory-currency'),
+        // the read's complete words, which the head keeps behind Details
+        currency : pane.locator('.fm-observatory-details'),
         geography: async () => (await app.getComponent(container.properties.id, ['geography'])).geography,
         hover    : pane.locator('.fm-observatory-hover'),
         land     : envelope => app.callMethod(cockpitState.controller.id, 'writeGraphScene', [envelope]),
@@ -248,6 +249,9 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/]);
         await expect(relations).toHaveText([/Grace\s*agent/]);
 
+        // relations are read in the Selected section, which browsing the node list leaves at its head
+        await pane.getByRole('button', {name: /^Selected node/}).click();
+
         const held = await stats();
 
         await relations.nth(0).click();
@@ -396,7 +400,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         const
             ids    = [envelope.scene.route[0], envelope.scene.nodes[12345].id],
             before = await Promise.all(ids.map(locate)),
-            toggle = pane.getByRole('button', {name: 'Golden Path'});
+            toggle = pane.getByRole('button', {name: 'Route'});
 
         await toggle.click();
         await expect.poll(async () => (await stats()).counts.paths).toBe(0);
@@ -426,11 +430,22 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
     });
 
     test('the team lens and the heat draw over the same places: a checked peer reaches the worker, the rows name each node\'s role, the Heat toggle counts what it cannot read, and no node moves', async ({page, neuralLink}) => {
-        const {currency, land, locate, pane, settle, stats} = await openObservatory(page, neuralLink), attribution = team(Date.now());
+        const
+            {currency, land, locate, pane, selection, settle, stats} = await openObservatory(page, neuralLink),
+            attribution = team(Date.now()),
+            details     = pane.getByRole('button', {name: 'Details'});
 
         await land(read({nodes: NODES.map(node => ({...node, ...attribution[node.id]}))}));
-        await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
         await settle();
+
+        // the head's first line is the team's sentence, and the counts stay folded until a real click opens Details
+        await expect(pane.locator('.fm-observatory-currency')).toHaveText(/^captured .+ · last 3 days: 1 in motion · 2 unknown · attention: #101 · first route item · complete$/);
+        await expect(details).toHaveAttribute('aria-expanded', 'false');
+        await expect(currency).toBeHidden();
+        await details.click();
+        await expect(details).toHaveAttribute('aria-expanded', 'true');
+        await expect(currency).toBeVisible();
+        await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
 
         const
             places = () => Promise.all(NODES.map(({id}) => locate(id))),
@@ -460,7 +475,41 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
             return [heat, lens]
         }).toEqual([null, null]);
-        await expect(currency).toHaveText(/ · complete$/)
+        await expect(currency).toHaveText(/ · complete$/);
+
+        // the attention item selects its node
+        await pane.locator('.fm-observatory-attention').click();
+        await expect(selection).toHaveText('first route item');
+        expect((await stats()).selectedId).toBe(q('pr-101'))
+    });
+
+    test('the Nodes list leads with what changed, its head names the order, and its toggle reads by relations and back', async ({page, neuralLink}) => {
+        const
+            {land, pane, settle} = await openObservatory(page, neuralLink),
+            attribution = team(Date.now()),
+            caption     = pane.locator('.fm-observatory-nodes-caption'),
+            labels      = pane.locator('.fm-observatory-node-list .fm-observatory-row-label'),
+            nodesHead   = pane.getByRole('button', {name: /^Nodes/}),
+            toggle      = pane.getByRole('button', {name: 'by relations', exact: true});
+
+        await land(read({nodes: NODES.map(node => ({...node, ...attribution[node.id]}))}));
+        await settle();
+
+        // the read names peers, so Team opens first and Nodes keeps only its chrome line
+        await expect(caption, 'collapsed, the order waits with the list').toBeHidden();
+        await nodesHead.click();
+        await expect(nodesHead).toHaveText('Nodes');
+        await expect(caption).toHaveText('changed in the last 3 days first · then by activity');
+        await expect(labels, 'the work changed within the window, newest first, the closed issue among it; then by activity').toHaveText(['two hops out', 'first route item', 'third route item', 'second route item', 'Grace', 'Dock', 'no seed reaches']);
+        await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+        await expect(caption).toHaveText('by relations · most related first');
+        await expect(labels, 'the most related first, ties in the scene\'s order').toHaveText(['first route item', 'Grace', 'Dock', 'second route item', 'two hops out', 'third route item', 'no seed reaches']);
+
+        await toggle.click();
+        await expect(labels.first()).toHaveText('two hops out')
     });
 
     test('the selected node says what it is and opens its evidence one step away, from the keyboard: a work item its GitHub page, a session its Memories drill in the cockpit, a concept that it has no source view', async ({page, neuralLink}) => {
@@ -490,14 +539,24 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         }));
         await settle();
 
-        await rows.first().click();
+        // the read names peers, so Team opens first: the rows live under Nodes, a node's facts and actions under Selected
+        const
+            nodesHead    = pane.getByRole('button', {name: /^Nodes/}),
+            selectedHead = pane.getByRole('button', {name: /^Selected node/});
+
+        await nodesHead.click();
+        await rows.filter({hasText: 'first route item'}).click();
         await expect(selection).toHaveText('first route item');
         await expect(head, 'the qualified id stays out of the head').not.toContainText('neomjs/neo#');
+        await selectedHead.click();
         await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @tobiu · assigned to @neo-opus-vega · last activity .+ · Golden Path rank 1$/);
         await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/101');
         await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/, /mentions\s*to\s*1/]);
 
+        await nodesHead.click();
+        await rows.nth(1).click();
         await walkTo('a session');
+        await selectedHead.click();
         await pane.getByRole('button', {name: 'Open in Memories'}).press('Enter');
         await expect(page.locator('.fm-fleet-cockpit'), 'the route moves to the cockpit').toBeVisible();
         await expect(page.locator('.fm-memories-drill-title'), 'whose Memories pane drills into the session').toHaveText('a session');
@@ -505,9 +564,11 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await page.getByRole('tab', {name: 'Observatory', exact: true}).click();
         await expect(selection, 'the Observatory kept its selection').toHaveText('a session');
         await settle();
-        await rows.first().click();
+        await nodesHead.click();
+        await rows.filter({hasText: 'first route item'}).click();
         await expect(selection).toHaveText('first route item');
         await walkTo('Dock');
+        await selectedHead.click();
         await expect(pane.locator('.fm-observatory-selected-no-source')).toHaveText('No source view for concept');
         await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveCount(0)
     });

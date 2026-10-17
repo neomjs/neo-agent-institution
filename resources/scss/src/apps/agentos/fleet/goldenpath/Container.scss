@@ -1,13 +1,23 @@
 /* The Golden Path reading pane. The shell's pane head (the pane contract in Viewport.scss, which
-   also owns the inset) over the producer-written recommendation; typed-route metadata remains a
-   separate footer. Every value comes from the Fleet token layer: spacing from --fm-space-*, type
-   from --fm-text-*, the corner from --fm-chip-radius, and hairlines use the `thin` keyword. */
+   also owns the inset), then the typed route's facts as one wrapping row — currency, REM, run —
+   then the producer-written recommendation as the pane's scrolling column. The pane itself never
+   scrolls: the facts stay on screen at any pane height, and only the column moves. Every value
+   comes from the Fleet token layer: spacing from --fm-space-*, type from --fm-text-*, the corner
+   from --fm-chip-radius, and hairlines use the `thin` keyword. */
 .fm-golden-path-pane {
     gap     : var(--fm-space-2);
-    overflow: auto;
+    overflow: hidden;
 
+    .fm-golden-path-facts {
+        column-gap: var(--fm-space-3);
+        row-gap   : var(--fm-space-1);
+    }
+
+    /* the chip's frame is the currency itself, in two dimensions: the colour names the state, and
+       only a current route earns a solid line — every other state is dashed, so the frame reads
+       as freshness before the words do */
     .fm-golden-path-currency {
-        border       : thin solid var(--fm-line-soft);
+        border       : thin dashed var(--fm-line-soft);
         border-radius: var(--fm-chip-radius);
         color        : var(--fm-ink);
         font         : var(--fm-text-body);
@@ -16,6 +26,7 @@
 
         &.is-current {
             border-color: var(--fm-state-ok);
+            border-style: solid;
         }
 
         &.is-withheld,
@@ -40,18 +51,23 @@
         font : var(--fm-text-micro);
     }
 
+    /* the column: `min-height: 0` lets the flex item shrink below its content so its own scroll
+       engages instead of lifting the pane */
     .fm-golden-path-markdown {
         color        : var(--fm-ink);
         font         : var(--fm-text-display);
         font-weight  : 400;
         line-height  : 1.6;
+        min-height   : 0;
+        overflow     : auto;
         overflow-wrap: anywhere;
-        padding      : var(--fm-space-3) var(--fm-space-4);
+        padding      : 0 var(--fm-space-4) var(--fm-space-3);
 
         h1, h2 {
             font       : var(--fm-text-display);
             font-size  : 1.5em;
             line-height: 1.3;
+            margin     : 0 0 var(--fm-space-2);
         }
 
         h3, h4, h5, h6 {
@@ -60,6 +76,19 @@
 
         p, ol, ul, li, blockquote {
             font: inherit;
+        }
+
+        /* the column reads as a ranked list: tight block rhythm, and the producer's one-bullet
+           title list under each numbered line (which the renderer emits as the following sibling
+           list) loses its bullet and indents under its number as the item's rationale line */
+        p, ol, ul {
+            margin: 0 0 var(--fm-space-2);
+        }
+
+        ol + ul {
+            list-style  : none;
+            margin-top  : calc(-1 * var(--fm-space-1));
+            padding-left: 2.4em;
         }
 
         .neo-md-quote {

@@ -56,6 +56,16 @@ test.describe('agentFreshness — pane freshness ledger, pure + now-injected (#1
         expect(result).toEqual({freshness: 'lost', observedAt: '2026-07-11T23:59:59.000Z', ageMs: null})
     });
 
+    test('classify: a source-reported staleness is never fresh, keeps its real age, and still ages into lost', () => {
+        // 10s old, inside the TTL: the source's failed refresh outranks the recent timestamp
+        expect(AgentFreshness.classifyPaneFreshness({observedAt: '2026-07-11T23:59:50.000Z', freshnessTtl: TTL, stale: true}, NOW))
+            .toEqual({freshness: 'stale', observedAt: '2026-07-11T23:59:50.000Z', ageMs: 10_000});
+        // the control: the same observation without the flag is fresh
+        expect(AgentFreshness.classifyPaneFreshness({observedAt: '2026-07-11T23:59:50.000Z', freshnessTtl: TTL, stale: false}, NOW).freshness).toBe('fresh');
+        // past LOST_TTL_FACTOR×TTL the age decides: lost
+        expect(AgentFreshness.classifyPaneFreshness({observedAt: '2026-07-11T23:56:40.000Z', freshnessTtl: TTL, stale: true}, NOW).freshness).toBe('lost')
+    });
+
     test('classify: a future/clock-skewed observation clamps to fresh, never a false stale', () => {
         // observed 5s AFTER now (negative age) → fresh, age preserved as negative for the renderer to clamp
         const result = AgentFreshness.classifyPaneFreshness({observedAt: '2026-07-12T00:00:05.000Z', freshnessTtl: TTL}, NOW);

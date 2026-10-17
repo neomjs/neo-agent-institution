@@ -3,13 +3,13 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
 
 /**
  * One authored turn record as a pooled grid cell — the drill register's row anatomy from the
- * merged memories sketch (#37/#38): the meta line (T5 viewer-local stamp with ISO on `title`,
+ * merged memories sketch: the meta line (T5 viewer-local stamp with ISO on `title`,
  * authoring identity, tool-call count), the turn's TITLE line, and the prompt as bounded
  * secondary context.
  *
  * @summary The title line follows the sketch's measured law: the tweet-size per-turn
- * `miniSummary` IS the title once the wire carries it (producer exposure:
- * neomjs/neo-agent-brain#210 — until then the field arrives null), and the bounded `response`
+ * `miniSummary` IS the title once the wire carries it (while the producer omits the field
+ * it arrives null), and the bounded `response`
  * head stands in meanwhile; when a miniSummary is present the bounded response renders as the
  * prose line beneath it. Bounds are PRESENTATION only — the record keeps the full text, and the
  * cut says so with an ellipsis. Flat pure-vdom cell rendering from a fresh {@link #rowData} bag
@@ -38,7 +38,7 @@ class TurnRowComponent extends Component {
         baseCls: ['fm-memories-turn-cell'],
         /**
          * The plain render bag: `{agentIdentity, amountToolCalls, miniSummary, prompt, response,
-         * timestamp}`. A fresh object per factory call.
+         * target, timestamp}`. A fresh object per factory call.
          * @member {Object|null} rowData_=null
          * @reactive
          */
@@ -82,7 +82,7 @@ class TurnRowComponent extends Component {
             prompt   = TurnRowComponent.boundProse(data.prompt, 240),
             metaBits = [
                 ViewerTime.formatViewerTime(data.timestamp)?.text ?? 'unknown time',
-                data.agentIdentity || null,
+                data.agentIdentity || data.target || null,
                 Number.isFinite(data.amountToolCalls) ? `${data.amountToolCalls} tool calls` : null
             ].filter(Boolean),
             children = [{

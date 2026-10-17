@@ -1,5 +1,6 @@
-import GridContainer from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
-import RowComponent  from './RowComponent.mjs';
+import GridContainer   from '../../../../../node_modules/neo.mjs/src/grid/Container.mjs';
+import MailboxRowModel from './RowModel.mjs';
+import RowComponent    from './RowComponent.mjs';
 
 /**
  * The mailbox surface as a real buffered grid — the view-layer conformance's law-0 destination
@@ -70,12 +71,12 @@ class Grid extends GridContainer {
          */
         autoDestroyStore: false,
         /**
-         * A read-only mirror selects nothing: the engine's View owns the grid's selection model, and
-         * `null` instantiates none — no row is marked by a click or an arrow key, no handler is
-         * installed. The thread toggle stays the row's own native button.
-         * @member {Object} viewConfig={selectionModel: null}
+         * A click or Up/Down selects one message, through the View's own row model; the pane opens
+         * its detail. Selecting writes nothing. The thread toggle selects nothing
+         * ({@link AgentOS.view.fleet.mailbox.RowModel}).
+         * @member {Object} viewConfig={selectionModel: {module: MailboxRowModel}}
          */
-        viewConfig: {selectionModel: null}
+        viewConfig: {selectionModel: {module: MailboxRowModel}}
     }
 
     /**
@@ -95,6 +96,7 @@ class Grid extends GridContainer {
             component: ({record}) => ({
                 module : RowComponent,
                 rowData: {
+                    archivedAt    : record.archivedAt,
                     from          : record.from,
                     priority      : record.priority,
                     recipientClass: record.recipientClass,
@@ -117,7 +119,27 @@ class Grid extends GridContainer {
         });
 
         // the body's announcement becomes the grid's: the pane listens here, never on the body
-        me.body.on('scrollEdge', me.onBodyScrollEdge, me)
+        me.body.on('scrollEdge', me.onBodyScrollEdge, me);
+        // the same for the View's selection: the pane opens or closes the detail
+        me.view.on({deselect: me.onViewDeselect, select: me.onViewSelect, scope: me})
+    }
+
+    /**
+     * @summary Relay the View's `select` as the grid's own event.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onViewSelect(data) {
+        this.fire('select', {record: data.record})
+    }
+
+    /**
+     * @summary Relay the View's `deselect` as the grid's own event.
+     * @param {Object} data `{record}`
+     * @protected
+     */
+    onViewDeselect(data) {
+        this.fire('deselect', {record: data.record})
     }
 
     /**
@@ -162,10 +184,12 @@ class Grid extends GridContainer {
      * because every run creates new record identities, the pooled cells re-seat without any
      * version choreography.
      * @param {Object[]} bags Plain row objects (already carrying `threadCollapsed` view state).
+     * @param {Object} [options={}] Store data-assignment options.
+     * @param {Boolean} [options.continuation=false] Older pages retain the grid's reading position.
      */
-    applyBags(bags) {
+    applyBags(bags, options={}) {
         this.stampThreadFacts(bags);
-        this.store.data = bags
+        this.store.setData(bags, options)
     }
 
     /**

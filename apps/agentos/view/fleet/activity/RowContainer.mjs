@@ -2,7 +2,9 @@ import ActorChip  from './ActorChipComponent.mjs';
 import Component  from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import EventChip  from './EventChipComponent.mjs';
+import NeoArray   from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
 import ViewerTime from '../../../util/ViewerTime.mjs';
+import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
  * @summary The home repository whose conversations render bare (`#N`).
@@ -77,15 +79,34 @@ const PR_DECISION_LABELS = Object.freeze({
     CHANGES_REQUESTED: 'changes requested',
     REVIEW_REQUIRED  : 'review required'
 });
+const PR_TRANSITION_LABELS = Object.freeze({head: 'changes pushed', opened: 'opened'});
+
+/**
+ * @summary What one open-work transition did to its PR: a verdict reads its new decision, a push or an
+ * opening its own word, a merge or a close the PR's state. Reviewers are named only when several moved a
+ * verdict, since a single one is the row's actor. An unknown kind or decision names nothing.
+ * @param {Object}      transition `{kind, to, by?}` from the Brain's PR lane.
+ * @param {String|null} state
+ * @returns {String|null}
+ * @private
+ */
+function transitionStatus({kind, to, by}, state) {
+    const
+        [labels, key] = kind === 'verdict' ? [PR_DECISION_LABELS, to] : kind === 'merged' || kind === 'closed' ? [PR_STATE_LABELS, state] : [PR_TRANSITION_LABELS, kind],
+        word          = Object.hasOwn(labels, key) ? labels[key] : null,
+        names         = (Array.isArray(by) ? by : []).filter(name => typeof name === 'string' && name).map(name => name.replace(/^(?:@|login:|team:)/, ''));
+
+    return word && names.length > 1 ? `${word} by ${names.join(', ')}` : word
+}
 
 /**
  * @summary Resolves the status a `pr-activity` row names, from the payload the Brain's PR adapter
  * already carries.
  *
- * A merged or closed PR names that. An open draft names `draft`. An open PR names GitHub's
- * `reviewDecision`, and where the repository computes none (no required reviews), the Brain's
- * `humanGateState`, read from the latest reviews. Anything else resolves `null`: a status is
- * never guessed.
+ * An open-work transition names what it did ({@link transitionStatus}). Otherwise a merged or closed
+ * PR names that. An open draft names `draft`. An open PR names GitHub's `reviewDecision`, and where
+ * the repository computes none (no required reviews), the Brain's `humanGateState`, read from the
+ * latest reviews. Anything else resolves `null`: a status is never guessed.
  * @param {Object} event Record or record-shaped object.
  * @returns {String|null}
  */
@@ -94,7 +115,11 @@ export function getPullRequestStatus(event) {
         return null
     }
 
-    const {humanGateState, isDraft, reviewDecision, state} = event.payload || {};
+    const {humanGateState, isDraft, reviewDecision, state, transition} = event.payload || {};
+
+    if (Neo.typeOf(transition) === 'Object') {
+        return transitionStatus(transition, state)
+    }
 
     if (Object.hasOwn(PR_STATE_LABELS, state)) {
         return PR_STATE_LABELS[state]
@@ -233,7 +258,7 @@ class RowContainer extends Container {
             module   : ActorChip,
             reference: 'actor'
         }, {
-            module   : Component,
+            module   : ActorChip,
             cls      : ['fm-ev-recipient'],
             reference: 'recipient'
         }, {
@@ -283,14 +308,13 @@ class RowContainer extends Container {
      */
     updateRow() {
         const
-            me      = this,
-            event   = me.record,
-            agentId = event?.agentId || null,
-            facts   = agentId
-                ? me.actorDirectory?.[agentId] ?? me.actorDirectory?.[String(agentId).replace(/^@/, '')] ?? {}
-                : {},
+            me        = this,
+            event     = me.record,
+            agentId   = event?.agentId || null,
+            facts     = me.getActorFacts(agentId),
             time      = ViewerTime.formatViewerTime(event?.occurredAt),
             recipient = me.getRecipient(event),
+            toFacts   = me.getActorFacts(recipient?.to),
             timeCell  = me.getReference('time'),
             kindCell  = me.getReference('kind'),
             actorCell = me.getReference('actor'),
@@ -317,15 +341,23 @@ class RowContainer extends Container {
             label    : facts.displayName ?? null
         });
 
-        toCell.vdom.title = recipient?.title ?? null;
         toCell.setSilent({
-            cls   : ['fm-ev-recipient', recipient?.broadcast ? 'is-broadcast' : 'is-direct', ...(!recipient ? ['is-empty'] : [])],
-            hidden: false,
-            text  : recipient?.text ?? ''
+            agentId  : recipient?.title ?? null,
+            avatarUrl: toFacts.avatarUrl ?? null,
+            cls      : ['fm-ev-recipient', recipient?.broadcast ? 'is-broadcast' : 'is-direct', ...(!recipient ? ['is-empty'] : [])],
+            hidden   : false,
+            label    : !recipient ? null : recipient.broadcast ? 'fleet' : toFacts.displayName ?? recipient.to.replace(/^@/, ''),
+            lead     : recipient?.lead ?? null
         });
 
         textCell.vdom.title = getActivityObjectTitle(event);
         textCell.setSilent({text});
+
+        // a mailbox message is what an observer mode opens beside the list
+        const cls = me.cls;
+
+        NeoArray.toggle(cls, 'is-message', event?.source === FLEET_COCKPIT_SOURCES.a2a && !!event.payload?.messageId);
+        me.setSilent({cls});
 
         me.vdom['aria-label'] = [time?.text, event?.type, agentId, recipient?.text, text].filter(Boolean).join(' · ');
         me.updateDepth = 2;
@@ -333,9 +365,20 @@ class RowContainer extends Container {
     }
 
     /**
-     * @summary Resolves the optional A2A recipient cell without deriving identity.
+     * @summary The roster facts the actor directory holds for an id, `@`-form or bare.
+     * @param {String|null} id
+     * @returns {Object} The facts, or `{}` when the directory has none.
+     * @protected
+     */
+    getActorFacts(id) {
+        return id ? this.actorDirectory?.[id] ?? this.actorDirectory?.[String(id).replace(/^@/, '')] ?? {} : {}
+    }
+
+    /**
+     * @summary Resolves the optional A2A recipient cell without deriving identity: a direct
+     * recipient is a chip like the sender's, a broadcast is the fleet.
      * @param {Object|null} event
-     * @returns {Object|null}
+     * @returns {Object|null} `{broadcast, lead, text, title, to}`, or null for no recipient.
      * @protected
      */
     getRecipient(event) {
@@ -351,8 +394,10 @@ class RowContainer extends Container {
 
         return {
             broadcast,
+            lead : broadcast ? '⇒' : '→',
             text : broadcast ? '⇒ fleet' : `→ ${to}`,
-            title: to ?? 'AGENT:*'
+            title: to ?? 'AGENT:*',
+            to   : broadcast ? null : to
         }
     }
 }

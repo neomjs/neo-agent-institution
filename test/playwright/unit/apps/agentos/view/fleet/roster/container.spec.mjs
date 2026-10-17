@@ -141,6 +141,40 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(healthCounts(null)).toEqual(zero)
     });
 
+    test('the provider roster liveness binding gates launch guidance on pooled cards', async () => {
+        const
+            sources = {
+                roster    : {source: 'fleet:listAgents', state: 'wired', confidence: 'observed'},
+                repoStatus: {source: 'fleet:fleetStatus', state: 'wired', confidence: 'observed'},
+                runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
+            },
+            store = makeStore([{
+                agentId: 'resident', displayName: 'Resident', state: 'ok', sources,
+                launchAdmission: {
+                    state: 'stale', reason: 'issuer-replaced', generation: null,
+                    since: null, servers: [], recent: []
+                }
+            }]),
+            grid = Neo.create(FleetGrid, {
+                appName, store,
+                stateProvider: {module: StateProvider, data: {gridAdapterState: 'live'}}
+            }),
+            list = await readyList(grid),
+            card = cards(list)[0],
+            status = card.down({reference: 'control-status'}),
+            provider = grid.stateProvider;
+
+        expect(provider).toBeTruthy();
+        expect(card.rosterState).toBe('live');
+        expect(status.hidden).toBe(false);
+
+        provider.setData({gridAdapterState: 'stale'});
+        expect(card.rosterState).toBe('stale');
+        expect(status.hidden).toBe(true);
+
+        grid.destroy()
+    });
+
     test('hasAttention derives the aggregate header verdict — only actionable buckets carry weight', () => {
         const zero = {ok: 0, idle: 0, wedged: 0, limited: 0, off: 0};
 
@@ -523,12 +557,21 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         expect(provider.getData('selectedAgentId')).toBe(other.agentId);
         expect(fired).toHaveLength(2);
 
-        // an explicit empty event clears the cross-pane truth and fires no detail intent
-        model.deselectAll(true);
-        controller.onRosterSelect({records: [], selection: []});
+        // an explicit empty event or Escape clears the cross-pane truth and fires the clearing detail intent
+        model.deselectAll();
         expect(provider.getData('selectedAgentId')).toBeNull();
         expect(provider.getData('selectedAgentIdentity')).toBeNull();
-        expect(fired).toHaveLength(2);
+        expect(fired).toHaveLength(3);
+        expect(fired[2]).toEqual({agentId: null, source: grid.id});
+
+        model.select(list.getItemId(target.agentId));
+        expect(fired).toHaveLength(4);
+        model.onKeyDownEscape({});
+        expect(model.getSelection()).toEqual([]);
+        expect(provider.getData('selectedAgentId')).toBeNull();
+        expect(provider.getData('selectedAgentIdentity')).toBeNull();
+        expect(fired).toHaveLength(5);
+        expect(fired[4]).toEqual({agentId: null, source: grid.id});
 
         // Enter selects the Navigator-focused row (focusIndex is the base list's navigate state)
         list._focusIndex = 1;
@@ -537,6 +580,13 @@ test.describe('Fleet roster — the animated store-driven list: sorters rank, fi
         const selected = model.getSelection();
         expect(selected).toHaveLength(1);
         expect(list.getItemRecordId(selected[0])).toBe(store.items[1].agentId);
+
+        store.remove(store.items[1]);
+        expect(model.getSelection()).toEqual([]);
+        expect(provider.getData('selectedAgentId')).toBeNull();
+        expect(provider.getData('selectedAgentIdentity')).toBeNull();
+        expect(fired).toHaveLength(7);
+        expect(fired[6]).toEqual({agentId: null, source: grid.id});
 
         grid.destroy()
     });

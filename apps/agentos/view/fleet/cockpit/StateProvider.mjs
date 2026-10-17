@@ -14,7 +14,7 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
     daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason, cause: data.daemonCause},
     grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason, connection: data.gridConnection},
     plane    : {cause: data.planeCause},
-    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection},
+    stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection, guidance: data.activityGuidance},
     transport: data.shellTransport
 });
 
@@ -57,11 +57,27 @@ class StateProvider extends Provider {
          * @member {Object} data
          */
         data: {
+            /** @member {Object} stageLaunch One addressed optional-sibling outcome. */
+            stageLaunch: {recordId: null, state: null, message: null},
             /**
              * Live activity fold counts for the stream header, written by the activity read.
              * @member {Object[]} activityCounts=[]
              */
             activityCounts: [],
+            /**
+             * The Activity feed's A2A population: the viewer's own `mailbox` (the ordinary feed, and the roster's
+             * lane source), or an explicit observer read, `involves-me` or `all` ({@link AgentOS.util.ActivityObserver}).
+             * Session view state, never persisted; the stream's head chips ask the controller to switch it.
+             * @member {'mailbox'|'involves-me'|'all'} activityMode='mailbox'
+             */
+            activityMode: 'mailbox',
+            /**
+             * What the observer read answered: `state` `admitted` or `unavailable` (`null` in the mailbox mode and
+             * before an answer), the effective sharing `policy`, whether the requested breadth was `clamped`, and an
+             * unavailable read's safe `reason`. Leaf-complete, because `setData` drills objects into leaf paths.
+             * @member {Object} activityObservation={clamped:false,policy:null,reason:null,state:null}
+             */
+            activityObservation: {clamped: false, policy: null, reason: null, state: null},
             /**
              * The lifecycle owner's cause code while the Brain is not running (`organism-beside-plane`,
              * `plane-refused` or the kind the shell's plane probe told apart — `plane-unreachable`,
@@ -183,12 +199,12 @@ class StateProvider extends Provider {
              * Formula-owned — the one banner verdict; the banner and the reconnect affordance
              * bind its LEAVES (`setData` drills object values into leaf paths — an object-valued
              * key never becomes one trackable config, so consumers bind `data.spineBanner.text`
-             * etc. and every leaf is declared here). `text` is the pill's status word; `title`
-             * carries the full honesty sentence, `ariaLabel` its screen-reader mirror; `action` names
-             * what the affordance does (`'connect-plane'`, or `null` for the reconnect).
+             * etc. and every leaf is declared here). `text` is the pill's status word; `lead` the one
+             * sentence shown beside it; `title` adds the retained cause, `ariaLabel` its screen-reader
+             * mirror; `action` names what the affordance does (`'connect-plane'`, or `null` for the reconnect).
              * @member {Object} spineBanner
              */
-            spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', text: '', title: ''},
+            spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', lead: '', text: '', title: ''},
             /**
              * Formula-owned — the wake chip's derivation; leaf-declared for the same reason.
              * Re-derives on every `viewerWake` stamp beat (the cadence the observations move on).

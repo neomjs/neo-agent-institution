@@ -478,27 +478,35 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
         pane.destroy()
     });
 
-    test('provenance vocabulary: the drill head carries the authored tag — never while the derived register shows', () => {
-        // the summary cards' `is-derived` chip lives inside the pooled SummaryRowComponent cells now —
-        // pinned in summaryRow.spec.mjs; the pane owns the drill head's AUTHORED half
+    test('provenance vocabulary: the head line and drill head carry their provenance key within one glance', () => {
+        // the summary cards' `is-derived` chip lives inside the pooled SummaryRowComponent cells —
+        // pinned in rowComponents.spec.mjs; the pane owns the head's reader sentence and the drill
+        // head's AUTHORED chip + muted legend line
         const {pane} = createDrillPane({
             snapshot: envelope({target: '@neo-opus-ada', sessions: [row('a1')], total: 1})
         });
 
-        const authoredChip = () => {
-            const walk = item =>
-                (item.cls?.includes('is-authored')) || (item.items || []).some(walk);
+        const provenance = pane.getReference('memories-provenance');
+        expect(provenance.text).toBe('Summaries are made at read time from the agent\'s own records; they are not the record.');
+        expect(provenance.vdom.title).toBe('query-time · not authority');
 
-            return walk(pane.getReference('memories-drill-head'))
-        };
+        const
+            drillHead = pane.getReference('memories-drill-head'),
+            legend    = pane.getReference('memories-drill-legend'),
+            authored  = drillHead.items.find(item => item.cls?.includes('is-authored'));
 
-        expect(authoredChip()).toBe(true);
-        expect(pane.getReference('memories-drill-head').hidden).toBe(true);
+        expect(authored).toBeTruthy();
+        expect(authored.text).toBe('authored records');
+        expect(authored.vdom.title).toBe('the agent\'s own prompt · thought · response');
+        expect(legend.text).toBe('authored records: the agent\'s own prompt · thought · response. derived: a summary made from them.');
+        expect(legend.flex).toBe('1 0 100%');
+        expect(drillHead.items.indexOf(legend)).toBeGreaterThan(drillHead.items.indexOf(pane.getReference('memories-drill-title')));
+        expect(drillHead.hidden).toBe(true);
 
         pane.onCardOpen(pane.summaryStore.first());
         pane.drillSnapshot = drillEnvelope({sessionId: 'a1-session', turns: [turn('t1', 'a1-session')], total: 1});
 
-        expect(pane.getReference('memories-drill-head').hidden).toBe(false);
+        expect(drillHead.hidden).toBe(false);
         expect(pane.getReference('memories-summary-grid').hidden).toBe(true);
 
         pane.destroy()

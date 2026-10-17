@@ -56,7 +56,14 @@ class ActorChip extends Component {
          * @member {String|null} label_=null
          * @reactive
          */
-        label_: null
+        label_: null,
+        /**
+         * Optional mark before the avatar: the activity row's recipient arrow (`→` direct, `⇒`
+         * broadcast). Null renders none.
+         * @member {String|null} lead_=null
+         * @reactive
+         */
+        lead_: null
     }
 
     /** @param {String|null} value @param {String|null} oldValue @protected */
@@ -74,9 +81,15 @@ class ActorChip extends Component {
         this.updateChip()
     }
 
+    /** @param {String|null} value @param {String|null} oldValue @protected */
+    afterSetLead(value, oldValue) {
+        this.updateChip()
+    }
+
     /**
-     * @summary Rebuild the chip vdom: optional avatar image + the actor text, with the canonical
-     * id on the title for citation. An absent agentId renders empty — the consumer owns absence.
+     * @summary Rebuild the chip vdom: optional lead mark + optional avatar image + the actor text,
+     * with the canonical id on the title for citation. An absent agentId renders empty — the
+     * consumer owns absence.
      * @protected
      */
     updateChip() {
@@ -87,6 +100,7 @@ class ActorChip extends Component {
 
         me.vdom.title = agentId || null;
         me.vdom.cn    = [
+            ...(me.lead ? [{tag: 'span', cls: ['fm-actor-chip-lead'], 'aria-hidden': 'true', text: me.lead}] : []),
             ...(me.avatarUrl ? [{tag: 'img', cls: ['fm-actor-chip-avatar'], src: me.avatarUrl, alt: '', 'aria-hidden': 'true'}] : []),
             {tag: 'span', cls: ['fm-actor-chip-text'], text}
         ];

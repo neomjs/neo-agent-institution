@@ -8,17 +8,31 @@ import path                                                                    f
 const [
     {startFleetBridgeServer},
     {default: FleetLifecycleService},
-    {default: FleetRegistryService}
+    {default: FleetManager},
+    {default: FleetRegistryService},
+    {resolveSeatGitIdentity}
 ] = await Promise.all([
     loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
     loadAgentOsModule('ai/services/fleet/FleetLifecycleService.mjs'),
-    loadAgentOsModule('ai/services/fleet/FleetRegistryService.mjs')
+    loadAgentOsModule('ai/services/fleet/FleetManager.mjs'),
+    loadAgentOsModule('ai/services/fleet/FleetRegistryService.mjs'),
+    loadAgentOsModule('ai/services/fleet/seatGitIdentity.mjs')
 ]);
 
 const
     ADDED_SEAT    = 'first-launch-seat',
     EXTERNAL_SEAT = 'external-harness-seat',
     PAT           = 'github_pat_FIRST_LAUNCH_WITNESS_1234abcd';
+
+/**
+ * @summary The seat's forge as Add reads it: its own account, with a name and no email this PAT can read,
+ * so its commit identity needs the operator's declaration. Nothing leaves the machine.
+ * @param {String} url
+ * @returns {Promise<Response>}
+ */
+const fixtureForge = async url => new URL(url).pathname === '/user'
+    ? new Response(JSON.stringify({login: ADDED_SEAT, name: 'First Launch', email: null}), {status: 200, headers: {'content-type': 'application/json'}})
+    : new Response('{}', {status: 404, headers: {'content-type': 'application/json'}});
 
 /**
  * @summary A child that stays up until killed, so the fleet holds a live process record exactly as
@@ -60,11 +74,14 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
                 instanceRoot      : FleetLifecycleService.instanceRoot,
                 spawnFn           : FleetLifecycleService.spawnFn
             },
-            priorDataDir = FleetRegistryService.dataDir;
+            priorDataDir       = FleetRegistryService.dataDir,
+            priorGitIdentityFn = FleetManager.gitIdentityFn;
 
         launches = [];
         FleetRegistryService.dataDir = dataDir;
         FleetLifecycleService.processes.clear();
+        // Add's identity read runs the real derivation over the fixture forge
+        FleetManager.gitIdentityFn = args => resolveSeatGitIdentity({...args, fetchFn: fixtureForge});
 
         Object.assign(FleetLifecycleService, {
             execFileFn        : () => {},                     // the harness version probe runs nothing
@@ -83,6 +100,7 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
             await new Promise(resolve => server.close(resolve));
             FleetLifecycleService.processes.clear();
             Object.assign(FleetLifecycleService, prior);
+            FleetManager.gitIdentityFn   = priorGitIdentityFn;
             FleetRegistryService.dataDir = priorDataDir;
             fs.rmSync(dataDir, {force: true, recursive: true})
         }
@@ -119,6 +137,17 @@ test.describe('AgentOS §04 — the first launch of a seat from the cockpit (Neu
         await page.locator('.fm-add-agent-form input[type="password"]').fill(PAT);
         await page.locator('.fm-add-submit').click();
         await expect(page.locator('.fm-add-status.is-readback-confirmed')).toBeVisible({timeout: 15000});
+
+        // its account offers no email, so the identity row opens inline and the operator declares one;
+        // Start would refuse a seat with no identity to commit under
+        const identity = page.locator('.fm-add-agent-form .fm-git-identity');
+
+        await expect(identity.locator('.fm-git-identity-line')).toHaveText('No commit identity: its forge account offers no email this PAT can read.', {timeout: 15000});
+        await expect(identity.locator('input[name="gitName"]')).toHaveValue('First Launch');
+        await identity.locator('input[name="gitEmail"]').fill('first-launch@example.com');
+        await identity.locator('.fm-git-identity-save').click();
+        await expect(page.locator('.fm-add-status')).toHaveText('Agent added. Commits as First Launch <first-launch@example.com> · declared.', {timeout: 15000});
+        await expect(identity).toBeHidden();
 
         const
             card   = page.locator('.fm-fleet-cards .fm-agent-card'),

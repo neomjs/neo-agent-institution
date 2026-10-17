@@ -8,24 +8,40 @@
     background: var(--fm-panel);
     min-height: 0;
 
-    /* the Team head, the View section's rows and the selected node's actions: the shell's ghost verb at the chrome
-       scale (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row, so the
-       head's trailing-slot margin does not apply */
+    /* the Team and Nodes heads, the View section's rows and the selected node's actions: the shell's ghost verb at the
+       chrome scale (Viewport.scss `.fm-pane-actions`), whose pressed state carries the choice; they lead their row,
+       so the head's trailing-slot margin does not apply */
     .fm-observatory-peers-head,
+    .fm-observatory-nodes-row,
     .fm-observatory-view-row,
     .fm-observatory-selected-actions {
         margin-left: 0;
     }
 
-    /* the Team head: the section's title, then the lens's Clear and the scope's All; the head draws the panel's
-       first line, so the title inside it keeps none of its own */
-    .fm-observatory-peers-head {
+    /* the Team head (the section's title, then the lens's Clear and the scope's All) and the Nodes head's chrome line
+       (the title with its count, then the order's toggle): the row draws the line above its section across its full
+       width, so the title inside it keeps none of its own */
+    .fm-observatory-peers-head,
+    .fm-observatory-nodes-row {
+        border-top   : thin solid var(--fm-line-soft);
         padding-right: var(--fm-space-3);
 
-        .fm-observatory-side-title {
+        .fm-observatory-side-title.neo-button {
             border-top: none;
             min-width : 0;
         }
+    }
+
+    /* the Nodes list's order in words, under its chrome line in the detail role; a collapsed section keeps only the
+       chrome line */
+    .fm-observatory-nodes-caption {
+        color  : var(--fm-ink-dim);
+        font   : var(--fm-text-detail);
+        padding: 0 var(--fm-space-3) var(--fm-space-1);
+    }
+
+    .fm-observatory-nodes-head:has(.fm-observatory-section-head[aria-expanded="false"]) .fm-observatory-nodes-caption {
+        display: none;
     }
 
     .fm-observatory-view-row {
@@ -35,58 +51,6 @@
     .fm-observatory-view-label {
         color: var(--fm-ink-dim);
         font : var(--fm-text-micro);
-    }
-
-    /* two rows: the title with the hovered node beside it, then the read's line on its own, so no hover
-       pushes the line out */
-    .fm-observatory-head {
-        display              : grid;
-        align-items          : baseline;
-        border-bottom        : thin solid var(--fm-line-soft);
-        column-gap           : var(--fm-space-3);
-        grid-template-areas  : "title hover" "line line";
-        grid-template-columns: auto minmax(0, 1fr);
-        min-width            : 0;
-        padding              : var(--fm-space-2) var(--fm-space-3);
-        row-gap              : var(--fm-space-1);
-        font                 : var(--fm-text-chrome);
-        letter-spacing       : var(--fm-text-chrome-tracking);
-        text-transform       : uppercase;
-        color                : var(--fm-ink-dim);
-        white-space          : nowrap;
-
-        .fm-observatory-title {
-            color    : var(--fm-ink);
-            grid-area: title;
-        }
-
-        .fm-observatory-currency,
-        .fm-observatory-hover {
-            max-width    : 100%;
-            min-width    : 0;
-            overflow     : hidden;
-            text-overflow: ellipsis;
-        }
-
-        .fm-observatory-currency {
-            grid-area: line;
-        }
-
-        /* the hovered node keeps its own case: it is a title, not chrome; the gesture hint that
-           stands in for it while no node is under the pointer stays chrome, dim */
-        .fm-observatory-hover {
-            color         : var(--fm-signal);
-            grid-area     : hover;
-            justify-self  : end;
-            letter-spacing: normal;
-            text-transform: none;
-
-            &.is-hint {
-                color         : var(--fm-ink-dim);
-                letter-spacing: inherit;
-                text-transform: inherit;
-            }
-        }
     }
 
     /* the selected node: its label in its own case, like the hovered one, then the kind and the facts dim; a
@@ -103,18 +67,15 @@
         min-width  : 0;
         padding    : var(--fm-space-1) var(--fm-space-3) 0;
 
+        /* the selected node's title reads whole: it wraps */
         .fm-observatory-selected-label {
             color        : var(--fm-ink);
             font         : var(--fm-text-body);
             min-width    : 0;
-            overflow     : hidden;
-            text-overflow: ellipsis;
-            white-space  : nowrap;
+            overflow-wrap: anywhere;
 
-            /* a clearing note wraps: its reason is the point */
             &.is-empty {
-                color      : var(--fm-ink-dim);
-                white-space: normal;
+                color: var(--fm-ink-dim);
             }
 
             &.is-hint {
@@ -157,12 +118,30 @@
         position      : absolute;
     }
 
-    /* the side panel: the team, the view, the nodes and the selected node, a fixed column beside the surface
-       (or the whole body where no canvas worker draws) on the chrome scale, each list row one line */
+    /* the side panel: the view, the team, the nodes and the selected node, a column beside the surface (or the
+       whole body where no canvas worker draws) on the chrome scale. The splitter's drag clamps against its
+       min/max, so they are the panel's only bounds; the width itself starts here every session */
     .fm-observatory-side {
         border-left: thin solid var(--fm-line-soft);
         min-height : 0;
+        min-width  : 280px;
         width      : 320px;
+    }
+
+    /* the canvas | panel splitter speaks the dock splitter's flat language (cockpit/Container.scss): a soft
+       line at rest, the signal under the pointer, square, no margin; it is the panel's edge, so the panel
+       draws no second one */
+    .fm-observatory-splitter {
+        --splitter-background-color: color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
+        --splitter-border-radius   : 0;
+        --splitter-hover-color     : color-mix(in srgb, var(--fm-signal) 45%, transparent);
+        --splitter-margin-vertical : 0;
+    }
+
+    /* beside the surface the panel stops at half the body; without one it is the whole body */
+    .fm-observatory-splitter + .fm-observatory-side {
+        border-left: none;
+        max-width  : 50%;
     }
 
     .fm-observatory-side-title {
@@ -174,15 +153,72 @@
         text-transform: uppercase;
     }
 
-    /* the head above already draws the panel's first line */
-    .fm-observatory-side > .fm-observatory-side-title:first-child {
+    /* the head above already draws the panel's first line, so the first section's title keeps none of its own */
+    .fm-observatory-side > :first-child > .fm-observatory-side-title:first-child {
         border-top: none;
     }
 
-    /* the team lens: the engine's check list, a few rows high, each peer in its own hue */
-    .fm-observatory-peer-list {
-        max-height: 132px;
+    /* a section's head is its title as a button: it reads like the panel's other titles, a caret says whether it
+       is open, the open one is in full ink, and a collapsed section keeps only its head, which names its count */
+    .fm-observatory-section-head {
+        --button-ghost-background-color      : transparent;
+        --button-ghost-background-color-hover: var(--fm-panel-2);
+        --button-ghost-border                : none;
+        --button-ghost-border-active         : none;
+        --button-ghost-border-pressed        : none;
+        --button-ghost-text-color            : var(--fm-ink-dim);
+        --button-ghost-text-color-active     : var(--fm-ink);
 
+        border-radius  : 0;
+        justify-content: flex-start;
+        width          : 100%;
+
+        .neo-button-text {
+            font          : inherit;
+            letter-spacing: inherit;
+            text-transform: inherit;
+        }
+
+        &::after {
+            color      : var(--fm-ink-dim);
+            content    : '▸';
+            margin-left: var(--fm-space-1);
+        }
+
+        &[aria-expanded="true"] {
+            --button-ghost-text-color: var(--fm-ink);
+
+            &::after {
+                content: '▾';
+            }
+        }
+    }
+
+    /* the ghost button's own border rule would drop the line the panel's titles draw between sections */
+    .fm-observatory-section-head.neo-button {
+        border-top: thin solid var(--fm-line-soft);
+    }
+
+    .fm-observatory-team.is-collapsed .fm-observatory-peer-list,
+    .fm-observatory-node-list.is-collapsed,
+    .fm-observatory-selected.is-collapsed > :not(.fm-observatory-section-head, .fm-observatory-selected-head) {
+        display: none;
+    }
+
+    /* collapsed, the selected node's head is one line: the node the keys walk to, cut with an ellipsis */
+    .fm-observatory-selected.is-collapsed .fm-observatory-selected-label {
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+    }
+
+    /* open, the Team section is as tall as the panel leaves it, never as its peers: the list scrolls inside it */
+    .fm-observatory-team {
+        min-height: 0;
+    }
+
+    /* the team lens: the engine's check list, as tall as its open section, each peer in its own hue */
+    .fm-observatory-peer-list {
         .fm-observatory-peer-swatch {
             background   : hsl(var(--fm-peer-hue) 55% var(--fm-peer-lightness));
             border-radius: 50%;
@@ -277,6 +313,19 @@
             min-width    : 0;
             overflow     : hidden;
             text-overflow: ellipsis;
+        }
+    }
+
+    /* a node's title is the row's reason to exist: it wraps whole, in as many lines as it takes */
+    .fm-observatory-node-list {
+        .neo-list-item {
+            white-space: normal;
+        }
+
+        .fm-observatory-row-label {
+            overflow     : visible;
+            overflow-wrap: anywhere;
+            text-overflow: clip;
         }
     }
 

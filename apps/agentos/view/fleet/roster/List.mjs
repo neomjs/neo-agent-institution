@@ -129,6 +129,7 @@ class List extends ComponentList {
         } else {
             card = Neo.create({
                 appName  : me.appName,
+                bind     : {rosterState: data => data.gridAdapterState},
                 id       : me.getCardId(record),
                 module   : AgentCard,
                 listeners: {lifecycleIntent: 'onAgentLifecycleIntent'},
@@ -253,22 +254,34 @@ class List extends ComponentList {
     onStoreMutate(data) {
         let me = this;
 
-        if (me.items && data.removedItems?.length) {
+        if (data.removedItems?.length) {
             const
                 removed = new Set(data.removedItems.map(record => me.getRecordId(record))),
                 readded = new Set((data.addedItems ?? []).map(record => me.getRecordId(record)));
 
-            me.items = me.items.filter(card => {
-                const key    = card.record && me.getRecordId(card.record),
-                      retire = key !== null && key !== undefined && removed.has(key) && !readded.has(key);
+            if (me.items) {
+                me.items = me.items.filter(card => {
+                    const key    = card.record && me.getRecordId(card.record),
+                          retire = key !== null && key !== undefined && removed.has(key) && !readded.has(key);
 
-                // `updateParentVdom`: the li's vnode must stop naming this instance, or a returning
-                // key's fresh card under the SAME id is inserted beside the old node instead of
-                // patching it — two cards in one li. Silent: the store's `load` rebuilds right after.
-                retire && card.destroy(true, true);
+                    // `updateParentVdom`: the li's vnode must stop naming this instance, or a returning
+                    // key's fresh card under the SAME id is inserted beside the old node instead of
+                    // patching it — two cards in one li. Silent: the store's `load` rebuilds right after.
+                    retire && card.destroy(true, true);
 
-                return !retire
-            })
+                    return !retire
+                })
+            }
+
+            if (me.selectionModel?.hasSelection()) {
+                for (const itemId of [...me.selectionModel.getSelection()]) {
+                    const key = me.getItemRecordId(itemId);
+
+                    if (removed.has(key) && !readded.has(key)) {
+                        me.selectionModel.deselect(itemId)
+                    }
+                }
+            }
         }
     }
 

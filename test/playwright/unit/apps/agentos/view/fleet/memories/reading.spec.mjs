@@ -1,0 +1,434 @@
+import {setup} from '../../../../../../setup.mjs';
+
+setup({
+    appConfig: {
+        name: 'MemoriesReadingSurfaceTest'
+    }
+});
+
+import {test, expect} from '@playwright/test';
+import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
+import MemoriesPane   from '../../../../../../../../apps/agentos/view/fleet/memories/Container.mjs';
+
+/**
+ * @summary Prose of an exact length, with word breaks and no ellipsis anywhere in it.
+ * @param {Number} length
+ * @param {String} [seed='word']
+ * @returns {String}
+ */
+function prose(length, seed = 'word') {
+    let text = '', i = 0;
+
+    while (text.length < length) {
+        text += `${text ? ' ' : ''}${seed}${i++}`
+    }
+
+    return text.slice(0, length)
+}
+
+const
+    LONG_SUMMARY = prose(3000, 'summary'),
+    TURN         = {id: 't1', sessionId: 's1-session', timestamp: '2026-08-02T20:00:00.000Z', miniSummary: null, prompt: prose(900, 'prompt'), thought: prose(2400, 'thought'), response: prose(4000, 'response'), agentIdentity: '@neo-opus-grace', amountToolCalls: 7};
+
+/**
+ * @summary One session-summary row.
+ * @param {String} id
+ * @param {Object} [overrides]
+ * @returns {Object}
+ */
+function row(id, overrides = {}) {
+    return {id, sessionId: `${id}-session`, timestamp: '2026-08-02T20:00:00.000Z', title: `Title ${id}`, summary: `Summary ${id}`, category: 'analysis', memoryCount: 3, quality: 90, impact: 40, sourceAgentIdentities: ['@neo-opus-grace'], ...overrides}
+}
+
+/**
+ * @summary A pane reading `@neo-opus-grace`'s three summaries, the first one long.
+ * @returns {{pane: Object, summaryGrid: Object, turnGrid: Object, reader: Object, intents: Object[]}}
+ */
+function readyPane() {
+    const
+        intents = [],
+        pane    = Neo.create(MemoriesPane, {
+            listeners: {sessionDetailRequest: ({source, ...params}) => intents.push(params)}
+        });
+
+    pane.activeAgent = '@neo-opus-grace';
+    pane.snapshot    = {
+        capability: {state: 'wired', capturedAt: '2026-08-03T09:00:00.000Z'},
+        target    : '@neo-opus-grace',
+        page      : {offset: 0, limit: 20},
+        sessions  : [row('s1', {summary: LONG_SUMMARY}), row('s2'), row('s3', {summary: 42})],
+        count     : 3,
+        total     : 3
+    };
+
+    return {
+        pane,
+        intents,
+        reader     : pane.getReference('memories-reader'),
+        summaryGrid: pane.getReference('memories-summary-grid'),
+        turnGrid   : pane.getReference('memories-turn-grid')
+    }
+}
+
+/**
+ * @summary Every text leaf under a vdom node, in order.
+ * @param {Object} node
+ * @returns {String[]}
+ */
+function texts(node) {
+    return [node.text, ...(node.cn || []).flatMap(texts)].filter(text => typeof text === 'string' && text)
+}
+
+/**
+ * @summary The nodes under a vdom node that carry one class.
+ * @param {Object} node
+ * @param {String} cls
+ * @returns {Object[]}
+ */
+function nodesWith(node, cls) {
+    return [...node.cls?.includes(cls) ? [node] : [], ...(node.cn || []).flatMap(child => nodesWith(child, cls))]
+}
+
+/**
+ * @summary The engine's own row click on one register, the way the RowModel receives it.
+ * @param {Object} grid
+ * @param {Number} index
+ */
+function click(grid, index) {
+    grid.view.selectionModel.onRowClick({record: grid.store.getAt(index)})
+}
+
+test.describe('MemoriesPane — reading a memory whole (#506)', () => {
+    test('a selected summary reads whole beside its rail; selecting it again returns the list', () => {
+        const {pane, reader, summaryGrid} = readyPane();
+
+        // idle: the reader names the act, the list keeps its cards
+        expect(reader.hidden).toBe(false);
+        expect(texts(reader.vdom)).toContain('Select a session summary to read it in full.');
+        expect(pane.cls).not.toContain('is-reading');
+        expect(summaryGrid.rail).toBe(false);
+
+        click(summaryGrid, 0);
+
+        const read = texts(reader.vdom);
+
+        expect(read).toContain(LONG_SUMMARY);   // all 3,000 characters, one node
+        expect(read.some(text => text.includes('…'))).toBe(false);
+        expect(read).toContain('Title s1');
+        expect(nodesWith(reader.vdom, 'fm-memories-read-turns')).toHaveLength(1);
+        expect(pane.cls).toContain('is-reading');
+        expect(summaryGrid.rail).toBe(true);
+        expect(summaryGrid.rowHeight).toBe(84);
+        expect(pane.getReference('memories-splitter').hidden).toBe(false);
+
+        click(summaryGrid, 0);
+
+        expect(texts(reader.vdom)).toContain('Select a session summary to read it in full.');
+        expect(summaryGrid.rail).toBe(false);
+        expect(summaryGrid.rowHeight).toBe(132);
+        expect(pane.getReference('memories-splitter').hidden).toBe(true)
+    });
+
+    test('the reading switch issues one batched update transaction for the register and its wrapper (#715)', () => {
+        const
+            {pane, summaryGrid, turnGrid} = readyPane(),
+            body                          = pane.getReference('memories-body'),
+            list                          = pane.getReference('memories-list'),
+            willMerge                     = comp => {
+                for (let p = Neo.getComponent(comp.parentId), d = 1; p; p = Neo.getComponent(p.parentId), d++) {
+                    if (p.needsVdomUpdate && comp.canMergeUpdate(p.updateDepth, d)) return true
+                }
+                return false
+            },
+            countTransactions             = (targets, fn) => {
+                let count = 0;
+                const originals = targets.map(target => {
+                    const original = target.update;
+                    target.update = function(...args) {
+                        if (!this.silentVdomUpdate && !willMerge(this)) {
+                            count++
+                        }
+                        return original.apply(this, args)
+                    };
+                    return [target, original]
+                });
+
+                try {
+                    fn()
+                } finally {
+                    originals.forEach(([target, original]) => target.update = original)
+                }
+
+                return count
+            };
+
+        const summaryTargets = [pane, body, list, summaryGrid, summaryGrid.body];
+
+        expect(countTransactions(summaryTargets, () => click(summaryGrid, 0))).toBe(1);
+        expect(list.wrapperStyle).toMatchObject({flex: 'none', width: '340px'});
+        expect(summaryGrid.cls).toContain('is-rail');
+        expect(summaryGrid.rowHeight).toBe(84);
+
+        expect(countTransactions(summaryTargets, () => click(summaryGrid, 0))).toBe(1);
+        expect(list.wrapperStyle).toMatchObject({flex: '2 1 0%'});
+        expect(summaryGrid.cls).not.toContain('is-rail');
+        expect(summaryGrid.rowHeight).toBe(132);
+
+        pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [TURN], total: 1};
+
+        const turnTargets = [pane, body, list, turnGrid, turnGrid.body];
+
+        expect(countTransactions(turnTargets, () => click(turnGrid, 0))).toBe(1);
+        expect(turnGrid.cls).toContain('is-rail');
+        expect(turnGrid.rowHeight).toBe(64);
+
+        // Fallback when a descendant is already in flight (e.g. list from syncZones' hidden toggles):
+        // syncReader must not leave pane.needsVdomUpdate stuck true, or subsequent list updates get
+        // swallowed by mergeIntoParentUpdate() into the depth-1 pane.
+        pane.needsVdomUpdate = false;
+        Neo.manager.VDomUpdate.registerInFlightUpdate(list.id, -1);
+        try {
+            pane.controller.syncReader(true);
+            expect(pane.needsVdomUpdate).toBe(false);
+            expect(willMerge(list)).toBe(false)
+        } finally {
+            Neo.manager.VDomUpdate.unregisterInFlightUpdate(list.id)
+        }
+
+        pane.destroy()
+    });
+
+    test('a selected turn reads as prompt, thought and response, whole, with a copy action each, and its meta carries the authoring identity from the record or the drill target', () => {
+        const {pane, reader, summaryGrid, turnGrid} = readyPane(),
+              turnWithoutIdentity                   = {...TURN, id: 't2', agentIdentity: undefined},
+              turnWithOwnIdentity                   = {...TURN, id: 't1', agentIdentity: '@neo-fable-clio'};
+
+        pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [turnWithOwnIdentity, turnWithoutIdentity], total: 2};
+
+        expect(texts(reader.vdom)).toContain('Select a turn to read it in full.');
+        expect(turnGrid.target).toBe('@neo-opus-grace');
+
+        // record with its own identity field renders it between time and tool-call count
+        click(turnGrid, 0);
+
+        expect(nodesWith(reader.vdom, 'fm-memories-read-meta')[0].text).toMatch(/^.+ · @neo-fable-clio · 7 tool calls$/);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-label').map(node => node.text)).toEqual(['Prompt', 'Thought', 'Response']);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual([TURN.prompt, TURN.thought, TURN.response]);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy').map(node => node['aria-label'])).toEqual(['Copy the prompt', 'Copy the thought', 'Copy the response']);
+        expect(turnGrid.rail).toBe(true);
+        expect(summaryGrid.rail).toBe(false);
+
+        // record without an identity field on the wire renders the drill's target (@neo-opus-grace)
+        click(turnGrid, 1);
+
+        expect(nodesWith(reader.vdom, 'fm-memories-read-meta')[0].text).toMatch(/^.+ · @neo-opus-grace · 7 tool calls$/);
+
+        // show all renders both in list order: own identity on t1, drill target on t2
+        pane.controller.onShowAllClick();
+        const metas = nodesWith(reader.vdom, 'fm-memories-read-meta').map(node => node.text);
+        expect(metas[0]).toMatch(/^.+ · @neo-fable-clio · 7 tool calls$/);
+        expect(metas[1]).toMatch(/^.+ · @neo-opus-grace · 7 tool calls$/);
+
+        pane.destroy()
+    });
+
+    test('↑/↓ move the reading with the selection; Escape closes it and clears the selection', () => {
+        const {pane, reader, summaryGrid} = readyPane(),
+              model                       = summaryGrid.view.selectionModel;
+
+        click(summaryGrid, 0);
+        model.onNavKeyRow(1);
+
+        expect(texts(reader.vdom)).toContain('Summary s2');
+        expect(texts(reader.vdom)).not.toContain(LONG_SUMMARY);
+
+        model.onNavKeyRow(-1);
+        expect(texts(reader.vdom)).toContain(LONG_SUMMARY);
+
+        pane.onEscape();
+
+        expect(model.selectedRows).toEqual([]);
+        expect(texts(reader.vdom)).toContain('Select a session summary to read it in full.');
+        expect(summaryGrid.rail).toBe(false)
+    });
+
+    test('show all reads every loaded record whole, in list order; Escape leaves it before anything else', () => {
+        const {pane, reader, summaryGrid} = readyPane(),
+              button                      = pane.getReference('memories-show-all');
+
+        expect(button.hidden).toBe(false);
+
+        pane.controller.onShowAllClick();
+
+        expect(nodesWith(reader.vdom, 'fm-memories-read-title').map(node => node.text)).toEqual(['Title s1', 'Title s2', 'Title s3']);
+        expect(texts(reader.vdom)).toContain(LONG_SUMMARY);
+        expect(summaryGrid.rail).toBe(true);
+        expect(button.pressed).toBe(true);
+        expect(button.text).toBe('One at a time');
+
+        click(summaryGrid, 1);
+        pane.onEscape();   // show all goes first; the selection stays
+
+        expect(pane.showAll).toBe(false);
+        expect(texts(reader.vdom)).toContain('Summary s2');
+
+        pane.onEscape();
+        expect(texts(reader.vdom)).toContain('Select a session summary to read it in full.')
+    });
+
+    test('a field the plane did not return as a string is named with the record id, and offers no copy', () => {
+        const {pane, reader, summaryGrid, turnGrid} = readyPane();
+
+        click(summaryGrid, 2);   // s3's summary arrived as a number; the model's convert made it null
+        expect(texts(reader.vdom)).toContain('The plane returned no summary text · summary s3');
+
+        pane.openSession({sessionId: 's3-session', title: 'Title s3'});
+        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's3-session', page: {offset: 0}, turns: [{...TURN, id: 't9', sessionId: 's3-session', thought: null}], total: 1};
+        click(turnGrid, 0);
+
+        expect(texts(reader.vdom)).toContain('The plane returned no thought for this turn · turn t9');
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy')).toHaveLength(2)
+    });
+
+    test('the reader\'s Read the turns opens that session; a target switch drops the reading', () => {
+        const {pane, intents, reader, summaryGrid} = readyPane();
+
+        click(summaryGrid, 0);
+        reader.fire('drillRequest', {record: reader.reading.record});
+
+        expect(intents).toEqual([{sessionId: 's1-session', title: 'Title s1'}]);
+        expect(pane.drillSession).toEqual({sessionId: 's1-session', title: 'Title s1'});
+
+        pane.onDrillBackClick();
+        expect(texts(reader.vdom)).toContain(LONG_SUMMARY);   // the summary is still read on return
+
+        pane.activeAgent = '@neo-opus-ada';
+
+        expect(pane.controller.readSummaryId).toBe(null);
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual([]);
+        expect(reader.hidden).toBe(true)
+    });
+
+    test('the back breadcrumb (the narrow regime\'s way out) closes the reading like Escape', () => {
+        const {reader, summaryGrid} = readyPane();
+
+        click(summaryGrid, 0);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-back').map(texts)).toEqual([['Summaries']]);
+
+        reader.fire('backRequest', {});
+
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual([]);
+        expect(texts(reader.vdom)).toContain('Select a session summary to read it in full.')
+    });
+
+    test('under show all the rail follows the read record silently: the selection moves, the document stays', () => {
+        const {pane, reader, summaryGrid} = readyPane(),
+              document                    = () => nodesWith(reader.vdom, 'fm-memories-read-title').map(node => node.text);
+
+        pane.controller.onShowAllClick();
+        pane.controller.followRecord('s2');
+
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual(['s2']);
+        expect(pane.controller.readSummaryId).toBe('s2');
+        expect(document()).toEqual(['Title s1', 'Title s2', 'Title s3']);
+
+        pane.controller.followRecord('s3');
+        expect(summaryGrid.view.selectionModel.selectedRows).toEqual(['s3'])
+    });
+
+    test('show all reads the register\'s own Store: a record changed or added there reads in the document', () => {
+        const {pane, reader} = readyPane(),
+              titles         = () => nodesWith(reader.vdom, 'fm-memories-read-title').map(node => node.text);
+
+        pane.controller.onShowAllClick();
+        expect(reader.store).toBe(pane.summaryStore);
+
+        pane.summaryStore.get('s2').set({summary: 'Summary s2, revised on the plane'});
+        expect(texts(reader.vdom)).toContain('Summary s2, revised on the plane');
+
+        pane.summaryStore.add(row('s4'));
+        expect(titles()).toEqual(['Title s1', 'Title s2', 'Title s3', 'Title s4']);
+
+        pane.summaryStore.remove(pane.summaryStore.get('s3'));
+        expect(titles()).toEqual(['Title s1', 'Title s2', 'Title s4']);
+
+        pane.onEscape();   // leaving show all unbinds the document from the Store
+        expect(reader.store).toBe(null)
+    });
+
+    test('a scroll measurement in flight when the pane closes never reaches the retired pane', async () => {
+        const
+            {pane}     = readyPane(),
+            controller = pane.controller,
+            followed   = [],
+            replies    = [],
+            domAccess  = Neo.ns('Neo.main.DomAccess', true),
+            original   = domAccess.getBoundingClientRect,
+            // the unthrottled method: the delayable wrapper returns nothing to await
+            followScroll = scrollTop => Object.getPrototypeOf(controller).followScroll.call(controller, scrollTop),
+            // the reader 0–300, then three 200 px articles: s2's is the first still below the top third
+            reply      = () => replies.shift()([{top: 0, bottom: 300, height: 300}, ...[0, 1, 2].map(i => ({top: i * 200 - 100, bottom: i * 200 + 100, height: 200}))]);
+
+        domAccess.getBoundingClientRect = () => new Promise(resolve => replies.push(resolve));
+        controller.followRecord         = recordId => followed.push(recordId);
+
+        try {
+            pane.controller.onShowAllClick();
+
+            let pending = followScroll(60);
+            reply();
+            await pending;
+            expect(followed).toEqual(['s2']);   // a live pane follows
+
+            pending = followScroll(60);
+            pane.onEscape();                    // show all left before the reply
+            reply();
+            await pending;
+            expect(followed).toEqual(['s2']);
+
+            pane.controller.onShowAllClick();
+            pending = followScroll(60);
+            pane.destroy();                     // the pane closes before the reply
+            reply();
+            await expect(pending).rejects.toBe(Neo.isDestroyed);
+            expect(followed).toEqual(['s2'])
+        } finally {
+            domAccess.getBoundingClientRect = original
+        }
+    });
+
+    test('a copy in flight when the pane closes stops at the retired reader', async () => {
+        const
+            {pane, reader, turnGrid} = readyPane(),
+            selections               = [],
+            domAccess                = Neo.ns('Neo.main.DomAccess', true),
+            originals                = {selectNode: domAccess.selectNode, execCommand: domAccess.execCommand, focus: domAccess.focus};
+
+        domAccess.selectNode  = () => new Promise(resolve => selections.push(resolve));
+        domAccess.execCommand = async () => true;
+        domAccess.focus       = async () => true;
+
+        try {
+            pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+            pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [TURN], total: 1};
+            click(turnGrid, 0);
+
+            const pending = reader.onCopyClick({path: [{cls: ['fm-memories-read-copy'], data: {recordId: TURN.id, field: 'prompt'}}]});
+
+            while (selections.length === 0) {
+                await new Promise(resolve => setTimeout(resolve))
+            }
+
+            pane.destroy();
+            selections.shift()(true);
+
+            await expect(pending).rejects.toBe(Neo.isDestroyed)
+        } finally {
+            Object.assign(domAccess, originals)
+        }
+    });
+});

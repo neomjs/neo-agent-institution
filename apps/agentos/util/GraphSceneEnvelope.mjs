@@ -123,10 +123,7 @@ class GraphSceneEnvelope extends Base {
             ].filter(Boolean),
             unseen   = [[read.nodes - nodes - mail.nodes - haloed.nodes, 'node'], [read.edges - edges - mail.edges - haloed.edges, 'edge']].filter(([count]) => count > 0).map(([count, word]) => `${plural(count, word)} not drawn`),
             holds    = read.nodes ? [`${plural(nodes, 'node')} · ${plural(edges, 'edge')}`, ...chosen, ...unseen].join(' · ') : null,
-            budget   = scene?.budget,
-            cut      = scene?.completeness === 'truncated'
-                ? `partial, budget ${budget?.maxNodes ?? '?'} nodes / ${budget?.maxEdges ?? '?'} edges / ${budget?.maxBytes ? `${Math.round(budget.maxBytes / 1024)} KiB` : '?'}`
-                : scene?.completeness === 'complete' ? 'complete' : null,
+            cut      = GraphSceneEnvelope.completenessOf(scene),
             parts    = {
                 unobserved : () => ['Unobserved'],
                 unavailable: () => ['Unavailable', reason],
@@ -135,6 +132,20 @@ class GraphSceneEnvelope extends Base {
             }[currency]?.() ?? [currency, reason];
 
         return {currency, text: parts.filter(Boolean).join(' · ')}
+    }
+
+    /**
+     * @summary The read's completeness in the line's words: `complete`, or `partial, budget …` naming the budget
+     * that cut it; `null` when the read does not say.
+     * @param {Object|null} scene The envelope's `scene`
+     * @returns {String|null}
+     */
+    static completenessOf(scene) {
+        const budget = scene?.budget;
+
+        return scene?.completeness === 'truncated'
+            ? `partial, budget ${budget?.maxNodes ?? '?'} nodes / ${budget?.maxEdges ?? '?'} edges / ${budget?.maxBytes ? `${Math.round(budget.maxBytes / 1024)} KiB` : '?'}`
+            : scene?.completeness === 'complete' ? 'complete' : null
     }
 
     /**

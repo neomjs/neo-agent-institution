@@ -3,7 +3,7 @@ import {execSync}     from 'node:child_process';
 import fs             from 'node:fs';
 import os             from 'node:os';
 import path           from 'node:path';
-import {diffStamp, inputScopes, listingEntries, parseStamp, scopeListing, serializeStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
+import {diffStamp, engineDrift, inputScopes, listingEntries, parseStamp, scopeListing, serializeStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
 
 /**
  * The drift gate's negative coverage — born from a review falsifier: the input-only scope
@@ -39,11 +39,13 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(diffStamp(stampOf(goldenA, goldenB, goldenC), stampOf(goldenC, goldenA, goldenB))).toEqual([])
     });
 
-    test('the engine axis reports as its own named row', () => {
+    test('a moved engine is named, never a drifted row: the Engine tracks dev and moves without any Institution change', () => {
         const entries = listingEntries(goldenA);
 
-        expect(diffStamp({engine: 'old', entries}, {engine: 'new', entries}))
-            .toEqual(['package-lock.json → node_modules/neo.mjs (engine version)'])
+        expect(diffStamp({engine: 'd75cc68', entries}, {engine: '7aae7c3', entries})).toEqual([]);
+        expect(engineDrift({engine: 'd75cc68'}, {engine: '7aae7c3'})).toContain('captured at engine d75cc68, running 7aae7c3');
+        expect(engineDrift({engine: null}, {engine: '7aae7c3'}), 'a stamp from before the revision').toContain('captured at engine unknown');
+        expect(engineDrift({engine: '7aae7c3'}, {engine: '7aae7c3'})).toBeNull()
     });
 
     test('the stamp text: the engine, then one entry per file sorted by path — path, indented blob id, blank line', () => {

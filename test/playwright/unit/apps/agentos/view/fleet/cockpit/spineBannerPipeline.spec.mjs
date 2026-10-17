@@ -291,7 +291,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
     test('a fully live owner hides the banner with empty copy — zero nominal pixels', () => {
         expect(verdictOf({gridAdapterState: 'live', streamAdapterState: 'live'}))
-            .toEqual({action: null, ariaLabel: '', hidden: true, kind: 'live', text: '', title: ''})
+            .toEqual({action: null, ariaLabel: '', hidden: true, kind: 'live', lead: '', text: '', title: ''})
     });
 
     test('a boot refused beside a running plane reaches the banner as its Connect action', () => {

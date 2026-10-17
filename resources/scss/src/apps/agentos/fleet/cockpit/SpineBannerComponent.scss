@@ -1,13 +1,14 @@
 /* class: exception-only — the chip family's EXCEPTION-CLASS reference member (see Chips.scss for
-   the family contract). The spine's honesty pill: a STATUS WORD naming the spine state, with the
-   full cause-and-remedy sentence on title/aria (#23 — chrome labels are never sentences). A live
+   the family contract). The spine's honesty pill: a STATUS WORD naming the spine state (#23 —
+   chrome labels are never sentences). Its reason shows beside it as the bar's lead, and title/aria
+   repeat that reason with the retained cause (#533). A live
    spine sets `hidden`, and the default `hideMode: 'removeDom'` takes the element out of the DOM
    entirely, so nominal state costs zero pixels without this file guarding against it. That
    inverts the usual styling brief: this element is only ever on screen when something is wrong,
    so it has to read as an exception rather than as toolbar furniture.
 
    Color is supplemental and token-only, per the SourceHealthMarker discipline: the word carries
-   the state, the sentence rides one hover away, and the accent mark carries severity in
+   the state, the lead beside it carries the reason, and the accent mark carries severity in
    geometry — so no single channel is load-bearing alone, and the pill survives a viewer who
    cannot separate the two state hues. Geometry consumes the family tokens; both-theme adaptation
    is automatic through the --fm-* token layer. */

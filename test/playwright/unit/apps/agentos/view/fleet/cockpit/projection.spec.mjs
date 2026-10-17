@@ -110,6 +110,8 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
+                // the Thought stream's reader: a cold seat creates it through the selection write
+                recentTurnsReader      : null,
                 resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
@@ -118,7 +120,9 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
             _wireSelection = (() => {
                 controllerStub.component      = host;
                 controllerStub.memoriesTarget = null;
-                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                controllerStub.applySelection  = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                // the selection write reads the seated resident's Thought stream through the real relay
+                controllerStub.loadRecentTurns = FleetCockpitController.prototype.loadRecentTurns.bind(controllerStub);
                 return true
             })(),
             values = {
@@ -375,6 +379,40 @@ test.describe('Fleet cockpit — dock projection wiring (the resize commit loop)
         expect(result.document.nodes['primary-split'].sizes).toEqual([0.25, 0.75])
     });
 
+    test('publishes the shared sort group to projected tab sources and the Engine participation target', async () => {
+        const registrations = [],
+              host           = makeHost({
+                  topologyGroupId: 'fleet-cockpit-test-group',
+                  windowId       : 'fleet-cockpit-test-window'
+              });
+
+        host.getDockParticipationConfig = () => ({
+            dragCoordinator: {
+                register  : target => registrations.push(target),
+                unregister: () => {}
+            },
+            getDocument: () => host.dockModel
+        });
+
+        try {
+            const projected = FleetCockpit.prototype.projectDockModel.call(host),
+                  tabZones  = collect(projected).filter(node => node.dockNodeType === 'tabs');
+
+            expect(tabZones.length).toBeGreaterThan(0);
+            expect(tabZones.every(node =>
+                node.headerToolbar.sortZoneConfig.sortGroup === FleetCockpit.CROSS_WINDOW_SORT_GROUP
+            ), 'each projected source participates in the same coordinator group').toBe(true);
+
+            const participation = await Workspace.prototype.syncDockParticipation.call(host);
+
+            expect(participation.sortGroup).toBe(FleetCockpit.CROSS_WINDOW_SORT_GROUP);
+            expect(participation.target.sortGroup).toBe(FleetCockpit.CROSS_WINDOW_SORT_GROUP);
+            expect(registrations).toEqual([participation.target]);
+        } finally {
+            await host.participation?.destroy()
+        }
+    });
+
     test('panes are layout-blind (§2.6) and absent-item fallback reads OWNER-held state', () => {
         const
             definitions = {id: 'definitions-store'},
@@ -528,6 +566,8 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
                 memoriesSnapshot       : null,
                 memoriesTarget         : null,
                 operatorIdentityPosture: null,
+                // the Thought stream's reader: a cold seat creates it through the selection write
+                recentTurnsReader      : null,
                 resolveFleetRosterStore: () => host.getStateProvider?.()?.getStore('fleetRoster') ?? null,
                 tasksSnapshot          : null,
                 wakeRoutesSnapshot     : null
@@ -536,7 +576,9 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
             _wireSelection = (() => {
                 controllerStub.component      = host;
                 controllerStub.memoriesTarget = null;
-                controllerStub.applySelection = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                controllerStub.applySelection  = FleetCockpitController.prototype.applySelection.bind(controllerStub);
+                // the selection write reads the seated resident's Thought stream through the real relay
+                controllerStub.loadRecentTurns = FleetCockpitController.prototype.loadRecentTurns.bind(controllerStub);
                 return true
             })(),
             values = {
@@ -713,9 +755,11 @@ test.describe('Fleet cockpit — perspective snapshots (the switch through the c
             selectedAgentId      : 'vega',
             selectedAgentIdentity: '@neo-opus-vega'
         });
-        // the live pane is the detailRecord hook's business on a real instance (the declaration
-        // spec's parity arms read it there); the wrapper itself writes no pane
-        expect(sets).toEqual([]);
+        // the live pane's record is the detailRecord hook's business on a real instance (the declaration
+        // spec's parity arms read it there); the wrapper itself writes no record. The seated resident's
+        // Thought stream read is the one write the selection makes here: this host carries no bridge, so
+        // the pane learns the honest not-wired answer for the seat it shows
+        expect(sets).toEqual([{recentTurns: expect.objectContaining({coverage: 'not-wired', target: '@neo-opus-vega', turns: []})}]);
 
         host.perspectiveStore.destroy()
     });

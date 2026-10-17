@@ -11,6 +11,7 @@ import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo
 import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs'; // defines Neo.get — the container child-add path resolves parents through it
 import WorkspaceDocument    from '../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/model/WorkspaceDocument.mjs';
+import Store                from '../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs';
 import FleetActivityEvents  from '../../../../../../../../apps/agentos/store/FleetActivityEvents.mjs';
 import FleetCockpit         from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import CockpitStateProvider from '../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
@@ -27,9 +28,10 @@ import {createShellProvider} from './shellProvider.mjs';
  * @param {Boolean|Function} [options.openResult=true]
  * @param {Boolean|Function} [options.closeResult=true] The platform's close answer — a Boolean, or a
  *     function of the call returning one (or throwing).
+ * @param {Object|null} [options.screen=null] The initiating window's available screen bounds.
  * @returns {Object} spy state + `restore()`.
  */
-function installWindowVessel({openResult = true, closeResult = true} = {}) {
+function installWindowVessel({openResult = true, closeResult = true, screen = null} = {}) {
     let previous = {
             getByPath    : Neo.Main.getByPath,
             getWindowData: Neo.Main.getWindowData,
@@ -42,7 +44,7 @@ function installWindowVessel({openResult = true, closeResult = true} = {}) {
     Neo.windowConfigs = {'unit-window': {basePath: './'}};
 
     Neo.Main.getByPath     = async () => null;
-    Neo.Main.getWindowData = async () => ({innerHeight: 900, outerHeight: 960, screenLeft: 10, screenTop: 20});
+    Neo.Main.getWindowData = async () => ({innerHeight: 900, outerHeight: 960, screen, screenLeft: 10, screenTop: 20});
     Neo.Main.windowOpen    = data => {
         state.openCalls.push(data);
         return typeof openResult === 'function' ? openResult(data) : Promise.resolve(openResult)
@@ -231,7 +233,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         vessel = installWindowVessel();
 
         const identity = {groupId: 'g1', workspaceKey: 'popup:stream', generationToken: 7},
-              opened   = await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: {x: 40, y: 50, width: 640, height: 420}, topologyIdentity: identity});
+              opened   = await cockpit.openTearOutVessel({
+                  itemId: 'stream', proxyRect: {x: 40, y: 50, width: 100, height: 25},
+                  sourceRect: {width: 640, height: 420}, topologyIdentity: identity
+              });
 
         expect(opened).toEqual({popupHeight: 420, popupWidth: 640, windowName: `fm-tearout-stream-${cockpit.id}`});
         expect(vessel.openCalls).toHaveLength(1);
@@ -245,12 +250,32 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(call.windowFeatures).toBe('height=420,left=50,top=130,width=640');
 
         // the floors: a tiny or missing rect never opens an unusable window
-        const floored = await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: {x: 0, y: 0, width: 100, height: 50}, topologyIdentity: identity});
+        const floored = await cockpit.openTearOutVessel({
+            itemId: 'stream', proxyRect: {x: 0, y: 0, width: 900, height: 600},
+            sourceRect: {width: 100, height: 50}, topologyIdentity: identity
+        });
 
         expect(floored).toEqual({popupHeight: 240, popupWidth: 320, windowName: `fm-tearout-stream-${cockpit.id}`});
 
         expect(await cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'fm-tearout-stream-x'}), 'the platform confirmed the close').toBe(true);
         expect(vessel.closeCalls).toEqual([{names: ['fm-tearout-stream-x'], windowId: cockpit.windowId}])
+    });
+
+    test('vessel size uses the engine fallback and screen ceiling, never the drag proxy dimensions', async () => {
+        vessel = installWindowVessel({screen: {availWidth: 1000, availHeight: 700}});
+        const request = {
+            itemId: 'stream', proxyRect: {x: 40, y: 50, width: 100, height: 25}, topologyIdentity: {}
+        };
+
+        for (const sourceRect of [null, {width: NaN, height: -1}]) {
+            expect(await cockpit.openTearOutVessel({...request, sourceRect})).toMatchObject({popupWidth: 480, popupHeight: 360})
+        }
+
+        expect(await cockpit.openTearOutVessel({...request, sourceRect: {width: 900, height: 600}}))
+            .toMatchObject({popupWidth: 900, popupHeight: 600});
+        expect(await cockpit.openTearOutVessel({...request, sourceRect: {width: 1800, height: 1200}}))
+            .toMatchObject({popupWidth: 1000, popupHeight: 700});
+        expect(vessel.openCalls.at(-1).windowFeatures).toBe('height=700,left=50,top=130,width=1000')
     });
 
     test('closeTearOutVessel hands the platform\'s verdict to the Group unchanged — false stays false, a rejection propagates — never an inferred absence', async () => {
@@ -272,11 +297,23 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         cockpit.tearOutHandlers = handlers;
 
         expect(await cockpit.admitDockPopOut(descriptor)).toBe(true);
-        expect(calls[0][1]).toEqual({...descriptor, proxyRect: composition});
+        expect(calls[0][1]).toEqual({...descriptor, proxyRect: composition, sourceRect: composition});
         expect(descriptor.proxyRect, 'the caller keeps its measured descriptor').toBe(measured);
+        expect(descriptor.sourceRect, 'the caller is not mutated').toBeUndefined();
 
         expect(await cockpit.admitDockPopOut({itemId: 'stream', proxyRect: measured, sortZone: null})).toBe(true);
-        expect(calls[1][1].proxyRect, 'a pane without a composition keeps the engine measurement').toBe(measured)
+        expect(calls[1][1].proxyRect, 'a pane without a composition keeps the engine measurement').toBe(measured);
+        expect(calls[1][1].sourceRect, 'the click measurement supplies the common size contract').toBe(measured)
+    });
+
+    test('a pointer tear-out of Detail follows its measured pane, not the click-only composition', async () => {
+        await revealDetail();
+        vessel = installWindowVessel();
+
+        expect(await cockpit.openTearOutVessel({
+            itemId: 'detail', proxyRect: {x: 20, y: 30, width: 100, height: 25},
+            sourceRect: {width: 810, height: 520}, topologyIdentity: {}
+        })).toMatchObject({popupWidth: 810, popupHeight: 520})
     });
 
     test('ownership reads over the Group: owned, pending (admission · connection · in-flight vessel · held handle), or docked', () => {
@@ -444,7 +481,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(result).toEqual({detached: true, errors: []});
         expect(calls.map(entry => entry[0]), 'admission first, the one commit at the terminal').toEqual(['exit', 'terminal']);
         // `sortZone: null` is the click's signature; the rect is the inspector's designed composition
-        expect(calls[0][1]).toEqual({itemId: 'detail', proxyRect: {x: 160, y: 120, width: 480, height: 640}, sortZone: null});
+        expect(calls[0][1]).toEqual({
+            itemId: 'detail', proxyRect: {x: 160, y: 120, width: 480, height: 640},
+            sourceRect: {x: 160, y: 120, width: 480, height: 640}, sortZone: null
+        });
         expect(calls[1][1]).toEqual({itemId: 'detail'});
         expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail'), 'the detach committed: the item left the tree').toBeNull();
         expect(cockpit.dockModel.items.detail, 'detachItem keeps the catalog record').toBeTruthy();
@@ -537,6 +577,232 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(cockpit.getMemoriesPane()?.getReference('memories-window-toggle')?.text ?? 'Return memories').toBe('Return memories')
     });
 
+    test('native popup return resolves the held pane and retries only the exact main-window owner', async () => {
+        await revealDetail();
+
+        const
+            pane                  = cockpit.getAgentDetailPane(),
+            ownerWindowId         = 'fleet-detail-vessel-window',
+            windowName            = `fm-tearout-detail-${cockpit.id}`,
+            previousParticipation = cockpit.participation,
+            previousWindowId      = Object.getOwnPropertyDescriptor(cockpit, 'windowId'),
+            originalHeldPane      = cockpit.tearOutHandlers.heldPane,
+            originalHeldPanes     = cockpit.tearOutHandlers.heldPanes;
+
+        Object.defineProperty(cockpit, 'windowId', {configurable: true, value: 'fleet-native-main'});
+
+        expect(cockpit.tearOutHandlers.capturePane('detail'), 'capture precedes the owner row').toBe(true);
+
+        lifecycle.owners.set('detail', {itemId: 'detail', windowId: ownerWindowId, windowName});
+
+        let ownershipId = 'fleet-cockpit-test-group';
+
+        const
+            Participation = (await import('../../../../../../../../node_modules/neo.mjs/src/dashboard/dock/window/Participation.mjs')).default,
+            participation = Neo.create(Participation, {
+                dragCoordinator   : {register() {}, unregister() {}},
+                getDocument       : () => cockpit.dockModel,
+                resolveOwnershipId: () => ownershipId,
+                sortGroup         : FleetCockpit.CROSS_WINDOW_SORT_GROUP,
+                windowId          : cockpit.windowId,
+                workspace         : cockpit,
+                workspaceId       : cockpit.id
+            });
+
+        cockpit.participation = participation;
+
+        const seams = cockpit.getDockParticipationConfig(),
+              drag  = seams.resolveNativeWindowDrag(ownerWindowId);
+
+        try {
+            expect(seams.dragEmbodiment).toBe(cockpit.vesselProxyEmbodiment);
+            expect(drag?.draggedItem, 'the payload keeps the captured instance').toBe(pane);
+            expect(seams.resolveNativeWindowDrag(ownerWindowId)?.draggedItem).toBe(pane);
+            expect(seams.resolveNativeWindowDrag('another-window')).toBeNull();
+            expect(cockpit.resolvePane('detail', cockpit.dockModel.items.detail).cls)
+                .toContain('fm-pane-placeholder');
+
+            ownershipId = null;
+            expect(seams.resolveNativeWindowDrag(ownerWindowId), 'an unresolved Group fails closed').toBeNull();
+            ownershipId = 'fleet-cockpit-test-group';
+
+            const workspaceId = participation.workspaceId;
+            participation.workspaceId = null;
+            expect(seams.resolveNativeWindowDrag(ownerWindowId), 'an unresolved workspace fails closed').toBeNull();
+            participation.workspaceId = workspaceId;
+
+            cockpit.tearOutHandlers.heldPane = () => null;
+            cockpit.tearOutHandlers.heldPanes = () => [];
+            expect(seams.resolveNativeWindowDrag(ownerWindowId), 'a missing live pane fails closed').toBeNull();
+            cockpit.tearOutHandlers.heldPane = originalHeldPane;
+            cockpit.tearOutHandlers.heldPanes = originalHeldPanes;
+
+            expect(seams.suspendNativeWindowDrag('detail', {
+                sourceWindowId: ownerWindowId, targetWindowId: 'foreign-window'
+            }), 'only the cockpit window is a native return target').toBe(false);
+
+            vessel = installWindowVessel();
+            expect(await seams.suspendNativeWindowDrag('detail', {
+                sourceWindowId: ownerWindowId, targetWindowId: cockpit.windowId
+            })).toBe(true);
+            const parked = cockpit.nativeVesselParkHandlers.parked;
+            cockpit.afterTearOutWindowDisconnect({itemId: 'detail', windowId: 'an-earlier-vessel'});
+            expect(cockpit.nativeVesselParkHandlers.parked, 'an unrelated disconnect cannot retire this gesture').toBe(parked);
+            expect(cockpit.nativeVesselConversionSourceWindowId).toBe(ownerWindowId);
+            expect(await seams.resumeNativeWindowDrag('detail'), 'cancel leaves the popup open').toBe(true);
+            expect(vessel.closeCalls).toEqual([]);
+            expect(lifecycle.owners.has('detail')).toBe(true);
+
+            vessel.restore();
+            vessel = installWindowVessel({closeResult: false});
+            expect(await seams.suspendNativeWindowDrag('detail', {
+                sourceWindowId: ownerWindowId, targetWindowId: cockpit.windowId
+            })).toBe(true);
+            expect(await seams.retireNativeWindowDrag(drag.draggedItem), 'a refused close retains the Group owner').toBe(false);
+            expect(vessel.closeCalls).toEqual([{names: [windowName], windowId: cockpit.windowId}]);
+            expect(lifecycle.owners.has('detail')).toBe(true);
+
+            vessel.restore();
+            vessel = installWindowVessel();
+            expect(await seams.retireNativeWindowDrag(drag.draggedItem), 'the retained exact close can retry').toBe(true);
+            expect(vessel.closeCalls).toEqual([{names: [windowName], windowId: cockpit.windowId}])
+        } finally {
+            cockpit.tearOutHandlers.heldPane = originalHeldPane;
+            cockpit.tearOutHandlers.heldPanes = originalHeldPanes;
+            participation.destroy();
+            cockpit.participation = previousParticipation;
+            previousWindowId
+                ? Object.defineProperty(cockpit, 'windowId', previousWindowId)
+                : delete cockpit.windowId
+        }
+    });
+
+    test('native popup return commits the held pane once through the real target, then retries only strict close', async () => {
+        await revealDetail();
+
+        const
+            Transaction = (await import('../../../../../../../../node_modules/neo.mjs/src/manager/Transaction.mjs')).default,
+            Coordinator = (await import('../../../../../../../../node_modules/neo.mjs/src/manager/DragCoordinator.mjs')).default,
+            WindowManager = (await import('../../../../../../../../node_modules/neo.mjs/src/manager/Window.mjs')).default,
+            Rectangle = (await import('../../../../../../../../node_modules/neo.mjs/src/util/Rectangle.mjs')).default,
+            mainWindowId = 'fm-native-main',
+            popupWindowId = 'fm-native-popup',
+            previousWindowId = Object.getOwnPropertyDescriptor(cockpit, 'windowId'),
+            previousTopologyGroupId = Object.getOwnPropertyDescriptor(cockpit, 'topologyGroupId'),
+            previousNativeWindows = cockpit.nativeWindows,
+            originalApply = cockpit.applyDockZoneOperation.bind(cockpit),
+            pane = cockpit.getAgentDetailPane();
+
+        let closeNow = false,
+            addTabCalls = [],
+            groupId,
+            group;
+
+        const oldHandoff = Coordinator.nativeWindowDropHandoffMs,
+            oldRetireRetry = Coordinator.nativeWindowRetireRetryMs;
+
+        try {
+            Object.defineProperty(cockpit, 'windowId', {configurable: true, value: mainWindowId});
+            groupId = Transaction.bind({windowId: mainWindowId}).groupId;
+            group = Transaction.getNativeLifecycle(groupId);
+            cockpit.nativeWindows = group;
+            Object.defineProperty(cockpit, 'topologyGroupId', {configurable: true, value: groupId});
+
+            Coordinator.nativeWindowDropHandoffMs = 0;
+            Coordinator.nativeWindowRetireRetryMs = 10;
+            WindowManager.register({id: mainWindowId, innerRect: new Rectangle(0, 0, 800, 600), outerRect: new Rectangle(0, 0, 800, 600)});
+            WindowManager.register({id: popupWindowId, innerRect: new Rectangle(84, 110, 300, 200), outerRect: new Rectangle(80, 80, 308, 234)});
+            vessel = installWindowVessel({closeResult: async () => {
+                if (!closeNow) return false;
+                await group.onRelease({groupId, windowId: popupWindowId});
+                return true
+            }});
+
+            group.registerSource(cockpit.id, {
+                keyFor: itemId => cockpit.tearOutWorkspaceKey(itemId),
+                open  : cockpit.openTearOutVessel.bind(cockpit),
+                close : cockpit.closeTearOutVessel.bind(cockpit),
+                released: async context => {
+                    await cockpit.tearOutHandlers.onBindingReleased(context);
+                    cockpit.afterTearOutWindowDisconnect({...context, windowId: popupWindowId})
+                }
+            });
+
+            const owner = await group.acquire(cockpit.id, {itemId: 'detail', proxyRect: {x: 0, y: 0, width: 480, height: 640}});
+            expect(owner).toBeTruthy();
+            await group.onBind({...owner, windowId: popupWindowId, generation: 1});
+            expect(cockpit.tearOutHandlers.capturePane('detail')).toBe(true);
+            group.recordOwner(cockpit.id, 'detail', {...owner, windowId: popupWindowId});
+
+            const detached = cockpit.applyDockZoneOperation({operation: 'detachItem', itemId: 'detail'});
+            expect(detached.errors).toEqual([]);
+            await cockpit.onDockZoneDocumentChange(detached.document, {operation: 'detachItem', itemId: 'detail'}, cockpit);
+            await cockpit.refreshPromise;
+            expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail')).toBeNull();
+            const targetTabsId = Object.keys(cockpit.dockModel.nodes).find(id => cockpit.dockModel.nodes[id].type === 'tabs');
+            expect(targetTabsId).toBeTruthy();
+
+            await cockpit.syncDockParticipation({recompose: true});
+            const target = cockpit.participation.target;
+
+            // Renderer/geometry answers are controlled; production identity, commit and Group retirement remain real.
+            target.hitTest = () => true;
+            target.stageDragEmbodiment = payload => payload.draggedItem === pane;
+            target.promoteDragEmbodiment = () => true;
+            target.restoreDragEmbodiment = () => true;
+            target.previewFor = () => ({previewId: 'native-return'});
+            target.previewToOperation = () => ({operation: 'addTab', itemId: 'detail', tabsNodeId: targetTabsId});
+            target.awaitDragEmbodiment = async () => true;
+            target.isDragEmbodimentLive = () => true;
+            cockpit.applyDockZoneOperation = operation => {
+                operation.operation === 'addTab' && addTabCalls.push(operation);
+                return originalApply(operation)
+            };
+
+            const source = Coordinator.getNativeWindowDragSource(popupWindowId),
+                candidate = Coordinator.getNativeWindowDropCandidate({windowId: popupWindowId}, source);
+
+            expect(candidate).toBeTruthy();
+            expect(source.draggedItem).toBe(pane);
+            expect(candidate.targetSortZone).toBe(target);
+            expect(cockpit.participation.dragEmbodiment).toBe(cockpit.vesselProxyEmbodiment);
+            Coordinator.nativeWindowDropCandidates.set(popupWindowId, candidate);
+
+            await Coordinator.commitNativeWindowDrop(popupWindowId, candidate);
+            expect(addTabCalls).toHaveLength(1);
+            expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail')).toBe(targetTabsId);
+            expect(cockpit.vesselPane('detail')).toBe(pane);
+            expect(vessel.closeCalls).toEqual([{names: [owner.windowName], windowId: mainWindowId}]);
+            expect(group.getOwner(cockpit.id, 'detail')).toBeTruthy();
+
+            closeNow = true;
+            await expect.poll(() => vessel.closeCalls.length, {timeout: 1000}).toBe(2);
+            await expect.poll(() => Coordinator.nativeWindowDropCandidates.has(popupWindowId), {timeout: 1000}).toBe(false);
+            expect(addTabCalls).toHaveLength(1);
+            expect(group.getOwner(cockpit.id, 'detail')).toBeNull();
+            await cockpit.refreshPromise;
+            expect(cockpit.getAgentDetailPane()).toBe(pane);
+            expect(pane.isDestroyed).toBeFalsy()
+        } finally {
+            Coordinator.clearNativeWindowDropCandidate(popupWindowId, {restoreSource: false});
+            Coordinator.endNativeGesture(popupWindowId);
+            Coordinator.nativeWindowDropHandoffMs = oldHandoff;
+            Coordinator.nativeWindowRetireRetryMs = oldRetireRetry;
+            cockpit.applyDockZoneOperation = originalApply;
+            groupId && Transaction.retireGroup(groupId);
+            cockpit.retireDockParticipation();
+            cockpit.nativeWindows = previousNativeWindows;
+            previousTopologyGroupId
+                ? Object.defineProperty(cockpit, 'topologyGroupId', previousTopologyGroupId)
+                : delete cockpit.topologyGroupId;
+            WindowManager.items.filter(item => [mainWindowId, popupWindowId].includes(item.id)).forEach(item => WindowManager.unregister(item));
+            vessel?.restore();
+            previousWindowId
+                ? Object.defineProperty(cockpit, 'windowId', previousWindowId)
+                : delete cockpit.windowId
+        }
+    });
+
     test('a vesseled item re-treed by a preset or an operation renders a stand-in — the live instance is never stolen back', async () => {
         await revealDetail();
 
@@ -559,6 +825,59 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         // docked again: the SAME live instance — the declared pane is parked, never re-created
         lifecycle.connections.clear();
         expect(cockpit.resolvePane('detail', item)).toBe(detailPane)
+    });
+
+    test('detail destination bindings follow the root Provider while the same inspector remains mounted', async () => {
+        const
+            localShell = createShellProvider({
+                boundProfileId: 'profile-a',
+                shellCustody  : true,
+                shellPlaneBase: 'http://127.0.0.1:3102'
+            }),
+            stores = [
+                Neo.create(Store, {keyProperty: 'id', data: []}),
+                Neo.create(Store, {data: []}),
+                Neo.create(Store, {keyProperty: 'profileId', data: [{profileId: 'profile-a', canonicalEndpoint: 'http://127.0.0.1:3102'}]})
+            ],
+            localCockpit = Neo.create(FleetCockpit, {
+                stateProvider: {
+                    module: CockpitStateProvider,
+                    parent: localShell,
+                    stores: {
+                        fleetActivityEvents: {module: FleetActivityEvents},
+                        viewerWakeFeed     : {module: ViewerWakeFeed},
+                        agentDefinitions   : stores[0],
+                        fleetTenants       : stores[1],
+                        fleetInstances     : stores[2]
+                    }
+                }
+            });
+
+        try {
+            await localCockpit.refreshPromise;
+            const reveal = localCockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false});
+            localCockpit.onDockZoneDocumentChange(reveal.document);
+            await localCockpit.refreshPromise;
+
+            const detail = localCockpit.getReference('agent-detail'),
+                  card   = detail.getReference('config-pane'),
+                  detailId = detail.id;
+
+            expect(detail.boundProfileId).toBe('profile-a');
+            expect(detail.shellPlaneBase).toBe('http://127.0.0.1:3102');
+            expect(card.getDestinationText({})).toBe('Agent OS · 127.0.0.1:3102');
+
+            localShell.setData({boundProfileId: 'profile-b', shellPlaneBase: 'http://127.0.0.1:4102'});
+
+            expect(localCockpit.getReference('agent-detail')).toBe(detail);
+            expect(detail.id).toBe(detailId);
+            expect(card.boundProfileId).toBe('profile-b');
+            expect(card.getDestinationText({})).toBe('Agent OS · 127.0.0.1:4102')
+        } finally {
+            localCockpit.destroy();
+            localShell.destroy();
+            stores.forEach(store => store.destroy())
+        }
     });
 
     test('the observation hooks re-sync the chrome after the engine acts, and the return stays observable on the engine\'s channel', () => {

@@ -40,7 +40,7 @@ class Controller extends ComponentController {
         const me = this;
 
         me.getReference('agent-config-card').on({configIntent: me.onAgentConfigIntent, scope: me});
-        me.getReference('agent-repos-card').on({configIntent: me.onAgentReposIntent, scope: me});
+        me.getReference('agent-repos-card').on({configIntent: me.onAgentReposIntent, deleteCheckout: me.onDeleteCheckout, scope: me});
         me.getReference('add-agent-form').on({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         void me.loadAgentDefinitions();
         void me.loadFleetTenants()
@@ -55,7 +55,7 @@ class Controller extends ComponentController {
         const me = this;
 
         me.getReference('agent-config-card')?.un({configIntent: me.onAgentConfigIntent, scope: me});
-        me.getReference('agent-repos-card')?.un({configIntent: me.onAgentReposIntent, scope: me});
+        me.getReference('agent-repos-card')?.un({configIntent: me.onAgentReposIntent, deleteCheckout: me.onDeleteCheckout, scope: me});
         me.getReference('add-agent-form')?.un({agentDefinitionAccepted: me.onAddAgentAccepted, scope: me});
         super.destroy(...args)
     }
@@ -87,14 +87,123 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary Persist a repository intent with a distinct owner token and status sink: an
-     * overlapping config save may supersede this request without leaving its card pending.
+     * @summary Persist the repository list, then prepare it for a live seat only after an admitted
+     * canonical readback. A distinct owner token keeps configuration and repository feedback separate.
      * @param {Object} intent `{id, repos}`.
      * @returns {Promise<void>}
      */
-    onAgentReposIntent(intent={}) {
-        return this.runConfigIntent(intent, this.getReference('agent-repos-card'),
-            this.component.setAgentReposSaveStatus.bind(this.component))
+    async onAgentReposIntent(intent={}) {
+        const
+            me       = this,
+            binding  = me.repositoryBinding(intent.id),
+            accepted = await me.runConfigIntent(intent, binding.card,
+                me.component.setAgentReposSaveStatus.bind(me.component));
+
+        if (!accepted || !binding.isCurrent() || !accepted.isCurrent()) return;
+
+        const agent = binding.card.rosterStore?.get(intent.id);
+        if (!['ok', 'idle', 'wedged', 'limited'].includes(agent?.state)) {
+            binding.card.setRepositoryStatus({action: 'prepare', state: 'accepted', reason: 'clones at the next Start'});
+            return
+        }
+
+        return me.runRepositoryOperation('prepare', intent, binding, accepted.isCurrent)
+    }
+
+    /**
+     * @summary Capture the selected card, definition Store, bridge and rebind epoch before a write.
+     * @param {String} agentId
+     * @returns {Object} `{card, bridge, isCurrent}`.
+     * @private
+     */
+    repositoryBinding(agentId) {
+        const
+            me    = this, component = me.component, store = component.agentDefinitionsStore,
+            card  = me.getReference('agent-repos-card'), bridge = globalThis.AgentOS?.fleet?.registryBridge,
+            bound = card.beginRepositoryOperation(), record = card.record;
+
+        return {card, bridge, isCurrent: () => !me.isDestroyed && !component.isDestroying && !component.isDestroyed &&
+            bound() && record?.id === agentId && store === component.agentDefinitionsStore &&
+            store?.get(agentId) === record && bridge === globalThis.AgentOS?.fleet?.registryBridge}
+    }
+
+    /** @summary The retained row's distinct, guarded removal intent. @param {Object} intent @returns {Promise<void>} */
+    onDeleteCheckout(intent={}) {
+        const binding = this.repositoryBinding(intent.id);
+        const row     = binding.card.getReference('repo-list').store.get(intent.repoSlug);
+
+        if (!binding.isCurrent() || !row?.retained || !row.canDelete) return;
+
+        return this.runRepositoryOperation('delete', intent, binding,
+            ConfigIntentRoundTrip.captureIntentAuthority(this.component.agentDefinitionsStore, intent.id))
+    }
+
+    /**
+     * @summary Consume a checkout operation without changing declaration or dependency truth.
+     * Replies paint only the originating binding and shared save generation; the cockpit owns
+     * the subsequent roster read. Transport failures never expose exception text.
+     * @param {'prepare'|'delete'} action
+     * @param {Object} intent `{id, repoSlug?}`.
+     * @param {Object} binding Captured view and transport owner.
+     * @param {Function} ownsIntent Shared definition-generation predicate.
+     * @returns {Promise<void>}
+     * @private
+     */
+    async runRepositoryOperation(action, intent, binding, ownsIntent) {
+        const
+            {card, bridge} = binding,
+            method         = action === 'prepare' ? 'prepareRepos' : 'removeRepoCheckout',
+            observation    = card.rosterStore?.get(intent.id)?.repoOutcomes,
+            status         = (state, reason='') => ({action, repoSlug: intent.repoSlug, state, reason});
+
+        if (typeof bridge?.[method] !== 'function') return;
+
+        card.setRepositoryStatus(status('pending', action === 'prepare' ? 'preparing checkouts…' : 'deleting checkout…'));
+        let result, unavailable = false;
+        try {
+            result = await bridge[method](action === 'prepare' ? {id: intent.id} : {id: intent.id, repoSlug: intent.repoSlug})
+        } catch (error) {
+            unavailable = error?.fleetWireState === 'unsupported-method'
+        }
+
+        if (!binding.isCurrent()) return;
+        if (!ownsIntent()) {
+            card.setRepositoryStatus(status('superseded', 'a newer configuration change superseded this reply'));
+            return
+        }
+
+        if (card.rosterStore?.get(intent.id)?.repoOutcomes !== observation) {
+            card.setRepositoryStatus(status('superseded', 'repository status changed · refreshing'));
+            this.component.fire('repositoryOperationSettled');
+            return
+        }
+
+        if (unavailable) {
+            if (action === 'delete') card.deleteUnavailable = true;
+            card.setRepositoryStatus(null);
+            return
+        }
+
+        if (action === 'delete') {
+            if (result?.removed === true) {
+                card.setRepositoryStatus(status('accepted', 'checkout deleted'),
+                    card.getCheckoutRows().filter(row => row.repoSlug !== intent.repoSlug))
+            } else {
+                card.setRepositoryStatus(status('rejected', result?.reason ?? 'deletion unconfirmed · the next status says'))
+            }
+        } else if (result?.state === 'complete' && Array.isArray(result.repos)) {
+            const rows = new Map(card.getCheckoutRows().map(row => [row.repoSlug, row]));
+            result.repos.forEach(row => rows.set(row.repoSlug, row));
+            card.setRepositoryStatus(status('accepted'), [...rows.values()])
+        } else {
+            const reason = result?.state === 'at-start' ? 'clones at the next Start'
+                : result?.state === 'identity-unavailable' ? result.reason
+                : result?.state === 'superseded' ? 'the launch changed'
+                : 'unconfirmed · the next status says';
+            card.setRepositoryStatus(status('superseded', reason))
+        }
+
+        this.component.fire('repositoryOperationSettled')
     }
 
     /**

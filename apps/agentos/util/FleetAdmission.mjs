@@ -1,6 +1,26 @@
-import Base          from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import TargetBinding from './TargetBinding.mjs';
+import ActivityObserver from './ActivityObserver.mjs';
+import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
+
+const
+    ACTIVITY_SLOT_LABELS = Object.freeze({
+        a2a      : 'mailbox',
+        'pr-lane': 'PR lanes'
+    }),
+    DEFAULT_ACTIVITY_RECHECK_MS = 60000,
+    GENERIC_PARTIAL_SUMMARY     = 'some sources unavailable',
+    MAX_SLOT_LABEL_LENGTH       = 32,
+    PR_LANE_EVENT_SOURCES       = Object.freeze([
+        FLEET_COCKPIT_SOURCES.githubPr,
+        FLEET_COCKPIT_SOURCES.githubIssue,
+        FLEET_COCKPIT_SOURCES.commentLane,
+        FLEET_COCKPIT_SOURCES.graphLane,
+        FLEET_COCKPIT_SOURCES.graphStall,
+        'pr-lane'
+    ]),
+    RESERVED_SLOT_KEYS = new Set(['__proto__', 'constructor', 'prototype', 'toString', 'valueOf']),
+    VALID_SLOT_STATES  = new Set(['wired', 'degraded', 'not-wired', 'unavailable']);
 
 /**
  * @module apps/agentos/util/FleetAdmission
@@ -21,30 +41,202 @@ class FleetAdmission extends Base {
     }
 
     /**
+     * @summary Leaf-complete blank guidance for a non-partial or retired activity feed.
+     * @returns {{head:null,headTitle:null,missing:null,reason:null,recheck:null,remaining:null,repair:null,summary:null}}
+     */
+    static blankActivityGuidance() {
+        return {
+            head     : null,
+            headTitle: null,
+            missing  : null,
+            reason   : null,
+            recheck  : null,
+            remaining: null,
+            repair   : null,
+            summary  : null
+        }
+    }
+
+    /**
+     * @summary Maps known activity slot keys to their product words and bounds unknown keys without
+     * accepting prototype names or control characters.
+     * @param {*} key
+     * @returns {String}
+     */
+    static formatActivitySlotLabel(key) {
+        if (typeof key !== 'string') return '';
+
+        const normalized = key.replace(/[\u0000-\u001f\u007f-\u009f\s]+/g, ' ').trim();
+
+        if (!normalized || RESERVED_SLOT_KEYS.has(normalized)) return '';
+
+        return Object.hasOwn(ACTIVITY_SLOT_LABELS, normalized)
+            ? ACTIVITY_SLOT_LABELS[normalized]
+            : normalized.slice(0, MAX_SLOT_LABEL_LENGTH)
+    }
+
+    /**
+     * @summary True when a degraded slot still contributed admitted events or reported partial observation.
+     * Prefers `slot.confidence === 'observed'` and `slot.producer.coverage === 'partial'`; inspecting
+     * `events[].source` is the fallback for producers (such as the A2A mailbox adapter) that do not yet
+     * stamp `producer.coverage`.
+     * @param {String} slotKey
+     * @param {Object} slot
+     * @param {Object[]} events
+     * @returns {Boolean}
+     */
+    static slotSuppliedEvents(slotKey, slot, events) {
+        if (slot?.confidence === 'observed' || slot?.producer?.coverage === 'partial') {
+            return true
+        }
+
+        const rows = Array.isArray(events) ? events : [];
+
+        if (slotKey === 'a2a') {
+            return rows.some(event => event?.source === FLEET_COCKPIT_SOURCES.a2a || event?.source === 'a2a')
+        }
+
+        if (slotKey === 'pr-lane') {
+            return rows.some(event => PR_LANE_EVENT_SOURCES.includes(event?.source))
+        }
+
+        return rows.some(event => event?.source === slotKey)
+    }
+
+    /**
+     * @summary Derives the one partial-activity guidance object consumed by the banner, instance switcher
+     * and activity stream head from the composite capability's structured `slots` — never by parsing the
+     * joined reason string. Wired slots read `available` (a bounded mailbox page is available, not complete
+     * history); degraded slots that still supplied events read `partial`; not-wired or empty-degraded slots
+     * read `unavailable`. Missing or malformed `slots` fall back to generic wording.
+     * @param {Object} [options={}]
+     * @param {Object|null} [options.capability=null] The composite activity capability.
+     * @param {Object[]} [options.events=[]] Admitted events for the page.
+     * @param {Number} [options.intervalMs=60000] The activity cadence interval in ms.
+     * @param {Boolean} [options.partial=false] Whether the page was admitted as partial.
+     * @param {String|null} [options.reason=null] Caller-supplied reason override.
+     * @param {Function} [options.sanitizeReason] Sanitizer for untrusted producer reasons.
+     * @returns {{head:String|null,headTitle:String|null,missing:String|null,reason:String|null,recheck:String|null,remaining:String|null,repair:String|null,summary:String|null}}
+     */
+    static deriveActivityGuidance({
+        capability     = null,
+        events         = [],
+        intervalMs     = DEFAULT_ACTIVITY_RECHECK_MS,
+        partial        = false,
+        reason         = null,
+        sanitizeReason = value => (typeof value === 'string' && value.trim()) ? value.trim() : null
+    } = {}) {
+        if (!partial) {
+            return FleetAdmission.blankActivityGuidance()
+        }
+
+        const
+            seconds        = Number.isFinite(intervalMs) && intervalMs > 0 ? Math.max(1, Math.round(intervalMs / 1000)) : 60,
+            recheck        = `rechecks every ${seconds} s`,
+            headTitle      = `${recheck} · Recheck now is in the banner · no direct producer repair here`,
+            slots          = capability?.slots,
+            hasPlainSlots  = Boolean(slots) && Object.prototype.toString.call(slots) === '[object Object]',
+            rawKeys        = hasPlainSlots ? Object.getOwnPropertyNames(slots) : [],
+            missingParts   = [],
+            remainingParts = [],
+            slotReasons    = [];
+
+        let malformed = !hasPlainSlots || rawKeys.length === 0;
+
+        if (!malformed) {
+            for (const rawKey of rawKeys) {
+                const
+                    slot  = slots[rawKey],
+                    label = FleetAdmission.formatActivitySlotLabel(rawKey);
+
+                if (
+                    RESERVED_SLOT_KEYS.has(rawKey) ||
+                    !label ||
+                    !slot ||
+                    Object.prototype.toString.call(slot) !== '[object Object]' ||
+                    !VALID_SLOT_STATES.has(slot.state)
+                ) {
+                    malformed = true;
+                    break
+                }
+
+                if (slot.state === 'wired') {
+                    remainingParts.push(`${label} available`)
+                } else {
+                    const
+                        key        = rawKey.trim(),
+                        word       = slot.state === 'degraded' && FleetAdmission.slotSuppliedEvents(key, slot, events) ? 'partial' : 'unavailable',
+                        slotReason = sanitizeReason(slot.reason);
+
+                    missingParts.push(`${label} ${word}`);
+                    slotReason && slotReasons.push(`${key}: ${slotReason}`)
+                }
+            }
+        }
+
+        const
+            missing    = !malformed && missingParts.length > 0 ? missingParts.join(' · ') : GENERIC_PARTIAL_SUMMARY,
+            remaining  = !malformed && missingParts.length > 0 && remainingParts.length > 0 ? remainingParts.join(' · ') : null,
+            summary    = [missing, remaining].filter(Boolean).join(' · '),
+            safeReason = sanitizeReason(reason ?? capability?.reason) ?? (slotReasons.length > 0 ? sanitizeReason(slotReasons.join('; ')) : null);
+
+        return {
+            head     : `partial — ${missing}`,
+            headTitle,
+            missing,
+            reason   : safeReason,
+            recheck,
+            remaining,
+            repair   : 'none',
+            summary
+        }
+    }
+
+    /**
      * @summary Admits an answered activity feed: the events join the provider-owned store (the first
      * answer replaces, later ones merge), the feed is bound to the answering profile, and the surface
-     * reads `live`, or `partial` with the failed source's reason. Counts retain their producer scope.
+     * reads `live`, or `partial` with the structured-slot guidance and sanitized reason. Counts retain
+     * their producer scope. An observer read's A2A admission comes first ({@link AgentOS.util.ActivityObserver#admitLive}):
+     * it can empty the feed, so its page replaces, and can withhold the A2A facts it did not admit.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object} answer
      * @param {Object[]} answer.events The producer's bounded page
+     * @param {Object|null} [answer.a2a=null] The observer read's A2A metadata
+     * @param {Object|null} [answer.capability=null] The composite activity capability with `slots`
      * @param {Object[]} [answer.counts=[]] The producer's fold counts
      * @param {String|null} [answer.profileId=null] The profile the answer belongs to
      * @param {Boolean} [answer.partial=false] A usable page from an incomplete composed read
      * @param {String|null} [answer.reason=null] Sanitized reason retained for a partial read
+     * @param {Object|null} [answer.selector=null] The observer selector the read sent, `null` for the mailbox
      */
-    static admitActivity(owner, {counts = [], events, profileId = null, partial = false, reason = null}) {
-        const store = owner.resolveFleetActivityEventsStore(), stream = owner.getReference('activity-stream'),
-              state = partial ? 'partial' : 'live';
+    static admitActivity(owner, {a2a = null, capability = null, counts = [], events, profileId = null, partial = false, reason = null, selector = null}) {
+        const
+            store    = owner.resolveFleetActivityEventsStore(),
+            stream   = owner.getReference('activity-stream'),
+            state    = partial ? 'partial' : 'live',
+            answered = {counts: Array.isArray(counts) ? counts : [], events: Array.isArray(events) ? events : []},
+            admitted = selector ? ActivityObserver.admitLive(owner, {a2a, ...answered, reason}, selector) : answered,
+            guidance = FleetAdmission.deriveActivityGuidance({
+                capability,
+                events        : admitted.events,
+                intervalMs    : owner.component?.livenessCadence?.activity,
+                partial,
+                reason,
+                sanitizeReason: value => owner.toSafeDegradedReason
+                    ? owner.toSafeDegradedReason(value)
+                    : (typeof value === 'string' && value.trim() ? value.trim() : null)
+            });
 
-        store.ingestSnapshot(Array.isArray(events) ? events : [], {replace: !owner.activityWired});
+        store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
         owner.publishConnection('stream', {data: {
-            activityCounts      : Array.isArray(counts) ? counts : [],
+            activityCounts      : admitted.counts,
+            activityGuidance    : guidance,
             streamAdapterState  : state,
-            streamDegradedReason: partial ? reason : null
+            streamDegradedReason: partial ? guidance.reason : null
         }});
-        stream && (stream.adapterState = state)
+        stream && (typeof stream.set === 'function' ? stream.set({adapterState: state, guidance}) : (stream.adapterState = state, stream.guidance = guidance))
     }
 
     /**

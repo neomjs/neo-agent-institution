@@ -50,7 +50,21 @@ class SetupStep extends Model {
             stringField('receipt'),
             stringField('observedAt'),
             stringField('consentedAt'),
+            // the step this row waits for: while it is set the row has no action
+            stringField('waitsFor'),
         {
+            // the witness row's exits in the recipe's order (`run` · `resume` · `new-attempt`); `null` on every other row
+            name        : 'exits',
+            type        : 'Array',
+            convert     : value => Array.isArray(value) ? value.filter(exit => typeof exit === 'string') : null,
+            defaultValue: null
+        }, {
+            // whether a new attempt can leave a second witness row on the plane
+            name        : 'duplicatePossible',
+            type        : 'Boolean',
+            convert     : value => value === true,
+            defaultValue: false
+        }, {
             // a consented answer: a preset id, or the PATH of a credential file — never a value
             name        : 'answer',
             type        : 'String',

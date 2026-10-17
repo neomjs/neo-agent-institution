@@ -23,6 +23,8 @@ import {shippedDockDocument} from './shippedDockDocument.mjs';
 
 const SHIPPED = shippedDockDocument();
 
+// Out of scope: missing awaiting-merge fixture store warning (defect-note MESSAGE:e5dcc130-ea69-40ea-b5e3-da55c32fbfe2).
+
 /**
  * Contract specs for the cockpit's dock DECLARATION — `panes` + `zones` on the class, lowered by
  * the engine (`Authoring.fromZones`) instead of a hand-built document:
@@ -73,6 +75,19 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
 
     test('the live cockpit\'s document is the shipped document', () => {
         expect(cockpit.dockModel).toEqual(SHIPPED)
+    });
+
+    test('every declared perspective protects Fleet from close without locking it or the optional panes', () => {
+        for (const zones of Object.values(cockpit.perspectives)) {
+            const {document, errors} = Authoring.fromZones(cockpit.panes, zones);
+
+            expect(errors).toEqual([]);
+            expect(document.items.fleet.closable).toBe(false);
+            expect(document.items.fleet.locked).not.toBe(true);
+            expect(Operations.closeItem(document, {itemId: 'fleet'}).errors).toEqual(['item "fleet" is not closable']);
+            expect(Operations.closeItem(document, {itemId: 'stream'}).errors).toEqual([]);
+            expect(Operations.detachItem(document, {itemId: 'fleet'}).errors, 'non-closable does not prevent tear-out').toEqual([])
+        }
     });
 
     test('every declared pane carries the record\'s own reference and the keeper-view module it renders', () => {
@@ -281,6 +296,137 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'})
     });
 
+    test('a selection reaches the retained inspector before its auto-hidden reveal, and visible selection stays live', async () => {
+        cockpit = create();
+        const store = seatRoster(cockpit), controller = cockpit.getController();
+
+        controller.rosterObservedAt = 1_700_000_000_000;
+        controller.onAgentSelect({agentId: 'ada'});
+        await cockpit.refreshPromise;
+        const pane = cockpit.getAgentDetailPane();
+
+        expect(pane.record).toBe(store.get('ada'));
+        expect((await cockpit.activatePerspective('Overview')).errors).toEqual([]);
+        await cockpit.refreshPromise;
+        expect(cockpit.getReference('agent-detail'), 'the inspector is outside the projected tree').toBeFalsy();
+        expect(Neo.get(pane.id), 'the parked instance is still owned').toBe(pane);
+
+        controller.rosterObservedAt = 1_700_000_060_000;
+        controller.onAgentSelect({agentId: 'vega'});
+        expect(pane.record, 'the selection lands before deferred reveal').toBe(store.get('vega'));
+        expect(pane.rosterObservedAt).toBe(controller.rosterObservedAt);
+        await cockpit.refreshPromise;
+
+        expect(cockpit.getAgentDetailPane(), 'reveal keeps the same inspector').toBe(pane);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'vega', pane: 'vega', provider: 'vega'});
+
+        controller.onAgentSelect({agentId: 'ada'});
+        expect(cockpit.getAgentDetailPane()).toBe(pane);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'})
+    });
+
+    test('an absent inspector is not created by lookup; fresh materialization receives the current selection and clock', async () => {
+        cockpit = create();
+        const store = seatRoster(cockpit), controller = cockpit.getController();
+
+        expect(cockpit.getAgentDetailPane()).toBeNull();
+        expect(Neo.get(cockpit.getPaneDeclaration('detail').id)).toBeFalsy();
+        controller.onAgentSelect({agentId: 'ada'});
+        await cockpit.refreshPromise;
+        const oldPane = cockpit.getAgentDetailPane();
+
+        const closed = cockpit.applyDockZoneOperation({operation: 'closeItem', itemId: 'detail'});
+        expect(closed.errors).toEqual([]);
+        await cockpit.onDockZoneDocumentChange(closed.document);
+        await cockpit.refreshPromise;
+        expect(oldPane.isDestroyed).toBe(true);
+        expect(cockpit.getAgentDetailPane()).toBeNull();
+
+        controller.rosterObservedAt = 1_700_000_120_000;
+        controller.applySelection(store.get('vega'));
+        expect(cockpit.getAgentDetailPane(), 'selection alone does not reopen a closed pane').toBeNull();
+        expect((await cockpit.activatePerspective('Review')).errors).toEqual([]);
+        await cockpit.refreshPromise;
+
+        const fresh = cockpit.getAgentDetailPane();
+        expect(fresh).not.toBe(oldPane);
+        expect(fresh.record).toBe(store.get('vega'));
+        expect(fresh.rosterObservedAt).toBe(controller.rosterObservedAt)
+    });
+
+    test('a parked Wake routes pane keeps receiving the owner snapshot, and its lookup creates no pane', async () => {
+        cockpit = create();
+        const
+            controller = cockpit.getController(),
+            snapshot   = count => ({capability: {state: 'wired'}, count, seats: []}),
+            setHidden  = async autoHidden => {
+                const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'wakeRoutes', autoHidden});
+                expect(result.errors).toEqual([]);
+                await cockpit.onDockZoneDocumentChange(result.document);
+                await cockpit.refreshPromise
+            };
+        let answer = snapshot(1);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetWakeRoutes: async () => answer}};
+
+        try {
+            expect(cockpit.getWakeRoutesPane(), 'no pane before the first materialization').toBeNull();
+            expect(Neo.get(cockpit.getPaneDeclaration('wakeRoutes').id)).toBeFalsy();
+
+            await setHidden(false);
+            await expect.poll(() => cockpit.getWakeRoutesPane()).toBeTruthy();
+            const pane = cockpit.getWakeRoutesPane();
+
+            await controller.loadWakeRoutes();
+            expect(pane.snapshot.count).toBe(1);
+
+            await setHidden(true);
+            expect(cockpit.getReference('wakeRoutes'), 'parked: off the projected tree').toBeFalsy();
+            expect(cockpit.getWakeRoutesPane(), 'parked: still the live instance').toBe(pane);
+
+            answer = snapshot(2);
+            await controller.loadWakeRoutes();
+            expect(pane.snapshot.count, 'the parked pane holds the new snapshot').toBe(2);
+
+            await setHidden(false);
+            expect(cockpit.getWakeRoutesPane(), 'the reveal re-adopts the same instance').toBe(pane);
+            expect(pane.snapshot.count).toBe(2)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
+    test('Reconnect re-drives a parked Wake routes pane', async () => {
+        cockpit = create();
+        const
+            controller = cockpit.getController(),
+            snapshot   = count => ({capability: {state: 'wired'}, count, seats: []}),
+            setHidden  = async autoHidden => {
+                const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'wakeRoutes', autoHidden});
+                expect(result.errors).toEqual([]);
+                await cockpit.onDockZoneDocumentChange(result.document);
+                await cockpit.refreshPromise
+            };
+        let answer = snapshot(1);
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetWakeRoutes: async () => answer}};
+
+        try {
+            await setHidden(false);
+            await expect.poll(() => cockpit.getWakeRoutesPane()).toBeTruthy();
+            const pane = cockpit.getWakeRoutesPane();
+
+            await controller.loadWakeRoutes();
+            await setHidden(true);
+
+            answer = snapshot(2);
+            controller.reconnectFleet();
+            await expect.poll(() => pane.snapshot.count, 'the re-drive reaches the parked pane').toBe(2)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
+
     test('a prior selection survives a direct Review write; a write that hides the inspector or names nothing declared seats nobody', async () => {
         cockpit = create();
 
@@ -325,6 +471,167 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
 
         expect(cockpit.dockModel.nodes['primary-split'].sizes, 'the supplied sizes are the active ones').toEqual([0.2, 0.8]);
         expect(presetDocument(cockpit, 'Overview').nodes['primary-split'].sizes, 'the seed is the declaration\'s').toEqual([0.6078, 0.3922])
+    });
+
+    test('detail.autoHidden follows selectedAgent != null across select, Escape, deselect and a roster refresh that drops the selected record — unless detail is pinned (#712 AC-1)', async () => {
+        cockpit = create();
+
+        const store      = seatRoster(cockpit),
+              controller = cockpit.getController(),
+              list       = cockpit.getReference('fleet-grid').getReference('roster-list'),
+              model      = list.selectionModel;
+
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+
+        // 1. select reveals detail
+        model.select(list.getItemId('ada'));
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(false);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'});
+
+        // 2. Escape clears selection and hides unpinned detail back to the shipped document
+        model.onKeyDownEscape({});
+        await cockpit.refreshPromise;
+        expect(model.getSelection()).toEqual([]);
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+        expect(cockpit.dockModel).toEqual(SHIPPED);
+
+        // 3. deselect clears selection and hides unpinned detail
+        model.select(list.getItemId('vega'));
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(false);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'vega', pane: 'vega', provider: 'vega'});
+
+        model.deselect(list.getItemId('vega'));
+        await cockpit.refreshPromise;
+        expect(model.getSelection()).toEqual([]);
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+        expect(cockpit.dockModel).toEqual(SHIPPED);
+
+        // 4. roster refresh that drops the selected record clears selection and hides unpinned detail
+        model.select(list.getItemId('ada'));
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(false);
+
+        controller.admitRoster({
+            rows: [{agentId: 'vega', displayName: 'Vega', githubUsername: 'neo-opus-vega'}]
+        });
+        await cockpit.refreshPromise;
+        expect(store.get('ada')).toBeFalsy();
+        expect(model.getSelection()).toEqual([]);
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+
+        // 5. pinned detail stays open (pinned: true, autoHidden: false) across select, Escape, deselect and roster drop
+        controller.admitRoster({
+            rows: [
+                {agentId: 'ada',  displayName: 'Ada',  githubUsername: 'neo-opus-ada'},
+                {agentId: 'vega', displayName: 'Vega', githubUsername: 'neo-opus-vega'}
+            ]
+        });
+        cockpit.onDockZoneDocumentChange(cockpit.applyDockZoneOperation({operation: 'setItemPinned', itemId: 'detail', pinned: true}).document);
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        model.select(list.getItemId('ada'));
+        await cockpit.refreshPromise;
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'});
+
+        model.onKeyDownEscape({});
+        await cockpit.refreshPromise;
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        model.select(list.getItemId('vega'));
+        await cockpit.refreshPromise;
+        model.deselect(list.getItemId('vega'));
+        await cockpit.refreshPromise;
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        model.select(list.getItemId('ada'));
+        await cockpit.refreshPromise;
+        controller.admitRoster({
+            rows: [{agentId: 'vega', displayName: 'Vega', githubUsername: 'neo-opus-vega'}]
+        });
+        await cockpit.refreshPromise;
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true})
+    });
+
+    test('a perspective restore or a reload keeps a pinned detail and drops an unpinned one (#712 AC-2)', async () => {
+        cockpit = create();
+        seatRoster(cockpit);
+
+        const controller = cockpit.getController();
+
+        // unpinned detail revealed by selection
+        controller.onAgentSelect({agentId: 'ada'});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(false);
+        expect(cockpit.dockModel.items.detail.pinned).toBeFalsy();
+
+        // capturing while unpinned drops the transient selection reveal from the saved layout
+        controller.capturePerspective('Unpinned capture');
+        expect(cockpit.perspectiveStore.loadPerspective('Unpinned capture').document.items.detail.autoHidden).toBe(true);
+
+        // switching to a declared perspective drops the unpinned detail
+        expect(await cockpit.activatePerspective('Focus')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+
+        // resetting the active perspective drops an unpinned detail
+        controller.onAgentSelect({agentId: 'vega'});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(false);
+        expect(await cockpit.activatePerspective('Focus')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+
+        // restoring a captured perspective drops an unpinned detail
+        controller.onAgentSelect({agentId: 'ada'});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(false);
+        expect(await cockpit.activatePerspective('Unpinned capture')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+
+        // reload with an unpinned revealed dockModel drops the unpinned detail back to the rail
+        const unpinnedSupplied = Operations.setItemAutoHidden(shippedDockDocument(), {itemId: 'detail', autoHidden: false}).document;
+        expect(unpinnedSupplied.items.detail.autoHidden).toBe(false);
+        cockpit.destroy();
+        cockpit = create({dockModel: unpinnedSupplied});
+        expect(cockpit.dockModel.items.detail.autoHidden).toBe(true);
+
+        // pinned detail: kept across declared perspective restore, reset, captured perspective restore, and reload
+        cockpit.onDockZoneDocumentChange(cockpit.applyDockZoneOperation({operation: 'setItemPinned', itemId: 'detail', pinned: true}).document);
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        expect(await cockpit.activatePerspective('Focus')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        expect(await cockpit.activatePerspective('Focus')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        cockpit.getController().capturePerspective('Pinned capture');
+        expect(await cockpit.activatePerspective('Overview')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        expect(await cockpit.activatePerspective('Pinned capture')).toEqual({errors: [], switched: true});
+        await cockpit.refreshPromise;
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true});
+
+        const pinnedSupplied = cockpit.dockModel;
+        cockpit.destroy();
+        cockpit = create({dockModel: pinnedSupplied});
+        expect(cockpit.dockModel.items.detail).toMatchObject({autoHidden: false, pinned: true})
     })
 });
 
