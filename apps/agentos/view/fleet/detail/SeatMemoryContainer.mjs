@@ -161,7 +161,7 @@ class SeatMemoryContainer extends Container {
 
     /**
      * A new answer refills the list and starts a new choice: the recorded consent where the answer offers it, else
-     * the one candidate an answer holds ({@link AgentOS.util.AddAgentFlow#preselectedMemory}).
+     * the one candidate an answer holds ({@link AgentOS.util.AddAgentFlow#singleCandidate}).
      * @param {Object|null} value
      * @param {Object|null} oldValue
      */
@@ -174,7 +174,7 @@ class SeatMemoryContainer extends Container {
 
             me.choice = null;
             me.getReference('memory-list').store.data = rows;
-            me.choice = rows.some(row => row.source === consent) ? consent : AddAgentFlow.preselectedMemory(value);
+            me.choice = rows.some(row => row.source === consent) ? consent : AddAgentFlow.singleCandidate(value);
             me.sync()
         }
     }

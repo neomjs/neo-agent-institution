@@ -2449,7 +2449,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
     });
 
-    test('the Add agent memory frame at 1280 — candidates with the empty row closing their group, and a check that could not answer, in the operator\'s words', async ({page}) => {
+    test('the Add agent memory frame at 1280 — candidates with the empty row preselected first, a check that could not answer, and 11 candidates scrolling inside the list with a focused row in both skins (#521, #724)', async ({page}) => {
         await page.setViewportSize({width: 1280, height: 800});
         await bootSettledCockpit(page);
 
@@ -2471,6 +2471,70 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await page.waitForTimeout(400);
             await expect(form, `Add agent, memory ${state}`).toHaveScreenshot(golden)
         }
+
+        const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${ADD_AGENT_MEMORY_DRIVER}?state=eleven&t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await expect(form.locator('.fm-memory-candidates .neo-list-item')).toHaveCount(12);
+
+        const firstRow = form.locator('.fm-memory-candidates .neo-list-item').first();
+        await expect(firstRow).toHaveClass(/\bneo-selected\b/);
+        await firstRow.focus();
+
+        const
+            fadeOpacity = () => form.evaluate(card => getComputedStyle(card.querySelector('.fm-memory-candidates'), '::after').opacity),
+            geometry    = await form.evaluate(card => {
+                const
+                    list = card.querySelector('.fm-memory-candidates'),
+                    row  = list.querySelector('.neo-list-item.neo-selected'),
+                    rect = card.getBoundingClientRect();
+
+                return {
+                    cardBottom  : Math.round(rect.bottom),
+                    clientHeight: list.clientHeight,
+                    outlineStyle: getComputedStyle(row).outlineStyle,
+                    scrollHeight: list.scrollHeight,
+                    viewportH   : window.innerHeight
+                }
+            });
+
+        expect(geometry.scrollHeight, '11 candidates + empty row scroll inside the list').toBeGreaterThan(geometry.clientHeight);
+        expect(geometry.clientHeight, 'the list is capped so the rest of the card stays in view').toBeLessThanOrEqual(204);
+        expect(geometry.cardBottom, 'the whole Add agent card fits at 1280x800 without outer scroll').toBeLessThanOrEqual(geometry.viewportH);
+        expect(geometry.outlineStyle, 'a selected row carries its fill and border, never an orange focus outline').toBe('none');
+        expect(await fadeOpacity(), 'the foot fade shows while rows continue below').toBe('1');
+
+        await form.evaluate(card => {
+            const list = card.querySelector('.fm-memory-candidates');
+            list.scrollTop = list.scrollHeight
+        });
+        await page.waitForTimeout(150);
+        expect(await fadeOpacity(), 'the foot fade disappears at the bottom so the last row is never veiled').toBe('0');
+
+        await form.evaluate(card => {
+            card.querySelector('.fm-memory-candidates').scrollTop = 0
+        });
+        await page.waitForTimeout(150);
+        await firstRow.focus();
+
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(form, 'Add agent, 11 candidates, focused row').toHaveScreenshot('add-agent-memory-11-candidates.png');
+
+        await switchToLightSkin(page);
+        if (!await form.isVisible()) {
+            await tab.click();
+            await expect(tab).toHaveClass(/\bpressed\b/, {timeout: 10000});
+            await expect(form).toBeVisible({timeout: 30000});
+            const reloaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${ADD_AGENT_MEMORY_DRIVER}?state=eleven&t=${++driverTick}`);
+            expect(reloaded.success).toBe(true);
+            await expect(form.locator('.fm-memory-candidates .neo-list-item')).toHaveCount(12)
+        }
+        await firstRow.focus();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(form, 'Add agent, 11 candidates, focused row (light)').toHaveScreenshot('add-agent-memory-11-candidates-light.png')
     });
 
     test('the fleet button reads its next plan beside current counts: Start fleet · 4, Stop fleet · 8, and armed Stop with the confirmation plan', async ({page}) => {

@@ -294,12 +294,30 @@ class AddAgentFlow extends Base {
 
         switch (discovery?.state) {
             case 'candidates':
-                return [...discovery.candidates, empty];
+                return [empty, ...discovery.candidates];
             case 'unavailable':
                 return [empty];
             default:
                 return []
         }
+    }
+
+    /**
+     * @summary Whether a memory candidate's declared identity (`agent`, `githubUsername`, `id`, or `name`)
+     * matches the typed username; a folder path is never a handle.
+     * @param {Object}      candidate
+     * @param {String|null} username
+     * @returns {Boolean}
+     */
+    static candidateMatchesUsername(candidate, username) {
+        const
+            normalize = value => typeof value === 'string' ? value.trim().replace(/^@/, '').toLowerCase() : '',
+            handle    = normalize(username);
+
+        if (!handle || !candidate) return false;
+
+        return [candidate.agent, candidate.githubUsername, candidate.id, candidate.name]
+            .some(field => normalize(field) === handle)
     }
 
     /**
@@ -360,13 +378,36 @@ class AddAgentFlow extends Base {
     }
 
     /**
-     * @summary The choice a fresh discovery answer starts from: its one candidate, or none. Several
-     * candidates wait for the operator, because a wrong memory is an identity error and is never guessed.
-     * @param {Object} discovery The {@link readMemoryCandidates} outcome.
-     * @returns {String|null} The preselected candidate's `source`, or null.
+     * @summary The single candidate a discovery outcome holds, or null when zero or several exist:
+     * a wrong memory is an identity error and is never guessed.
+     * @param {Object|null} discovery The {@link readMemoryCandidates} outcome.
+     * @returns {String|null} The single candidate's `source`, or null.
      */
-    static preselectedMemory(discovery) {
+    static singleCandidate(discovery) {
         return discovery?.state === 'candidates' && discovery.candidates.length === 1 ? discovery.candidates[0].source : null
+    }
+
+    /**
+     * @summary The choice a fresh discovery answer starts from: a single matching candidate, its one
+     * candidate before a username is typed, or empty memory. Several candidates with no match wait on
+     * the empty row, because a wrong memory is an identity error and is never guessed.
+     * @param {Object}      discovery The {@link readMemoryCandidates} outcome.
+     * @param {String|null} [username=null]
+     * @returns {String|null} The preselected row's `source`, or null.
+     */
+    static preselectedMemory(discovery, username=null) {
+        if (discovery?.state !== 'candidates') return null;
+
+        const
+            {candidates} = discovery,
+            trimmed      = typeof username === 'string' ? username.trim() : '',
+            matches      = trimmed ? candidates.filter(candidate => AddAgentFlow.candidateMatchesUsername(candidate, trimmed)) : [];
+
+        if (matches.length === 1) {
+            return matches[0].source
+        }
+
+        return (!trimmed && AddAgentFlow.singleCandidate(discovery)) || MEMORY_IMPORT_NONE
     }
 
     /**

@@ -76,11 +76,11 @@ function fakeElectron({parent = null, loadFails = false} = {}) {
  * @param {Object} [options={}] Forwarded to {@link fakeElectron}, plus `method`.
  * @returns {{settled: Promise, win: Object}}
  */
-function openPrompt({method = 'plane-attach', ...options} = {}) {
+function openPrompt({getPlane, intent, method = 'plane-attach', ...options} = {}) {
     const
         {FakeWindow, windows} = fakeElectron(options),
-        prompt                = createCredentialPrompt({BrowserWindow: FakeWindow, Menu: {}, preloadPath: '/shell/credentialPrompt.preload.cjs'}),
-        settled               = prompt({event: {sender: {}}, method});
+        prompt                = createCredentialPrompt({BrowserWindow: FakeWindow, getPlane, Menu: {}, preloadPath: '/shell/credentialPrompt.preload.cjs'}),
+        settled               = prompt({event: {sender: {}}, intent, method});
 
     return {settled, win: windows[0]}
 }
@@ -134,12 +134,30 @@ test.describe('harness/credentialPrompt — the shell\'s one credential window',
         )
     });
 
-    test('Add explains one-token admission and later plane repair never demands a separate token', () => {
+    test('Add explains one-token admission, names the agent, the chosen forge, and the bound plane, and later plane repair never demands a separate token (#724 AC-5)', () => {
         const
-            loaded = method => decodeURIComponent(openPrompt({method}).win.url.replace('data:text/html;charset=utf-8,', '')),
-            seat   = loaded('setPlaneCredential');
+            loaded = (method, extra = {}) => decodeURIComponent(openPrompt({method, ...extra}).win.url.replace('data:text/html;charset=utf-8,', '')),
+            seat   = loaded('setPlaneCredential'),
+            maryam = openPrompt({
+                getPlane: () => 'http://127.0.0.1:3102',
+                intent  : {forge: 'github', githubUsername: 'neo-gemini-maryam'},
+                method  : 'defineAgent'
+            }).win,
+            maryamDoc = decodeURIComponent(maryam.url.replace('data:text/html;charset=utf-8,', '')),
+            gitlabDoc = loaded('defineAgent', {
+                getPlane: () => 'https://plane.neo.test:8443',
+                intent  : {forge: 'gitlab', githubUsername: 'neo-gemini-maryam'}
+            });
 
         expect(loaded('defineAgent')).toContain('<p>Use this agent\'s account token for repository access and the connected Agent OS. Enter it once; Fleet reuses it at Start.</p>');
+        expect(maryam.options.title).toBe('Enter neo-gemini-maryam\'s GitHub PAT');
+        expect(maryamDoc).toContain('<h1>Enter neo-gemini-maryam\'s GitHub PAT</h1>');
+        expect(maryamDoc).toContain('<label for="credential">GitHub PAT</label>');
+        expect(maryamDoc).not.toContain('GitHub or GitLab PAT');
+        expect(maryamDoc).toContain('<p>Use neo-gemini-maryam\'s GitHub token for repository access and Agent OS (127.0.0.1:3102). Enter it once; Fleet reuses it at Start.</p>');
+        expect(gitlabDoc).toContain('<h1>Enter neo-gemini-maryam\'s GitLab PAT</h1>');
+        expect(gitlabDoc).toContain('<label for="credential">GitLab PAT</label>');
+        expect(gitlabDoc).toContain('<p>Use neo-gemini-maryam\'s GitLab token for repository access and Agent OS (plane.neo.test:8443). Enter it once; Fleet reuses it at Start.</p>');
         expect(seat).toContain('<p>Use this agent\'s account token for the connected Agent OS.</p>');
         expect(seat).toContain('<button type="submit" class="primary" disabled>Update token</button>');
         expect(seat).not.toMatch(/no repository access|never its checkout PAT|second token/i);

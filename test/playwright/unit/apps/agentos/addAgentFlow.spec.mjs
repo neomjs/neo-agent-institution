@@ -347,8 +347,8 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
             candidates  = {state: 'candidates', candidates: CANDIDATES},
             unavailable = {state: 'unavailable', reason: 'the Agent OS did not answer', detail: null};
 
-        // the rows the choice offers: the candidates and the empty row last, or the empty row alone
-        expect(AddAgentFlow.memoryChoices(candidates).map(row => row.source)).toEqual([...CANDIDATES.map(candidate => candidate.source), 'none']);
+        // the rows the choice offers: the empty row first, followed by any candidates
+        expect(AddAgentFlow.memoryChoices(candidates).map(row => row.source)).toEqual(['none', ...CANDIDATES.map(candidate => candidate.source)]);
         expect(AddAgentFlow.memoryChoices(unavailable)).toEqual([{family: null, source: 'none', name: 'Start with empty memory', notes: 0, lastChanged: null}]);
         expect(AddAgentFlow.memoryChoices(none)).toEqual([]);
         expect(AddAgentFlow.memoryChoices({state: 'offline', reason: 'Could not reach the fleet.'})).toEqual([]);
@@ -363,9 +363,18 @@ test.describe('AgentOS.view.fleet.addAgentFlow — the pure flow half (#15242)',
         expect(AddAgentFlow.memoryImportFor({discovery: {state: 'offline', reason: 'Could not reach the fleet.'}, choice: 'none'}))
             .toEqual({valid: false, reason: 'Could not reach the fleet.'});
 
-        // one candidate is preselected; several wait for the operator
+        // one candidate (or a single declared-identity match) is preselected; a folder path never matches a username
+        expect(AddAgentFlow.singleCandidate({state: 'candidates', candidates: [CANDIDATES[0]]})).toBe(CANDIDATES[0].source);
+        expect(AddAgentFlow.singleCandidate(candidates)).toBeNull();
+        expect(AddAgentFlow.candidateMatchesUsername({source: '/Users/operator/.claude/projects/-Users-operator-agents-neo-fable-neomjs-neo/memory', name: 'neomjs-neo'}, 'neo-fable')).toBe(false);
+        expect(AddAgentFlow.candidateMatchesUsername({source: '/Users/neo-fable/.claude/projects/-work/memory', name: 'work'}, 'neo-fable')).toBe(false);
+        expect(AddAgentFlow.candidateMatchesUsername({agent: '@neo-fable', source: '/work/memory', name: 'Mnemosyne'}, 'neo-fable')).toBe(true);
         expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]})).toBe(CANDIDATES[0].source);
-        expect(AddAgentFlow.preselectedMemory(candidates)).toBeNull();
+        expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]}, 'neo-gemini-maryam')).toBe('none');
+        expect(AddAgentFlow.preselectedMemory({state: 'candidates', candidates: [CANDIDATES[0]]}, '@Mnemosyne')).toBe(CANDIDATES[0].source);
+        expect(AddAgentFlow.preselectedMemory(candidates)).toBe('none');
+        expect(AddAgentFlow.preselectedMemory(candidates, 'neo-gemini-maryam')).toBe('none');
+        expect(AddAgentFlow.preselectedMemory(candidates, 'Mnemosyne')).toBe(CANDIDATES[0].source);
         expect(AddAgentFlow.preselectedMemory(unavailable)).toBeNull();
 
         // the intent carries the choice; no choice, no field
@@ -685,7 +694,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         await form.readMemory();
 
-        expect(form.getReference('memory-list').store.getRange().map(row => row.source)).toEqual([CANDIDATES[0].source, 'none']);
+        expect(form.getReference('memory-list').store.getRange().map(row => row.source)).toEqual(['none', CANDIDATES[0].source]);
 
         form.destroy()
     });
@@ -798,26 +807,40 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         expect(form.getReference('memory-frame').hidden).toBe(false);
         expect(form.getReference('memory-lead').text).toBe('Continue this agent\'s memory?');
         expect(form.getReference('memory-note').text).toBe('Its notes are copied, never moved; the original stays where it is.');
+        expect(form.getReference('memory-note').hidden).toBe(false);
 
-        const row = list.createItemContent(list.store.getAt(0));
+        // the empty row leads the group, its name alone
+        expect(list.createItemContent(list.store.getAt(0))).toEqual([{cls: ['fm-memory-candidate-name', 'is-empty-memory'], text: 'Start with empty memory'}]);
+
+        const row = list.createItemContent(list.store.getAt(1));
 
         expect(row[0].text).toBe('Mnemosyne');
         expect(row[1].text).toMatch(/^12 notes · last changed /);
         expect(JSON.stringify(row)).not.toContain(CANDIDATES[0].source);
 
-        // the empty row closes the same group, its name alone
-        expect(list.createItemContent(list.store.getAt(1))).toEqual([{cls: ['fm-memory-candidate-name', 'is-empty-memory'], text: 'Start with empty memory'}]);
-
         expect(form.memoryChoice).toBe(CANDIDATES[0].source);
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false]);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true]);
         expect(form.getReference('memory-details').hidden).toBe(false);
         expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[0].source);
         expect(form.getReference('memory-actions').hidden).toBe(true);
 
+        // typing a non-matching handle falls back from the single candidate to the empty row; typing its handle restores it
+        (await form.getField('githubUsername')).value = 'neo-gemini-maryam';
+        expect(form.memoryChoice).toBe('none');
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false]);
+        expect(form.getReference('memory-note').hidden).toBe(true);
+        expect(form.getReference('memory-details').hidden).toBe(true);
+
+        (await form.getField('githubUsername')).value = 'Mnemosyne';
+        expect(form.memoryChoice).toBe(CANDIDATES[0].source);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true]);
+        expect(form.getReference('memory-note').hidden).toBe(false);
+        expect(form.getReference('memory-details').hidden).toBe(false);
+
         form.destroy()
     });
 
-    test('several candidates wait for a choice; the chosen source reaches defineAgent, and the empty row sends none (#521 AC-2, AC-3)', async () => {
+    test('several candidates preselect the empty row first; the chosen source reaches defineAgent, and the copy note shows only for a candidate (#521 AC-2, AC-3, #724)', async () => {
         const
             calls = [],
             form  = Neo.create(AddAgentForm, {
@@ -837,21 +860,20 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         const list = form.getReference('memory-list');
 
-        // a wrong memory is an identity error: several candidates preselect none
+        // Start with empty memory is first and preselected when >= 2 candidates exist and none matches the username
         expect(form.getReference('memory-lead').text).toBe('Continue one of these agents\' memory?');
-        expect(form.memoryChoice).toBeNull();
+        expect(form.memoryChoice).toBe('none');
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false, false]);
+        expect(form.getReference('memory-note').hidden).toBe(true);
         expect(form.getReference('memory-details').hidden).toBe(true);
-        expect(list.createItemContent(list.store.getAt(1))[0].text).toBe('An unnamed agent');
+        expect(list.createItemContent(list.store.getAt(0))[0].text).toBe('Start with empty memory');
+        expect(list.createItemContent(list.store.getAt(2))[0].text).toBe('An unnamed agent');
 
-        await fill();
-        await form.onSubmitClick();
+        // choosing a candidate shows the copy note and Details
+        form.onMemoryCandidateClick({record: list.store.getAt(2)});
 
-        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
-        expect(calls).toHaveLength(0);
-
-        form.onMemoryCandidateClick({record: list.store.getAt(1)});
-
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, true, false]);
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, false, true]);
+        expect(form.getReference('memory-note').hidden).toBe(false);
         expect(form.getReference('memory-details').vdom.cn[1].text).toBe(CANDIDATES[1].source);
 
         await fill();
@@ -859,18 +881,46 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         expect(calls).toEqual([{...cleanPayload(), launchOwner: 'fleet', memoryImport: CANDIDATES[1].source}]);
 
-        // the next agent starts from a fresh choice, never the previous agent's memory
-        expect(form.memoryChoice).toBeNull();
-        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([false, false, false]);
-
-        // the empty row is a choice like the others, with nothing under Details
-        form.onMemoryCandidateClick({record: list.store.get('none')});
+        // the next agent starts from a fresh seat preselected on the empty row, never the previous agent's memory
+        expect(form.memoryChoice).toBe('none');
+        expect(list.getVdomRoot().cn.map(item => Boolean(item['aria-selected']))).toEqual([true, false, false]);
+        expect(form.getReference('memory-note').hidden).toBe(true);
         expect(form.getReference('memory-details').hidden).toBe(true);
 
         await fill();
         await form.onSubmitClick();
 
         expect(calls[1].memoryImport).toBe('none');
+
+        form.destroy()
+    });
+
+    test('the submit button carries no lock glyph, and a username matching a single candidate preselects it while a non-matching username preselects the empty row (#724 AC-1, AC-3, AC-4, AC-5)', async () => {
+        const
+            form   = Neo.create(AddAgentForm, {
+                appName       : 'AgentOSAddAgentFlowTest',
+                bridgeResolver: () => ({
+                    defineAgent          : async () => cleanReadback(),
+                    fleetMemoryCandidates: memoryRead(CANDIDATES)
+                })
+            }),
+            submit = form.getReference('submit-button');
+
+        expect(submit.iconCls).toBeFalsy();
+        expect(JSON.stringify(submit.vdom)).not.toContain('fa-lock');
+
+        await form.readMemory();
+
+        expect(form.memoryChoice).toBe('none');
+        expect(form.getReference('memory-note').hidden).toBe(true);
+
+        (await form.getField('githubUsername')).value = 'Mnemosyne';
+        expect(form.memoryChoice).toBe(CANDIDATES[0].source);
+        expect(form.getReference('memory-note').hidden).toBe(false);
+
+        (await form.getField('githubUsername')).value = 'neo-gemini-maryam';
+        expect(form.memoryChoice).toBe('none');
+        expect(form.getReference('memory-note').hidden).toBe(true);
 
         form.destroy()
     });
@@ -896,7 +946,8 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
 
         expect(form.memoryDiscovery).toEqual({state: 'candidates', candidates: CANDIDATES});
         expect(form.getReference('memory-frame').hidden).toBe(false);
-        expect(AddAgentFlow.memoryImportFor({discovery: form.memoryDiscovery, choice: form.memoryChoice}).valid).toBe(false);
+        expect(form.memoryChoice).toBe('none');
+        expect(AddAgentFlow.memoryImportFor({discovery: form.memoryDiscovery, choice: null}).valid).toBe(false);
 
         // the ordered control: the latest answer lands last and is the one that stands
         const answerInOrder = form.readMemory();
@@ -909,7 +960,7 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         form.destroy()
     });
 
-    test('a submission waits for the read in flight: a refresh that finds a memory stops an automatic none (#521)', async () => {
+    test('a submission waits for the read in flight: a refresh that cannot answer stops an automatic none (#521)', async () => {
         const
             calls   = [],
             pending = [],
@@ -932,17 +983,17 @@ test.describe('AgentOS.view.fleet.instances.AddAgentForm — flow wiring + the c
         await first;
         expect(form.memoryDiscovery).toEqual({state: 'none'});
 
-        // the form is shown again, and the refresh finds a memory while the operator presses Add
+        // the form is shown again, and the refresh cannot answer while the operator presses Add
         form.readMemory();
         await fill();
 
         const submitting = form.onSubmitClick();
 
-        pending[1](await memoryRead(CANDIDATES)());
+        pending[1]({capability: {state: 'unavailable', reason: 'the Agent OS did not answer'}, candidates: [], count: 0});
         await submitting;
 
         expect(calls).toHaveLength(0);
-        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Choose the agent whose memory this seat continues, or Start with empty memory.'});
+        expect(form.flowStatus).toEqual({state: 'rejected', reason: 'Existing memory could not be checked. Retry, or choose Start with empty memory.'});
 
         // the control: a refresh that again finds nothing lets the automatic none through
         form.readMemory();

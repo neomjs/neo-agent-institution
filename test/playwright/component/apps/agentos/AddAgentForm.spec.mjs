@@ -90,5 +90,21 @@ test.describe('AgentOS.view.fleet.AddAgentForm — mounted credential boundary (
         // console output, or the "no echo" verdict above is a blind instrument, not a clean pass
         await page.evaluate(() => console.log('console-capture-control-alive'));
         await expect.poll(() => consoleLines.join('\n')).toContain('console-capture-control-alive');
+
+        // the submit button carries no lock glyph, and the preselection rule
+        // preselects Start with empty memory first when >= 2 candidates exist with no single username match
+        await expect(submit.locator('.fa-lock')).toHaveCount(0);
+
+        const loaded = await page.evaluate(
+            path => Neo.worker.App.loadModule({path}),
+            '../../../../test/playwright/visual/addAgentMemory.driver.mjs?state=candidates&t=1'
+        );
+        expect(loaded.success).toBe(true);
+
+        const rows = form.locator('.fm-memory-candidates .neo-list-item');
+        await expect(rows).toHaveCount(3);
+        await expect(rows.first()).toContainText('Start with empty memory');
+        await expect(rows.first()).toHaveAttribute('aria-selected', 'true');
+        await expect(form.locator('.fm-add-memory-note')).toBeHidden();
     });
 });
