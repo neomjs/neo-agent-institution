@@ -128,6 +128,7 @@ class FleetCockpit extends VesselContainer {
                     adapterState      : data => data.gridAdapterState,
                     daemonFault       : data => data.daemonFault,
                     openWork          : data => data.openWork,
+                    planeAdmission    : data => data.planeAdmission,
                     stageOutcome      : data => data.stageLaunch,
                     presenceCapability: data => data.presenceCapability,
                     store             : 'stores.fleetRoster'

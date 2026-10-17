@@ -4,6 +4,7 @@ import PasswordField        from '../../../../../node_modules/neo.mjs/src/form/f
 import TextField            from '../../../../../node_modules/neo.mjs/src/form/field/Text.mjs';
 import AddAgentFlow         from '../../../util/AddAgentFlow.mjs';
 import HarnessChoice        from '../../../util/HarnessChoice.mjs';
+import PlaneAdmission       from '../../../util/PlaneAdmission.mjs';
 import SeatGitIdentity      from '../../../util/SeatGitIdentity.mjs';
 import GitIdentityContainer from '../shared/GitIdentityContainer.mjs';
 import MemoryCandidateList  from './MemoryCandidateList.mjs';
@@ -108,6 +109,12 @@ class AddAgentForm extends FormContainer {
          */
         instanceStore_: null,
         /**
+         * The plane's owner-principal admission from `/fleet/probe`.
+         * @member {Object|null} planeAdmission_=null
+         * @reactive
+         */
+        planeAdmission_: null,
+        /**
          * The flow's rendered lifecycle state — `{state, reason}` with state in the
          * {@link AgentOS.util.AddAgentFlow#ADD_AGENT_STATES flow vocabulary}.
          * Reactive: every transition re-renders the status line + control affordances.
@@ -168,6 +175,13 @@ class AddAgentForm extends FormContainer {
             cls      : ['fm-add-destination'],
             flex     : 'none',
             reference: 'destination-line'
+        }, {
+            ntype    : 'component',
+            cls      : ['fm-add-plane-admission'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'plane-admission-line',
+            role     : 'status'
         }, {
             ntype: 'component',
             cls  : ['fm-add-section'],
@@ -345,6 +359,20 @@ class AddAgentForm extends FormContainer {
             flex     : 'none',
             reference: 'flow-status'
         }, {
+            ntype    : 'component',
+            cls      : ['fm-add-plane-commands'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'plane-commands',
+            vdom     : {
+                tag: 'details',
+                cn : [
+                    {tag: 'summary', text: 'Show the commands'},
+                    {tag: 'pre', cls: ['fm-add-plane-command'], cn: [{tag: 'code'}]},
+                    {tag: 'pre', cls: ['fm-add-plane-command'], cn: [{tag: 'code'}]}
+                ]
+            }
+        }, {
             // the added seat's commit identity, mounted only when its derivation fails
             module   : GitIdentityContainer,
             flex     : 'none',
@@ -381,6 +409,12 @@ class AddAgentForm extends FormContainer {
      * @protected
      */
     memoryRequest = 0
+    /**
+     * Monotonic fence for `/fleet/probe` reads owned by this form.
+     * @member {Number} planeRequest=0
+     * @protected
+     */
+    planeRequest = 0
 
     /**
      * @summary Seat the first product's harness, drop the token field for shell ingress, and probe
@@ -407,6 +441,7 @@ class AddAgentForm extends FormContainer {
         }
 
         me.updateDestinationLine();
+        me.planeAdmission && me.applyPlaneAdmission(me.planeAdmission);
         me.syncForge();
 
         me.getReference('git-identity').on({
@@ -431,13 +466,17 @@ class AddAgentForm extends FormContainer {
     afterSetMounted(value, oldValue) {
         super.afterSetMounted(value, oldValue);
 
-        const me = this;
+        const
+            me     = this,
+            bridge = AddAgentFlow.resolveRegistryBridge(me.bridgeResolver);
 
         if (value) {
-            AddAgentFlow.resolveRegistryBridge(me.bridgeResolver)?.defineAgent && me.readMemory()
+            bridge?.defineAgent && me.readMemory();
+            PlaneAdmission.hasProbe(bridge) && me.readPlaneAdmission()
         } else if (oldValue) {
             me.memoryRequest++;
-            me.memoryRead = null
+            me.memoryRead = null;
+            me.planeRequest++
         }
     }
 
@@ -465,7 +504,34 @@ class AddAgentForm extends FormContainer {
             text: value.reason || me.statusLineFor(value.state)
         });
 
+        PlaneAdmission.syncFormCommands(me, value);
         submit?.set({disabled: value.state === 'gated' || busy})
+    }
+
+    /**
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetPlaneAdmission(value, oldValue) {
+        oldValue !== undefined && this.applyPlaneAdmission(value)
+    }
+
+    /**
+     * @summary Render the plane-state line beneath the destination from the bound or probed `/fleet/probe` answer.
+     * @param {Object|null} value
+     * @protected
+     */
+    applyPlaneAdmission(value) {
+        PlaneAdmission.applyToForm(this, value)
+    }
+
+    /**
+     * @summary Read `/fleet/probe` from the bridge and update `planeAdmission`.
+     * @returns {Promise<Object|null>}
+     */
+    readPlaneAdmission() {
+        return PlaneAdmission.readForForm(this, AddAgentFlow.resolveRegistryBridge(this.bridgeResolver))
     }
 
     /**
@@ -515,7 +581,7 @@ class AddAgentForm extends FormContainer {
      * @protected
      */
     afterSetShellCustody(value, oldValue) {
-        oldValue !== undefined && this.updateDestinationLine()
+        oldValue !== undefined && PlaneAdmission.onFormTargetChange(this, AddAgentFlow.resolveRegistryBridge(this.bridgeResolver))
     }
 
     /**
@@ -525,7 +591,7 @@ class AddAgentForm extends FormContainer {
      * @protected
      */
     afterSetShellPlaneBase(value, oldValue) {
-        oldValue !== undefined && this.updateDestinationLine()
+        oldValue !== undefined && PlaneAdmission.onFormTargetChange(this, AddAgentFlow.resolveRegistryBridge(this.bridgeResolver))
     }
 
     /**
@@ -535,7 +601,7 @@ class AddAgentForm extends FormContainer {
      * @protected
      */
     afterSetBoundProfileId(value, oldValue) {
-        oldValue !== undefined && this.updateDestinationLine()
+        oldValue !== undefined && PlaneAdmission.onFormTargetChange(this, AddAgentFlow.resolveRegistryBridge(this.bridgeResolver))
     }
 
     /**
@@ -823,6 +889,13 @@ class AddAgentForm extends FormContainer {
         me.getReference('git-identity').set({hidden: true, identity: null});
 
         try {
+            const admission = await me.readPlaneAdmission();
+
+            if (admission?.state === 'unresolved') {
+                me.flowStatus = {state: 'rejected', reason: admission.status, commands: admission.commands};
+                return
+            }
+
             const validation = AddAgentFlow.validateDefinePayload(payload, {credentialRequired: !shellOwned});
 
             // an incomplete definition never renders `submitting` — nothing is in flight
@@ -834,11 +907,16 @@ class AddAgentForm extends FormContainer {
             me.flowStatus = {state: 'submitting', reason: ''};
 
             const outcome = await AddAgentFlow.submitDefineAgent({
+                admission,
                 bridgeResolver: me.bridgeResolver,
                 payload       : {...payload, repoSlug: values.repoSlug}
             });
 
-            me.flowStatus = {state: outcome.state, reason: outcome.reason};
+            me.flowStatus = {
+                state : outcome.state,
+                reason: outcome.reason,
+                ...(outcome.commands ? {commands: outcome.commands} : {})
+            };
 
             if (outcome.state === 'readback-confirmed') {
                 // one agent's memory choice never carries over to the next agent
@@ -859,25 +937,8 @@ class AddAgentForm extends FormContainer {
      * something to do: a derived or declared identity asks nothing new.
      * @returns {Promise<Object|null>} The Fleet's answer, or `null` when a newer request owns the row.
      */
-    async readGitIdentity() {
-        const
-            me      = this,
-            agentId = me.addedAgentId,
-            request = ++me.identityRequest,
-            row     = me.getReference('git-identity');
-
-        // a retry shows it is reading, and Read again waits for the answer
-        row.hidden || (row.status = {state: 'pending', reason: 'Reading…'});
-
-        const identity = await SeatGitIdentity.read(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId);
-
-        if (request !== me.identityRequest || me.isDestroyed) {
-            return null
-        }
-
-        row.set({hidden: !SeatGitIdentity.needsRepair(identity), identity});
-
-        return identity
+    readGitIdentity() {
+        return SeatGitIdentity.readForForm(this, AddAgentFlow.resolveRegistryBridge(this.bridgeResolver))
     }
 
     /**
@@ -888,40 +949,8 @@ class AddAgentForm extends FormContainer {
      * @param {String} data.gitName
      * @returns {Promise<void>}
      */
-    async onDeclareGitIdentity({gitEmail, gitName}={}) {
-        const
-            me      = this,
-            agentId = me.addedAgentId,
-            row     = me.getReference('git-identity');
-
-        if (!agentId) {
-            return
-        }
-
-        // the declaration is the latest request now: a read still on its way paints nothing
-        const request = ++me.identityRequest;
-
-        row.status = {state: 'pending', reason: ''};
-
-        const outcome = await SeatGitIdentity.declare(AddAgentFlow.resolveRegistryBridge(me.bridgeResolver), agentId, {gitEmail, gitName});
-
-        if (request !== me.identityRequest || me.isDestroyed) {
-            return
-        }
-
-        if (outcome.state === 'rejected') {
-            row.status = {state: 'rejected', reason: outcome.reason};
-            return
-        }
-
-        outcome.definition && me.fire('agentDefinitionAccepted', {agent: outcome.definition});
-
-        const identity = await me.readGitIdentity();
-
-        // the row closes on a usable answer, so the status line keeps what the seat commits as
-        if (identity && !SeatGitIdentity.needsRepair(identity)) {
-            me.flowStatus = {state: 'readback-confirmed', reason: `Agent added. ${SeatGitIdentity.describe(identity)}.`}
-        }
+    onDeclareGitIdentity(data={}) {
+        return SeatGitIdentity.declareForForm(this, AddAgentFlow.resolveRegistryBridge(this.bridgeResolver), data)
     }
 
     /** @summary Remove the Store listener; the provider retains ownership of that Store. */

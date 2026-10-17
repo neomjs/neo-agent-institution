@@ -135,6 +135,71 @@ class SeatGitIdentity extends Base {
             ? {state: 'accepted', reason: '', definition: outcome.agent}
             : {state: 'rejected', reason: outcome?.reason || 'The fleet refused the identity. Nothing was changed.'}
     }
+
+    /**
+     * @summary Read the added seat's commit identity for an `AddAgentForm` instance, fenced by `form.identityRequest`.
+     * @param {Neo.component.Base} form
+     * @param {Object|null} bridge
+     * @returns {Promise<Object|null>}
+     */
+    static async readForForm(form, bridge) {
+        const
+            agentId = form.addedAgentId,
+            request = ++form.identityRequest,
+            row     = form.getReference('git-identity');
+
+        row.hidden || (row.status = {state: 'pending', reason: 'Reading…'});
+
+        const identity = await SeatGitIdentity.read(bridge, agentId);
+
+        if (request !== form.identityRequest || form.isDestroyed) {
+            return null
+        }
+
+        row.set({hidden: !SeatGitIdentity.needsRepair(identity), identity});
+
+        return identity
+    }
+
+    /**
+     * @summary Declare the added seat's commit identity for an `AddAgentForm` instance, then read it back.
+     * @param {Neo.component.Base} form
+     * @param {Object|null} bridge
+     * @param {Object} [fields={}]
+     * @returns {Promise<void>}
+     */
+    static async declareForForm(form, bridge, {gitEmail, gitName}={}) {
+        const
+            agentId = form.addedAgentId,
+            row     = form.getReference('git-identity');
+
+        if (!agentId) {
+            return
+        }
+
+        const request = ++form.identityRequest;
+
+        row.status = {state: 'pending', reason: ''};
+
+        const outcome = await SeatGitIdentity.declare(bridge, agentId, {gitEmail, gitName});
+
+        if (request !== form.identityRequest || form.isDestroyed) {
+            return
+        }
+
+        if (outcome.state === 'rejected') {
+            row.status = {state: 'rejected', reason: outcome.reason};
+            return
+        }
+
+        outcome.definition && form.fire('agentDefinitionAccepted', {agent: outcome.definition});
+
+        const identity = await form.readGitIdentity();
+
+        if (identity && !SeatGitIdentity.needsRepair(identity)) {
+            form.flowStatus = {state: 'readback-confirmed', reason: `Agent added. ${SeatGitIdentity.describe(identity)}.`}
+        }
+    }
 }
 
 export default Neo.setupClass(SeatGitIdentity);

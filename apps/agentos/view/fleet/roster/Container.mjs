@@ -4,6 +4,7 @@ import ClassSystemUtil  from '../../../../../node_modules/neo.mjs/src/util/Class
 import Component        from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
 import Container        from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import HealthBar        from '../health/Container.mjs';
+import PlaneAdmission   from '../../../util/PlaneAdmission.mjs';
 import RosterController from './Controller.mjs';
 import RosterList       from './List.mjs';
 import Store            from '../../../../../node_modules/neo.mjs/src/data/Store.mjs';
@@ -100,6 +101,14 @@ class FleetGrid extends Container {
          */
         presenceCapability_: null,
         /**
+         * The plane's owner-principal admission from `/fleet/probe`, plumbed by the cockpit.
+         * Renders `cannot own seats yet · register-forge` while `ownerResolution` is set,
+         * `plane admission unknown` when a probe could not be read, and nothing when admitted.
+         * @member {Object|null} planeAdmission_=null
+         * @reactive
+         */
+        planeAdmission_: null,
+        /**
          * Whether a Brain daemon sits in a fault state — the spine banner's own fault set
          * (`DAEMON_FAULT_STATES`), plumbed by the cockpit from the one lifecycle authority. Feeds
          * the health bar's aggregate attention fold; this roster derives nothing about daemons.
@@ -163,6 +172,14 @@ class FleetGrid extends Container {
                     flex     : 'none',
                     hidden   : true,
                     reference: 'fleet-presence-cap',
+                    role     : 'status'
+                },
+                {
+                    module   : Component,
+                    cls      : ['fm-fleet-plane-admission'],
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'fleet-plane-admission',
                     role     : 'status'
                 },
                 {ntype: 'component', flex: 1},
@@ -265,6 +282,7 @@ class FleetGrid extends Container {
         // because isConstructed stays false until the whole onConstructed chain completes, so the
         // reactive hook cannot fire here (the HealthBar applyCounts pattern)
         me.presenceCapability && me.applyPresenceCapability(me.presenceCapability);
+        me.planeAdmission     && me.applyPlaneAdmission(me.planeAdmission);
 
         me.applyAdapterState();
         controller.syncRosterDerived()
@@ -414,6 +432,36 @@ class FleetGrid extends Container {
         // the chip and the aggregate dot read ONE fact: a rendered degradation always carries
         // attention weight, so the chip can never sit over a green header
         this.pushAttentionInputs()
+    }
+
+    /**
+     * Triggered after the planeAdmission config changed — updates the header's plane-state chip.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetPlaneAdmission(value, oldValue) {
+        this.isConstructed && this.applyPlaneAdmission(value)
+    }
+
+    /**
+     * @summary Render the plane-admission read onto the header chip: `cannot own seats yet · register-forge`
+     * while `ownerResolution` is set, `plane admission unknown` when a probe could not be read, and
+     * hidden when admitted or unprobed.
+     * @param {Object|null} value
+     * @protected
+     */
+    applyPlaneAdmission(value) {
+        const
+            {hidden, line, state} = PlaneAdmission.lineFor(value),
+            chip                  = this.getReference('fleet-plane-admission');
+
+        chip.set({
+            cls   : ['fm-fleet-plane-admission', ...(state && !hidden ? [`is-${state}`] : [])],
+            hidden,
+            text  : line
+        });
+        chip.changeVdomRootKey('aria-label', !hidden && line ? `Plane admission: ${line}.` : null)
     }
 
     /**

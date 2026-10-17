@@ -35,6 +35,7 @@ export function displayShellLabel(planeBase) {
  */
 export const boundAgentOsBind = {
     boundProfileId: data => data.boundProfileId ?? null,
+    planeAdmission: data => data.planeAdmission ?? null,
     shellCustody  : data => data.shellCustody === true,
     shellPlaneBase: data => data.shellPlaneBase ?? null
 };

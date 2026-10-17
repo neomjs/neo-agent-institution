@@ -37,9 +37,15 @@
     }
 
     .fm-add-destination,
+    .fm-add-plane-admission,
     .fm-add-credential-help {
         color: var(--fm-ink-dim);
         font : var(--fm-text-detail);
+    }
+
+    .fm-add-plane-admission.is-unresolved {
+        color      : var(--fm-state-limited);
+        font-weight: 600;
     }
 
     .fm-add-forge-row,
@@ -133,6 +139,30 @@
         &.is-rejected {
             color       : var(--fm-kind-alert);
             font-weight : 600;
+        }
+    }
+
+    .fm-add-plane-commands {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-detail);
+
+        summary {
+            cursor: pointer;
+            width : fit-content;
+        }
+
+        .fm-add-plane-command {
+            background   : var(--fm-panel-2);
+            border       : 1px solid var(--fm-line-soft);
+            border-radius: 4px;
+            color        : var(--fm-ink);
+            font-family  : var(--fm-font-mono);
+            margin       : var(--fm-space-1) 0 0;
+            overflow-x   : auto;
+            padding      : var(--fm-space-1) var(--fm-space-2);
+            user-select  : text;
+            white-space  : pre-wrap;
+            word-break   : break-all;
         }
     }
 }

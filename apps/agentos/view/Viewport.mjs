@@ -126,6 +126,18 @@ class Viewport extends BaseViewport {
                 // the one selected graph node, by its origin-qualified id: the Observatory and the Golden
                 // Path pane both bind it both ways, so a choice in either is the selection in both
                 graphSelectionId: null,
+                // the plane's owner-principal admission from GET /fleet/probe, shared by the roster head and Add Agent
+                planeAdmission: {
+                    commands       : null,
+                    fleetDataDir   : null,
+                    line           : '',
+                    pid            : null,
+                    reason         : null,
+                    resolutionState: null,
+                    startedAt      : null,
+                    state          : null,
+                    status         : null
+                },
                 // that read owner's connection observation, the System view's own surface
                 systemConnection: {state: null, reason: null},
                 // the instant of that owner's latest cadence tick it could not spend on a read (its

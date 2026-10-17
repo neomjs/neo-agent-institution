@@ -1,7 +1,7 @@
 import {test, expect}                                                                                                                  from '@playwright/test';
 import {readFileSync, rmSync, writeFileSync}                                                                                           from 'node:fs';
 import path                                                                                                                            from 'node:path';
-import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks} from '../fixtures.mjs';
+import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks, landPlaneAdmission} from '../fixtures.mjs';
 import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                                        from '../fixture/fleetSample.mjs';
 import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                                         from '../fixture/pinnedSetupHost.mjs';
 
@@ -2613,6 +2613,58 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await switchToLightSkin(page);
         await settle();
         await expect(card).toHaveScreenshot('fleet-card-cleanup-unresolved-light.png')
+    });
+
+    test('the plane-state line renders cannot own seats yet · register-forge while ownerResolution is set, and disappears when admitted; both skins (#726)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 800});
+        await bootSettledCockpit(page);
+
+        const
+            head       = page.locator('.fm-fleet-head'),
+            chip       = head.locator('.fm-fleet-plane-admission'),
+            unresolved = {
+                identity: {
+                    authProvider   : 'github',
+                    ownerPrincipal : null,
+                    ownerResolution: {
+                        state : 'uninitialized',
+                        reason: 'forge connection registry is not initialized (expected at /data/fleet/forge-connections.json)'
+                    }
+                },
+                pid      : 4210,
+                startedAt: '2026-10-17T18:00:00.000Z'
+            },
+            admitted = {
+                identity: {
+                    authProvider   : 'github',
+                    ownerPrincipal : {id: 'github:1', login: 'tobiu', provider: 'github'},
+                    ownerResolution: null
+                },
+                pid      : 4210,
+                startedAt: '2026-10-17T18:00:00.000Z'
+            },
+            settle = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(400)
+            };
+
+        await expect(chip).toBeHidden();
+
+        await landPlaneAdmission(page, unresolved);
+        await expect(chip).toBeVisible();
+        await expect(chip).toHaveText('cannot own seats yet · register-forge');
+        await settle();
+        await expect(head).toHaveScreenshot('fleet-head-plane-unresolved.png');
+
+        await switchToLightSkin(page);
+        await expect(chip).toBeVisible();
+        await expect(chip).toHaveText('cannot own seats yet · register-forge');
+        await settle();
+        await expect(head).toHaveScreenshot('fleet-head-plane-unresolved-light.png');
+
+        await landPlaneAdmission(page, admitted);
+        await expect(chip).toBeHidden()
     });
 });
 

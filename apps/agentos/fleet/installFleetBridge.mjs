@@ -260,6 +260,28 @@ export function installFleetBridge({
         value       : profileId
     });
 
+    if (typeof shellTransport?.probePlane === 'function') {
+        Object.defineProperty(registryBridge, 'probePlane', {
+            configurable: true,
+            value       : () => shellTransport.probePlane()
+        })
+    } else if (!shellTransport && bearerToken !== null) {
+        Object.defineProperty(registryBridge, 'probePlane', {
+            configurable: true,
+            value       : async () => {
+                const response = await target.fetch(new URL('/fleet/probe', fleetUrl.origin).href, {
+                    headers: {Authorization: `Bearer ${bearerToken}`}
+                });
+
+                if (!response.ok) {
+                    throw new Error('fleet: probe failed')
+                }
+
+                return response.json()
+            }
+        })
+    }
+
     // The wake-push CAPABILITY, direct-browser bridges only: the pane opens the stream through
     // this closure and never touches a mint — class-1 rides `Authorization`, the class-3 MC
     // credential (when armed) rides `x-neo-mc-authorization`, both captured here. A bearer-less
