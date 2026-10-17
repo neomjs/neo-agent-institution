@@ -268,6 +268,9 @@ test('the deployment-state picture lands leaf-complete on the REAL parent provid
 test('partial Activity guidance derives once from capability.slots onto banner, Recheck button, stream head, and parent provider, and clears on recovery or instance switch (#706)', async () => {
     const
         previousFleet = globalThis.AgentOS?.fleet,
+        // the wire events' instants, minutes before this run: the pane names a newest event older than a day
+        // as "quiet since", so a fixed date would turn the recovery step's "● streaming" red one day later
+        at            = minutes => new Date(Date.now() - (30 - minutes) * 60_000).toISOString(),
         parent        = createShellProvider(),
         cockpit       = Neo.create(FleetCockpit, {
             stateProvider: {
@@ -311,7 +314,7 @@ test('partial Activity guidance derives once from capability.slots onto banner, 
                         type      : 'a2a-activity',
                         source    : 'memory-core:mailbox',
                         confidence: 'observed',
-                        occurredAt: '2026-10-16T09:00:00.000Z',
+                        occurredAt: at(0),
                         payload   : {subject: 'live mailbox row'}
                     }]
                 }
@@ -356,7 +359,7 @@ test('partial Activity guidance derives once from capability.slots onto banner, 
                         type      : 'pr-activity',
                         source    : 'github-workflow:pull-requests',
                         confidence: 'observed',
-                        occurredAt: '2026-10-16T09:05:00.000Z',
+                        occurredAt: at(5),
                         payload   : {number: 706, title: 'partial activity guidance'}
                     }]
                 }
@@ -403,7 +406,7 @@ test('partial Activity guidance derives once from capability.slots onto banner, 
                         type      : 'pr-activity',
                         source    : 'github-workflow:pull-requests',
                         confidence: 'observed',
-                        occurredAt: '2026-10-16T09:10:00.000Z',
+                        occurredAt: at(10),
                         payload   : {number: 707, title: 'surviving pr row'}
                     }]
                 }
