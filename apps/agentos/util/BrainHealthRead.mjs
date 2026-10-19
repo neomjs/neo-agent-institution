@@ -17,12 +17,28 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 const brainHealthStates = Object.freeze(['running', 'degraded', 'stopped']);
 
 class BrainHealthRead extends Base {
+    static STARTING_POLL_MS = 1000
+
     static config = {
         /**
          * @member {String} className='AgentOS.util.BrainHealthRead'
          * @protected
          */
         className: 'AgentOS.util.BrainHealthRead'
+    }
+
+    /**
+     * @summary Stop any starting-phase poll timer on the liveness owner.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     */
+    static stop(owner) {
+        if (owner?._brainStartingTimerId != null) {
+            clearTimeout(owner._brainStartingTimerId);
+            owner._brainStartingTimerId = null
+        }
+        if (owner) {
+            owner._brainWasStarting = false
+        }
     }
 
     /**
@@ -35,12 +51,36 @@ class BrainHealthRead extends Base {
      */
     static apply(owner, response) {
         const
-            provider = owner.component.getStateProvider(),
-            state    = brainHealthStates.includes(response?.state) ? response.state : null;
+            provider  = owner.component.getStateProvider(),
+            state     = brainHealthStates.includes(response?.state) ? response.state : null,
+            transport = Neo.isObject(response?.transport) ? response.transport : null;
 
         if (owner.isDestroyed || !provider) return;
 
-        provider.setData('shellTransport', Neo.isObject(response?.transport) ? response.transport : null);
+        provider.setData('shellTransport', transport);
+
+        if (transport?.phase === 'starting') {
+            owner._brainWasStarting = true;
+
+            if (owner._brainStartingTimerId == null && !owner.livenessHidden && (owner.livenessTimerId !== null || typeof Neo.Main?.brainHealth === 'function')) {
+                owner._brainStartingTimerId = setTimeout(() => {
+                    owner._brainStartingTimerId = null;
+
+                    if (!owner.isDestroyed && !owner.livenessHidden) {
+                        owner.loadBrainHealth ? owner.loadBrainHealth() : BrainHealthRead.load(owner)
+                    }
+                }, BrainHealthRead.STARTING_POLL_MS);
+                owner._brainStartingTimerId?.unref?.()
+            }
+        } else {
+            const wasStarting = owner._brainWasStarting === true;
+
+            BrainHealthRead.stop(owner);
+
+            if (wasStarting && (transport?.up === true || state === 'running')) {
+                owner.reconnectFleet?.()
+            }
+        }
 
         if (!state) {
             return

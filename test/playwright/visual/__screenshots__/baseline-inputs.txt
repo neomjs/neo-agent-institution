@@ -216,7 +216,7 @@ apps/agentos/util/AgentFreshness.mjs
     82ac3c17912b1cb8b6fcae46662b0701f238e87e
 
 apps/agentos/util/BrainHealthRead.mjs
-    2413d3ec4c94a0534baf778beb62867c728153e3
+    0c51e045403b1512439cf43ef8f1c02a219557f2
 
 apps/agentos/util/ClosedShape.mjs
     1cb201ec5bb7b858b41a68f6abfba58824fb6ccf
@@ -324,7 +324,7 @@ apps/agentos/util/SourceHealth.mjs
     bfc624a86fdd0a70313358d6a850be6e015911dd
 
 apps/agentos/util/SpineBanner.mjs
-    fb169fff3d55ac1be8236bcd9e140d21580c7a9a
+    22c150b777bf668aa44c9f67c5ec282de3278d05
 
 apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
@@ -384,7 +384,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     49cee569caaf2192f62d91cbb7297a32c34c534f
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    b786dc500912080fa80b3daf35ab20f32955c034
+    ea2d1b39d8c3dad154736ace0193b26d3e011af3
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce

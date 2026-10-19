@@ -880,6 +880,8 @@ class LivenessController extends ViewerWakeController {
     stopLiveness() {
         const me = this;
 
+        BrainHealthRead.stop(me);
+
         if (me.livenessTimerId !== null) {
             clearInterval(me.livenessTimerId);
             me.livenessTimerId = null;
