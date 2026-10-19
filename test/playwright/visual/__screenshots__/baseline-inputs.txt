@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    ec712562fa520ebb6a840e8a5ee4fc645612fb7e
+    fe6ab42c75675a007bd9d7390fdc09afb4493f74
 
 apps/agentos/CARD-CONTRACT.md
     8557e8e96e524eee681c5d94624dc72a309adcc0
@@ -636,7 +636,7 @@ apps/agentos/view/system/SeatRootController.mjs
     11d0ce4be716d394c51f275b56112e2c4aa19fac
 
 resources/scss/src/apps/agentos/Viewport.scss
-    882e828c672087054c8f8f080de9d5b38bcf2cb4
+    d77e0b6dd6e910a1bf534d6d464998622cd57dfc
 
 resources/scss/src/apps/agentos/accounts/List.scss
     94fa05801c3e3642c6586cb2c9072418bfa8081c
@@ -747,7 +747,7 @@ resources/scss/src/apps/agentos/fleet/perspectives/Container.scss
     ebd226f7f44bd6bca6a78ab5a361d051c093a660
 
 resources/scss/src/apps/agentos/fleet/roster/AwaitingMergeButton.scss
-    6a4805ff0ad0a8574c031a735fb570a10238b922
+    f80afdaa7687e402b9b73a54c7a6631056e6f646
 
 resources/scss/src/apps/agentos/fleet/roster/Container.scss
     fcc36aa714d4d9f54bdd4973e17c7d85daf2b12d
@@ -852,7 +852,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    58c8e30c9ad5453e3bbb398665a75f19eb4bbd53
+    160ee8f4689f1ab52e850813e5e47bcfbea82fd8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -1008,13 +1008,13 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-aw
     2f3e17b74f4c4fa42f837e6b437b000efad4077c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-open.png
-    11b7728e5f7996be2db181b181e314e94752b654
+    991f9f0f2ee03b5bc499fb0f9808f8c982b0a791
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled-light.png
-    eff405dd1812e7854f648b2da3f131e0eff3b340
+    5563e0efd41153a9e098fc6b8c2edff2f9983905
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled.png
-    5206eeab45caaf6d6cdc1862d951a4a453688154
+    05b7dd63324352f6301e069a2f5ef6767c32290e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-plane-unresolved-light.png
     d84c03bf65204f1cbfa28d34eb99cf3ca31444ce
