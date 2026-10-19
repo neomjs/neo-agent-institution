@@ -75,7 +75,8 @@ with nothing replaced.
 The installer's census includes every process executing from a `Neo Harness….app` bundle.
 `--quit` asks the canonical FM app to quit by path (an identifier-addressed quit could pick another
 registered copy); it does not stop detached desktop harnesses. A process using a different bundle
-path is refused with or without `--quit`.
+path is refused with or without `--quit`. When a step fails after `--quit` and before the swap moves
+the installed bundle, the installer opens that unchanged bundle again and says so, with the next step.
 
 Generation-capable builds copy and verify their execution payload under
 `<userData>/brain/runtime/<generation-id>/` before serving Fleet or starting seats. The host

@@ -296,7 +296,7 @@ function holdUncleanPredecessor(directory, expected) {
     }
     const fingerprint = JSON.stringify(observed.state);
     // The lease launchAdmissionJournal.mjs takes for its issuer: held while that issuer lives.
-    const lease = holdFileLease({directory, filename: 'issuer.lock', owner: 'fleet-launch-admission'});
+    const lease         = holdFileLease({directory, filename: 'issuer.lock', owner: 'fleet-launch-admission'});
     const assertCurrent = () => {
         lease.assertCurrent();
         const current = read();
@@ -391,7 +391,9 @@ function assertFirstInstallCustody(userDataDir, {held = false} = {}) {
 /**
  * @summary Runs the planned steps in order. The first failure stops the run; the error names the
  * step. Receipt verification turns "copied" into "installed", and the custody comparison turns
- * "replaced" into "replaced without touching the plane's custody files".
+ * "replaced" into "replaced without touching the plane's custody files". A failure after the quit and
+ * before the swap moves the installed bundle reopens that bundle, unchanged, so the operator is never
+ * left without the app this run quit.
  * @param {Object[]} steps From {@link planInstall}
  * @param {Object} [options]
  * @param {Function} [options.runFn=run] Child-process seam (`ditto`, `osascript`, `open`); tests inject it
@@ -415,6 +417,7 @@ export async function executePlan(steps, {
     let   generation     = null, bindings = null, requireStopped = false;
     let   continuity     = null, guard = null, transaction = null;
     let   referenceGuard = null, runtimeDirectory = null, protectionPaths = null, protectionPublished = false;
+    let   reopen         = null, stopped = null; // the bundle this run quit, until the swap's rename moves it
 
     /** @summary Acquires the second guard only after package ownership and any issuer handoff. */
     async function holdReferences() {
@@ -513,6 +516,7 @@ export async function executePlan(steps, {
                         // so an id-based quit resolves through a Launch Services pick among every copy — and
                         // AppleScript launches the copy it picked if that one is not running.
                         runFn('osascript', ['-e', `tell application "${step.bundle}" to quit`]);
+                        reopen = step.bundle;
                         waitUntilGone(runningFn, quitTimeoutMs);
                         break;
                     case 'custody':
@@ -560,6 +564,7 @@ export async function executePlan(steps, {
                     case 'rename':
                         fs.mkdirSync(path.dirname(step.to), {recursive: true});
                         fs.renameSync(step.from, step.to);
+                        if (step.from === reopen) reopen = null;
                         moveBinding(step.from, step.to);
                         break;
                     case 'verify': {
@@ -594,9 +599,39 @@ export async function executePlan(steps, {
 
         if (bindings && transaction) verifyBindings();
         return {custody: custody.before === undefined ? null : custody, generation}
+    } catch (error) {
+        if (!reopen) throw error;
+        stopped = error;
     } finally {
-        releaseExclusion();
+        if (!stopped) releaseExclusion();
     }
+
+    // Between the quit and the swap the installed bundle is untouched; an unproved release launches nothing.
+    let reopenError = null;
+    try {
+        releaseExclusion();
+        runFn('open', ['-a', reopen]);
+    } catch (cause) { reopenError = cause }
+    throw new Error(describeStoppedUpdate(stopped, reopen, reopenError), {cause: stopped})
+}
+
+/**
+ * @summary The operator's words when an update stops after its quit and before the swap: what happened,
+ * that nothing changed, and the one next step.
+ * @param {Error} error The step's failure, kept verbatim as the reason.
+ * @param {String} bundle The installed bundle the run quit.
+ * @param {Error|null} reopenError Why reopening it failed, or null when it is open again.
+ * @returns {String}
+ */
+export function describeStoppedUpdate(error, bundle, reopenError) {
+    return [
+        'Update stopped before the Fleet Manager was replaced.',
+        `Reason: ${error.message}`,
+        reopenError ? `Nothing was changed, but reopening the Fleet Manager failed: ${reopenError.message}.`
+            : 'Nothing was changed, and your Fleet Manager is open again.',
+        reopenError ? `Next: open "${bundle}", then run the same install command again.`
+            : 'Next: run the same install command again. If it stops at the same step, rebuild the candidate first.'
+    ].join('\n')
 }
 
 /**
