@@ -1017,14 +1017,18 @@ export function awaitOrchestratorReady({child, timeoutMs = 30000}) {
 /**
  * @summary Awaits the Fleet transport's genuine readiness through a versioned `listAgents`
  * round-trip — the same negotiated surface the Fleet Manager consumes. An unversioned, malformed,
- * or skewed response never counts as ready.
+ * or skewed response never counts as ready. A slow Fleet is still starting, not failed: without a
+ * deadline the wait lasts while the child lives, and only its exit, an abort or the wire contract ends it.
  * @param {Object} options
  * @param {String} options.productRoot Absolute product root holding the installed public Fleet entry.
  * @param {import('node:child_process').ChildProcess} options.child
  * @param {Number|String} options.port
  * @param {String} options.bearerToken Main-owned process bearer.
  * @param {String} [options.repoRoot=resolveAgentOsRuntimeRoot()] Authoritative Brain root for private launcher primitives.
- * @param {Number} [options.timeoutMs=15000]
+ * @param {Number|null} [options.timeoutMs=null] A hard deadline, for callers that must stay bounded, such as the smoke.
+ * @param {Number} [options.slowAfterMs=15000] When the wait reports that the Fleet is still starting.
+ * @param {Function} [options.onSlow] `ms => void`, called once when `slowAfterMs` passes before readiness.
+ * @param {AbortSignal} [options.signal] Ends the wait, e.g. when the app quits during boot.
  * @param {Function} [options.fetchFn=fetch] Injection seam for tests.
  * @returns {Promise<void>}
  */
@@ -1034,7 +1038,10 @@ export function awaitFleetReady({
     port,
     bearerToken,
     repoRoot = resolveAgentOsRuntimeRoot(),
-    timeoutMs = 15000,
+    timeoutMs = null,
+    slowAfterMs = 15000,
+    onSlow = null,
+    signal = null,
     fetchFn = fetch
 }) {
     const wireContract = loadFleetRuntimeContracts({productRoot, runtimeRoot: repoRoot});
@@ -1049,15 +1056,19 @@ export function awaitFleetReady({
 
             settled = true;
             clearTimeout(timer);
+            clearTimeout(slow);
             clearInterval(poller);
             child.off('exit', onExit);
             child.off('error', onExit);
+            signal?.removeEventListener('abort', onAbort);
             error ? reject(error) : resolve()
         };
 
-        const onExit = (codeOrError, signal) => finish(new Error(
-            `fleet transport exited before ready (${codeOrError instanceof Error ? codeOrError.message : `code=${codeOrError} signal=${signal}`})`
+        const onExit = (codeOrError, exitSignal) => finish(new Error(
+            `fleet transport exited before ready (${codeOrError instanceof Error ? codeOrError.message : `code=${codeOrError} signal=${exitSignal}`})`
         ));
+
+        const onAbort = () => finish(new Error('fleet transport readiness wait was canceled'));
 
         const probe = async () => {
             try {
@@ -1083,15 +1094,18 @@ export function awaitFleetReady({
                     finish()
                 }
             } catch (error) {
-                // Not listening yet — keep polling until the deadline.
+                // Not listening yet — keep polling while the child lives.
             }
         };
 
-        const timer  = setTimeout(() => finish(new Error(`fleet transport not ready within ${timeoutMs}ms`)), timeoutMs);
+        const timer  = Number.isFinite(timeoutMs) ? setTimeout(() => finish(new Error(`fleet transport not ready within ${timeoutMs}ms`)), timeoutMs) : null;
+        const slow   = typeof onSlow === 'function' ? setTimeout(() => onSlow(slowAfterMs), slowAfterMs) : null;
         const poller = setInterval(probe, 300);
 
         child.once('exit', onExit);
         child.once('error', onExit);
+        if (signal?.aborted) return onAbort();
+        signal?.addEventListener('abort', onAbort, {once: true});
         wireContract.catch(() => finish(new Error('fleet wire contract unavailable')));
         probe()
     })
