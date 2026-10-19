@@ -50,6 +50,7 @@ import {
     startTransportFact,
     stopBrainChild,
     stopBrainTree,
+    stopRunBridge,
     sweepStaleRunState,
     typePlaneRefusal,
     writeRunState
@@ -278,7 +279,7 @@ test.describe('harness brain lifecycle', () => {
     });
 
     test('buildBrainProfile binds every mutable path under the isolation root and gates every side lane off', () => {
-        const profile = buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir});
+        const profile = buildBrainProfile({bridgePort: 18502, chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir});
 
         for (const leafName of ['NEO_AI_DB_PATH', 'NEO_AI_ORCHESTRATOR_DIR', 'NEO_BACKUP_PATH', 'NEO_CHROMA_DATA_DIR_TEST', 'NEO_FLEET_AGENTS_ROOT', 'NEO_FLEET_DATA_DIR', 'NEO_REM_RUN_STATE_DIR']) {
             expect(profile[leafName].startsWith(workDir + path.sep)).toBe(true)
@@ -289,6 +290,8 @@ test.describe('harness brain lifecycle', () => {
         expect(profile.NEO_FLEET_PLANE_BASE).toBe('');
         expect(profile.NEO_FLEET_PLANE_BEARER).toBe('');
         expect(profile.NEO_FLEET_PORT).toBe('18501');
+        // the Fleet settles, and may start, its Bridge on the run's port, never on the operator's 8081
+        expect(profile.NEO_NL_PORT).toBe('18502');
 
         // Every gate leaf is OFF — an ungated port-bearing task can reap live listeners
         // (ProcessSupervisorService.reconcileSingletonPort), so this list is a safety contract.
@@ -596,7 +599,7 @@ test.describe('harness brain lifecycle', () => {
         const profiles = [
             // the packaged smoke contains its seats the way main.mjs builds it
             {...buildPackagedBrainEnv({agentsRoot: path.join(workDir, 'fleet', 'agents'), backupRoot: path.join(workDir, 'backups'), dataRoot: workDir}), UNIT_TEST_MODE: ''},
-            buildBrainProfile({chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir})
+            buildBrainProfile({bridgePort: 18502, chromaPort: 18500, fleetPort: 18501, isolationRoot: workDir})
         ];
 
         for (const env of profiles) {
@@ -1113,6 +1116,41 @@ test.describe('harness brain lifecycle', () => {
         writeFileSync(runStateFile, JSON.stringify({children: [null, 'legacy', {}]}), 'utf8');
         expect(sweepStaleRunState({isolationRoot: workDir})).toEqual([]);
         expect(existsSync(runStateFile)).toBe(false)
+    });
+
+    test('the run\'s Bridge stop acts only on a run-bridge.mjs listening on the run\'s own port', () => {
+        const killed = [];
+
+        expect(stopRunBridge({
+            commandFn  : pid => ({7301: '/rt/Neo Harness /rt/organism/ai/mcp/server/neural-link/run-bridge.mjs', 7302: '/usr/sbin/httpd -D FOREGROUND'})[pid] ?? '',
+            killFn     : (pid, signal) => killed.push([pid, signal]),
+            listenersFn: port => port === 51001 ? [7301, 7302] : [],
+            port       : 51001
+        })).toEqual({foreign: [7302], port: 51001, stopped: [7301]});
+        expect(killed).toEqual([[7301, 'SIGKILL']]);
+
+        // a script that merely ends in the name is not the Bridge
+        expect(stopRunBridge({
+            commandFn  : () => 'node /x/not-run-bridge.mjs',
+            killFn     : () => { throw new Error('must not signal') },
+            listenersFn: () => [7303],
+            port       : 51001
+        }).foreign).toEqual([7303])
+    });
+
+    test('a crashed run\'s recorded Bridge port is swept with its groups', () => {
+        const killed = [];
+
+        writeRunState({bridgePort: 51002, children: [], isolationRoot: workDir});
+
+        expect(sweepStaleRunState({
+            commandFn    : pid => pid === 7401 ? 'node /c/ai/mcp/server/neural-link/run-bridge.mjs' : '',
+            isolationRoot: workDir,
+            killFn       : (pid, signal) => killed.push([pid, signal]),
+            listenersFn  : port => port === 51002 ? [7401] : []
+        })).toEqual([7401]);
+        expect(killed).toEqual([[7401, 'SIGKILL']]);
+        expect(existsSync(path.join(workDir, 'run-state.json'))).toBe(false)
     });
 
     test('clearRunState removes the record after a clean stop and tolerates absence', () => {
