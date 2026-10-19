@@ -29,7 +29,7 @@ import {
     themeBuildArgv
 } from '../../../../harness/pack.mjs';
 import {buildPackagedBrainEnv, resolveBrainMode, resolveLauncherRuntime} from '../../../../harness/brain.mjs';
-import path                                                                  from 'node:path';
+import path                                                              from 'node:path';
 
 /**
  * @summary Traverses the packaged main-process `.mjs` graph from one entry file. Relative literals
@@ -382,10 +382,10 @@ test.describe('harness pack stage', () => {
     // A cut is one commit of each org dependency: the theme build's Engine (A) and the copied Brain runtime (R).
     // The stage installs its own tree, so the only proof it shipped that cut is what npm recorded there.
     const
-        ENGINE_A    = 'a'.repeat(40),
-        ENGINE_B    = 'c'.repeat(40),
-        BRAIN_R     = 'b'.repeat(40),
-        lockOf      = ({engine, brain}) => JSON.stringify({packages: {
+        ENGINE_A = 'a'.repeat(40),
+        ENGINE_B = 'c'.repeat(40),
+        BRAIN_R  = 'b'.repeat(40),
+        lockOf   = ({engine, brain}) => JSON.stringify({packages: {
             'node_modules/neo-agent-brain': {resolved: `git+ssh://git@github.com/neomjs/neo-agent-brain.git#${brain}`},
             'node_modules/neo.mjs'        : {resolved: `git+ssh://git@github.com/neomjs/neo.git#${engine}`}
         }}),
@@ -947,7 +947,7 @@ test.describe('harness pack stage', () => {
         // here rather than pattern-exempted — the loop's guarantee is "every mutable PATH is
         // userData-rooted", and an exemption that admits a whole shape would let the next
         // unrooted path in silently.
-        const NON_PATH_KEYS = ['NEO_AI_DEPLOYMENT_MODE', 'NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE'];
+        const NON_PATH_KEYS = ['NEO_AI_DEPLOYMENT_MODE', 'NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE', 'NEO_FLEET_SHUTDOWN_BUDGET_MS'];
 
         for (const [name, value] of Object.entries(env)) {
             if (!name.endsWith('_ENABLED') && !NON_PATH_KEYS.includes(name)) {
@@ -963,6 +963,7 @@ test.describe('harness pack stage', () => {
         expect(env.NEO_AI_ORCHESTRATOR_AUTHORITY_PROFILE).toBe('container-plane');
         // the cloud default would turn Chroma and the embed and message daemons off
         expect(env.NEO_AI_DEPLOYMENT_MODE).toBe('local');
+        expect(env.NEO_FLEET_SHUTDOWN_BUDGET_MS).toBe('8000');
 
         // The lane closure is an EXACT contract: each OFF names a resource the artifact does not
         // carry (webpack, git-checkout semantics, external model servers, cwd-relative writers).

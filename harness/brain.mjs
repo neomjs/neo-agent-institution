@@ -36,8 +36,10 @@ import {pathToFileURL}                                                          
 import {carriesSecret}                                                                                                              from './mainLog.mjs';
 import {acquireHostRuntimeGeneration, loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, materializeRuntimeGeneration} from './runtimeGeneration.mjs';
 
-export const ORCHESTRATOR_ENTRY = 'ai/daemons/orchestrator/daemon.mjs';
-export const FLEET_SERVER_ENTRY = 'ai/services/fleet/devFleetServer.mjs';
+export const ORCHESTRATOR_ENTRY       = 'ai/daemons/orchestrator/daemon.mjs';
+export const FLEET_SERVER_ENTRY       = 'ai/services/fleet/devFleetServer.mjs';
+export const BRAIN_SHUTDOWN_GRACE_MS  = 10000;
+export const BRAIN_SHUTDOWN_MARGIN_MS = 2000;
 
 // The daemon logs this exact line when its poll loop is live (Orchestrator.start's last act) —
 // the earliest honest "the supervisor supervises" observable. The PID file is NOT it: the daemon
@@ -867,10 +869,12 @@ export function resolveRealPath(value) {
  * @param {String} [options.agentsRoot] Where Fleet places agent seats; omit to keep the Brain default.
  * @param {String} options.backupRoot   Where the backup lane writes its bundles.
  * @param {String} options.dataRoot     Writable per-user root (Electron `userData`-derived).
+ * @param {Number} [options.graceMs=BRAIN_SHUTDOWN_GRACE_MS] Host SIGINT grace window before SIGKILL.
+ * @param {Number} [options.marginMs=BRAIN_SHUTDOWN_MARGIN_MS] Margin reserved before host SIGKILL.
  * @returns {Object} env fragment to merge over process.env
  * @throws {Error} When `backupRoot` is missing.
  */
-export function buildPackagedBrainEnv({agentsRoot, backupRoot, dataRoot}) {
+export function buildPackagedBrainEnv({agentsRoot, backupRoot, dataRoot, graceMs = BRAIN_SHUTDOWN_GRACE_MS, marginMs = BRAIN_SHUTDOWN_MARGIN_MS}) {
     if (!backupRoot) {
         throw new Error('buildPackagedBrainEnv: a backupRoot is required, since backups are placed apart from the plane (ADR 0019 §10.9)')
     }
@@ -891,6 +895,7 @@ export function buildPackagedBrainEnv({agentsRoot, backupRoot, dataRoot}) {
         NEO_DEPLOYMENT_STATE_BRIDGE_SNAPSHOT_PATH: path.join(dataRoot, 'deployment-state', 'snapshot.json'),
         NEO_FLEET_DATA_DIR                       : path.join(dataRoot, 'fleet'),
         NEO_FLEET_INSTANCE_ROOT                  : path.join(dataRoot, 'fleet', 'instances'),
+        NEO_FLEET_SHUTDOWN_BUDGET_MS             : String(Math.max(1000, graceMs - marginMs)),
         NEO_HEAP_OBSERVATION_DIR                 : path.join(dataRoot, 'heap-observation'),
         NEO_HEARTBEAT_ALIVE_PATH                 : path.join(dataRoot, 'wake-daemon', 'heartbeat.alive'),
         NEO_HEARTBEAT_LOCK_PATH                  : path.join(dataRoot, 'heartbeat-concurrency.lock'),
@@ -1405,12 +1410,14 @@ function groupAlive(pgid, killFn) {
  * registers SIGINT and SIGTERM identically.
  * @param {import('node:child_process').ChildProcess|{pid: Number}} child
  * @param {Object} [options]
- * @param {Number} [options.graceMs=10000]
+ * @param {Number} [options.graceMs=BRAIN_SHUTDOWN_GRACE_MS]
+ * @param {Number} [options.marginMs=BRAIN_SHUTDOWN_MARGIN_MS]
+ * @param {Number} [options.shutdownBudgetMs]
  * @param {Number} [options.pollMs=200]
  * @param {Function} [options.killFn=process.kill] Injection seam for tests.
  * @returns {Promise<{exited: Boolean, forced: Boolean, groupEmpty: Boolean}>}
  */
-export async function stopBrainChild(child, {graceMs = 10000, pollMs = 200, killFn = process.kill} = {}) {
+export async function stopBrainChild(child, {graceMs = BRAIN_SHUTDOWN_GRACE_MS, marginMs = BRAIN_SHUTDOWN_MARGIN_MS, shutdownBudgetMs, pollMs = 200, killFn = process.kill} = {}) {
     const pgid = child.pid;
 
     if (!groupAlive(pgid, killFn)) {
@@ -1423,7 +1430,9 @@ export async function stopBrainChild(child, {graceMs = 10000, pollMs = 200, kill
         // Group vanished between the probe and the signal.
     }
 
-    const deadline = Date.now() + graceMs;
+    const
+        effectiveGraceMs = Math.max(graceMs, Number.isFinite(shutdownBudgetMs) && shutdownBudgetMs > 0 ? shutdownBudgetMs + marginMs : 0),
+        deadline         = Date.now() + effectiveGraceMs;
 
     while (Date.now() < deadline) {
         if (!groupAlive(pgid, killFn)) {
