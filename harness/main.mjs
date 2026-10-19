@@ -18,7 +18,7 @@
 
 import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
 import crypto                                                                                        from 'node:crypto';
-import {createReadStream, readFileSync}                                                              from 'node:fs';
+import {createReadStream, readFileSync, rmSync}                                                      from 'node:fs';
 import {fileURLToPath, pathToFileURL}                                                                from 'node:url';
 import path                                                                                          from 'node:path';
 import {
@@ -1296,7 +1296,8 @@ async function bootUiFleetTransport() {
  * @summary Boots the smoke organism under the mode-correct profile, returning every observable.
  * @param {Object}   [options]
  * @param {Object}   [options.extraEnv={}]           Merged over the profile.
- * @param {Function} [options.beforeFleet=null]      `async profile => void`, awaited before the children start.
+ * @param {Function} [options.beforeFleet=null]      `async (profile, resolved) => void`, awaited before the children start;
+ *                                                   `resolved` holds the paths the isolation matrix certified.
  * @param {Number}   [options.fleetReadyMs=15000]   How long the Fleet may take to answer before the boot fails.
  * @returns {Promise<Object>} The observables. The fleet child and its profile go to `brainState.smokeFleet`.
  */
@@ -1328,7 +1329,7 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
         return {chromaPort, fleetPort, isolationRoot, matrixViolations, sweptPgids, up: false}
     }
 
-    await beforeFleet?.(profile);
+    await beforeFleet?.(profile, resolved);
 
     let fleetLastLine = null,
         planeAdmitted = false;
@@ -1545,7 +1546,9 @@ async function runRehearsalArm() {
             });
 
         // A failed boot settles as a verdict, the way the smoke's own boot does, so teardown never rethrows it.
-        brainBootPromise = bootSmokeBrain({extraEnv, fleetReadyMs: REHEARSAL_FLEET_READY_MS, beforeFleet: async profile => {
+        brainBootPromise = bootSmokeBrain({extraEnv, fleetReadyMs: REHEARSAL_FLEET_READY_MS, beforeFleet: async (profile, resolved) => {
+            // Every rehearsal starts from an empty Fleet: a seat a reused root kept would carry an earlier run's configs
+            rmSync(resolved.fleetDataDir, {force: true, recursive: true});
             await runBrainScript({env: profile, label: 'the rehearsal viewer seed', repoRoot: agentosRuntimeRoot, script: viewerSeedScript()});
             seats.forEach(({definition, repo}) => journeyModule.seedSeatCheckout({agentId: definition.id, managedRoot: profile.NEO_FLEET_AGENTS_ROOT, repoSlug: repo.repoSlug}))
         }}).catch(error => ({error: error.message, up: false}));
