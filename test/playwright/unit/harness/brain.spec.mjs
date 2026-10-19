@@ -16,6 +16,8 @@ import {
     awaitFleetReady,
     awaitOrchestratorReady,
     awaitReadyMarker,
+    BRAIN_SHUTDOWN_GRACE_MS,
+    BRAIN_SHUTDOWN_MARGIN_MS,
     buildBrainProfile,
     buildPackagedBrainEnv,
     clearRunState,
@@ -860,7 +862,7 @@ test.describe('harness brain lifecycle', () => {
 
     test('a Fleet past its readiness window is still starting: the wait reports it once and attaches when the Fleet answers', async () => {
         const child = createFakeChild(), slow = [];
-        let calls = 0;
+        let   calls = 0;
 
         const fetchFn = async () => {
             if (++calls < 4) throw new Error('ECONNREFUSED');
@@ -938,6 +940,63 @@ test.describe('harness brain lifecycle', () => {
 
         expect(again).toEqual({exited: true, forced: false, groupEmpty: true});
         expect(group.signals).toEqual(['SIGINT'])
+    });
+
+    test('buildPackagedBrainEnv serializes NEO_FLEET_SHUTDOWN_BUDGET_MS from host grace minus margin (#756)', () => {
+        const
+            backupRoot = path.join(workDir, 'backups'),
+            dataRoot   = path.join(workDir, 'brain'),
+            defaultEnv = buildPackagedBrainEnv({backupRoot, dataRoot}),
+            customEnv  = buildPackagedBrainEnv({backupRoot, dataRoot, graceMs: 15000, marginMs: 3000});
+
+        expect(BRAIN_SHUTDOWN_GRACE_MS).toBe(10000);
+        expect(BRAIN_SHUTDOWN_MARGIN_MS).toBe(2000);
+        expect(defaultEnv.NEO_FLEET_SHUTDOWN_BUDGET_MS).toBe('8000');
+        expect(BRAIN_SHUTDOWN_GRACE_MS).toBeGreaterThanOrEqual(Number(defaultEnv.NEO_FLEET_SHUTDOWN_BUDGET_MS) + BRAIN_SHUTDOWN_MARGIN_MS);
+        expect(customEnv.NEO_FLEET_SHUTDOWN_BUDGET_MS).toBe('12000')
+    });
+
+    test('stopBrainChild keeps its SIGINT grace window at or above shutdownBudgetMs + marginMs (#756)', async () => {
+        const
+            child = createFakeChild({pid: 5004}),
+            state = {alive: true, signals: []};
+
+        const killFn = (target, signal) => {
+            if (target !== -5004 && signal !== 0) {
+                throw new Error(`expected group-addressed signal, got target=${target}`)
+            }
+
+            if (!state.alive) {
+                const error = new Error('ESRCH');
+                error.code  = 'ESRCH';
+                throw error
+            }
+
+            if (signal !== 0) {
+                state.signals.push(signal);
+
+                if (signal === 'SIGINT') {
+                    setTimeout(() => { state.alive = false }, 60)
+                }
+
+                if (signal === 'SIGKILL') {
+                    state.alive = false
+                }
+            }
+
+            return true
+        };
+
+        const stop = await stopBrainChild(child, {
+            graceMs         : 40,
+            killFn,
+            marginMs        : 40,
+            pollMs          : 15,
+            shutdownBudgetMs: 80
+        });
+
+        expect(stop).toEqual({exited: true, forced: false, groupEmpty: true});
+        expect(state.signals).toEqual(['SIGINT'])
     });
 
     test('stopBrainTree stops the consumer (fleet) before the organism (orchestrator)', async () => {
@@ -1431,8 +1490,8 @@ test.describe('resolveUiFleetTransport — the reuse|spawn|foreign OWNER COMPOSI
 
 test.describe('transport starting fact & plane-starting recovery (#735, #739)', () => {
     test('startTransportFact, markTransportStarting, and readTransportFact carry since and compute elapsedMs', () => {
-        let clock = 10_000;
-        const now = () => clock;
+        let   clock = 10_000;
+        const now   = () => clock;
 
         const initial = startTransportFact({now});
         expect(initial).toEqual({phase: 'starting', since: 10_000});
@@ -1513,9 +1572,9 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
                             throw new Error('fleet transport exited before readiness (code=1)')
                         },
                         child,
-                        entry     : {child, label: 'fleet'},
-                        lastLine  : () => '[fleet] ECONNREFUSED 127.0.0.1:8080',
-                        secrets   : ['pat-secret']
+                        entry   : {child, label: 'fleet'},
+                        lastLine: () => '[fleet] ECONNREFUSED 127.0.0.1:8080',
+                        secrets : ['pat-secret']
                     }
                 }
 
@@ -1557,10 +1616,10 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
 
         await expect(bootFleetWithPlaneRecovery({
             children,
-            mode        : 'plane-attach',
+            mode : 'plane-attach',
             now,
             planeConfig,
-            probe       : async () => {
+            probe: async () => {
                 probes++;
                 return {verdict: 'unreachable'}
             },
@@ -1606,11 +1665,11 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
                 probeAnswers = [{verdict: 'unreachable'}, answer];
 
             await expect(bootFleetWithPlaneRecovery({
-                mode        : 'plane-attach',
-                now         : () => clock,
+                mode : 'plane-attach',
+                now  : () => clock,
                 planeConfig,
-                probe       : async () => probeAnswers.shift() ?? {verdict: 'unreachable'},
-                sleep       : async ms => {
+                probe: async () => probeAnswers.shift() ?? {verdict: 'unreachable'},
+                sleep: async ms => {
                     sleeps++;
                     clock += ms
                 },
