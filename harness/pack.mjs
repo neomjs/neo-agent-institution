@@ -669,7 +669,8 @@ export function buildNodeShim() {
 }
 
 // Two owners may share a directory in the stage (both carry a `src/`), never a file: an existing
-// target is a collision between owners and fails the copy instead of letting the later one win.
+// target file is a collision between owners and fails the copy instead of letting the later one win.
+// The filter checks it, since `errorOnExist` refuses an existing directory too (Node 24.22).
 // Both copiers return the stage-relative files they placed — the owner's provenance for the scan.
 function copyTree(sourceRoot, targetRoot, relative) {
     const
@@ -680,32 +681,29 @@ function copyTree(sourceRoot, targetRoot, relative) {
         throw new Error(`pack: staged tree missing in ${sourceRoot}: ${relative}`)
     }
 
-    try {
-        fs.cpSync(source, path.join(targetRoot, relative), {
-            errorOnExist: true,
-            filter      : entry => {
-                const
-                    rel   = path.relative(sourceRoot, entry),
-                    ships = !TREE_EXCLUDES.some(exclude => rel === exclude || rel.startsWith(exclude + path.sep)) &&
-                        !isInstanceOverlayPath(sourceRoot, rel) &&
-                        !/(^|\/)(node_modules|\.git)(\/|$)/.test(rel) &&
-                        !/(^|\/)\.env(\.|$)/.test(rel) &&
-                        !rel.endsWith('.DS_Store');
+    fs.cpSync(source, path.join(targetRoot, relative), {
+        filter   : (entry, destination) => {
+            const
+                rel   = path.relative(sourceRoot, entry),
+                ships = !TREE_EXCLUDES.some(exclude => rel === exclude || rel.startsWith(exclude + path.sep)) &&
+                    !isInstanceOverlayPath(sourceRoot, rel) &&
+                    !/(^|\/)(node_modules|\.git)(\/|$)/.test(rel) &&
+                    !/(^|\/)\.env(\.|$)/.test(rel) &&
+                    !rel.endsWith('.DS_Store');
 
-                ships && fs.statSync(entry).isFile() && copied.push(rel);
+            if (ships && fs.statSync(entry).isFile()) {
+                if (fs.existsSync(destination)) {
+                    throw new Error(`pack: two owners stage the same path: ${rel}`)
+                }
 
-                return ships
-            },
-            force    : false,
-            recursive: true
-        })
-    } catch (error) {
-        if (error?.code === 'ERR_FS_CP_EEXIST') {
-            throw new Error(`pack: two owners stage the same path under ${relative} — ${error.message}`)
-        }
+                copied.push(rel)
+            }
 
-        throw error
-    }
+            return ships
+        },
+        force    : false,
+        recursive: true
+    });
 
     return copied
 }
