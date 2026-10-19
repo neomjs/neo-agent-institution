@@ -636,9 +636,10 @@ class LivenessController extends ViewerWakeController {
 
     /**
      * @summary Reconcile an authoritative roster snapshot onto the store: known ids update in
-     * place (`record.set` — one card re-render, producer-foreign fields survive), joiners batch
-     * in, and residents absent from the snapshot are removed (no ghost cards). Membership may
-     * have removed the inspected resident, so the owner-held selection reconciles here too.
+     * place (`record.set` — one card re-render, producer-foreign fields and any in-flight or
+     * round-trip `controlReason` survive a row's `cleanup` reason), joiners batch in, and
+     * residents absent from the snapshot are removed (no ghost cards). Membership may have
+     * removed the inspected resident, so the owner-held selection reconciles here too.
      *
      * The roster's view filters (the density fold, hide offline) leave a filtered-out resident only
      * in the store's unfiltered twin, so membership is read there. A known resident is found in the
@@ -667,6 +668,8 @@ class LivenessController extends ViewerWakeController {
 
                     if (!next.controlReason && record.controlReason?.kind === 'cleanup') {
                         next.controlReason = null
+                    } else if (next.controlReason?.kind === 'cleanup' && (record.pendingAction || (record.controlReason && record.controlReason.kind !== 'cleanup'))) {
+                        delete next.controlReason
                     }
 
                     record.set(next)

@@ -603,6 +603,59 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(grid.adapterState).toBe('live')
     });
 
+    test('reconcileRoster preserves an active round-trip controlReason or in-flight pendingAction over a snapshot row\'s cleanup reason, and clears cleanup once resolved (#742)', async () => {
+        const
+            store        = Neo.create(FleetRoster, {data: []}),
+            {controller} = makeLiveHost(store, 23),
+            cleanupRow   = (cleanupUnresolved = true, gitIdentity = null) => ({
+                id               : 'neo-gpt-emmy',
+                displayName      : 'Emmy',
+                cleanupUnresolved,
+                failureReason    : cleanupUnresolved ? '1 helper(s) still alive: pid 4242' : null,
+                gitIdentity,
+                lifecycle        : {source: 'fleet:runtimeStatus', state: cleanupUnresolved ? 'failed' : 'stopped', confidence: 'observed'},
+                sources          : liveSources()
+            });
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: [cleanupRow(true)]})}};
+
+        // Cold admission: cleanup controlReason lands on the record
+        await controller.loadRoster();
+        const record = store.get('neo-gpt-emmy');
+        expect(record.cleanupUnresolved).toBe(true);
+        expect(record.controlReason).toEqual({action: 'stop', kind: 'cleanup', reason: '1 helper(s) still alive: pid 4242'});
+
+        // Round-trip controlReason (rejected / timeout / unauthorized / superseded) survives a cleanup re-poll while other fields update
+        for (const kind of ['rejected', 'timeout', 'unauthorized', 'superseded']) {
+            const c2Reason = {action: 'start', kind, reason: `start ${kind}`};
+            record.set({controlReason: c2Reason, pendingAction: null});
+
+            (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: [cleanupRow(true, {state: 'verified', found: kind})]})}};
+            await controller.loadRoster();
+
+            expect(record.controlReason).toEqual(c2Reason);
+            expect(record.gitIdentity).toEqual({state: 'verified', found: kind})
+        }
+
+        // An in-flight pendingAction with controlReason cleared to null does not re-admit the cleanup reason mid-flight
+        record.set({controlReason: null, pendingAction: 'start'});
+        await controller.loadRoster();
+        expect(record.pendingAction).toBe('start');
+        expect(record.controlReason).toBeNull();
+
+        // Idle record with no round-trip reason re-admits the cleanup reason, and clears it to null once cleanupUnresolved clears
+        record.set({controlReason: null, pendingAction: null});
+        await controller.loadRoster();
+        expect(record.controlReason).toEqual({action: 'stop', kind: 'cleanup', reason: '1 helper(s) still alive: pid 4242'});
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({rows: [cleanupRow(false)]})}};
+        await controller.loadRoster();
+        expect(record.cleanupUnresolved).toBe(false);
+        expect(record.controlReason).toBeNull();
+
+        store.destroy()
+    });
+
     // Source precedence: any later store `load` (a raw possession, a retirement's clear) races live
     // truth. These run against a REAL isolated FleetRoster instance with the REAL load
     // listener attached (the store fires `load` for its own mutations, so the guard's recursion
