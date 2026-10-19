@@ -690,6 +690,78 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
         test('a live spine has no lead', () => {
             expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, stream: {state: 'live'}}).lead).toBe('')
+        });
+
+        test('fleet-starting (#739): names a Fleet still starting past its readiness window with elapsed wait and >=60s guidance', () => {
+            const at23s = SpineBanner.deriveSpineBanner({
+                grid     : {state: 'cold', connection: {state: 'timeout', reason: 'read timed out'}},
+                stream   : {state: 'cold'},
+                transport: {elapsedMs: 23_900, phase: 'starting', reason: 'fleet-starting', since: 1_000}
+            });
+
+            expect(at23s).toEqual({
+                action   : null,
+                ariaLabel: 'The Fleet is still starting. The roster appears when it answers.',
+                hidden   : false,
+                kind     : 'cold',
+                lead     : 'The Fleet is still starting. The roster appears when it answers.',
+                text     : 'Fleet starting · 23 s',
+                title    : 'The Fleet is still starting. The roster appears when it answers.'
+            });
+
+            const at64s = SpineBanner.deriveSpineBanner({
+                grid     : {state: 'cold', connection: {state: 'timeout', reason: 'read timed out'}},
+                stream   : {state: 'cold'},
+                transport: {elapsedMs: 64_200, phase: 'starting', reason: 'fleet-starting', since: 1_000}
+            });
+
+            expect(at64s.text).toBe('Fleet starting · 64 s');
+            expect(at64s.lead).toBe('The Fleet is still starting. The roster appears when it answers. Longer than usual.');
+            expect(at64s.title).toBe(at64s.lead);
+            expect(at64s.action).toBeNull();
+            expect(at64s.kind).toBe('cold')
+        });
+
+        test('plane-starting (#735 AC-3): names Agent OS starting with elapsed wait and >=60s guidance while outranking cold connection timeout', () => {
+            const at24s = SpineBanner.deriveSpineBanner({
+                grid     : {state: 'cold', connection: {state: 'timeout', reason: 'read timed out'}},
+                stream   : {state: 'cold'},
+                transport: {elapsedMs: 24_100, phase: 'starting', reason: 'plane-starting', since: 1_000}
+            });
+
+            expect(at24s).toEqual({
+                action   : null,
+                ariaLabel: 'Your Agent OS has not answered yet. The Fleet joins by itself when it does.',
+                hidden   : false,
+                kind     : 'cold',
+                lead     : 'Your Agent OS has not answered yet. The Fleet joins by itself when it does.',
+                text     : 'Agent OS starting · 24 s',
+                title    : 'Your Agent OS has not answered yet. The Fleet joins by itself when it does.'
+            });
+
+            const at60s = SpineBanner.deriveSpineBanner({
+                grid     : {state: 'cold', connection: {state: 'connecting'}},
+                stream   : {state: 'cold'},
+                transport: {elapsedMs: 60_000, phase: 'starting', reason: 'plane-starting', since: 1_000}
+            });
+
+            expect(at60s.text).toBe('Agent OS starting · 60 s');
+            expect(at60s.lead).toBe('Your Agent OS has not answered yet. The Fleet joins by itself when it does. Longer than usual.');
+            expect(at60s.title).toBe(at60s.lead);
+            expect(at60s.action).toBeNull();
+            expect(at60s.kind).toBe('cold')
+        });
+
+        test('a starting transport outranks a cold grid connection verdict even before the 15s slow window', () => {
+            const preWindow = SpineBanner.deriveSpineBanner({
+                grid     : {state: 'cold', connection: {state: 'timeout', reason: 'read timed out'}},
+                stream   : {state: 'cold'},
+                transport: {elapsedMs: 11_000, phase: 'starting', since: 1_000}
+            });
+
+            expect(preWindow.text).toBe('fleet starting');
+            expect(preWindow.lead).toBe('Fleet transport starting — the cockpit connects automatically')
         })
     })
 });
+

@@ -372,6 +372,210 @@ export async function fleetReadyOrPlaneRefusal({awaitReady, child, lastLine, mod
     }
 }
 
+/**
+ * Total bound for login-time recovery when a stored plane does not answer at boot (`plane-starting`).
+ * @type {Number}
+ */
+export const PLANE_STARTING_BOUND_MS = 180_000;
+
+/**
+ * Delay after each settled plane re-probe before the next (`plane-starting`).
+ * @type {Number}
+ */
+export const PLANE_STARTING_RETRY_MS = 5_000;
+
+/**
+ * @summary Starts the shell's transport-boot fact with a monotonic wall-clock `since` timestamp so
+ * any later slow-Fleet or starting-plane banner can report whole elapsed seconds.
+ * @param {Object} [options]
+ * @param {Function} [options.now=Date.now]
+ * @param {String|null} [options.reason=null]
+ * @param {Number} [options.since=now()]
+ * @returns {{phase: 'starting', reason?: String, since: Number}}
+ */
+export function startTransportFact({now = Date.now, reason = null, since = now()} = {}) {
+    return {phase: 'starting', ...(reason ? {reason} : {}), since}
+}
+
+/**
+ * @summary Marks an in-flight transport fact with its named slow/starting reason (`fleet-starting`
+ * or `plane-starting`), preserving the original boot `since` timestamp and stamping `elapsedMs`.
+ * @param {Object|null} fact
+ * @param {String} reason
+ * @param {Object} [options]
+ * @param {Function} [options.now=Date.now]
+ * @returns {{elapsedMs: Number, phase: 'starting', reason: String, since: Number}}
+ */
+export function markTransportStarting(fact, reason, {now = Date.now} = {}) {
+    const
+        current = now(),
+        since   = Number.isFinite(fact?.since) ? fact.since : current;
+
+    return {
+        elapsedMs: Math.max(0, current - since),
+        phase    : 'starting',
+        reason,
+        since
+    }
+}
+
+/**
+ * @summary Returns the wire-ready transport fact for `brain-health`, refreshing `elapsedMs` from
+ * `since` whenever `phase === 'starting'` so the cockpit banner ticks without mutating settled facts.
+ * @param {Object|null} fact
+ * @param {Object} [options]
+ * @param {Function} [options.now=Date.now]
+ * @returns {Object|null}
+ */
+export function readTransportFact(fact, {now = Date.now} = {}) {
+    if (!fact || fact.phase !== 'starting') {
+        return fact ?? null
+    }
+
+    const
+        current = now(),
+        since   = Number.isFinite(fact.since) ? fact.since : current;
+
+    return {
+        ...fact,
+        elapsedMs: Math.max(0, current - since),
+        since
+    }
+}
+
+function abortableWait(ms, signal) {
+    return new Promise(resolve => {
+        if (signal?.aborted) {
+            resolve();
+            return
+        }
+
+        const
+            onAbort = () => {
+                clearTimeout(timer);
+                resolve()
+            },
+            timer = setTimeout(() => {
+                signal?.removeEventListener('abort', onAbort);
+                resolve()
+            }, ms);
+
+        signal?.addEventListener('abort', onAbort, {once: true})
+    })
+}
+
+/**
+ * @summary Boots the Fleet child and, when a stored plane-attach launch fails with `plane-unreachable`
+ * (e.g. Docker still coming up at login), enters the `plane-starting` state, re-probes on a bounded
+ * cadence (`retryMs`, one in flight at a time) up to `deadlineMs`, and spawns the Fleet child again
+ * when the plane answers. Whole-Brain health observation (`watch`) attaches only after the child is
+ * ready so a pre-ready plane-attach exit does not poison `settleBrainBoot(true)` as `owned-child-termination`.
+ * @param {Object} options
+ * @param {Object[]|null} [options.children=null] The owner's drain list (`brainState.children`).
+ * @param {Number} [options.deadlineMs=PLANE_STARTING_BOUND_MS] Total recovery bound from initial boot start.
+ * @param {String} options.mode The boot plan's mode (`'plane-attach'|'attach'|'own'`).
+ * @param {Function} [options.now=Date.now] Clock seam for tests.
+ * @param {Function} [options.onPlaneStarting] Called when entering `plane-starting`.
+ * @param {Object|null} [options.planeConfig=null] The stored plane record (`launchedPlaneRecord`).
+ * @param {Function|null} [options.probe=null] `probePlaneCredential`.
+ * @param {Number} [options.retryMs=PLANE_STARTING_RETRY_MS] Delay after each settled probe before the next.
+ * @param {AbortSignal|null} [options.signal=null] Abort signal for teardown.
+ * @param {Function} [options.sleep=abortableWait] `(ms, signal) => Promise<void>` seam for tests.
+ * @param {Function} options.spawnAttempt `() => ({awaitReady, child, entry?, lastLine?, secrets?, typeRefusal?})`
+ * @param {Function|null} [options.watch=null] `appLifecycle.watchBrainChild` attached once ready.
+ * @returns {Promise<{child: import('node:child_process').ChildProcess, ok: Boolean}>}
+ */
+export async function bootFleetWithPlaneRecovery({
+    children = null,
+    deadlineMs = PLANE_STARTING_BOUND_MS,
+    mode,
+    now = Date.now,
+    onPlaneStarting = () => {},
+    planeConfig = null,
+    probe = null,
+    retryMs = PLANE_STARTING_RETRY_MS,
+    signal = null,
+    sleep = abortableWait,
+    spawnAttempt,
+    watch = null
+}) {
+    const
+        startedAt  = now(),
+        runAttempt = async () => {
+            const
+                attempt = await spawnAttempt(),
+                {
+                    awaitReady,
+                    child,
+                    entry = {child, label: 'fleet'},
+                    lastLine = () => null,
+                    secrets = [],
+                    typeRefusal = refusal => typePlaneRefusal(refusal, {planeConfig, probe})
+                } = attempt;
+
+            children?.push(entry);
+
+            try {
+                await fleetReadyOrPlaneRefusal({
+                    awaitReady,
+                    child,
+                    lastLine,
+                    mode,
+                    secrets,
+                    typeRefusal
+                });
+                watch?.(child, entry.label ?? 'fleet');
+                return {child, ok: true}
+            } catch (error) {
+                if (children && (child.exitCode !== null || child.signalCode)) {
+                    const index = children.indexOf(entry);
+                    index !== -1 && children.splice(index, 1)
+                }
+                throw error
+            }
+        };
+
+    try {
+        return await runAttempt()
+    } catch (firstError) {
+        const {bearer, identity, planeBase} = planeConfig ?? {};
+
+        if (mode !== 'plane-attach' || firstError?.code !== 'plane-unreachable' || !bearer || !planeBase || typeof probe !== 'function') {
+            throw firstError
+        }
+
+        onPlaneStarting(markTransportStarting({since: startedAt}, 'plane-starting', {now}));
+
+        while (!signal?.aborted && now() - startedAt < deadlineMs) {
+            await sleep(retryMs, signal);
+
+            if (signal?.aborted || now() - startedAt >= deadlineMs) {
+                break
+            }
+
+            const
+                answer = await Promise.resolve().then(() => probe({bearer, planeBase})).catch(() => null),
+                cause  = planeProbeCause(answer, identity);
+
+            if (signal?.aborted) {
+                break
+            }
+
+            if (answer?.verdict === 'accepted' && cause === 'plane-refused') {
+                return await runAttempt()
+            }
+
+            if (cause !== 'plane-unreachable' && cause !== 'plane-refused') {
+                firstError.code   = cause;
+                firstError.detail = planeBase;
+                throw firstError
+            }
+        }
+
+        throw firstError
+    }
+}
+
 const TYPED_BOOT_REFUSALS = new Set(['organism-beside-plane', 'plane-refused', ...Object.values(PLANE_PROBE_CAUSES), 'plane-identity-changed']);
 
 /**

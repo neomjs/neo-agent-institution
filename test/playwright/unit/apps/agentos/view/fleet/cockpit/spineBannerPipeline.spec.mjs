@@ -738,4 +738,46 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         // component's vdom writes are ATTRIBUTES (title/aria-label) — no html path exists
         expect(titleAfterBannerTitle(verdict.title)).toBe(verdict.title)
     });
+
+    test('starting transport (#735, #739): BrainHealthRead re-pulls while starting and triggers reconnectFleet when transport settles up', async () => {
+        const
+            {host, provider} = makeDaemonHost(),
+            reconnected      = [],
+            reloads          = [];
+
+        provider.data.gridAdapterState = 'cold';
+        provider.data.gridConnection   = {state: 'timeout', reason: 'Roster read timed out'};
+
+        host.livenessTimerId = 1;
+        host.reconnectFleet  = () => reconnected.push('reconnected');
+        host.loadBrainHealth = () => reloads.push('loadBrainHealth');
+
+        host.applyBrainHealth({
+            state    : 'degraded',
+            transport: {elapsedMs: 23_000, phase: 'starting', reason: 'fleet-starting', since: 1_000}
+        });
+
+        expect(verdictOf(provider.data).text).toBe('Fleet starting · 23 s');
+        expect(verdictOf(provider.data).lead).toBe('The Fleet is still starting. The roster appears when it answers.');
+        expect(reconnected).toEqual([]);
+        expect(host._brainStartingTimerId).not.toBeNull();
+
+        host.applyBrainHealth({
+            state    : 'degraded',
+            transport: {elapsedMs: 62_000, phase: 'starting', reason: 'plane-starting', since: 1_000}
+        });
+
+        expect(verdictOf(provider.data).text).toBe('Agent OS starting · 62 s');
+        expect(verdictOf(provider.data).lead).toBe('Your Agent OS has not answered yet. The Fleet joins by itself when it does. Longer than usual.');
+
+        // Settling to up:true clears the starting timer and re-drives the cockpit seams immediately
+        host.applyBrainHealth({
+            state    : 'running',
+            transport: {fleetPort: 8083, mode: 'plane-attach', phase: 'settled', reason: null, up: true}
+        });
+
+        expect(host._brainStartingTimerId ?? null).toBeNull();
+        expect(reconnected).toEqual(['reconnected'])
+    });
 });
+
