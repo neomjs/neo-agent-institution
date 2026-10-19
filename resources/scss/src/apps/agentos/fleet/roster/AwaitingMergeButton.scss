@@ -70,11 +70,18 @@
     .fm-awaiting-merge-ref {
         -webkit-box-orient: vertical;
         -webkit-line-clamp: 2;
+        color             : var(--fm-ink);
         display           : -webkit-box;
         flex              : 1;
         font              : var(--fm-text-body);
         overflow          : hidden;
         overflow-wrap     : anywhere;
+        text-decoration   : none;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
     }
 
     .fm-awaiting-merge-stale {

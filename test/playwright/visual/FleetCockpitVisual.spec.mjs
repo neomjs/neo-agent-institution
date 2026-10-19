@@ -246,6 +246,32 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         expect(titled.scroll).toBeGreaterThan(titled.client);
         expect(Math.round(titled.client / untitled.client)).toBe(2);
+
+        const darkMenuStyle = await menu.evaluate(el => {
+            const row      = el.querySelector('.fm-awaiting-merge-row'),
+                  ref      = el.querySelector('.fm-awaiting-merge-ref'),
+                  refStyle = getComputedStyle(ref);
+
+            return {
+                menuPadding       : getComputedStyle(el).paddingTop,
+                rowPadding        : getComputedStyle(row).paddingTop,
+                rowGap            : getComputedStyle(row).columnGap,
+                fontSize          : refStyle.fontSize,
+                fontFamily        : refStyle.fontFamily,
+                textDecorationLine: refStyle.textDecorationLine,
+                color             : refStyle.color,
+                expectedInk       : getComputedStyle(document.querySelector('.agent-shell-title')).color
+            }
+        });
+
+        expect(darkMenuStyle.menuPadding, '--fm-space-1 resolves on the body-level menu').toBe('4px');
+        expect(darkMenuStyle.rowPadding, '--fm-space-2 resolves on menu items').toBe('8px');
+        expect(darkMenuStyle.rowGap, '--fm-space-2 resolves on row gap').toBe('8px');
+        expect(darkMenuStyle.fontSize, '--fm-text-body resolves on link rows').toBe('12px');
+        expect(darkMenuStyle.fontFamily).toContain('system-ui');
+        expect(darkMenuStyle.textDecorationLine, 'link reset strips browser UA underline').toBe('none');
+        expect(darkMenuStyle.color, 'link uses --fm-ink instead of UA link blue').toBe(darkMenuStyle.expectedInk);
+
         await expect(menu).toHaveScreenshot('fleet-head-merge-queue-open.png')
     });
 
@@ -275,6 +301,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await switchToLightSkin(page);
         await trigger.click();
         await expect(actions).toHaveText(['Open in Stage', 'Open in Stage']);
+
+        const lightRefStyle = await links.first().evaluate(ref => ({
+            textDecorationLine: getComputedStyle(ref).textDecorationLine,
+            color             : getComputedStyle(ref).color,
+            expectedInk       : getComputedStyle(document.querySelector('.agent-shell-title')).color
+        }));
+
+        expect(lightRefStyle.textDecorationLine).toBe('none');
+        expect(lightRefStyle.color).toBe(lightRefStyle.expectedInk);
+
         await expect(menu).toHaveScreenshot('fleet-head-merge-queue-stage-enabled-light.png')
     });
 
