@@ -281,9 +281,9 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
 }
 
 /**
- * @summary Holds a predecessor that exited without sealing its handoff (ADR 0034 §2.5): taking the
- * journal's own issuer lease proves no issuer is live, and the unchanged record admits nothing, so the
- * successor crosses its generations stale. A later seal, a successor issuer or any change refuses.
+ * @summary Holds a predecessor that exited without sealing its handoff: taking the journal's own issuer
+ * lease proves no issuer is live, and the unchanged record admits nothing, so the successor crosses its
+ * generations stale. A later seal, a successor issuer or any change refuses.
  * @param {String} directory Canonical admission custody directory.
  * @param {{issuer:String, epoch:Number}} expected Issuer observed before Quit.
  * @returns {{evidence:Object, assertCurrent:Function, release:Function}}
