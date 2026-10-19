@@ -1543,6 +1543,17 @@ async function runRehearsalArm() {
 
         const boot = await brainBootPromise;
 
+        // What keeps the run off the operator's organism: every resolved path under the run's root, an own-mode
+        // Fleet with no plane, and the run's own Bridge port.
+        receipt.isolation = {
+            bridgePort      : nlPort,
+            isolationRoot   : boot.isolationRoot ?? null,
+            matrixViolations: boot.matrixViolations ?? null,
+            mode            : boot.mode ?? null,
+            planeBase       : boot.planeBase ?? null,
+            profileMode     : boot.profileMode ?? null
+        };
+
         if (!boot.up) throw new Error(`the smoke organism did not boot: ${boot.matrixViolations?.join('; ') || boot.error || 'not up'}`);
 
         const bridge = startBrainChild({
@@ -1596,7 +1607,7 @@ async function runRehearsalArm() {
 
         const result = await runRehearsal({bridgePort: nlPort, client: connect(), log: brainLog, mapRows, organism: journeyModule, reboot, seats});
 
-        Object.assign(receipt, {bridgePort: nlPort, journey: result.journey, startOffers: result.offers});
+        Object.assign(receipt, {journey: result.journey, startOffers: result.offers});
         verdict = result.verdict
     } catch (error) {
         verdict = {failures: [`the rehearsal could not run: ${error.message}`], ok: false}
