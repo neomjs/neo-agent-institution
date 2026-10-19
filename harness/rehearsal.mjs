@@ -194,7 +194,7 @@ export function rehearsalSeats() {
  * @param {Object} options.codex      `{binary, cli}` from the journey's `writeCodexStandInBundle`.
  * @param {String} options.graphPath  The run's graph file.
  * @param {Number} options.nlPort     The run's Bridge port.
- * @param {String} options.signingKey The run's Ed25519 signing key, PKCS#8 PEM.
+ * @param {String} options.signingKey The run's Ed25519 signing key, PKCS8 PEM.
  * @param {String} options.standIn    The launcher from the journey's `writeStandInLauncher`.
  * @returns {Object} env fragment
  */
