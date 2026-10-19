@@ -1295,11 +1295,12 @@ async function bootUiFleetTransport() {
  * (`beforeFleet`) once the profile has passed the isolation matrix and before any child starts.
  * @summary Boots the smoke organism under the mode-correct profile, returning every observable.
  * @param {Object}   [options]
- * @param {Object}   [options.extraEnv={}]       Merged over the profile.
- * @param {Function} [options.beforeFleet=null]  `async profile => void`, awaited before the children start.
+ * @param {Object}   [options.extraEnv={}]           Merged over the profile.
+ * @param {Function} [options.beforeFleet=null]      `async profile => void`, awaited before the children start.
+ * @param {Number}   [options.fleetReadyMs=15000]   How long the Fleet may take to answer before the boot fails.
  * @returns {Promise<Object>} The observables. The fleet child and its profile go to `brainState.smokeFleet`.
  */
-async function bootSmokeBrain({extraEnv = {}, beforeFleet = null} = {}) {
+async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs = 15000} = {}) {
     const
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
@@ -1354,7 +1355,7 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null} = {}) {
         orchestrator && awaitOrchestratorReady({child: orchestrator}),
         fleetReadyOrPlaneRefusal({
             // the smoke stays bounded: a verdict, never a wait on a Fleet that does not answer
-            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: 15000}),
+            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: fleetReadyMs}),
             child     : fleet,
             lastLine  : () => fleetLastLine,
             mode      : plan.mode,
@@ -1479,6 +1480,13 @@ async function holdForWalk() {
 const NL_BRIDGE_ENTRY = 'ai/mcp/server/neural-link/run-bridge.mjs';
 
 /**
+ * How long the rehearsal's Fleet may take to answer, at boot and after the unclean restart. The product waits for a
+ * slow Fleet instead of failing it, so the rehearsal does not hold a candidate to the smoke's 15 s either.
+ * @type {Number}
+ */
+const REHEARSAL_FLEET_READY_MS = 90_000;
+
+/**
  * @summary Whether a pid still names a live process.
  * @param {Number} pid
  * @returns {Boolean}
@@ -1536,10 +1544,11 @@ async function runRehearsalArm() {
                 standIn   : journeyModule.writeStandInLauncher({directory: path.join(rehearsalDir, 'bin'), runtime: standInRuntime.runtime})
             });
 
-        brainBootPromise = bootSmokeBrain({extraEnv, beforeFleet: async profile => {
+        // A failed boot settles as a verdict, the way the smoke's own boot does, so teardown never rethrows it.
+        brainBootPromise = bootSmokeBrain({extraEnv, fleetReadyMs: REHEARSAL_FLEET_READY_MS, beforeFleet: async profile => {
             await runBrainScript({env: profile, label: 'the rehearsal viewer seed', repoRoot: agentosRuntimeRoot, script: viewerSeedScript()});
             seats.forEach(({definition, repo}) => journeyModule.seedSeatCheckout({agentId: definition.id, managedRoot: profile.NEO_FLEET_AGENTS_ROOT, repoSlug: repo.repoSlug}))
-        }});
+        }}).catch(error => ({error: error.message, up: false}));
 
         const boot = await brainBootPromise;
 
@@ -1601,7 +1610,7 @@ async function runRehearsalArm() {
                 registerBrainChild({child: next, ...next.neoHarnessIdentity, label: 'fleet'});
                 recordSmokeRunState(smokeRoot);
                 brainState.smokeFleet = {child: next, profile};
-                await awaitFleetReady({bearerToken: fleetBearerToken, child: next, port: boot.fleetPort, productRoot, repoRoot: agentosRuntimeRoot});
+                await awaitFleetReady({bearerToken: fleetBearerToken, child: next, port: boot.fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: REHEARSAL_FLEET_READY_MS});
                 return connect()
             };
 
