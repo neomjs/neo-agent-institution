@@ -139,6 +139,8 @@ smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
 let
     brainBootPromise   = Promise.resolve(null),
+    // Ends a boot still waiting for a slow Fleet, so quitting never waits on a child that never answers.
+    fleetReadyAbort    = new AbortController(),
     runtimeMaintenance = null,
     fleetBearerToken   = null,
     resolveHarnessAsset,
@@ -1005,6 +1007,7 @@ const appLifecycle = createAppLifecycle({
     // this join, an early will-quit can observe an empty owner and a late spawn becomes an orphan.
     teardownBrain: async () => {
         try {
+            fleetReadyAbort.abort();
             await brainBootPromise;
             await runtimeMaintenance?.close();
             return await teardownBrain()
@@ -1181,7 +1184,8 @@ async function bootProductBrain() {
 
         registerBrainChild({child: fleet, label: 'fleet'});
         await fleetReadyOrPlaneRefusal({
-            awaitReady : () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            awaitReady : () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot,
+                onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
             child      : fleet,
             lastLine   : () => fleetLastLine,
             mode,
@@ -1192,6 +1196,15 @@ async function bootProductBrain() {
 
     console.log(`HARNESS_BRAIN_MODE ${mode}${plan.planeBase ? ` planeBase=${plan.planeBase}` : ''} fleetPort=${fleetPort} started=[${brainState.children.map(entry => entry.label).join(',') || 'none'}]`);
     return {fleetPort, mode, planeBase: plan.planeBase, up: true}
+}
+
+/**
+ * @summary Names a Fleet still starting past its readiness window. The boot keeps waiting, and the transport and
+ * roster attach when the child answers.
+ * @param {Number} ms The window that passed.
+ */
+function logFleetStarting(ms) {
+    console.log(`HARNESS_BRAIN_FLEET_STARTING fleet transport not ready after ${ms}ms; still waiting while the Fleet child lives`)
 }
 
 /**
@@ -1224,7 +1237,7 @@ async function bootUiFleetTransport() {
     return resolveUiFleetTransport({
         productRoot,
         agentIdentityNodeId: process.env.NEO_AGENT_IDENTITY,
-        awaitReady         : awaitFleetReady,
+        awaitReady         : options => awaitFleetReady({...options, onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
         bearerToken        : fleetBearerToken,
         fleetPort          : Number(process.env.NEO_FLEET_PORT) || 8083,
         onOutcome          : summary => console.log(`HARNESS_UI_FLEET ${summary}`),
@@ -1308,7 +1321,8 @@ async function bootSmokeBrain() {
     await Promise.all([
         orchestrator && awaitOrchestratorReady({child: orchestrator}),
         fleetReadyOrPlaneRefusal({
-            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot}),
+            // the smoke stays bounded: a verdict, never a wait on a Fleet that does not answer
+            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: 15000}),
             child     : fleet,
             lastLine  : () => fleetLastLine,
             mode      : plan.mode,

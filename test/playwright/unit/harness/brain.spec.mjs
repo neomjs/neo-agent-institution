@@ -836,6 +836,35 @@ test.describe('harness brain lifecycle', () => {
         await expect(ready).rejects.toThrow(/fleet transport exited before ready/)
     });
 
+    test('a Fleet past its readiness window is still starting: the wait reports it once and attaches when the Fleet answers', async () => {
+        const child = createFakeChild(), slow = [];
+        let calls = 0;
+
+        const fetchFn = async () => {
+            if (++calls < 4) throw new Error('ECONNREFUSED');
+            return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: []})}
+        };
+
+        await expect(awaitFleetReady({productRoot, bearerToken, child, fetchFn, port: 18501, slowAfterMs: 50, onSlow: ms => slow.push(ms)}))
+            .resolves.toBeUndefined();
+        expect(slow).toEqual([50]);
+        expect(calls).toBe(4)
+    });
+
+    test('a caller\'s hard deadline still ends the wait, and an abort ends it with its own error', async () => {
+        const refused = async () => { throw new Error('ECONNREFUSED') };
+
+        await expect(awaitFleetReady({productRoot, bearerToken, child: createFakeChild(), fetchFn: refused, port: 18501, timeoutMs: 100}))
+            .rejects.toThrow(/fleet transport not ready within 100ms/);
+
+        const abort = new AbortController();
+        const ready = awaitFleetReady({productRoot, bearerToken, child: createFakeChild(), fetchFn: refused, port: 18501, signal: abort.signal});
+        abort.abort();
+        await expect(ready).rejects.toThrow(/fleet transport readiness wait was canceled/);
+        await expect(awaitFleetReady({productRoot, bearerToken, child: createFakeChild(), fetchFn: refused, port: 18501, signal: abort.signal}))
+            .rejects.toThrow(/canceled/)
+    });
+
     test('awaitFleetReady fails closed when the authoritative wire contract cannot load', async () => {
         const
             child    = createFakeChild(),
