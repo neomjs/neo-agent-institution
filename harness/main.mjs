@@ -1589,7 +1589,8 @@ async function runRehearsalArm() {
                 return response.json()
             }),
             mapRows = async rows => (await runBrainScript({
-                env     : {NEO_REHEARSAL_ROWS: JSON.stringify(rows)},
+                // A packaged runtime answers as Node only under the flag the smoke's profile gives every Brain child
+                env     : {ELECTRON_RUN_AS_NODE: brainState.smokeFleet.profile.ELECTRON_RUN_AS_NODE ?? '', NEO_REHEARSAL_ROWS: JSON.stringify(rows)},
                 label   : 'the roster mapping',
                 repoRoot: productRoot,
                 script  : rosterMappingScript()
