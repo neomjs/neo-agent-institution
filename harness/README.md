@@ -239,8 +239,21 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run start:brain  
 npm run smoke        # boot + popup + shared-worker + clean-runtime evidence, JSON verdict
 npm run smoke:brain  # the full verdict incl. the Brain leg (up + clean teardown + no orphan)
 npm run smoke:plane  # the Brain leg attached to a plane the smoke owns, from a stored record
+npm run rehearse     # the seat checklist, windowless, against the smoke's own Fleet (see below)
 npm run witness:lifecycle # headed close→hide→tray-open identity + tray-quit teardown receipt
 ```
+
+**The pre-install rehearsal** (`rehearse`, `rehearse:packaged`) runs a candidate's seat checklist
+before an install. It is the Brain smoke with no window and no Dock icon. The stand-in
+(`ai/scripts/fleet/seatStandIn.mjs`) is each desktop family's harness, a Bridge of the run's own
+listens on an allocated port, and the organism's seat journey (`ai/services/fleet/seatJourney.mjs`)
+runs against the smoke's Fleet: Start, Stop, Start again keeping the operator's config, an unclean
+Fleet restart, recovery and Start once more. Right after that restart it reads, the cockpit's way,
+whether the roster offers Start. The receipt lands beside the candidate (`<app>.rehearsal.json`),
+or at `.brain/rehearsal.json` for a checkout. It names the candidate's revisions, every step with
+its reason, and the teardown, and the exit code is the verdict. `NEO_HARNESS_REHEARSAL=1` anywhere
+but the isolated Brain smoke is refused, the fixture plane included. The stand-in runs on the Node
+on `PATH`, or `NEO_HARNESS_NODE_BIN`.
 
 Prerequisites for the Brain legs: `NEO_AGENTOS_RUNTIME_ROOT` names a Brain checkout with its
 dependencies installed — the resolver and the supervised children bootstrap the Engine from the

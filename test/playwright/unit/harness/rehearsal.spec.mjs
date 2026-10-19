@@ -1,17 +1,31 @@
-import {expect, test} from '@playwright/test';
-import crypto         from 'node:crypto';
-import fs             from 'node:fs';
-import os             from 'node:os';
-import path           from 'node:path';
+import {expect, test}   from '@playwright/test';
+import {spawnSync}      from 'node:child_process';
+import crypto           from 'node:crypto';
+import fs               from 'node:fs';
+import os               from 'node:os';
+import path             from 'node:path';
+import {fileURLToPath}  from 'node:url';
+import {runBrainScript} from '../../../../harness/brain.mjs';
 import {
     INSTALLED_APP,
     RECEIPT_SUFFIX,
+    REHEARSAL_FAMILIES,
+    REHEARSAL_VIEWER,
+    judgeRehearsal,
+    readCheckoutIdentity,
     readOrganismIdentity,
+    readStartOffers,
+    rehearsalFleetEnv,
+    rehearsalSeats,
     resolveReceiptPath,
     resolveRehearsal,
     resolveStandInRuntime,
+    rosterMappingScript,
+    runRehearsal,
     writeReceipt
 } from '../../../../harness/rehearsal.mjs';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 /**
  * @summary The pre-install rehearsal's Electron-free half: the arm rehearses only on its own fixture plane, the
@@ -81,5 +95,93 @@ test.describe('harness rehearsal', () => {
 
         expect(JSON.parse(fs.readFileSync(written, 'utf8'))).toEqual({verdict: 'pass'});
         expect(fs.readdirSync(path.dirname(written)), 'no scratch file is left beside it').toEqual(['Neo Harness.app.rehearsal.json'])
+    });
+
+    test('a checkout candidate is identified by the commit its runtime root has checked out', () => {
+        spawnSync('git', ['init', '-q', root]);
+        spawnSync('git', ['-C', root, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'seed']);
+
+        const head = spawnSync('git', ['-C', root, 'rev-parse', 'HEAD'], {encoding: 'utf8'}).stdout.trim();
+
+        expect(readCheckoutIdentity(root)).toEqual({revision: head, runtimeRoot: root, source: 'checkout'});
+        expect(readCheckoutIdentity(path.join(root, 'absent')).revision, 'no repository, no revision').toBeNull()
+    });
+
+    test('each covered family gets one seat that reads no forge and keeps only Neural Link, and the Fleet runs as the rehearsal viewer', () => {
+        const seats = rehearsalSeats();
+
+        expect(seats.map(seat => seat.definition.harnessType)).toEqual(REHEARSAL_FAMILIES);
+
+        seats.forEach(({definition, repo}) => {
+            expect(definition.mcpServers).toEqual({'github-workflow': false, 'knowledge-base': false, 'memory-core': false});
+            expect(definition.gitEmail).toMatch(/@example\.invalid$/);
+            expect(new URL(repo.cloneUrl).hostname).toBe('example.invalid')
+        });
+
+        expect(rehearsalFleetEnv({codex: {binary: '/c/Codex', cli: '/c/codex'}, graphPath: '/r/graph.sqlite', nlPort: 4321, signingKey: 'PEM', standIn: '/r/stand-in.mjs'})).toEqual({
+            NEO_AGENT_IDENTITY          : REHEARSAL_VIEWER,
+            NEO_FLEET_CLAUDE_DESKTOP_BIN: '/r/stand-in.mjs',
+            NEO_FLEET_CODEX_BIN         : '/c/codex',
+            NEO_FLEET_CODEX_DESKTOP_BIN : '/c/Codex',
+            NEO_FLEET_SIGNING_KEY       : 'PEM',
+            NEO_MEMORY_DB_PATH_TEST     : '/r/graph.sqlite',
+            NEO_NL_PORT                 : '4321'
+        })
+    });
+
+    test("the Start offer is the cockpit's own mapping: a stopped seat is offered Start, a seat still running is not", async () => {
+        const
+            runtime = {confidence: 'observed', source: 'fleet:runtimeStatus', state: 'wired'},
+            row     = (id, state) => ({id, lifecycle: {confidence: 'observed', source: 'fleet:runtimeStatus', state}, sources: {runtime}}),
+            mapRows = async rows => (await runBrainScript({env: {NEO_REHEARSAL_ROWS: JSON.stringify(rows)}, label: 'the roster mapping', repoRoot: REPO_ROOT, script: rosterMappingScript()})).states,
+            client  = {fleetRoster: async () => ({rows: [row('a', 'stopped'), row('b', 'running'), row('other', 'running')]})};
+
+        expect(await readStartOffers({client, mapRows, seatIds: ['a', 'b', 'gone']})).toEqual({
+            a   : {offered: true, state: 'off'},
+            b   : {offered: false, state: 'ok'},
+            gone: {offered: false, state: null}
+        })
+    });
+
+    test('the verdict names each failed step, and each recovered seat the roster offers no Start', () => {
+        const
+            row    = (step, ok = true, reason = null) => ({family: 'claude-desktop', ok, reason, seat: 'a', step}),
+            passed = [row('start'), row('recover'), row('start-after-recovery')];
+
+        expect(judgeRehearsal({journey: {ok: true, rows: passed}, offers: {a: {offered: true, state: 'off'}}})).toEqual({failures: [], ok: true});
+        expect(judgeRehearsal({journey: {ok: true, rows: passed}, offers: {a: {offered: false, state: 'ok'}}}).failures)
+            .toEqual(["a (claude-desktop) start-offer: the roster reads 'ok' and offers no Start"]);
+        expect(judgeRehearsal({journey: {ok: true, rows: passed}, offers: null}).failures)
+            .toEqual(['a (claude-desktop) start-offer: the roster was not read after the restart']);
+        expect(judgeRehearsal({journey: {ok: false, rows: [row('start', false, "seat reached 'failed'")]}, offers: null}).failures, 'a seat that never recovered owes no offer')
+            .toEqual(["a (claude-desktop) start: seat reached 'failed'"])
+    });
+
+    test("the Start offer is read from the rebooted Fleet, between the restart and the journey's next Start", async () => {
+        const
+            calls    = [],
+            first    = {fleetRoster: async () => {throw new Error('the first Fleet is dead by now')}},
+            rebooted = {fleetRoster: async () => ({rows: [{id: 'a'}]})},
+            organism = {runSeatJourney: async ({fleet, restartFleet, seats}) => {
+                calls.push(['journey', fleet === first, seats.length]);
+                calls.push(['restarted', await restartFleet({beforeBoot: async () => calls.push(['beforeBoot'])}) === rebooted]);
+                return {ok: true, rows: [{family: 'claude-desktop', ok: true, reason: null, seat: 'a', step: 'recover'}]}
+            }},
+            result   = await runRehearsal({
+                bridgePort: 4321,
+                client    : first,
+                mapRows   : async rows => Object.fromEntries(rows.map(({id}) => [id, 'off'])),
+                organism,
+                reboot    : async ({beforeBoot}) => {
+                    await beforeBoot();
+                    calls.push(['reboot']);
+                    return rebooted
+                },
+                seats: [{definition: {id: 'a'}}]
+            });
+
+        expect(calls).toEqual([['journey', true, 1], ['beforeBoot'], ['reboot'], ['restarted', true]]);
+        expect(result.offers).toEqual({a: {offered: true, state: 'off'}});
+        expect(result.verdict).toEqual({failures: [], ok: true})
     })
 });
