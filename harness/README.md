@@ -126,7 +126,7 @@ Electron's logs directory, normally `~/Library/Logs/Neo Harness/main.log` on mac
 
 Automatic updates belong to the shell's release channel under
 [the Electron shell epic](https://github.com/neomjs/neo-agent-institution/issues/7) and
-[ADR 0034 §2.5](https://github.com/neomjs/neo/blob/dev/learn/agentos/decisions/0034-electron-shell-architecture.md).
+[ADR 0034 §2.5](../learn/agentos/decisions/0034-electron-shell-architecture.md).
 They deliver a complete versioned package; npm releases and individual repository merges do not
 update an installed shell. macOS automatic updating requires a signed application and an update
 feed ([Electron's updater contract](https://www.electronjs.org/docs/latest/api/auto-updater)). The

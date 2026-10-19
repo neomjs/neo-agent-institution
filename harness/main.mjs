@@ -1,5 +1,5 @@
 // The Electron harness main: boots the Agent OS app on the packaged origin the Electron-shell ADR
-// specifies (neomjs/neo: learn/agentos/decisions/0034-electron-shell-architecture.md).
+// specifies (learn/agentos/decisions/0034-electron-shell-architecture.md).
 // Every section reference below resolves against that decision record.
 // Scope: harness skeleton + multi-window join + the supervised Brain
 // (the hosting-spike verdict: Arm B — see brain.mjs).
