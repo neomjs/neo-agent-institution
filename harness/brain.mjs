@@ -158,8 +158,17 @@ export function loadFleetRuntimeContracts({productRoot, runtimeRoot} = {}) {
     return contract
 }
 
-function nodeBin() {
-    return process.env.NEO_HARNESS_NODE_BIN || 'node'
+/**
+ * @summary The runtime Brain children run on, with the env that makes it answer as Node. A packaged shell sets
+ * `NEO_HARNESS_NODE_BIN` to its own Electron runtime, which without `ELECTRON_RUN_AS_NODE` starts the whole app,
+ * the shell's run modes inherited. The flag rides with the runtime and goes after every caller's env, so no caller
+ * can start the app by leaving it out.
+ * @returns {{bin: String, env: Object}}
+ */
+function nodeRuntime() {
+    const bin = process.env.NEO_HARNESS_NODE_BIN;
+
+    return bin ? {bin, env: {ELECTRON_RUN_AS_NODE: '1'}} : {bin: 'node', env: {}}
 }
 
 /**
@@ -478,10 +487,12 @@ export function resolveBrainPaths({repoRoot, env = {}, execFileFn = execFile}) {
  * @returns {Promise<Object>}
  */
 export function runBrainScript({repoRoot, script, label, env = {}, execFileFn = execFile}) {
+    const runtime = nodeRuntime();
+
     return new Promise((resolve, reject) => {
-        execFileFn(nodeBin(), ['--input-type=module', '-e', script], {
+        execFileFn(runtime.bin, ['--input-type=module', '-e', script], {
             cwd: repoRoot,
-            env: {...process.env, ...env}
+            env: {...process.env, ...env, ...runtime.env}
         }, (error, stdout, stderr) => {
             if (error) {
                 reject(new Error(`${label} failed: ${String(stderr || error.message).slice(0, 800)}`));
@@ -931,7 +942,8 @@ export function startBrainChild({
             ...(fs.existsSync(shimsPath) ? [shimsPath] : []),
             path.join(absoluteRepoRoot, 'node_modules', '.bin')
         ],
-        ownershipToken   = ownershipTokenFn();
+        ownershipToken   = ownershipTokenFn(),
+        runtime          = nodeRuntime();
 
     if (relativeEntry === '..' || relativeEntry.startsWith(`..${path.sep}`) || path.isAbsolute(relativeEntry)) {
         throw new TypeError('entry must resolve inside repoRoot')
@@ -944,10 +956,10 @@ export function startBrainChild({
         throw new TypeError('args must be script strings without a second ownership marker')
     }
 
-    const child = spawnFn(nodeBin(), ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`, ...args], {
+    const child = spawnFn(runtime.bin, ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`, ...args], {
         cwd     : absoluteRepoRoot,
         detached: true,
-        env     : {...process.env, ...env, PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`},
+        env     : {...process.env, ...env, ...runtime.env, PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`},
         stdio   : ['ignore', 'pipe', 'pipe']
     });
 

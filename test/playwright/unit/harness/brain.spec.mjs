@@ -994,6 +994,44 @@ test.describe('harness brain lifecycle', () => {
         }
     });
 
+    test('a pinned runtime always answers as Node: no caller can start the app by leaving ELECTRON_RUN_AS_NODE out', async () => {
+        // A packaged shell pins NEO_HARNESS_NODE_BIN to its own Electron runtime, which without the flag starts the app
+        const
+            previous = process.env.NEO_HARNESS_NODE_BIN,
+            pinned   = '/Applications/Candidate.app/Contents/MacOS/Candidate',
+            spawnFn  = (command, args, options) => {
+                spawned = {command, env: options.env};
+                return createFakeChild()
+            };
+        let spawned, executed;
+
+        try {
+            process.env.NEO_HARNESS_NODE_BIN = pinned;
+
+            startBrainChild({entry: ORCHESTRATOR_ENTRY, env: {ELECTRON_RUN_AS_NODE: ''}, ownershipTokenFn: () => 't', repoRoot: workDir, spawnFn});
+            await runBrainScript({
+                execFileFn: (command, args, options, callback) => {
+                    executed = {command, env: options.env};
+                    callback(null, '{}', '')
+                },
+                label   : 'probe',
+                repoRoot: workDir,
+                script  : ''
+            });
+
+            expect(spawned).toMatchObject({command: pinned, env: {ELECTRON_RUN_AS_NODE: '1'}});
+            expect(executed).toMatchObject({command: pinned, env: {ELECTRON_RUN_AS_NODE: '1'}});
+
+            delete process.env.NEO_HARNESS_NODE_BIN;
+            startBrainChild({entry: ORCHESTRATOR_ENTRY, ownershipTokenFn: () => 't', repoRoot: workDir, spawnFn});
+
+            expect(spawned.command, 'a checkout runs plain node').toBe('node');
+            expect(spawned.env.ELECTRON_RUN_AS_NODE, 'and gains no flag').toBe(process.env.ELECTRON_RUN_AS_NODE)
+        } finally {
+            previous === undefined ? delete process.env.NEO_HARNESS_NODE_BIN : process.env.NEO_HARNESS_NODE_BIN = previous
+        }
+    });
+
     test('startBrainChild rejects entries outside its checkout root', () => {
         expect(() => startBrainChild({
             entry           : path.join('..', 'sibling', ORCHESTRATOR_ENTRY),
