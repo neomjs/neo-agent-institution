@@ -281,13 +281,47 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
 }
 
 /**
+ * @summary Holds a predecessor that exited without sealing its handoff: taking the journal's own issuer
+ * lease proves no issuer is live, and the unchanged record admits nothing, so the successor crosses its
+ * generations stale. A later seal, a successor issuer or any change refuses.
+ * @param {String} directory Canonical admission custody directory.
+ * @param {{issuer:String, epoch:Number}} expected Issuer observed before Quit.
+ * @returns {{evidence:Object, assertCurrent:Function, release:Function}}
+ */
+function holdUncleanPredecessor(directory, expected) {
+    const read     = () => readLaunchAdmissionJournal({directory}),
+          observed = read();
+    if (observed?.handoffProved !== false || observed.state.issuer !== expected.issuer || observed.state.epoch !== expected.epoch) {
+        throw new Error('admission predecessor changed after Quit; update refused');
+    }
+    const fingerprint = JSON.stringify(observed.state);
+    // The lease launchAdmissionJournal.mjs takes for its issuer: held while that issuer lives.
+    const lease = holdFileLease({directory, filename: 'issuer.lock', owner: 'fleet-launch-admission'});
+    const assertCurrent = () => {
+        lease.assertCurrent();
+        const current = read();
+        if (current?.handoffProved !== false || JSON.stringify(current.state) !== fingerprint) {
+            throw new Error('admission predecessor changed during the update');
+        }
+    };
+    try {
+        assertCurrent();
+        return {evidence: structuredClone(observed), assertCurrent, release: () => lease.release()};
+    } catch (error) {
+        lease.release();
+        throw error;
+    }
+}
+
+/**
  * @summary Binds the current issuer before Quit without consuming its handoff or changing custody.
  * A capable source must have a readable journal even when stopped. First install proves absence of
  * managed records under vacancy exclusion; legacy migration requires explicit discontinuous intent.
  * @param {Object} binding Planned source/destination bundles, custodyDir and legacyMigration intent.
  * @param {Object} [options]
  * @param {Function} [options.inspectSupport=inspectRuntimeSupport] Receipt-bound capability inspection.
- * @returns {Promise<{hold:Function}>} Acquire the sealed predecessor after ordinary Quit completes.
+ * @returns {Promise<{hold:Function}>} Acquire the predecessor after ordinary Quit completes: its sealed
+ * handoff, or after an unclean exit its unsealed record, which carries no recovery authority.
  */
 export async function prepareInstallContinuity({sourceBundle, destinationBundle, custodyDir, legacyMigration = false}, {inspectSupport = inspectRuntimeSupport} = {}) {
     if (!path.isAbsolute(custodyDir || '')) throw new Error('update continuity requires an explicit userData root');
@@ -309,7 +343,13 @@ export async function prepareInstallContinuity({sourceBundle, destinationBundle,
         throw new Error('admission predecessor is already fenced');
     }
     return {hold() {
-        const held = expected ? holdLaunchAdmissionHandoff({directory, expected}) : holdLaunchAdmissionVacancy({directory});
+        let held;
+        try {
+            held = expected ? holdLaunchAdmissionHandoff({directory, expected}) : holdLaunchAdmissionVacancy({directory});
+        } catch (error) {
+            if (error?.reason !== 'handoff-incomplete') throw error;
+            held = holdUncleanPredecessor(directory, expected);
+        }
         try {
             if (!sourceBundle) assertFirstInstallCustody(custodyDir, {held: true});
             if (discontinuous && held.evidence) {
@@ -319,7 +359,7 @@ export async function prepareInstallContinuity({sourceBundle, destinationBundle,
                     throw new Error('legacy migration requires terminal original Starts and revoked grants');
                 }
             }
-            return {...held, requiresRecovery: target.kind === 'generation'};
+            return {...held, requiresRecovery: target.kind === 'generation' && held.evidence?.handoffProved !== false};
         } catch (error) {
             held.release();
             throw error;
