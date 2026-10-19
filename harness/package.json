@@ -15,6 +15,8 @@
         "smoke": "cross-env NEO_HARNESS_SMOKE=1 electron main.mjs",
         "smoke:brain": "cross-env NEO_HARNESS_SMOKE=1 NEO_HARNESS_BRAIN=1 electron main.mjs",
         "smoke:plane": "cross-env NEO_HARNESS_SMOKE=1 NEO_HARNESS_BRAIN=1 NEO_HARNESS_SMOKE_PLANE=1 electron main.mjs",
+        "rehearse": "cross-env NEO_HARNESS_SMOKE=1 NEO_HARNESS_BRAIN=1 NEO_HARNESS_REHEARSAL=1 electron main.mjs",
+        "rehearse:packaged": "cross-env NEO_HARNESS_SMOKE=1 NEO_HARNESS_REHEARSAL=1 \"dist-artifacts/mac-arm64/Neo Harness.app/Contents/MacOS/Neo Harness\"",
         "start:brain": "cross-env NEO_HARNESS_BRAIN=1 electron main.mjs",
         "witness:lifecycle": "cross-env NEO_HARNESS_LIFECYCLE_WITNESS=1 NEO_HARNESS_BRAIN=1 electron main.mjs",
         "predist": "node prepareAssets.mjs && node pack.mjs",

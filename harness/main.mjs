@@ -17,8 +17,9 @@
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
 import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
-import {createReadStream, readFileSync}                                                              from 'node:fs';
-import {fileURLToPath}                                                                               from 'node:url';
+import crypto                                                                                        from 'node:crypto';
+import {createReadStream, readFileSync, rmSync}                                                      from 'node:fs';
+import {fileURLToPath, pathToFileURL}                                                                from 'node:url';
 import path                                                                                          from 'node:path';
 import {
     ADAPTER_STATE_NAMES,
@@ -76,6 +77,20 @@ import {
     writeRunState
 } from './brain.mjs';
 import {createSmokeSafeStorage, FIXTURE_PLANE_ID, startFixturePlane} from './fixturePlane.mjs';
+import {
+    REHEARSAL_FAMILIES,
+    readCheckoutIdentity,
+    readOrganismIdentity,
+    rehearsalFleetEnv,
+    rehearsalSeats,
+    resolveReceiptPath,
+    resolveRehearsal,
+    resolveStandInRuntime,
+    rosterMappingScript,
+    runRehearsal,
+    viewerSeedScript,
+    writeReceipt
+} from './rehearsal.mjs';
 import {resolveSmokeHold, watchPlaneControl, writeWalkManifest}      from './walkControl.mjs';
 import {carriesSecret, createMainLog}                                from './mainLog.mjs';
 import {
@@ -117,6 +132,8 @@ const
     smokePlaneMode        = smokeMode && brainMode && process.env.NEO_HARNESS_SMOKE_PLANE === '1',
     // A walker's held run (`NEO_HARNESS_SMOKE_HOLD=1`): the fixture-plane arm only, refused anywhere else.
     smokeHold             = resolveSmokeHold({env: process.env, smokePlaneMode}),
+    // The pre-install rehearsal (`NEO_HARNESS_REHEARSAL=1`): the isolated Brain smoke only, refused anywhere else.
+    rehearsal             = resolveRehearsal({brainMode, env: process.env, smokeMode, smokePlaneMode}),
     planeSafeStorage      = smokePlaneMode ? createSmokeSafeStorage() : safeStorage,
     smokeState       = {
         assetFailures : new Set(),
@@ -136,6 +153,12 @@ const
 // A hold outside the fixture-plane arm would attach to or own this machine's organism: stop before any of it.
 if (smokeHold.refusal) {
     console.log('HARNESS_SMOKE_HOLD_REFUSED ' + smokeHold.refusal);
+    app.exit(2)
+}
+
+// A rehearsal outside the isolated Brain smoke would start seats against this machine's organism: the same stop.
+if (rehearsal.refusal) {
+    console.log('HARNESS_REHEARSAL_REFUSED ' + rehearsal.refusal);
     app.exit(2)
 }
 
@@ -929,7 +952,7 @@ process.on('unhandledRejection', async error => {
     }
 });
 
-const brainState = {children: [], isolationRoot: null, planeIngress: null, walkControl: null};
+const brainState = {children: [], isolationRoot: null, planeIngress: null, smokeFleet: null, walkControl: null};
 
 function brainLog(line) {
     if (carriesSecret(line, mainSecrets())) {
@@ -1284,10 +1307,18 @@ async function bootUiFleetTransport() {
  * The fixture-plane arm (`NEO_HARNESS_SMOKE_PLANE=1`) first starts a plane of the smoke's own and
  * boots the fleet child from the record it wrote. The product's plan then attaches instead of owning,
  * so no orchestrator starts, exactly as a stored plane boots the installed app.
+ *
+ * The rehearsal adds its seats' coordinates to the profile (`extraEnv`) and seeds the run's graph
+ * (`beforeFleet`) once the profile has passed the isolation matrix and before any child starts.
  * @summary Boots the smoke organism under the mode-correct profile, returning every observable.
- * @returns {Promise<Object>}
+ * @param {Object}   [options]
+ * @param {Object}   [options.extraEnv={}]           Merged over the profile.
+ * @param {Function} [options.beforeFleet=null]      `async (profile, resolved) => void`, awaited before the children start;
+ *                                                   `resolved` holds the paths the isolation matrix certified.
+ * @param {Number}   [options.fleetReadyMs=15000]   How long the Fleet may take to answer before the boot fails.
+ * @returns {Promise<Object>} The observables. The fleet child and its profile go to `brainState.smokeFleet`.
  */
-async function bootSmokeBrain() {
+async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs = 15000} = {}) {
     const
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
@@ -1303,7 +1334,8 @@ async function bootSmokeBrain() {
                 ? {...buildPackagedBrainEnv({agentsRoot: path.join(isolationRoot, 'fleet', 'agents'), backupRoot: path.join(isolationRoot, 'backups'), dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
                 : buildBrainProfile({chromaPort, fleetPort, isolationRoot})),
             NEO_FLEET_BEARER: fleetBearerToken,
-            ...planeEnv
+            ...planeEnv,
+            ...extraEnv
         },
         resolved                = await resolveBrainPaths({env: profile, repoRoot: agentosRuntimeRoot}),
         matrixViolations        = assertIsolatedProfile({chromaPort, isolationRoot, resolved}),
@@ -1313,6 +1345,8 @@ async function bootSmokeBrain() {
     if (matrixViolations.length > 0) {
         return {chromaPort, fleetPort, isolationRoot, matrixViolations, sweptPgids, up: false}
     }
+
+    await beforeFleet?.(profile, resolved);
 
     let fleetLastLine = null,
         planeAdmitted = false;
@@ -1339,13 +1373,16 @@ async function bootSmokeBrain() {
         orchestrator && awaitOrchestratorReady({child: orchestrator}),
         fleetReadyOrPlaneRefusal({
             // the smoke stays bounded: a verdict, never a wait on a Fleet that does not answer
-            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: 15000}),
+            awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: fleetReadyMs}),
             child     : fleet,
             lastLine  : () => fleetLastLine,
             mode      : plan.mode,
             secrets   : mainSecrets()
         })
     ]);
+
+    // Kept off the observables: the smoke prints those, and the profile carries the run's secrets.
+    brainState.smokeFleet = {child: fleet, profile};
 
     return {
         chromaPort,
@@ -1453,8 +1490,186 @@ async function holdForWalk() {
     return new Promise(() => {})
 }
 
+/**
+ * The Neural Link Bridge the rehearsal starts on a port of its own: both profiles gate the host's Bridge lane off,
+ * and a seat must never reach the Bridge of the machine it runs on.
+ * @type {String}
+ */
+const NL_BRIDGE_ENTRY = 'ai/mcp/server/neural-link/run-bridge.mjs';
+
+/**
+ * How long the rehearsal's Fleet may take to answer, at boot and after the unclean restart. The product waits for a
+ * slow Fleet instead of failing it, so the rehearsal does not hold a candidate to the smoke's 15 s either.
+ * @type {Number}
+ */
+const REHEARSAL_FLEET_READY_MS = 90_000;
+
+/**
+ * @summary Whether a pid still names a live process.
+ * @param {Number} pid
+ * @returns {Boolean}
+ */
+function isProcessAlive(pid) {
+    try {
+        process.kill(pid, 0);
+        return true
+    } catch {
+        return false
+    }
+}
+
+/**
+ * @summary The pre-install rehearsal (`NEO_HARNESS_REHEARSAL=1`), with no window and no Dock icon. The smoke organism
+ * boots with the stand-in as each desktop family's harness and the rehearsal's viewer seeded, a Bridge of the run's
+ * own starts beside it, and the organism's seat journey runs against its Fleet. The unclean restart is the shell's:
+ * it kills the fleet child and boots a fresh one on the same root. The receipt lands beside the candidate, and the
+ * shell exits with the verdict.
+ * @returns {Promise<void>}
+ */
+async function runRehearsalArm() {
+    app.dock?.hide();
+
+    const
+        artifactPath = packagedMode ? path.resolve(process.resourcesPath, '..', '..') : null,
+        receiptPath  = resolveReceiptPath({artifactPath, harnessDir}),
+        receipt      = {families: REHEARSAL_FAMILIES, startedAt: new Date().toISOString(), version: 1};
+
+    let verdict;
+
+    try {
+        if (receiptPath.refusal) throw new Error(receiptPath.refusal);
+
+        receipt.candidate = packagedMode
+            ? {artifactPath, source: 'packaged', ...readOrganismIdentity(packagedOrganismRoot)}
+            : readCheckoutIdentity(agentosRuntimeRoot);
+
+        const standInRuntime = resolveStandInRuntime({env: process.env});
+
+        if (standInRuntime.refusal) throw new Error(standInRuntime.refusal);
+
+        const
+            load                    = file => import(pathToFileURL(path.join(agentosRuntimeRoot, file)).href),
+            [journeyModule, wire]   = await Promise.all([load('ai/services/fleet/seatJourney.mjs'), load('ai/services/fleet/createFleetRegistryBridge.mjs')]),
+            nlPort                  = await allocatePort(),
+            {privateKey, publicKey} = crypto.generateKeyPairSync('ed25519'),
+            rehearsalDir            = path.join(smokeRoot, 'rehearsal'),
+            seats                   = rehearsalSeats(),
+            extraEnv                = rehearsalFleetEnv({
+                codex     : journeyModule.writeCodexStandInBundle({directory: path.join(rehearsalDir, 'apps'), runtime: standInRuntime.runtime}),
+                graphPath : path.join(smokeRoot, 'sqlite', 'memory-core-graph.sqlite'),
+                nlPort,
+                signingKey: privateKey.export({format: 'pem', type: 'pkcs8'}),
+                standIn   : journeyModule.writeStandInLauncher({directory: path.join(rehearsalDir, 'bin'), runtime: standInRuntime.runtime})
+            });
+
+        // A failed boot settles as a verdict, the way the smoke's own boot does, so teardown never rethrows it.
+        brainBootPromise = bootSmokeBrain({extraEnv, fleetReadyMs: REHEARSAL_FLEET_READY_MS, beforeFleet: async (profile, resolved) => {
+            // Every rehearsal starts from an empty Fleet: a seat a reused root kept would carry an earlier run's configs
+            rmSync(resolved.fleetDataDir, {force: true, recursive: true});
+            await runBrainScript({env: profile, label: 'the rehearsal viewer seed', repoRoot: agentosRuntimeRoot, script: viewerSeedScript()});
+            seats.forEach(({definition, repo}) => journeyModule.seedSeatCheckout({agentId: definition.id, managedRoot: profile.NEO_FLEET_AGENTS_ROOT, repoSlug: repo.repoSlug}))
+        }}).catch(error => ({error: error.message, up: false}));
+
+        const boot = await brainBootPromise;
+
+        // What keeps the run off the operator's organism: every resolved path under the run's root, an own-mode
+        // Fleet with no plane, and the run's own Bridge port.
+        receipt.isolation = {
+            bridgePort      : nlPort,
+            isolationRoot   : boot.isolationRoot ?? null,
+            matrixViolations: boot.matrixViolations ?? null,
+            mode            : boot.mode ?? null,
+            planeBase       : boot.planeBase ?? null,
+            profileMode     : boot.profileMode ?? null
+        };
+
+        if (!boot.up) throw new Error(`the smoke organism did not boot: ${boot.matrixViolations?.join('; ') || boot.error || 'not up'}`);
+
+        const bridge = startBrainChild({
+            entry   : NL_BRIDGE_ENTRY,
+            env     : {...brainState.smokeFleet.profile, NEO_FLEET_BRIDGE_PUBLIC_KEY: publicKey.export({format: 'pem', type: 'spki'}), NEO_NL_PORT: String(nlPort)},
+            onLog   : brainLog,
+            repoRoot: agentosRuntimeRoot
+        });
+
+        registerBrainChild({child: bridge, ...bridge.neoHarnessIdentity, label: 'bridge'});
+        recordSmokeRunState(smokeRoot);
+
+        if (!await awaitPortListening({port: nlPort})) throw new Error(`the rehearsal's Bridge did not listen on ${nlPort}`);
+
+        const
+            connect = () => wire.createFleetRegistryBridge(async request => {
+                const response = await fetch(`http://127.0.0.1:${boot.fleetPort}/fleet`, {
+                    body   : JSON.stringify(request),
+                    headers: {Authorization: `Bearer ${fleetBearerToken}`, 'Content-Type': 'application/json'},
+                    method : 'POST'
+                });
+
+                if (!response.ok) throw new Error(`fleet: HTTP ${response.status}`);
+                return response.json()
+            }),
+            mapRows = async rows => (await runBrainScript({
+                env     : {NEO_REHEARSAL_ROWS: JSON.stringify(rows)},
+                label   : 'the roster mapping',
+                repoRoot: productRoot,
+                script  : rosterMappingScript()
+            })).states,
+            reboot  = async ({beforeBoot}) => {
+                const {child, profile} = brainState.smokeFleet;
+
+                // Unclean by design: the Fleet dies with its seats up, as on a crash or a forced quit.
+                await new Promise(resolve => {
+                    if (child.exitCode !== null || child.signalCode !== null) return resolve();
+                    child.once('exit', () => resolve());
+                    child.kill('SIGKILL')
+                });
+                await beforeBoot();
+
+                const next = startBrainChild({args: launcherRuntime.launchArgs, entry: FLEET_SERVER_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot});
+
+                registerBrainChild({child: next, ...next.neoHarnessIdentity, label: 'fleet'});
+                recordSmokeRunState(smokeRoot);
+                brainState.smokeFleet = {child: next, profile};
+                await awaitFleetReady({bearerToken: fleetBearerToken, child: next, port: boot.fleetPort, productRoot, repoRoot: agentosRuntimeRoot, timeoutMs: REHEARSAL_FLEET_READY_MS});
+                return connect()
+            };
+
+        const result = await runRehearsal({bridgePort: nlPort, client: connect(), log: brainLog, mapRows, organism: journeyModule, reboot, seats});
+
+        Object.assign(receipt, {journey: result.journey, startOffers: result.offers});
+        verdict = result.verdict
+    } catch (error) {
+        verdict = {failures: [`the rehearsal could not run: ${error.message}`], ok: false}
+    }
+
+    const
+        reports  = Object.values(await appLifecycle.teardown() ?? {}),
+        seatPids = (receipt.journey?.rows ?? []).map(row => row.detail?.pid).filter(Boolean),
+        teardown = {
+            childrenStopped: reports.every(report => report.exited && report.groupEmpty && !report.forced),
+            seatsGone      : seatPids.every(pid => !isProcessAlive(pid)),
+            windows        : BrowserWindow.getAllWindows().length
+        };
+
+    teardown.childrenStopped || verdict.failures.push('teardown: a child the rehearsal started did not stop cleanly');
+    teardown.seatsGone       || verdict.failures.push('teardown: a seat process outlived the rehearsal');
+    teardown.windows === 0   || verdict.failures.push(`teardown: ${teardown.windows} window(s) open; the rehearsal opens none`);
+
+    verdict.ok = verdict.failures.length === 0;
+    Object.assign(receipt, {finishedAt: new Date().toISOString(), teardown, verdict});
+    receiptPath.receiptPath && writeReceipt(receiptPath.receiptPath, receipt);
+    console.log('HARNESS_REHEARSAL_RESULT ' + JSON.stringify({failures: verdict.failures, ok: verdict.ok, receiptPath: receiptPath.receiptPath}));
+    await appLifecycle.exitTerminal(verdict.ok ? 0 : 1)
+}
+
 app.whenReady().then(async () => {
-    if (smokeHold.refusal) return;
+    if (smokeHold.refusal || rehearsal.refusal) return;
+
+    // The rehearsal needs no window, so it needs none of the renderer's protocol, policy or channels either.
+    if (rehearsal.rehearsal) {
+        await runRehearsalArm();
+        return
+    }
 
     resolveHarnessAsset = await createHarnessAssetResolver(productRoot);
     await protocol.handle('app', serveHarnessContent);
@@ -1906,5 +2121,6 @@ app.whenReady().then(async () => {
 
     // app.exit bypasses will-quit, so the timeout net owns the Brain teardown explicitly.
     await appLifecycle.exitTerminal(1)
-    // The Brain leg legitimately spends ~2min on a cold Chroma start; the UI-only smoke stays tight.
-}, brainMode ? 240000 : 60000);
+    // The Brain leg legitimately spends ~2min on a cold Chroma start; the UI-only smoke stays tight. A rehearsal adds
+    // a second Fleet boot and six seat Starts, each bounded by the journey's own waits.
+}, rehearsal.rehearsal ? 480000 : brainMode ? 240000 : 60000);

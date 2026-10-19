@@ -23,6 +23,7 @@ files:
     - packageSlots.mjs
     - planeConfig.mjs
     - preload.cjs
+    - rehearsal.mjs
     - runtimeGeneration.mjs
     - runtimeMaintenance.mjs
     - seatRootBroker.mjs

@@ -313,14 +313,27 @@ test.describe('harness brain lifecycle', () => {
         gates.forEach(([, value]) => expect(value).toBe('0'))
     });
 
-    test('a diagnostic run roots itself in the per-user temp dir when packaged, stable across runs', () => {
+    test('a diagnostic run roots itself in the per-user temp dir when packaged, stable across runs', async () => {
         const
             harnessDir = '/checkout/harness',
-            tempDir    = path.join(tmpdir(), 'user-temp');
+            tempDir    = path.join(tmpdir(), 'user-temp'),
+            linked     = await mkdtemp(path.join(tmpdir(), 'smoke-root-'));
 
         // packaged: the temp dir, never derived from userData; the same path every run, so the sweep finds a crashed run
-        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(path.join(tempDir, 'neo-harness-smoke'));
+        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(resolveRealPath(path.join(tempDir, 'neo-harness-smoke')));
         expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir}));
+
+        // ...by its real path: the Brain's custody refuses a root whose realpath differs, and macOS serves its temp
+        // dir through the `/var` → `/private/var` link
+        try {
+            mkdirSync(path.join(linked, 'real'));
+            await symlink(path.join(linked, 'real'), path.join(linked, 'link'));
+
+            expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir: path.join(linked, 'link')}))
+                .toBe(path.join(resolveRealPath(linked), 'real', 'neo-harness-smoke'))
+        } finally {
+            await rm(linked, {force: true, recursive: true})
+        }
         // checkout: the gitignored `.brain/smoke` beside the harness
         expect(resolveSmokeRoot({env: {}, harnessDir, packaged: false, tempDir})).toBe(path.join(harnessDir, '.brain', 'smoke'));
         // an explicit root wins in both modes
@@ -984,6 +997,44 @@ test.describe('harness brain lifecycle', () => {
             expect(command).toContain(`${path.join(workDir, 'entry.mjs')} --neo-harness-owner=marker-token`)
         } finally {
             await stopBrainChild(child, {graceMs: 1000})
+        }
+    });
+
+    test('a pinned runtime always answers as Node: no caller can start the app by leaving ELECTRON_RUN_AS_NODE out', async () => {
+        // A packaged shell pins NEO_HARNESS_NODE_BIN to its own Electron runtime, which without the flag starts the app
+        const
+            previous = process.env.NEO_HARNESS_NODE_BIN,
+            pinned   = '/Applications/Candidate.app/Contents/MacOS/Candidate',
+            spawnFn  = (command, args, options) => {
+                spawned = {command, env: options.env};
+                return createFakeChild()
+            };
+        let spawned, executed;
+
+        try {
+            process.env.NEO_HARNESS_NODE_BIN = pinned;
+
+            startBrainChild({entry: ORCHESTRATOR_ENTRY, env: {ELECTRON_RUN_AS_NODE: ''}, ownershipTokenFn: () => 't', repoRoot: workDir, spawnFn});
+            await runBrainScript({
+                execFileFn: (command, args, options, callback) => {
+                    executed = {command, env: options.env};
+                    callback(null, '{}', '')
+                },
+                label   : 'probe',
+                repoRoot: workDir,
+                script  : ''
+            });
+
+            expect(spawned).toMatchObject({command: pinned, env: {ELECTRON_RUN_AS_NODE: '1'}});
+            expect(executed).toMatchObject({command: pinned, env: {ELECTRON_RUN_AS_NODE: '1'}});
+
+            delete process.env.NEO_HARNESS_NODE_BIN;
+            startBrainChild({entry: ORCHESTRATOR_ENTRY, ownershipTokenFn: () => 't', repoRoot: workDir, spawnFn});
+
+            expect(spawned.command, 'a checkout runs plain node').toBe('node');
+            expect(spawned.env.ELECTRON_RUN_AS_NODE, 'and gains no flag').toBe(process.env.ELECTRON_RUN_AS_NODE)
+        } finally {
+            previous === undefined ? delete process.env.NEO_HARNESS_NODE_BIN : process.env.NEO_HARNESS_NODE_BIN = previous
         }
     });
 

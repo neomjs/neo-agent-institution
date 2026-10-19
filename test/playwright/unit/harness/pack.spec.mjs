@@ -151,6 +151,7 @@ test.describe('harness pack stage', () => {
             'mainLog.mjs',
             'packageSlots.mjs',
             'planeConfig.mjs',
+            'rehearsal.mjs',
             'runtimeGeneration.mjs',
             'runtimeMaintenance.mjs',
             'seatRootBroker.mjs',
