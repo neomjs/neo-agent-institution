@@ -253,7 +253,8 @@ whether the roster offers Start. The receipt lands beside the candidate (`<app>.
 or at `.brain/rehearsal.json` for a checkout. It names the candidate's revisions, every step with
 its reason, and the teardown, and the exit code is the verdict. `NEO_HARNESS_REHEARSAL=1` anywhere
 but the isolated Brain smoke is refused, the fixture plane included. The stand-in runs on the Node
-on `PATH`, or `NEO_HARNESS_NODE_BIN`.
+on `PATH`, or `NEO_HARNESS_STAND_IN_NODE`. It never uses `NEO_HARNESS_NODE_BIN`, which a packaged
+shell points at its own Electron runtime.
 
 Prerequisites for the Brain legs: `NEO_AGENTOS_RUNTIME_ROOT` names a Brain checkout with its
 dependencies installed — the resolver and the supervised children bootstrap the Engine from the

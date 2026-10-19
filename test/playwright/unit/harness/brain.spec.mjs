@@ -307,14 +307,27 @@ test.describe('harness brain lifecycle', () => {
         gates.forEach(([, value]) => expect(value).toBe('0'))
     });
 
-    test('a diagnostic run roots itself in the per-user temp dir when packaged, stable across runs', () => {
+    test('a diagnostic run roots itself in the per-user temp dir when packaged, stable across runs', async () => {
         const
             harnessDir = '/checkout/harness',
-            tempDir    = path.join(tmpdir(), 'user-temp');
+            tempDir    = path.join(tmpdir(), 'user-temp'),
+            linked     = await mkdtemp(path.join(tmpdir(), 'smoke-root-'));
 
         // packaged: the temp dir, never derived from userData; the same path every run, so the sweep finds a crashed run
-        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(path.join(tempDir, 'neo-harness-smoke'));
+        expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(resolveRealPath(path.join(tempDir, 'neo-harness-smoke')));
         expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir})).toBe(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir}));
+
+        // ...by its real path: the Brain's custody refuses a root whose realpath differs, and macOS serves its temp
+        // dir through the `/var` → `/private/var` link
+        try {
+            mkdirSync(path.join(linked, 'real'));
+            await symlink(path.join(linked, 'real'), path.join(linked, 'link'));
+
+            expect(resolveSmokeRoot({env: {}, harnessDir, packaged: true, tempDir: path.join(linked, 'link')}))
+                .toBe(path.join(resolveRealPath(linked), 'real', 'neo-harness-smoke'))
+        } finally {
+            await rm(linked, {force: true, recursive: true})
+        }
         // checkout: the gitignored `.brain/smoke` beside the harness
         expect(resolveSmokeRoot({env: {}, harnessDir, packaged: false, tempDir})).toBe(path.join(harnessDir, '.brain', 'smoke'));
         // an explicit root wins in both modes

@@ -69,26 +69,30 @@ export function resolveRehearsal({env, smokeMode, brainMode, smokePlaneMode}) {
 }
 
 /**
- * @summary The Node the stand-in harness runs on: `NEO_HARNESS_NODE_BIN`, else the `node` on `PATH`.
+ * @summary The Node the stand-in harness runs on: `NEO_HARNESS_STAND_IN_NODE`, else the `node` on `PATH`.
  *
  * The Fleet proves a seat's process by its command line: the launch binary, or a script behind exactly its shebang
  * interpreter. Electron runs as Node only under `ELECTRON_RUN_AS_NODE=1`, which a seat's ambient environment drops
  * and a shebang cannot set without changing the interpreter the proof compares. So the stand-in, a test double,
- * runs on the host's Node, and the product's runtime stays the product's. Without a Node that answers, the
- * rehearsal refuses; it never falls back to another runtime.
+ * runs on the host's Node, and the product's runtime stays the product's. That is also why it never reads
+ * `NEO_HARNESS_NODE_BIN`: a packaged shell points that at its own Electron runtime for the Brain's children. Each
+ * probe is bounded, because a binary that opens as an app instead of answering would otherwise hold the shell's main
+ * process. Without a Node that answers, the rehearsal refuses; it never falls back to another runtime.
  * @param {Object}   options
  * @param {Object}   options.env
  * @param {Function} [options.run=spawnSync]
+ * @param {Number}   [options.timeoutMs=10000] Budget for each probe.
  * @returns {{runtime: String|null, refusal: String|null}}
  */
-export function resolveStandInRuntime({env, run = spawnSync}) {
+export function resolveStandInRuntime({env, run = spawnSync, timeoutMs = 10_000}) {
     const
-        located = env.NEO_HARNESS_NODE_BIN || run('/bin/sh', ['-c', 'command -v node'], {encoding: 'utf8', env: {PATH: env.PATH ?? ''}}).stdout?.trim(),
-        answer  = located && path.isAbsolute(located) && run(located, ['-p', 'process.version'], {encoding: 'utf8'});
+        probe   = {encoding: 'utf8', killSignal: 'SIGKILL', timeout: timeoutMs},
+        located = env.NEO_HARNESS_STAND_IN_NODE || run('/bin/sh', ['-c', 'command -v node'], {...probe, env: {PATH: env.PATH ?? ''}}).stdout?.trim(),
+        answer  = located && path.isAbsolute(located) && run(located, ['-p', 'process.version'], probe);
 
     return answer?.status === 0 && /^v\d+\./.test(answer.stdout?.trim() ?? '')
         ? {runtime: located, refusal: null}
-        : {runtime: null, refusal: `the stand-in harness needs a Node runtime: set NEO_HARNESS_NODE_BIN or put node on PATH (found ${located ? `'${located}', which did not answer` : 'none'})`}
+        : {runtime: null, refusal: `the stand-in harness needs a Node runtime: set NEO_HARNESS_STAND_IN_NODE or put node on PATH (found ${located ? `'${located}', which did not answer` : 'none'})`}
 }
 
 /**

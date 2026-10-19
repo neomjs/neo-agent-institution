@@ -54,14 +54,27 @@ test.describe('harness rehearsal', () => {
     });
 
     test('the stand-in runs on the pinned or PATH Node that answers, and refuses without one', () => {
-        expect(resolveStandInRuntime({env: {NEO_HARNESS_NODE_BIN: process.execPath}})).toEqual({runtime: process.execPath, refusal: null});
+        expect(resolveStandInRuntime({env: {NEO_HARNESS_STAND_IN_NODE: process.execPath}})).toEqual({runtime: process.execPath, refusal: null});
         expect(resolveStandInRuntime({env: {PATH: path.dirname(process.execPath)}}).runtime).toMatch(/node$/);
 
-        const silent = path.join(root, 'node');
-        fs.writeFileSync(silent, '#!/bin/sh\nexit 1\n', {mode: 0o755});
+        const
+            silent = path.join(root, 'node'),
+            hung   = path.join(root, 'app');
 
-        expect(resolveStandInRuntime({env: {NEO_HARNESS_NODE_BIN: silent}}).refusal).toContain(`'${silent}', which did not answer`);
-        expect(resolveStandInRuntime({env: {PATH: root + '-absent'}}).refusal).toContain('found none')
+        fs.writeFileSync(silent, '#!/bin/sh\nexit 1\n', {mode: 0o755});
+        fs.writeFileSync(hung, '#!/bin/sh\nsleep 30\n', {mode: 0o755});
+
+        expect(resolveStandInRuntime({env: {NEO_HARNESS_STAND_IN_NODE: silent}}).refusal).toContain(`'${silent}', which did not answer`);
+        expect(resolveStandInRuntime({env: {PATH: root + '-absent'}}).refusal).toContain('found none');
+
+        // A packaged shell points NEO_HARNESS_NODE_BIN at its Electron runtime, which opens as an app instead of answering
+        expect(resolveStandInRuntime({env: {NEO_HARNESS_NODE_BIN: silent, PATH: path.dirname(process.execPath)}}).runtime, 'the shell\'s runtime is not the stand-in\'s')
+            .toMatch(/node$/);
+
+        const started = Date.now();
+
+        expect(resolveStandInRuntime({env: {NEO_HARNESS_STAND_IN_NODE: hung}, timeoutMs: 300}).refusal).toContain(`'${hung}', which did not answer`);
+        expect(Date.now() - started, 'a binary that never answers is cut off, not waited for').toBeLessThan(5_000)
     });
 
     test('the candidate is identified by its build receipt: the owners and the receipt digest', () => {
