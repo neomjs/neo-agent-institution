@@ -127,6 +127,29 @@ function coldFallbackFor(transport) {
     }
 
     if (transport.phase === 'starting') {
+        const
+            elapsedMs = Number.isFinite(transport.elapsedMs)
+                ? transport.elapsedMs
+                : Number.isFinite(transport.since) ? Date.now() - transport.since : 0,
+            seconds   = Math.max(0, Math.floor(elapsedMs / 1000)),
+            longer    = seconds >= 60 ? ' Longer than usual.' : '';
+
+        if (transport.reason === 'fleet-starting') {
+            return {
+                cause: null,
+                lead : `The Fleet is still starting. The roster appears when it answers.${longer}`,
+                text : `Fleet starting · ${seconds} s`
+            }
+        }
+
+        if (transport.reason === 'plane-starting') {
+            return {
+                cause: null,
+                lead : `Your Agent OS has not answered yet. The Fleet joins by itself when it does.${longer}`,
+                text : `Agent OS starting · ${seconds} s`
+            }
+        }
+
         return {cause: null, lead: 'Fleet transport starting — the cockpit connects automatically', text: 'fleet starting'}
     }
 
@@ -270,7 +293,13 @@ class SpineBanner extends Base {
                 return verdict('cold', 'fleet offline', 'Fleet data unavailable', reason)
             }
 
-            const connection = SpineBanner.connectionVerdict(grid, 'cold', 'fleet', 'no fleet data yet');
+            // While the shell's transport boot is still in flight (`phase === 'starting'`), the
+            // roster read is blocked on `brainBootPromise`; its 10s read timeout is a consequence of
+            // the starting transport, never a separate verdict that should shadow `Fleet starting` /
+            // `Agent OS starting`.
+            const connection = transport?.phase === 'starting'
+                ? null
+                : SpineBanner.connectionVerdict(grid, 'cold', 'fleet', 'no fleet data yet');
 
             if (connection) return connection;
 

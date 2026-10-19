@@ -1,12 +1,14 @@
 /* The harness shell — everything scoped under the viewport root (its cls) for isolation:
    top chrome, the left-rail keeper-view nav, the agent-button hierarchy, and the Home/Chat surfaces.
-   The instance menu is a framework-floating document.body child, so it joins this scope to inherit
-   the SAME structural FM role/spacing/motion tokens without duplicating their definitions. Its
-   feature sheet consumes only the relevant vars; the shell selectors below remain descendant-bound.
+   The instance and awaiting-merge menus are framework-floating document.body children, so they join
+   this scope to inherit the SAME structural FM role/spacing/motion tokens without duplicating their
+   definitions. Their feature sheets consume only the relevant vars; the shell selectors below remain
+   descendant-bound.
    §04 rhythm record (#17265): the 2px tab indicator (the tab-family block) is a recorded exception —
    an indicator's own measure, not spacing. */
 .agent-os-viewport.neo-viewport,
-.fm-instance-menu {
+.fm-instance-menu,
+.fm-awaiting-merge-menu {
     /* Direct paint does NOT live in this comma group: it carries structural FM tokens to the
        floating instance menu too, so every direct declaration here would be emitted for the menu
        root as well. The ground paint + container-surface rule live in the viewport-only

@@ -46,6 +46,7 @@ import {
     awaitFleetReady,
     besidePlaneRefusal,
     bootFailureCause,
+    bootFleetWithPlaneRecovery,
     awaitOrchestratorReady,
     awaitPortListening,
     awaitPortReleased,
@@ -55,8 +56,10 @@ import {
     detectLiveBrain,
     FLEET_SERVER_ENTRY,
     fleetReadyOrPlaneRefusal,
+    markTransportStarting,
     ORCHESTRATOR_ENTRY,
     probePort,
+    readTransportFact,
     registerOwnedChild,
     resolveBrainMode,
     resolveLauncherRuntime,
@@ -68,6 +71,7 @@ import {
     runBrainScript,
     runtimePlaneCause,
     startBrainChild,
+    startTransportFact,
     stopBrainTree,
     stopRunBridge,
     sweepStaleRunState,
@@ -1206,25 +1210,37 @@ async function bootProductBrain() {
             throw new Error(`fleet port ${fleetPort} cannot be reused: ${live.fleetRefusalReason || 'listener did not prove canonical Fleet identity'} — free the port or set NEO_FLEET_PORT`)
         }
 
-        let fleetLastLine = null;
-
-        const fleet = startBrainChild({
-            entry   : FLEET_SERVER_ENTRY,
-            args    : launcherRuntime.launchArgs,
-            env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-            onLog   : line => {fleetLastLine = line; brainLog(line)},
-            repoRoot: agentosRuntimeRoot
-        });
-
-        registerBrainChild({child: fleet, label: 'fleet'});
-        await fleetReadyOrPlaneRefusal({
-            awaitReady : () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot,
-                onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
-            child      : fleet,
-            lastLine   : () => fleetLastLine,
+        await bootFleetWithPlaneRecovery({
+            children       : brainState.children,
             mode,
-            secrets    : mainSecrets(),
-            typeRefusal: refusal => typePlaneRefusal(refusal, {planeConfig: launchedPlane, probe: probePlaneCredential})
+            onPlaneStarting: fact => {
+                uiTransportFact = fact;
+                console.log(`HARNESS_BRAIN_PLANE_STARTING plane at ${plan.planeBase} not reachable at boot; re-probing while Agent OS starts`)
+            },
+            planeConfig    : launchedPlane,
+            probe          : probePlaneCredential,
+            signal         : fleetReadyAbort.signal,
+            spawnAttempt   : () => {
+                let fleetLastLine = null;
+
+                const fleet = startBrainChild({
+                    entry   : FLEET_SERVER_ENTRY,
+                    args    : launcherRuntime.launchArgs,
+                    env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
+                    onLog   : line => {fleetLastLine = line; brainLog(line)},
+                    repoRoot: agentosRuntimeRoot
+                });
+
+                return {
+                    awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot,
+                        onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
+                    child     : fleet,
+                    entry     : {child: fleet, label: 'fleet'},
+                    lastLine  : () => fleetLastLine,
+                    secrets   : mainSecrets()
+                }
+            },
+            watch          : appLifecycle.watchBrainChild
         })
     }
 
@@ -1238,6 +1254,7 @@ async function bootProductBrain() {
  * @param {Number} ms The window that passed.
  */
 function logFleetStarting(ms) {
+    uiTransportFact = markTransportStarting(uiTransportFact, 'fleet-starting');
     console.log(`HARNESS_BRAIN_FLEET_STARTING fleet transport not ready after ${ms}ms; still waiting while the Fleet child lives`)
 }
 
@@ -1713,7 +1730,7 @@ app.whenReady().then(async () => {
         // needs BOTH — the organism's health for the daemon line, the transport fact for honest
         // cold-case guidance (never "start it: npm run ai:fleet-server" inside a shell that
         // self-supplies). No new channel: the fact rides the wire that already crosses.
-        return {...appLifecycle.brainHealth, transport: uiTransportFact}
+        return {...appLifecycle.brainHealth, transport: readTransportFact(uiTransportFact)}
     });
 
     // The plane-attach broker: the cockpit reads whether a plane is configured, asks main to attach
@@ -1782,7 +1799,7 @@ app.whenReady().then(async () => {
     // brain mode boots the organism's fleet leg, UI-only product self-supplies. Plain UI-only
     // smoke spawns nothing by isolation contract and keeps `null`: no transport story to tell.
     if (brainMode || (!diagnosticMode && agentosRuntimeRoot)) {
-        uiTransportFact = {phase: 'starting'}
+        uiTransportFact = startTransportFact()
     } else if (!diagnosticMode) {
         console.log('HARNESS_UI_FLEET none — no Brain root in this boot: the shell runs as the UI alone')
     }

@@ -367,7 +367,67 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         expect(provider.data.gridAdapterState).toBe('live');
 
         store.destroy()
-    })
+    });
+
+    test('a rejected card Start on a seat with unresolved cleanup keeps the rejected controlReason across post-settle and subsequent roster re-polls (#742)', async () => {
+        let cleanupUnresolved = true,
+            shouldStart       = false;
+
+        const
+            cleanupReason  = '1 helper(s) still alive: pid 4242',
+            rejectedReason = "Codex Desktop's launch command is missing from the fleet record.",
+            wired          = channel => ({source: `fleet:${channel}`, state: 'wired', confidence: 'observed'}),
+            rosterRow      = () => ({
+                id         : 'neo-gpt-emmy',
+                displayName: 'Emmy',
+                family     : 'gpt',
+                cleanupUnresolved,
+                failureReason: cleanupUnresolved ? cleanupReason : null,
+                lifecycle    : {source: 'fleet:runtimeStatus', state: shouldStart ? 'running' : cleanupUnresolved ? 'failed' : 'stopped', confidence: 'observed'},
+                sources      : {roster: wired('listAgents'), repoStatus: wired('fleetStatus'), runtime: wired('runtimeStatus')}
+            }),
+            {controller, store} = await makeLiveRoster({
+                startAgent : async () => {
+                    if (!shouldStart) throw new Error(rejectedReason);
+                    cleanupUnresolved = false;
+                    return {ok: true, result: {id: 'neo-gpt-emmy', state: 'running'}}
+                },
+                fleetRoster: async () => ({rows: [rosterRow()]})
+            }),
+            record  = store.get('neo-gpt-emmy'),
+            origGet = Neo.getComponent;
+
+        // Boot snapshot: the seat's unresolved stop cleanup renders as a cleanup controlReason
+        expect(record.state).toBe('off');
+        expect(record.cleanupUnresolved).toBe(true);
+        expect(record.controlReason).toEqual({action: 'stop', kind: 'cleanup', reason: cleanupReason});
+
+        Neo.getComponent = id => id === 'card-emmy' ? {record} : null;
+
+        try {
+            await controller.onAgentLifecycleIntent({action: 'start', agentId: 'neo-gpt-emmy', source: 'card-emmy'});
+
+            // The post-settle roster re-poll (and any later poll while cleanupUnresolved remains true)
+            // must NOT clobber the rejected Start's reason with the older stop-cleanup reason
+            expect(record.pendingAction).toBeNull();
+            expect(record.cleanupUnresolved).toBe(true);
+            expect(record.controlReason).toEqual({action: 'start', kind: 'rejected', reason: rejectedReason});
+
+            await controller.loadRoster();
+            expect(record.controlReason).toEqual({action: 'start', kind: 'rejected', reason: rejectedReason});
+
+            // A subsequent Start that settles cleanly clears the rejected reason and transitions off -> ok
+            shouldStart = true;
+            await controller.onAgentLifecycleIntent({action: 'start', agentId: 'neo-gpt-emmy', source: 'card-emmy'});
+            expect(record.state).toBe('ok');
+            expect(record.cleanupUnresolved).toBe(false);
+            expect(record.controlReason).toBeNull()
+        } finally {
+            Neo.getComponent = origGet
+        }
+
+        store.destroy()
+    });
 
     test('a timed-out card Start reconciles the same real roster record off -> ok when its actual reply arrives', async () => {
         let running = false, rosterReads = 0;
