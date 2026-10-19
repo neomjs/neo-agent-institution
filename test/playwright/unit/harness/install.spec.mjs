@@ -831,8 +831,8 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         } finally { successor?.close(); first.close() }
     });
 
-    for (const changedIssuer of [false, true]) {
-        test(`Quit with ${changedIssuer ? 'a successor issuer' : 'an unclean exit'} refuses before staging`, async () => {
+    for (const liveIssuer of [false, true]) {
+        test(`Quit with ${liveIssuer ? 'the issuer still live' : 'a successor issuer'} refuses before staging`, async () => {
             writeBundle(installed, OLD);
             writeBundle(artifact, NEW);
             const first = openIssuer(), calls = [];
@@ -840,21 +840,47 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
             const plan = planInstall({...slots(), custodyDir: userData,
                 running: [path.join(installed, 'Contents/MacOS', APP_NAME)], flags: {quit: true, open: true}});
             try {
-                await expect(executePlan(plan.steps, {continuityFn: prepareContinuity, runFn: runFn(calls, {
+                await expect(executePlan(plan.steps, {transactionFn, continuityFn: prepareContinuity, runFn: runFn(calls, {
                     osascript: () => {
-                        if (changedIssuer) {
-                            first.handoff(snapshot);
-                            successor = openIssuer();
-                            successor.handoff(snapshot);
-                        } else first.close();
+                        if (liveIssuer) return;
+                        first.handoff(snapshot);
+                        successor = openIssuer();
+                        successor.handoff(snapshot);
                     }
-                })})).rejects.toThrow(changedIssuer ? /issuer-changed/ : /handoff-incomplete/);
+                })})).rejects.toThrow(liveIssuer ? /held/ : /issuer-changed/);
                 expect(calls.map(row => row.command)).toEqual(['osascript']);
                 expect(readSlot(installed).receipt).toEqual(OLD);
                 expect(readSlot(`${installed}.installing`).exists).toBe(false);
             } finally { successor?.close(); first.close() }
         });
     }
+
+    test('an update after an unclean exit completes without recovery; the successor crosses the old record stale', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const first = openIssuer(), calls = [], candidate = {directory: path.join(root, 'fixture-runtime'), id: 'fixture-runtime'};
+        let successor;
+        const plan = planInstall({...slots(), custodyDir: userData,
+            running: [path.join(installed, 'Contents/MacOS', APP_NAME)], flags: {quit: true, open: true}});
+        try {
+            const result = await executePlan(plan.steps, {
+                transactionFn,
+                continuityFn   : prepareContinuity,
+                runFn          : runFn(calls, {
+                    osascript: () => first.close(),
+                    ditto    : () => expect(() => openIssuer()).toThrow(),
+                    open     : () => { successor = openIssuer() }
+                }),
+                materializeFn  : async () => candidate,
+                recoveryFn     : async () => { throw Error('an unclean record carries no recovery authority') },
+                verifyRuntimeFn: async () => ({...candidate})
+            });
+            expect(successor.previous).toMatchObject({handoffProved: false, reason: 'unclean-issuer-exit', snapshot});
+            expect(result.custody.before).toBe(result.custody.after);
+            expect(readSlot(installed).receipt).toEqual(NEW);
+            expect(readSlot(rollback).receipt).toEqual(OLD);
+        } finally { successor?.close(); first.close() }
+    });
 
     for (const failure of ['materialize', 'compatibility', 'integrity', 'handoff']) {
         test(`${failure} failure leaves installed slots intact and releases update exclusion`, async () => {
