@@ -5,11 +5,11 @@ import path        from 'node:path';
 
 /**
  * @module harness/rehearsal
- * @summary The pre-install rehearsal (`NEO_HARNESS_REHEARSAL=1`): a windowless arm of the fixture-plane smoke. A
- * candidate's own host boots its organism exactly as `smoke:plane` does, a packaged run in its runtime generation,
- * then runs the organism's seat journey (`ai/services/fleet/seatJourney.mjs`) against that fleet. Start, Stop,
- * Start again, an unclean Fleet restart and recovery run where the 10-18 install failed only after the swap:
- * launch admission, the Bridge-token owner and custody recovery exist only on the generation path.
+ * @summary The pre-install rehearsal (`NEO_HARNESS_REHEARSAL=1`): a windowless arm of the isolated Brain smoke. A
+ * candidate's own host boots its organism exactly as `smoke:brain` does, a packaged run in its runtime generation
+ * with the host lanes gated off, then runs the organism's seat journey (`ai/services/fleet/seatJourney.mjs`) against
+ * that fleet. Start, Stop, Start again, an unclean Fleet restart and recovery run where the 10-18 install failed only
+ * after the swap: launch admission, the Bridge-token owner and custody recovery exist only on the generation path.
  *
  * This module holds what needs no Electron: the arm's gate, the stand-in's runtime, the candidate's identity and
  * the receipt. The verdict lands beside a packaged artifact as `<artifact>.rehearsal.json`, so an installer can ask
@@ -30,22 +30,29 @@ export const RECEIPT_SUFFIX = '.rehearsal.json';
 export const INSTALLED_APP = '/Applications/Neo Harness.app';
 
 /**
- * @summary Whether this boot rehearses. The rehearsal acts only in the fixture-plane arm; set anywhere else it is a
- * refusal with its reason, because a rehearsal without a plane of its own would start seats against the organism
- * already running on this machine.
+ * @summary Whether this boot rehearses. The rehearsal acts only in the isolated Brain smoke, whose organism owns its
+ * paths, ports and registry; set anywhere else it is a refusal with its reason, because its seats would start against
+ * the organism already running on this machine. The fixture-plane arm is refused too, for now: a plane-mode Fleet
+ * defines seats only after its plane registers a forge, and that is a later row.
  * @param {Object}  options
  * @param {Object}  options.env
- * @param {Boolean} options.smokePlaneMode The fixture-plane arm: smoke, the Brain leg, and its own plane.
+ * @param {Boolean} options.smokeMode      `NEO_HARNESS_SMOKE=1`.
+ * @param {Boolean} options.brainMode      The Brain leg is on.
+ * @param {Boolean} options.smokePlaneMode The fixture-plane arm.
  * @returns {{rehearsal: Boolean, refusal: String|null}}
  */
-export function resolveRehearsal({env, smokePlaneMode}) {
+export function resolveRehearsal({env, smokeMode, brainMode, smokePlaneMode}) {
     if (env.NEO_HARNESS_REHEARSAL !== '1') {
         return {rehearsal: false, refusal: null}
     }
 
+    if (!smokeMode || !brainMode) {
+        return {rehearsal: false, refusal: 'NEO_HARNESS_REHEARSAL=1 rehearses only the isolated Brain smoke (NEO_HARNESS_SMOKE=1 with the Brain leg on); any other boot would start seats against the organism running here, so it does not start'}
+    }
+
     return smokePlaneMode
-        ? {rehearsal: true, refusal: null}
-        : {rehearsal: false, refusal: 'NEO_HARNESS_REHEARSAL=1 rehearses only a smoke run on its own fixture plane (NEO_HARNESS_SMOKE=1, the Brain leg on, NEO_HARNESS_SMOKE_PLANE=1); without one its seats would start against the organism running here, so it does not start'}
+        ? {rehearsal: false, refusal: 'NEO_HARNESS_REHEARSAL=1 does not run on the fixture plane yet: a plane-mode Fleet defines seats only after its plane registers a forge; drop NEO_HARNESS_SMOKE_PLANE=1'}
+        : {rehearsal: true, refusal: null}
 }
 
 /**

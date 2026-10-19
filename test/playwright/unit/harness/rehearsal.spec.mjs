@@ -29,15 +29,14 @@ test.describe('harness rehearsal', () => {
         fs.rmSync(root, {recursive: true, force: true})
     });
 
-    test('the rehearsal acts only in the fixture-plane arm, and names why it refuses anywhere else', () => {
-        expect(resolveRehearsal({env: {}, smokePlaneMode: true}), 'unset').toEqual({rehearsal: false, refusal: null});
-        expect(resolveRehearsal({env: {NEO_HARNESS_REHEARSAL: '1'}, smokePlaneMode: true})).toEqual({rehearsal: true, refusal: null});
+    test('the rehearsal acts only in the isolated Brain smoke, and names why it refuses anywhere else', () => {
+        const env = {NEO_HARNESS_REHEARSAL: '1'};
 
-        const refused = resolveRehearsal({env: {NEO_HARNESS_REHEARSAL: '1'}, smokePlaneMode: false});
-
-        expect(refused.rehearsal).toBe(false);
-        expect(refused.refusal).toContain('NEO_HARNESS_SMOKE_PLANE=1');
-        expect(refused.refusal).toContain('organism running here')
+        expect(resolveRehearsal({env: {}, smokeMode: true, brainMode: true, smokePlaneMode: false}), 'unset').toEqual({rehearsal: false, refusal: null});
+        expect(resolveRehearsal({env, smokeMode: true, brainMode: true, smokePlaneMode: false})).toEqual({rehearsal: true, refusal: null});
+        expect(resolveRehearsal({env, smokeMode: false, brainMode: true, smokePlaneMode: false}).refusal).toContain('organism running here');
+        expect(resolveRehearsal({env, smokeMode: true, brainMode: false, smokePlaneMode: false}).refusal).toContain('organism running here');
+        expect(resolveRehearsal({env, smokeMode: true, brainMode: true, smokePlaneMode: true}).refusal).toContain('registers a forge')
     });
 
     test('the stand-in runs on the pinned or PATH Node that answers, and refuses without one', () => {
