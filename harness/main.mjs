@@ -48,6 +48,7 @@ import {
     bootFailureCause,
     awaitOrchestratorReady,
     awaitPortListening,
+    awaitPortReleased,
     buildBrainProfile,
     buildPackagedBrainEnv,
     clearRunState,
@@ -68,6 +69,7 @@ import {
     runtimePlaneCause,
     startBrainChild,
     stopBrainTree,
+    stopRunBridge,
     sweepStaleRunState,
     typePlaneRefusal,
     writeRunState
@@ -948,7 +950,7 @@ process.on('unhandledRejection', async error => {
     }
 });
 
-const brainState = {children: [], isolationRoot: null, planeIngress: null, smokeFleet: null, walkControl: null};
+const brainState = {bridgeTeardown: null, children: [], isolationRoot: null, planeIngress: null, smokeBridgePort: null, smokeFleet: null, walkControl: null};
 
 function brainLog(line) {
     if (carriesSecret(line, mainSecrets())) {
@@ -981,6 +983,14 @@ async function teardownBrain() {
 
     const report = await stopBrainTree(children);
 
+    // The Fleet starts its Bridge detached, outside every group the tree stops
+    if (brainState.smokeBridgePort) {
+        const port = brainState.smokeBridgePort;
+
+        brainState.smokeBridgePort = null;
+        brainState.bridgeTeardown  = {...stopRunBridge({port}), released: await awaitPortReleased({port})}
+    }
+
     if (brainState.planeIngress) {
         await brainState.planeIngress.close();
         brainState.planeIngress = null
@@ -1002,8 +1012,9 @@ async function teardownBrain() {
 function recordSmokeRunState(isolationRoot) {
     brainState.isolationRoot = isolationRoot;
     writeRunState({
+        bridgePort: brainState.smokeBridgePort,
         isolationRoot,
-        children: brainState.children.map(({child, entry, ownershipToken}) => ({
+        children  : brainState.children.map(({child, entry, ownershipToken}) => ({
             entry,
             ownershipToken,
             pgid: child.pid
@@ -1305,7 +1316,7 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
     const
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
-        [chromaPort, fleetPort] = await Promise.all([allocatePort(), allocatePort()]),
+        [chromaPort, fleetPort, bridgePort] = await Promise.all([allocatePort(), allocatePort(), allocatePort()]),
         runtimeEnv              = packagedMode ? {ELECTRON_RUN_AS_NODE: '1', NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable} : {},
         planeEnv                = smokePlaneMode
             ? await attachSmokePlane({isolationRoot, runtimeEnv})
@@ -1314,8 +1325,8 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
         // root would land in the shared temp parent
         profile                 = {
             ...(packagedMode
-                ? {...buildPackagedBrainEnv({agentsRoot: path.join(isolationRoot, 'fleet', 'agents'), backupRoot: path.join(isolationRoot, 'backups'), dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort)}
-                : buildBrainProfile({chromaPort, fleetPort, isolationRoot})),
+                ? {...buildPackagedBrainEnv({agentsRoot: path.join(isolationRoot, 'fleet', 'agents'), backupRoot: path.join(isolationRoot, 'backups'), dataRoot: isolationRoot}), ...runtimeEnv, NEO_CHROMA_PORT: String(chromaPort), NEO_FLEET_PORT: String(fleetPort), NEO_NL_PORT: String(bridgePort)}
+                : buildBrainProfile({bridgePort, chromaPort, fleetPort, isolationRoot})),
             NEO_FLEET_BEARER: fleetBearerToken,
             ...planeEnv,
             ...extraEnv
@@ -1325,8 +1336,11 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
         // The product's plan over the resolved config. The smoke never adopts a live Brain, so it observes none.
         plan                    = resolveProductBrainPlan({fleetServing: false, orchestratorAlive: false, planeBase: resolved.fleetPlaneBase});
 
+    // The port the Fleet settles its Bridge on; the rehearsal's own allocation arrives through extraEnv
+    brainState.smokeBridgePort = Number(profile.NEO_NL_PORT);
+
     if (matrixViolations.length > 0) {
-        return {chromaPort, fleetPort, isolationRoot, matrixViolations, sweptPgids, up: false}
+        return {bridgePort: brainState.smokeBridgePort, chromaPort, fleetPort, isolationRoot, matrixViolations, sweptPgids, up: false}
     }
 
     await beforeFleet?.(profile, resolved);
@@ -1368,6 +1382,7 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
     brainState.smokeFleet = {child: fleet, profile};
 
     return {
+        bridgePort : brainState.smokeBridgePort,
         chromaPort,
         fleetPort,
         isolationRoot,
@@ -1488,6 +1503,13 @@ const NL_BRIDGE_ENTRY = 'ai/mcp/server/neural-link/run-bridge.mjs';
 const REHEARSAL_FLEET_READY_MS = 90_000;
 
 /**
+ * How long the rehearsal waits for the Fleet's own Bridge before starting one. The Fleet answers its wire before
+ * its Bridge settle ends, and the settle waits up to 5 s for a Bridge it started.
+ * @type {Number}
+ */
+const FLEET_BRIDGE_SETTLE_MS = 8_000;
+
+/**
  * @summary Whether a pid still names a live process.
  * @param {Number} pid
  * @returns {Boolean}
@@ -1568,17 +1590,22 @@ async function runRehearsalArm() {
 
         if (!boot.up) throw new Error(`the smoke organism did not boot: ${boot.matrixViolations?.join('; ') || boot.error || 'not up'}`);
 
-        const bridge = startBrainChild({
-            entry   : NL_BRIDGE_ENTRY,
-            env     : {...brainState.smokeFleet.profile, NEO_FLEET_BRIDGE_PUBLIC_KEY: publicKey.export({format: 'pem', type: 'spki'}), NEO_NL_PORT: String(nlPort)},
-            onLog   : brainLog,
-            repoRoot: agentosRuntimeRoot
-        });
+        // A Fleet that starts its own Bridge serves the run's port within its settle; an older candidate's never does
+        receipt.isolation.bridge = await awaitPortListening({port: nlPort, timeoutMs: FLEET_BRIDGE_SETTLE_MS}) ? 'fleet-started' : 'run-owned';
 
-        registerBrainChild({child: bridge, ...bridge.neoHarnessIdentity, label: 'bridge'});
-        recordSmokeRunState(smokeRoot);
+        if (receipt.isolation.bridge === 'run-owned') {
+            const bridge = startBrainChild({
+                entry   : NL_BRIDGE_ENTRY,
+                env     : {...brainState.smokeFleet.profile, NEO_FLEET_BRIDGE_PUBLIC_KEY: publicKey.export({format: 'pem', type: 'spki'}), NEO_NL_PORT: String(nlPort)},
+                onLog   : brainLog,
+                repoRoot: agentosRuntimeRoot
+            });
 
-        if (!await awaitPortListening({port: nlPort})) throw new Error(`the rehearsal's Bridge did not listen on ${nlPort}`);
+            registerBrainChild({child: bridge, ...bridge.neoHarnessIdentity, label: 'bridge'});
+            recordSmokeRunState(smokeRoot);
+
+            if (!await awaitPortListening({port: nlPort})) throw new Error(`the rehearsal's Bridge did not listen on ${nlPort}`)
+        }
 
         const
             connect = () => wire.createFleetRegistryBridge(async request => {
@@ -1629,14 +1656,16 @@ async function runRehearsalArm() {
         reports  = Object.values(await appLifecycle.teardown() ?? {}),
         seatPids = (receipt.journey?.rows ?? []).map(row => row.detail?.pid).filter(Boolean),
         teardown = {
-            childrenStopped: reports.every(report => report.exited && report.groupEmpty && !report.forced),
-            seatsGone      : seatPids.every(pid => !isProcessAlive(pid)),
-            windows        : BrowserWindow.getAllWindows().length
+            bridgePortReleased: brainState.bridgeTeardown?.released ?? null,
+            childrenStopped   : reports.every(report => report.exited && report.groupEmpty && !report.forced),
+            seatsGone         : seatPids.every(pid => !isProcessAlive(pid)),
+            windows           : BrowserWindow.getAllWindows().length
         };
 
-    teardown.childrenStopped || verdict.failures.push('teardown: a child the rehearsal started did not stop cleanly');
-    teardown.seatsGone       || verdict.failures.push('teardown: a seat process outlived the rehearsal');
-    teardown.windows === 0   || verdict.failures.push(`teardown: ${teardown.windows} window(s) open; the rehearsal opens none`);
+    teardown.bridgePortReleased !== false || verdict.failures.push(`teardown: the run's Bridge port ${brainState.bridgeTeardown.port} was still held`);
+    teardown.childrenStopped              || verdict.failures.push('teardown: a child the rehearsal started did not stop cleanly');
+    teardown.seatsGone                    || verdict.failures.push('teardown: a seat process outlived the rehearsal');
+    teardown.windows === 0                || verdict.failures.push(`teardown: ${teardown.windows} window(s) open; the rehearsal opens none`);
 
     verdict.ok = verdict.failures.length === 0;
     Object.assign(receipt, {finishedAt: new Date().toISOString(), teardown, verdict});

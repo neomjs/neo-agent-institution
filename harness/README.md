@@ -245,13 +245,17 @@ npm run witness:lifecycle # headed close→hide→tray-open identity + tray-quit
 
 **The pre-install rehearsal** (`rehearse`, `rehearse:packaged`) runs a candidate's seat checklist
 before an install. It is the Brain smoke with no window and no Dock icon. The stand-in
-(`ai/scripts/fleet/seatStandIn.mjs`) is each desktop family's harness, a Bridge of the run's own
-listens on an allocated port, and the organism's seat journey (`ai/services/fleet/seatJourney.mjs`)
+(`ai/scripts/fleet/seatStandIn.mjs`) is each desktop family's harness, the run's Bridge serves an
+allocated port, and the organism's seat journey (`ai/services/fleet/seatJourney.mjs`)
 runs against the smoke's Fleet: Start, Stop, Start again keeping the operator's config, an unclean
 Fleet restart, recovery and Start once more. Right after that restart it reads, the cockpit's way,
 whether the roster offers Start. The receipt lands beside the candidate (`<app>.rehearsal.json`),
 or at `.brain/rehearsal.json` for a checkout. It names the candidate's revisions, every step with
-its reason, and the teardown, and the exit code is the verdict. `NEO_HARNESS_REHEARSAL=1` anywhere
+its reason, and the teardown, and the exit code is the verdict. `isolation.bridge` says whose Bridge
+served the run. It is `fleet-started` when the candidate's Fleet starts its own, the branch a fresh
+install takes; after the unclean restart that Fleet adopts it. It is `run-owned` when an older
+candidate's Fleet does not, and the rehearsal starts one. `teardown.bridgePortReleased` fails the
+verdict when the port is still held. `NEO_HARNESS_REHEARSAL=1` anywhere
 but the isolated Brain smoke is refused, the fixture plane included. The stand-in runs on the Node
 on `PATH`, or `NEO_HARNESS_STAND_IN_NODE`. It never uses `NEO_HARNESS_NODE_BIN`, which a packaged
 shell points at its own Electron runtime. A packaged run's root is one per OS user, so when two seats
@@ -316,7 +320,11 @@ mutable path the spawned tree consumes under `harness/.brain/smoke/` (orchestrat
 graph sqlite, Chroma persist dir, fleet instance root, backup target, REM run-state), moves every
 exercised listener to a runtime-allocated port, and gates every other lane OFF via its config
 env switch (dev server, Neural Link, embed/message daemons, mlx/ollama/lms, swarm heartbeat, the
-sync + enrichment lanes, deployment-state bridge). Both plane-binding leaves are explicitly empty
+sync + enrichment lanes, deployment-state bridge). One allocated listener is the Neural Link Bridge
+port, `NEO_NL_PORT`. A Fleet that finds no Bridge there starts its own there, never on the
+operator's `8081`. It starts it detached, outside every group the teardown stops, so the teardown
+stops the `run-bridge.mjs` on that port and proves the port released; the run-state records the port,
+so a crashed run's next sweep does the same. Both plane-binding leaves are explicitly empty
 in smoke, so machine-level exports cannot redirect its Fleet process into the canonical plane. A
 smoke run also owns its Electron profile: `userData` moves to `<root>/userData` before anything
 reads it, so neither the installed app's plane record nor its screenshots are touched. A checkout

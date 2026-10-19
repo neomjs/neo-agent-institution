@@ -538,9 +538,11 @@ export function resolveSmokeRoot({env, harnessDir, packaged, tempDir}) {
  * @param {String} options.isolationRoot Directory that will own every mutable path.
  * @param {Number|String} options.chromaPort Runtime-allocated Chroma port.
  * @param {Number|String} options.fleetPort Runtime-allocated fleet transport port.
+ * @param {Number|String} options.bridgePort Runtime-allocated Neural Link Bridge port: the Fleet settles,
+ * and may start, its Bridge there, never on the operator's.
  * @returns {Object} env fragment to merge over process.env
  */
-export function buildBrainProfile({isolationRoot, chromaPort, fleetPort}) {
+export function buildBrainProfile({isolationRoot, chromaPort, fleetPort, bridgePort}) {
     return {
         // Mutable paths → instance-scoped leaves. NEO_BACKUP_PATH matters even with the sync lanes
         // gated: the SCHEDULED task family (backup et al) is interval-driven with no enable gates,
@@ -569,6 +571,7 @@ export function buildBrainProfile({isolationRoot, chromaPort, fleetPort}) {
         NEO_FLEET_PLANE_BASE  : '',
         NEO_FLEET_PLANE_BEARER: '',
         NEO_FLEET_PORT        : String(fleetPort),
+        NEO_NL_PORT           : String(bridgePort),
 
         // Every other port-bearing or shared-state lane → OFF. The smoke proves the harness can
         // OWN the organism's lifecycle; it must not double-run swarm lanes or reap live listeners.
@@ -1153,6 +1156,29 @@ export async function awaitPortListening({port, host = '127.0.0.1', timeoutMs = 
     return false
 }
 
+/**
+ * @summary The counterpart of {@link awaitPortListening}: polls until nothing accepts on the port.
+ * @param {Object} options
+ * @param {Number|String} options.port
+ * @param {Number} [options.timeoutMs=3000]
+ * @param {Number} [options.pollMs=100]
+ * @param {Function} [options.probePortFn=probePort] Injection seam for tests.
+ * @returns {Promise<Boolean>} true when the port was released within the deadline.
+ */
+export async function awaitPortReleased({port, timeoutMs = 3000, pollMs = 100, probePortFn = probePort}) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        if (!await probePortFn({port})) {
+            return true
+        }
+
+        await new Promise(resolve => setTimeout(resolve, pollMs))
+    }
+
+    return false
+}
+
 function groupAlive(pgid, killFn) {
     try {
         killFn(-pgid, 0);
@@ -1339,10 +1365,58 @@ export async function stopBrainTree(children, options = {}) {
  * @param {Object} options
  * @param {String} options.isolationRoot
  * @param {Object[]} options.children `{pgid, entry, ownershipToken}` per supervised group leader.
+ * @param {Number} [options.bridgePort] The run's Bridge port, where its Fleet may have started a Bridge
+ * outside every recorded group.
  */
-export function writeRunState({isolationRoot, children}) {
+export function writeRunState({isolationRoot, children, bridgePort}) {
     fs.mkdirSync(isolationRoot, {recursive: true});
-    fs.writeFileSync(path.join(isolationRoot, 'run-state.json'), JSON.stringify({children}), 'utf8')
+    fs.writeFileSync(path.join(isolationRoot, 'run-state.json'), JSON.stringify({bridgePort, children}), 'utf8')
+}
+
+/**
+ * @summary Stops the Neural Link Bridge a smoke's Fleet started on the run's own port. The Fleet starts
+ * it detached, a process group of its own, so no group teardown reaches it. Only a listener running
+ * `run-bridge.mjs` is stopped; anything else on the port is reported and left alone.
+ * @param {Object} options
+ * @param {Number} options.port The run's allocated Bridge port.
+ * @param {Function} [options.listenersFn] port → listening pids. Injection seam for tests.
+ * @param {Function} [options.commandFn] pid → command line, '' when gone. Injection seam for tests.
+ * @param {Function} [options.killFn=process.kill] Injection seam for tests.
+ * @returns {{foreign: Number[], port: Number, stopped: Number[]}}
+ */
+export function stopRunBridge({port, listenersFn = listeningPids, commandFn = readProcessCommand, killFn = process.kill}) {
+    const report = {foreign: [], port, stopped: []};
+
+    for (const pid of listenersFn(port)) {
+        if (!/(?:^|\/)run-bridge\.mjs(?:\s|$)/.test(commandFn(pid))) {
+            report.foreign.push(pid);
+            continue
+        }
+
+        try {
+            killFn(pid, 'SIGKILL');
+            report.stopped.push(pid)
+        } catch (error) {}
+    }
+
+    return report
+}
+
+function listeningPids(port) {
+    try {
+        return execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t']).toString().split('\n').map(Number).filter(pid => pid > 1)
+    } catch (error) {
+        // lsof exits 1 when nothing listens
+        return []
+    }
+}
+
+function readProcessCommand(pid) {
+    try {
+        return execFileSyncCommand(pid)
+    } catch (error) {
+        return ''
+    }
 }
 
 /**
@@ -1368,26 +1442,23 @@ export function clearRunState({isolationRoot}) {
  * @param {String} options.isolationRoot
  * @param {Function} [options.killFn=process.kill] Injection seam for tests.
  * @param {Function} [options.commandFn] pid → current command line ('' when gone). Injection seam for tests.
- * @returns {Number[]} pgids that were alive, identity-verified, and killed.
+ * @param {Function} [options.listenersFn] port → listening pids, for the recorded Bridge port. Injection seam for tests.
+ * @returns {Number[]} pgids that were alive, identity-verified, and killed, the run's Bridge included.
  */
-export function sweepStaleRunState({isolationRoot, killFn = process.kill, commandFn = null}) {
+export function sweepStaleRunState({isolationRoot, killFn = process.kill, commandFn = null, listenersFn = listeningPids}) {
     const
         runStateFile = path.join(isolationRoot, 'run-state.json'),
-        readCommand  = commandFn ?? (pid => {
-            try {
-                return execFileSyncCommand(pid)
-            } catch (error) {
-                return ''
-            }
-        }),
-        swept          = [];
+        readCommand  = commandFn ?? readProcessCommand,
+        swept        = [];
 
-    let children = [];
+    let bridgePort = null,
+        children   = [];
 
     try {
         const parsed = JSON.parse(fs.readFileSync(runStateFile, 'utf8'));
 
-        children = Array.isArray(parsed?.children) ? parsed.children : []
+        bridgePort = Number.isInteger(parsed?.bridgePort) ? parsed.bridgePort : null;
+        children   = Array.isArray(parsed?.children) ? parsed.children : []
     } catch (error) {
         clearRunState({isolationRoot});
         return swept
@@ -1427,6 +1498,9 @@ export function sweepStaleRunState({isolationRoot, killFn = process.kill, comman
             swept.push(pgid)
         } catch (error) {}
     }
+
+    // A detached Bridge leads its own group, so its pid is its pgid
+    bridgePort && swept.push(...stopRunBridge({commandFn: readCommand, killFn, listenersFn, port: bridgePort}).stopped);
 
     clearRunState({isolationRoot});
     return swept
