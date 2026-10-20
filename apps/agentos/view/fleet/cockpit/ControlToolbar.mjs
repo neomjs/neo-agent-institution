@@ -152,7 +152,7 @@ class ControlToolbar extends Toolbar {
             reference: 'fleet-stop-button',
             text     : 'Stop fleet'
         }, {
-            // Orthogonal fleet batch buttons (#772): Stop fleet · N renders immediately left of
+            // Orthogonal fleet batch buttons: Stop fleet · N renders immediately left of
             // Start fleet · M so a split fleet offers both actions side by side.
             module   : Button,
             cls      : ['fm-fleet-start'],

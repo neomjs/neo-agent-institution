@@ -249,7 +249,7 @@ class FleetStartPlan extends Base {
 
     /**
      * @summary Independent start and stop button descriptors from the two partitions so `startCount > 0`
-     * never masks `stopCount > 0` in a split fleet (#772).
+     * never masks `stopCount > 0` in a split fleet.
      * @param {Object[]|null} records FleetAgent records
      * @returns {{start: {action: String|null, count: Number, hidden: Boolean, text: String, title: String|null}, stop: {action: String|null, count: Number, hidden: Boolean, text: String, title: String|null}}}
      */

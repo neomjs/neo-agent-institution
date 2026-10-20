@@ -2651,7 +2651,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(button).toHaveText('Start fleet');
         await expect(button).toHaveAttribute('title', /not wired/);
 
-        // four active seats up and four ready (#772 AC-1, AC-4): both Stop fleet · 4 and Start fleet · 4 render side by side
+        // four active seats up and four ready: both Stop fleet · 4 and Start fleet · 4 render side by side
         await landFleetRoster(page, live(index => index % 2 ? 'off' : 'ok'));
         await expect(stopButton).toHaveText('Stop fleet · 4');
         await expect(button).toHaveText('Start fleet · 4');
@@ -2674,7 +2674,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await expect(button).toHaveScreenshot('fleet-button-start-4.png');
 
-        // below 760px container width (#772 AC-4): .fm-fleet-stop collapses its text label to its icon
+        // below 760px container width: .fm-fleet-stop collapses its text label to its icon
         await page.setViewportSize({width: 720, height: 900});
         await settle();
         const narrowStop = await stopButton.evaluate(el => ({

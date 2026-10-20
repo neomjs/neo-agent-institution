@@ -240,7 +240,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
 
 apps/agentos/util/FleetStartPlan.mjs
-    e076405e1d41c254c8e34c2f5f1a474aaf59915d
+    309e0bce3613f0858f3fb68b06c7f9a7f866191f
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -375,7 +375,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     48056c19f941531d51746227d6d7cda0115c27d6
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
-    175c864f7296e249c8fe26385dbec7a8a798c291
+    d3b434dd1fc4d1bc4ba3a1bf36bddc80889e162a
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     6d358c7d06b2b3aecbe374f978661c448a79ee8b
@@ -855,7 +855,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    7164011de3b05356d4d5852b07097ae5e673214f
+    a3640e61424f61df46af9eae95492e0e37e2e2f7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
