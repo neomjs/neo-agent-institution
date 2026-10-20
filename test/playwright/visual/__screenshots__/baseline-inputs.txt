@@ -240,7 +240,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
 
 apps/agentos/util/FleetStartPlan.mjs
-    309e0bce3613f0858f3fb68b06c7f9a7f866191f
+    35fe190e3be78f479f0da2a560421b3d3da5a5e6
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -381,7 +381,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     6d358c7d06b2b3aecbe374f978661c448a79ee8b
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
-    677b3dc6374ef42143101dc1b3fd327a3b3888e6
+    7b4f54fb640975167ec3dc729882d1130d18c08e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     72c6a2426360b03466d3e3c56d21c051576b0c51
