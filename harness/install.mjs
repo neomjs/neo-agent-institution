@@ -391,7 +391,9 @@ function assertFirstInstallCustody(userDataDir, {held = false} = {}) {
 /**
  * @summary Runs the planned steps in order. The first failure stops the run; the error names the
  * step. Receipt verification turns "copied" into "installed", and the custody comparison turns
- * "replaced" into "replaced without touching the plane's custody files".
+ * "replaced" into "replaced without touching the plane's custody files". A failure after the quit and
+ * before the swap moves the installed bundle reopens that bundle, unchanged, so the operator is never
+ * left without the app this run quit.
  * @param {Object[]} steps From {@link planInstall}
  * @param {Object} [options]
  * @param {Function} [options.runFn=run] Child-process seam (`ditto`, `osascript`, `open`); tests inject it
@@ -415,13 +417,16 @@ export async function executePlan(steps, {
     let   generation     = null, bindings = null, requireStopped = false;
     let   continuity     = null, guard = null, transaction = null;
     let   referenceGuard = null, runtimeDirectory = null, protectionPaths = null, protectionPublished = false;
+    let   reopen         = null, stopped = null; // the bundle this run quit, until the swap's rename moves it
 
     /** @summary Acquires the second guard only after package ownership and any issuer handoff. */
     async function holdReferences() {
         if (!runtimeDirectory || referenceGuard) return;
-        fs.mkdirSync(runtimeDirectory, {recursive: true, mode: 0o700});
-        runtimeDirectory = fs.realpathSync(runtimeDirectory);
-        referenceGuard = await runtimeReferences.waitForRuntimeGenerationReferences({directory: runtimeDirectory});
+        try {
+            fs.mkdirSync(runtimeDirectory, {recursive: true, mode: 0o700});
+            runtimeDirectory = fs.realpathSync(runtimeDirectory);
+            referenceGuard = await runtimeReferences.waitForRuntimeGenerationReferences({directory: runtimeDirectory});
+        } catch (error) { throw tagStepFailure(error, 'continuity-guard') }
         beforeMutation();
     }
 
@@ -436,27 +441,30 @@ export async function executePlan(steps, {
 
     /** @summary Checks the original plan plus this executor's own completed slot moves. */
     function verifyBindings() {
-        if (!bindings) throw new Error('package slot bindings are missing from the install plan');
+        if (!bindings) throw tagStepFailure(new Error('package slot bindings are missing from the install plan'), 'planned-slot');
         for (const expected of bindings.values()) {
             if (!isDeepStrictEqual(readSlot(expected.path), expected)) {
-                throw new Error(`planned package slot changed: ${expected.path}; rebuild the plan before retrying`);
+                throw tagStepFailure(new Error(`planned package slot changed: ${expected.path}; rebuild the plan before retrying`), 'planned-slot');
             }
         }
     }
 
     /** @summary A stopped census and current slots are required before any destructive slot action. */
     function beforeMutation() {
-        transaction?.assertCurrent();
-        if (requireStopped && !guard) {
-            if (!continuity) throw new Error('update continuity was not prepared');
-            guard = continuity.hold();
-        }
-        guard?.assertCurrent();
-        if (referenceGuard) runtimeReferences.assertRuntimeGenerationReferences(referenceGuard, runtimeDirectory);
-        verifyBindings();
-        if (requireStopped && runningFn().length) throw new Error('bundle users appeared after planning or Quit; refusing package mutation');
-        guard?.assertCurrent();
-        verifyBindings();
+        try {
+            transaction?.assertCurrent();
+            if (requireStopped && !guard) {
+                if (!continuity) throw new Error('update continuity was not prepared');
+                guard = continuity.hold();
+            }
+            guard?.assertCurrent();
+            if (referenceGuard) runtimeReferences.assertRuntimeGenerationReferences(referenceGuard, runtimeDirectory);
+            verifyBindings();
+            const active = requireStopped ? runningFn() : [];
+            if (active.length) throw tagStepFailure(new Error('bundle users appeared after planning or Quit; refusing package mutation'), 'bundle-users', active);
+            guard?.assertCurrent();
+            verifyBindings();
+        } catch (error) { throw tagStepFailure(error, 'continuity-guard') }
     }
 
     /** @summary Attempts every release even if one fails, and never launches after an unproved release. */
@@ -514,6 +522,7 @@ export async function executePlan(steps, {
                         // AppleScript launches the copy it picked if that one is not running.
                         runFn('osascript', ['-e', `tell application "${step.bundle}" to quit`]);
                         waitUntilGone(runningFn, quitTimeoutMs);
+                        reopen = step.bundle;
                         break;
                     case 'custody':
                         beforeMutation();
@@ -560,6 +569,7 @@ export async function executePlan(steps, {
                     case 'rename':
                         fs.mkdirSync(path.dirname(step.to), {recursive: true});
                         fs.renameSync(step.from, step.to);
+                        if (step.from === reopen || step.to === reopen) reopen = null;
                         moveBinding(step.from, step.to);
                         break;
                     case 'verify': {
@@ -588,15 +598,93 @@ export async function executePlan(steps, {
                         throw new Error('unknown step')
                 }
             } catch (error) {
-                throw new Error(`failed at "${describeStep(step).split('\n')[0].trim()}": ${error.message}`, {cause: error})
+                throw tagStepFailure(
+                    new Error(`failed at "${describeStep(step).split('\n')[0].trim()}": ${error.message}`, {cause: error}),
+                    error.stepKind ?? step.type,
+                    error.holders
+                )
             }
         }
 
         if (bindings && transaction) verifyBindings();
         return {custody: custody.before === undefined ? null : custody, generation}
+    } catch (error) {
+        if (!reopen) throw error;
+        stopped = error;
     } finally {
-        releaseExclusion();
+        if (!stopped) releaseExclusion();
     }
+
+    // Between the quit and the swap the installed bundle is untouched; an unproved release launches nothing.
+    let reopenError = null;
+    try {
+        releaseExclusion();
+        runFn('open', ['-a', reopen]);
+    } catch (cause) { reopenError = cause }
+    throw new Error(describeStoppedUpdate(stopped, reopen, reopenError), {cause: stopped})
+}
+
+/**
+ * @summary The product-word reason and next action for every pre-swap check and post-quit step type.
+ * @type {Readonly<Record<String, {reason: String, next: Function}>>}
+ */
+const STOPPED_UPDATE_STEPS = Object.freeze({
+    'bundle-users': {
+        reason: 'checking that nothing still holds the old bundle failed.',
+        next  : (paths = []) => {
+            const names = [...new Set(paths.map(entry => {
+                const app = String(entry).split(path.sep).find(part => part.endsWith('.app'));
+                return app ? app.slice(0, -4) : path.basename(String(entry));
+            }).filter(Boolean))];
+            return `quit ${names.length ? names.join(', ') : APP_NAME}, then run the same install command again.`;
+        }
+    },
+    'planned-slot'    : {reason: 'checking the planned install slot failed.',             next: () => 'run the same install command again.'},
+    'continuity-guard': {reason: 'checking running-seat continuity failed.',              next: () => 'run the same install command again.'},
+    'custody'         : {reason: "checking the plane's custody files failed.",            next: () => 'run the same install command again.'},
+    'stage'           : {reason: 'copying the new bundle beside the installed one failed.', next: () => 'run the same install command again; the error names the path.'},
+    'verify'          : {reason: 'verifying the staged bundle failed.',                   next: () => 'rebuild the candidate, then run the install again.'},
+    'runtime'         : {reason: 'preparing the verified runtime failed.',                next: () => 'run the same install command again; the log names the file if it stops here twice.'},
+    'remove'          : {reason: 'clearing the previous rollback copy failed.',           next: () => 'run the same install command again; the error names the path.'}
+});
+
+/**
+ * @summary Binds the pre-swap check or step kind (and any observed bundle holders) to a step error.
+ * @param {Error} error The thrown step or guard error.
+ * @param {String} stepKind Key in {@link STOPPED_UPDATE_STEPS} or the step type.
+ * @param {String[]} [holders] Running executable paths when the bundle-users check fails.
+ * @returns {Error} The same error instance with `stepKind` (and optional `holders`) attached.
+ */
+function tagStepFailure(error, stepKind, holders) {
+    if (!error.stepKind) error.stepKind = stepKind;
+    if (holders && !error.holders) error.holders = holders;
+    return error;
+}
+
+/**
+ * @summary The operator's words when an update stops after its quit and before the swap: what happened,
+ * the step in product words with the step's own error on the line below, that nothing changed, and the
+ * one next step for that failure.
+ * @param {Error} error The step failure caught by {@link executePlan}.
+ * @param {String} bundle The installed bundle path the run quit.
+ * @param {Error|null} [reopenError=null] Why reopening it failed, or null when it is open again.
+ * @returns {String}
+ */
+export function describeStoppedUpdate(error, bundle, reopenError = null) {
+    const detail  = error?.message?.startsWith('failed at "') && error?.cause ? error.cause.message : error?.message;
+    const kind    = error?.stepKind ?? error?.cause?.stepKind;
+    const entry   = STOPPED_UPDATE_STEPS[kind];
+    if (!entry) throw new Error(`unknown stopped-update step: ${kind}`);
+    const holders = error?.holders ?? error?.cause?.holders;
+
+    return [
+        'Update stopped before the Fleet Manager was replaced.',
+        `Reason: ${entry.reason}`,
+        `  ${detail}`,
+        reopenError ? `Nothing was changed, but reopening the Fleet Manager failed: ${reopenError.message}.`
+            : 'Nothing was changed, and your Fleet Manager is open again.',
+        `Next: ${reopenError ? `open "${bundle}", then run the same install command again.` : entry.next(holders)}`
+    ].join('\n');
 }
 
 /**

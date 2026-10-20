@@ -535,7 +535,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(slots()).toEqual(before);
     });
 
-    test('a bundle process appearing after Quit refuses before staging cleanup', async () => {
+    test('a bundle process appearing after Quit refuses before staging cleanup and reopens the app it quit', async () => {
         writeBundle(installed, OLD);
         writeBundle(artifact, NEW);
         const staged = `${installed}.installing`;
@@ -543,11 +543,115 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         const running = [path.join(installed, 'Contents/MacOS', APP_NAME)];
         const plan    = planInstall({...slots(), running, flags: {quit: true, open: true}}), calls = [];
         let   reads   = 0;
-        await expect(executePlan(plan.steps, {runFn: runFn(calls), runningFn: () => ++reads === 1 ? [] : running}))
-            .rejects.toThrow(/bundle users appeared/);
-        expect(calls.map(call => call.command)).toEqual(['osascript']);
+        const error   = await executePlan(plan.steps, {runFn: runFn(calls), runningFn: () => ++reads === 1 ? [] : running}).catch(caught => caught);
+        expect(error.message.split('\n')).toEqual([
+            'Update stopped before the Fleet Manager was replaced.',
+            'Reason: checking that nothing still holds the old bundle failed.',
+            '  bundle users appeared after planning or Quit; refusing package mutation',
+            'Nothing was changed, and your Fleet Manager is open again.',
+            `Next: quit ${APP_NAME}, then run the same install command again.`
+        ]);
+        expect(calls.map(call => [call.command, ...call.args.slice(0, 1)])).toEqual([['osascript', '-e'], ['open', '-a']]);
+        expect(calls[1].args[1]).toBe(installed);
         expect(readSlot(installed).receipt).toEqual(OLD);
         expect(readSlot(staged).receipt).toEqual(PREVIOUS);
+    });
+
+    for (const arm of [
+        {
+            name    : 'a planned slot changing after Quit',
+            custody : false,
+            options : calls => ({runFn: runFn(calls, {osascript: () => writeBundle(installed, PREVIOUS)})}),
+            reason  : 'Reason: checking the planned install slot failed.',
+            detail  : () => `  planned package slot changed: ${installed}; rebuild the plan before retrying`,
+            next    : 'Next: run the same install command again.',
+            commands: ['osascript', 'open']
+        },
+        {
+            name    : 'a continuity guard refusal after Quit',
+            custody : true,
+            options : calls => ({runFn: runFn(calls), continuityFn: async () => ({hold() { throw new Error('Launch admission journal refused: held') }})}),
+            reason  : 'Reason: checking running-seat continuity failed.',
+            detail  : () => '  Launch admission journal refused: held',
+            next    : 'Next: run the same install command again.',
+            commands: ['osascript', 'open']
+        },
+        {
+            name    : 'a stage copy failure after Quit',
+            custody : false,
+            options : calls => ({runFn: runFn(calls, {ditto: () => { throw new Error(`ENOSPC: no space left on device, copyfile '${installed}.installing'`) }})}),
+            reason  : 'Reason: copying the new bundle beside the installed one failed.',
+            detail  : () => `  ENOSPC: no space left on device, copyfile '${installed}.installing'`,
+            next    : 'Next: run the same install command again; the error names the path.',
+            commands: ['osascript', 'ditto', 'open']
+        },
+        {
+            name    : 'a staged verify mismatch after Quit',
+            custody : false,
+            options : calls => ({
+                runFn: (command, args) => {
+                    calls.push({args, command});
+                    command === 'ditto' && writeBundle(args[1], receipt('1970-01-01T00:00:00.000Z'));
+                }
+            }),
+            reason  : 'Reason: verifying the staged bundle failed.',
+            detail  : () => expect.stringMatching(/^  carries "staged 1970-01-01.*, expected "staged 2026-10-02/),
+            next    : 'Next: rebuild the candidate, then run the install again.',
+            commands: ['osascript', 'ditto', 'open']
+        },
+        {
+            name    : 'a runtime prepare failure after Quit',
+            custody : true,
+            options : calls => ({runFn: runFn(calls), materializeFn: async () => { throw new Error('ENOSPC: no space left on device, copyfile runtime/server.mjs') }}),
+            reason  : 'Reason: preparing the verified runtime failed.',
+            detail  : () => '  ENOSPC: no space left on device, copyfile runtime/server.mjs',
+            next    : 'Next: run the same install command again; the log names the file if it stops here twice.',
+            commands: ['osascript', 'ditto', 'open']
+        }
+    ]) {
+        test(`${arm.name} reopens the app with its step reason, verbatim error, and next action`, async () => {
+            writeBundle(installed, OLD);
+            writeBundle(artifact, NEW);
+            const running = [path.join(installed, 'Contents/MacOS', APP_NAME)], calls = [];
+            const plan    = planInstall({...slots(), ...(arm.custody ? {custodyDir: userData} : {}), running, flags: {quit: true}});
+            const error   = await executePlan(plan.steps, arm.options(calls)).catch(caught => caught);
+            expect(error.message.split('\n')).toEqual([
+                'Update stopped before the Fleet Manager was replaced.',
+                arm.reason,
+                arm.detail(),
+                'Nothing was changed, and your Fleet Manager is open again.',
+                arm.next
+            ]);
+            expect(calls.map(call => call.command)).toEqual(arm.commands);
+        });
+    }
+
+    test('a failed reopen after a stopped update is reported with its own next step, never swallowed', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const running = [path.join(installed, 'Contents/MacOS', APP_NAME)];
+        const plan    = planInstall({...slots(), running, flags: {quit: true}}), calls = [];
+        let   reads   = 0;
+        const error   = await executePlan(plan.steps, {runningFn: () => ++reads === 1 ? [] : running,
+            runFn: runFn(calls, {open: () => { throw new Error('LSOpenURLsWithRole() failed') }})}).catch(caught => caught);
+        expect(error.message.split('\n')).toEqual([
+            'Update stopped before the Fleet Manager was replaced.',
+            'Reason: checking that nothing still holds the old bundle failed.',
+            '  bundle users appeared after planning or Quit; refusing package mutation',
+            'Nothing was changed, but reopening the Fleet Manager failed: LSOpenURLsWithRole() failed.',
+            `Next: open "${installed}", then run the same install command again.`
+        ]);
+        expect(error.cause.message).toMatch(/bundle users appeared/)
+    });
+
+    test('a refusal before the quit reopens nothing and keeps its own words', async () => {
+        writeBundle(installed, OLD);
+        writeBundle(artifact, NEW);
+        const running = [path.join(installed, 'Contents/MacOS', APP_NAME)];
+        const plan    = planInstall({...slots(), running, flags: {quit: true, open: true}}), calls = [];
+        await expect(executePlan(plan.steps, {runFn: runFn(calls), continuityFn: async () => { throw new Error('continuity unavailable') }}))
+            .rejects.toThrow(/^failed at ".*": continuity unavailable$/);
+        expect(calls).toEqual([])
     });
 
     test('missing receipts cannot authorize restore, interrupted recovery or an absent-slot verification', async () => {
@@ -848,7 +952,7 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
                         successor.handoff(snapshot);
                     }
                 })})).rejects.toThrow(liveIssuer ? /held/ : /issuer-changed/);
-                expect(calls.map(row => row.command)).toEqual(['osascript']);
+                expect(calls.map(row => row.command), 'the unchanged bundle it quit is opened again').toEqual(['osascript', 'open']);
                 expect(readSlot(installed).receipt).toEqual(OLD);
                 expect(readSlot(`${installed}.installing`).exists).toBe(false);
             } finally { successor?.close(); first.close() }
