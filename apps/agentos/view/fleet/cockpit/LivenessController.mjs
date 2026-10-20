@@ -637,7 +637,7 @@ class LivenessController extends ViewerWakeController {
     /**
      * @summary Reconcile an authoritative roster snapshot onto the store: known ids update in
      * place (`record.set` — one card re-render, producer-foreign fields and any in-flight or
-     * round-trip `controlReason` survive a row's `cleanup` reason), joiners batch in, and
+     * round-trip `controlReason` survive a row-mapped reason), joiners batch in, and
      * residents absent from the snapshot are removed (no ghost cards). Membership may have
      * removed the inspected resident, so the owner-held selection reconciles here too.
      *
@@ -666,9 +666,9 @@ class LivenessController extends ViewerWakeController {
                 if (record) {
                     const next = {...row};
 
-                    if (!next.controlReason && record.controlReason?.kind === 'cleanup') {
+                    if (!next.controlReason && SourceHealth.isRowControlReasonKind(record.controlReason?.kind)) {
                         next.controlReason = null
-                    } else if (next.controlReason?.kind === 'cleanup' && (record.pendingAction || (record.controlReason && record.controlReason.kind !== 'cleanup'))) {
+                    } else if (SourceHealth.isRowControlReasonKind(next.controlReason?.kind) && (record.pendingAction || (record.controlReason && !SourceHealth.isRowControlReasonKind(record.controlReason.kind)))) {
                         delete next.controlReason
                     }
 

@@ -656,6 +656,61 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         store.destroy()
     });
 
+    test('reconcileRoster clears and defers all row-mapped controlReason kinds (cleanup, pending, failed, unavailable, exited) across snapshot transitions (#769)', () => {
+        const
+            store        = Neo.create(FleetRoster, {data: []}),
+            {controller} = makeLiveHost(store, 24),
+            rowFor       = (controlReason, state = 'off') => ({
+                agentId: 'neo-gpt-emmy',
+                ...(controlReason ? {controlReason} : {}),
+                sources: liveSources(),
+                state
+            }),
+            rowReasons   = [
+                {action: 'stop',  kind: 'cleanup',     reason: '1 helper(s) still alive: pid 4242'},
+                {action: 'stop',  kind: 'pending',     reason: 'stopping'},
+                {action: 'start', kind: 'failed',      reason: 'spawn ENOENT'},
+                {action: 'start', kind: 'unavailable', reason: 'bundled CLI missing'},
+                {action: 'start', kind: 'exited',      reason: 'the harness exited on its own'}
+            ];
+
+        for (const rowReason of rowReasons) {
+            controller.reconcileRoster(store, [rowFor(rowReason, rowReason.kind === 'pending' ? 'ok' : 'off')]);
+            const record = store.get('neo-gpt-emmy');
+            expect(record.controlReason, rowReason.kind).toEqual(rowReason);
+
+            for (const c2Kind of ['rejected', 'timeout', 'unauthorized', 'superseded']) {
+                const c2Reason = {action: 'start', kind: c2Kind, reason: `start ${c2Kind}`};
+                record.set({controlReason: c2Reason, pendingAction: null});
+                controller.reconcileRoster(store, [rowFor(rowReason)]);
+                expect(record.controlReason, `${rowReason.kind}:${c2Kind}`).toEqual(c2Reason)
+            }
+
+            record.set({controlReason: null, pendingAction: 'start'});
+            controller.reconcileRoster(store, [rowFor(rowReason)]);
+            expect(record.pendingAction, rowReason.kind).toBe('start');
+            expect(record.controlReason, rowReason.kind).toBeNull();
+
+            record.set({controlReason: null, pendingAction: null});
+            controller.reconcileRoster(store, [rowFor(rowReason)]);
+            expect(record.controlReason, rowReason.kind).toEqual(rowReason);
+
+            controller.reconcileRoster(store, [rowFor(undefined, 'ok')]);
+            expect(record.controlReason, `${rowReason.kind}:cleared`).toBeNull()
+        }
+
+        const
+            pendingReason = {action: 'stop',  kind: 'pending', reason: 'stopping'},
+            failedReason  = {action: 'start', kind: 'failed',  reason: 'spawn ENOENT'};
+
+        controller.reconcileRoster(store, [rowFor(pendingReason, 'ok')]);
+        expect(store.get('neo-gpt-emmy').controlReason).toEqual(pendingReason);
+        controller.reconcileRoster(store, [rowFor(failedReason, 'off')]);
+        expect(store.get('neo-gpt-emmy').controlReason).toEqual(failedReason);
+
+        store.destroy()
+    });
+
     // Source precedence: any later store `load` (a raw possession, a retirement's clear) races live
     // truth. These run against a REAL isolated FleetRoster instance with the REAL load
     // listener attached (the store fires `load` for its own mutations, so the guard's recursion
