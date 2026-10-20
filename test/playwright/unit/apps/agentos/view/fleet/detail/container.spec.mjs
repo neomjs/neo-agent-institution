@@ -2147,4 +2147,152 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             detail.destroy()
         });
     });
+
+    test.describe('seat durable-id rename flow (#760)', () => {
+        test('Change id… is disabled with stop reason while running or pending, and enabled when stopped', () => {
+            const detail = createDetail({
+                agentId: 'neo-gemini-pro',
+                state  : 'ok',
+                sources: {runtime: {state: 'wired', confidence: 'observed'}}
+            });
+            const changeBtn = detail.getReference('change-seat-id-button');
+
+            expect(changeBtn.disabled).toBe(true);
+            expect(changeBtn.vdom.title).toBe('stop the seat to change its id');
+            expect(changeBtn.vdom['aria-label']).toContain('stop the seat to change its id');
+
+            detail.record = {
+                agentId: 'neo-gemini-pro',
+                state  : 'off',
+                sources: {runtime: {state: 'wired', confidence: 'observed'}}
+            };
+            expect(changeBtn.disabled).toBe(false);
+            expect(changeBtn.vdom.title).toBeUndefined();
+
+            detail.record = {
+                agentId      : 'neo-gemini-pro',
+                state        : 'off',
+                pendingAction: 'start',
+                sources      : {runtime: {state: 'wired', confidence: 'observed'}}
+            };
+            expect(changeBtn.disabled).toBe(true);
+            expect(changeBtn.vdom.title).toBe('stop the seat to change its id');
+
+            detail.destroy()
+        });
+
+        test('reviews a fingerprinted plan, invalidates on edit or seat start, and applies + fires seatRenamed with outcome line', async () => {
+            const
+                fingerprint = 'e'.repeat(64),
+                planCalls   = [],
+                applyCalls  = [],
+                renamedEvents = [],
+                shellPlane  = {
+                    async seatRenamePlan(req) {
+                        planCalls.push(req);
+                        return {
+                            state      : 'planned',
+                            fingerprint,
+                            plan       : {
+                                id          : req.id,
+                                to          : req.to,
+                                seatHome    : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+                                destination : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+                                materialized: true,
+                                state       : 'copy'
+                            }
+                        }
+                    },
+                    async seatRenameApply(req) {
+                        applyCalls.push(req);
+                        return {
+                            state: 'renamed',
+                            agent: {id: req.to, displayName: 'Julia', harnessType: 'antigravity'},
+                            plan : {
+                                id             : req.id,
+                                to             : req.to,
+                                sessions       : {transcripts: ['a', 'b', 'c', 'd']},
+                                retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020'
+                            }
+                        }
+                    }
+                },
+                detail = createDetail({
+                    agentId: 'neo-gemini-pro',
+                    state  : 'off',
+                    sources: {runtime: {state: 'wired', confidence: 'observed'}}
+                }, {shellPlane});
+
+            detail.on('seatRenamed', payload => renamedEvents.push(payload));
+
+            const
+                section    = detail.getReference('seat-rename-section'),
+                confirmBtn = detail.getReference('confirm-seat-rename-button'),
+                planBox    = detail.getReference('seat-rename-plan'),
+                statusLine = detail.getReference('seat-rename-status');
+
+            expect(section.hidden).toBe(true);
+            detail.onOpenSeatRename();
+            expect(section.hidden).toBe(false);
+            expect(confirmBtn.disabled).toBe(true);
+
+            section.onNewIdChange({value: 'neo-gemini-julia'});
+            section.onReviewRename();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(planCalls).toEqual([{id: 'neo-gemini-pro', to: 'neo-gemini-julia'}]);
+            expect(planBox.hidden).toBe(false);
+            expect(confirmBtn.disabled).toBe(false);
+            expect(confirmBtn.text).toBe('Rename seat to neo-gemini-julia');
+
+            const rowTexts = planBox.vdom.cn.map(row => `${row.cn[0].text}: ${row.cn[1].text}`);
+            expect(rowTexts.some(t => t.includes('neo-gemini-pro → neo-gemini-julia'))).toBe(true);
+            expect(rowTexts.some(t => t.includes('Retired copy: counted when applied'))).toBe(true);
+            expect(rowTexts.some(t => t.includes('Sessions carried: counted when applied'))).toBe(true);
+            expect(rowTexts.some(t => t.includes('Worktrees repaired: counted when applied'))).toBe(true);
+
+            // Editing New id invalidates the reviewed plan until re-reviewed
+            section.onNewIdChange({value: 'neo-gemini-other'});
+            expect(confirmBtn.disabled).toBe(true);
+            expect(planBox.hidden).toBe(true);
+
+            // Re-review and confirm
+            section.onNewIdChange({value: 'neo-gemini-julia'});
+            section.onReviewRename();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(confirmBtn.disabled).toBe(false);
+
+            section.onConfirmRename();
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(applyCalls).toEqual([{
+                fingerprint,
+                id: 'neo-gemini-pro',
+                to: 'neo-gemini-julia'
+            }]);
+            expect(renamedEvents).toHaveLength(1);
+            expect(renamedEvents[0]).toMatchObject({
+                from: 'neo-gemini-pro',
+                to  : 'neo-gemini-julia'
+            });
+
+            // Re-seat detail onto the renamed seat (as FleetCockpit.onSeatRenamed does)
+            detail.record = {
+                agentId    : 'neo-gemini-julia',
+                displayName: 'Julia',
+                state      : 'off',
+                sources    : {runtime: {state: 'wired', confidence: 'observed'}}
+            };
+            expect(detail.getReference('detail-id').text).toBe('neo-gemini-julia');
+            expect(statusLine.hidden).toBe(false);
+            expect(statusLine.text).toBe(
+                'Renamed neo-gemini-pro → neo-gemini-julia · carried 4 sessions · retired /Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020'
+            );
+
+            detail.destroy()
+        });
+    });
 });

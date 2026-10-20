@@ -211,7 +211,7 @@ class FleetCockpit extends VesselContainer {
                 header    : {text: 'Agent detail'},
                 reference : 'agent-detail',
                 autoHidden: true,
-                listeners : {lifecycleIntent: 'onAgentLifecycleIntent'},
+                listeners : {lifecycleIntent: 'onAgentLifecycleIntent', seatRenamed: 'onSeatRenamed'},
                 bind      : {...boundAgentOsBind}
             },
             perspectives: {

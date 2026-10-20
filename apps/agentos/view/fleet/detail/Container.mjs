@@ -8,6 +8,7 @@ import ParticipationContainer               from './ParticipationContainer.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import RepositoryBodyContainer              from './RepositoryBodyContainer.mjs';
 import SeatModelContainer                   from './SeatModelContainer.mjs';
+import SeatRenameContainer                  from './SeatRenameContainer.mjs';
 import SeatRuntimeContainer                 from './SeatRuntimeContainer.mjs';
 import StateDot, {stateLabel, stateMeaning} from '../shared/StateDotComponent.mjs';
 import TabContainer                         from '../../../../../node_modules/neo.mjs/src/tab/Container.mjs';
@@ -126,30 +127,17 @@ const repoPathAction = () => [{
 
 /**
  * The cockpit drill-in surface: one resident's detail — the identity header over the four SSOT
- * panes (thought-stream · current lane · repository · pull requests). Mounted as the dock
- * document's auto-hidden `agent-detail` inspector; the card→detail selection feeds its `record`.
+ * panes (thought-stream · current lane · repository · pull requests).
  *
  * **Data-driven from its `record`** — one {@link AgentOS.model.FleetAgent} record (or a plain
- * field-bag of the same keys), exactly like {@link AgentOS.view.fleet.roster.card.Container}. There is no
- * per-view `state.Provider`; the owning cockpit's roster Store is the reactive layer, and a
+ * field-bag of the same keys). The owning cockpit's roster Store is the reactive layer, and a
  * re-seat onto a different record re-renders in place via {@link #applyRecord}.
  *
  * **Identity-header render rules:** the social **displayName** and **engineTag**
  * are mutable DISPLAY STATE / session-metadata over the durable `agentId` (§2.3.2/§2.3.3) — the id
- * is rendered too, subordinate, as the never-renamed anchor; a family swap rebinds the rail in
- * place and never reads as a different resident. **No role-typing anywhere** (§2.3.1) — the header
- * renders what the resident IS and is DOING (identity + availability + session state), never what
- * it must be. Every claim is witness, not authority (§2.4).
- *
- * **Freshness ledger (the panes):** every pane renders its observation freshness —
- * `fresh` / `stale` / `lost` from a wired feed's `observedAt` vs TTL, or the honest `unobserved`
- * until its Lane-C / memory-surface feed leaf lands. A pane NEVER renders a claim as silently
- * current: an unwired pane says so. The pure classification is
- * {@link module:apps/agentos/view/fleet/agentFreshness}; this view is its first consumer.
- *
- * **Shell-agnostic + layout-blind:** the view takes ordinary configs only — no
- * dock/layout/Electron coupling reaches it — so the pop-out leaf (T4.15) reparents it into its own
- * OS window without change.
+ * is rendered too, subordinate, as the durable anchor changed only through a Fleet transition that
+ * carries the seat; a family swap rebinds the rail in place and never reads as a different resident.
+ * **No role-typing anywhere** (§2.3.1); every claim is witness, not authority (§2.4).
  *
  * @class AgentOS.view.fleet.detail.Container
  * @extends Neo.container.Base
@@ -316,11 +304,25 @@ class AgentDetail extends Container {
                         reference: 'detail-engine'
                     }]
                 }, {
-                    // the durable anchor, rendered small beneath the display name — name is display
-                    // state OVER this id (§2.3.2), so the id is always reachable, never the label
-                    ntype    : 'component',
-                    cls      : ['fm-detail-id'],
-                    reference: 'detail-id'
+                    // the durable anchor, rendered small beneath the display name — changed only
+                    // through a Fleet transition that carries the seat
+                    ntype : 'container',
+                    cls   : ['fm-detail-id-row'],
+                    layout: {ntype: 'hbox', align: 'center'},
+
+                    items: [{
+                        ntype    : 'component',
+                        cls      : ['fm-detail-id'],
+                        flex     : 1,
+                        reference: 'detail-id'
+                    }, {
+                        module   : Button,
+                        cls      : ['fm-chip', 'fm-detail-change-id'],
+                        flex     : 'none',
+                        handler  : 'up.onOpenSeatRename',
+                        reference: 'change-seat-id-button',
+                        text     : 'Change id…'
+                    }]
                 }, {
                     // the seat, read deliberately here and never on the roster card: its harness
                     // family in words, and for a Claude Desktop seat the one step its first launch
@@ -351,6 +353,11 @@ class AgentDetail extends Container {
                     }]
                 }]
             }]
+        }, {
+            module   : SeatRenameContainer,
+            flex     : 'none',
+            hidden   : true,
+            reference: 'seat-rename-section'
         }, {
             // ONE state ledger in the pane's own freshness-pill vocabulary — the identity
             // block above stays pure identity (name is the only display-tier line). Every
@@ -647,6 +654,7 @@ class AgentDetail extends Container {
         // definition renders the card's honest no-definition line, never a fabricated config
         me.applyConfigRecord();
         me.getReference('seat-runtime').updateRecord(record);
+        me.controller.syncSeatRename(record);
 
         if (!record) {
             return
@@ -655,8 +663,6 @@ class AgentDetail extends Container {
         const
             sources = SourceHealth.normalizeFleetSources(record.sources),
             runtime = sources.runtime,
-            // the drill-in dot renders the SAME resolved truth as the card and the health tally —
-            // one resolver, three surfaces, so a resident offline on its card is offline here too
             display = SourceHealth.resolveFleetDisplayState(record),
             agentId = record.agentId ?? '';
 
@@ -731,29 +737,20 @@ class AgentDetail extends Container {
     }
 
     /**
+     * @summary Opens the inline seat-rename section for the selected stopped seat.
+     */
+    onOpenSeatRename() {
+        const me = this;
+        if (!me.record || me.getReference('change-seat-id-button')?.disabled) return;
+        me.getReference('seat-rename-section')?.openForSeat(me.record.agentId)
+    }
+
+    /**
      * @summary Render the ONE state ledger — every liveness/wiring axis once, as `axis · pill`
-     * rows in the pane's own freshness-pill vocabulary, the one pill language of the pane.
-     *
-     * Rows, in order: the session (the resolved display state; an offline one names its reason),
-     * availability (the participation: a known status word, `unobserved` for a read that did not answer, or no row;
-     * its title the date and the operator's reason, or the read's reason, and when the roster was read),
-     * the wake telltale (BOTH renderings the old readout carried: a nominal axis says so, an
-     * observed `unknown` keeps the producer's reason — on the pill title now), capacity
-     * (the throttle axis, SOURCE-GATED: it renders only when a producer actually reported it —
-     * the adapter documents that no trustworthy capacity truth source exists yet, so an
-     * unconditional row could only ever say "not reported": furniture, not honesty; the row
-     * returns with its producer, wearing a word that means what the enum measures), and the
-     * three data sources with their producer literals on the title.
-     *
-     * Tone classes reuse the freshness family deliberately (one pill language per pane):
-     * `is-fresh` = nominal, `is-stale` = deviating, `is-unobserved` = absent/unknown/not wired.
-     *
-     * Built as `text` VDOM nodes with `title` ATTRIBUTES, never an `html` string — reasons and
-     * producer literals cross a process boundary before they reach here, and Neo routes `html`
-     * to innerHTML; text nodes and attribute strings are inert by construction.
+     * rows in the pane's own freshness-pill vocabulary. Built as `text` VDOM nodes with `title`
+     * attributes, never an `html` string.
      * @param {Object} record The drilled-in FleetAgent record (never null here).
-     * @param {Object} sources `SourceHealth.normalizeFleetSources` output — the SAME resolved
-     *     truth the card's strip reads, so detail and card can never disagree.
+     * @param {Object} sources `SourceHealth.normalizeFleetSources` output.
      * @param {Object} display `SourceHealth.resolveFleetDisplayState` output `{reason, state}`.
      * @protected
      */

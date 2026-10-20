@@ -478,6 +478,58 @@
             --tab-button-padding: 0 var(--fm-space-2);
         }
     }
+
+    .fm-detail-id-row {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-seat-rename {
+        background   : var(--fm-surface-2, rgba(255, 255, 255, 0.03));
+        border-bottom: 1px solid var(--fm-border-subtle, rgba(255, 255, 255, 0.08));
+        gap          : var(--fm-space-2);
+        padding      : var(--fm-space-2) var(--fm-space-3);
+
+        .fm-seat-rename-controls {
+            flex-wrap: wrap;
+            gap      : var(--fm-space-2);
+        }
+
+        .fm-seat-rename-plan {
+            display       : flex;
+            flex-direction: column;
+            font-size     : 12px;
+            gap           : 4px;
+        }
+
+        .fm-seat-rename-row {
+            display: flex;
+            gap    : var(--fm-space-2);
+        }
+
+        .fm-seat-rename-label {
+            color      : var(--fm-text-secondary);
+            flex       : 0 0 120px;
+            font-weight: 600;
+        }
+
+        .fm-seat-rename-value {
+            color     : var(--fm-text-primary);
+            font-family: var(--fm-font-mono);
+            word-break: break-all;
+        }
+
+        .fm-seat-rename-status {
+            font-size: 12px;
+
+            &.is-refused {
+                color: var(--fm-status-danger, #f87171);
+            }
+
+            &.is-settled {
+                color: var(--fm-status-ok, #34d399);
+            }
+        }
+    }
 }
 
 /* The telltale/sources prose stacks retired into the state ledger (#23) — one pill vocabulary

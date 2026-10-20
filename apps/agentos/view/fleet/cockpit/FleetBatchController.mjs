@@ -418,6 +418,39 @@ class FleetBatchController extends ReadingSurfacesController {
     }
 
     /**
+     * @summary Consumes a completed `seatRenamed` event from `AgentDetail`: refreshes the roster
+     * from the restarted Fleet bridge and re-seats selection onto the new `to` id.
+     * @param {Object} data `{from, to, agent, result}`
+     * @returns {Promise<void>}
+     */
+    async onSeatRenamed({from, to, agent} = {}) {
+        const
+            me          = this,
+            rosterStore = me.resolveFleetRosterStore(),
+            oldRecord   = from ? rosterStore?.get(from) ?? null : null;
+
+        if (me.loadRoster) {
+            await me.loadRoster()
+        }
+
+        let nextRecord = to ? rosterStore?.get(to) ?? null : null;
+
+        if (!nextRecord && rosterStore && to && oldRecord) {
+            oldRecord && rosterStore.remove(oldRecord);
+            const [added] = rosterStore.add({
+                ...(typeof oldRecord.toJSON === 'function' ? oldRecord.toJSON() : oldRecord),
+                ...(agent ?? {}),
+                agentId: to
+            });
+            nextRecord = added ?? rosterStore.get(to) ?? null
+        }
+
+        if (nextRecord) {
+            me.applySelection(nextRecord)
+        }
+    }
+
+    /**
      * @summary The armed window dies with the controller.
      * @param {...*} args
      */

@@ -72,6 +72,7 @@ import {
     runtimePlaneCause,
     startBrainChild,
     startTransportFact,
+    stopBrainChild,
     stopBrainTree,
     stopRunBridge,
     sweepStaleRunState,
@@ -104,6 +105,7 @@ import {
 } from './planeConfig.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
 import {findFleetWriters, runSeatMoveStep, seatMoveBootHold, settleSeatRootMove}                    from './seatRootMove.mjs';
+import {SEAT_RENAME_CHANNELS, createSeatRenameBroker, createSeatRenameRuntime}                     from './seatRenameBroker.mjs';
 import {SEAT_ROOT_CHANNELS, createSeatRootBroker, createSeatRootRuntime}                           from './seatRootBroker.mjs';
 import {CONFIG_SOURCE_PATH, SETUP_CHANNELS, createSetupBroker, loadSetupModules, resolveSetupRoots} from './setupBroker.mjs';
 import {
@@ -1222,20 +1224,32 @@ async function bootProductBrain() {
             signal         : fleetReadyAbort.signal,
             spawnAttempt   : () => {
                 let fleetLastLine = null;
-
-                const fleet = startBrainChild({
-                    entry   : FLEET_SERVER_ENTRY,
-                    args    : launcherRuntime.launchArgs,
-                    env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-                    onLog   : line => {fleetLastLine = line; brainLog(line)},
-                    repoRoot: agentosRuntimeRoot
-                });
+                const
+                    spawnFleet = () => startBrainChild({
+                        entry   : FLEET_SERVER_ENTRY,
+                        args    : launcherRuntime.launchArgs,
+                        env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
+                        onLog   : line => {fleetLastLine = line; brainLog(line)},
+                        repoRoot: agentosRuntimeRoot
+                    }),
+                    fleet      = spawnFleet(),
+                    entry      = {
+                        child  : fleet,
+                        label  : 'fleet',
+                        respawn: async () => {
+                            const next = spawnFleet();
+                            entry.child = next;
+                            registerBrainChild(entry);
+                            await awaitFleetReady({bearerToken: fleetBearerToken, child: next, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot,
+                                onSlow: logFleetStarting, signal: fleetReadyAbort.signal})
+                        }
+                    };
 
                 return {
                     awaitReady: () => awaitFleetReady({bearerToken: fleetBearerToken, child: fleet, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot,
                         onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
                     child     : fleet,
-                    entry     : {child: fleet, label: 'fleet'},
+                    entry,
                     lastLine  : () => fleetLastLine,
                     secrets   : mainSecrets()
                 }
@@ -1285,23 +1299,59 @@ async function bootUiFleetTransport() {
     // The three-outcome routing AND the ownership≠observation invariant live in the witnessable
     // composition (brain.mjs#resolveUiFleetTransport); this wrapper only binds the real
     // collaborators: env coordinates, the shell bearer, the child spawner, and the owner registry.
+    const
+        fleetPort    = Number(process.env.NEO_FLEET_PORT) || 8083,
+        spawnUiFleet = port => startBrainChild({
+            entry   : FLEET_SERVER_ENTRY,
+            args    : launcherRuntime.launchArgs,
+            env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(port)},
+            onLog   : brainLog,
+            repoRoot: agentosRuntimeRoot
+        });
+
     return resolveUiFleetTransport({
         productRoot,
         agentIdentityNodeId: process.env.NEO_AGENT_IDENTITY,
         awaitReady         : options => awaitFleetReady({...options, onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
         bearerToken        : fleetBearerToken,
-        fleetPort          : Number(process.env.NEO_FLEET_PORT) || 8083,
+        fleetPort,
         onOutcome          : summary => console.log(`HARNESS_UI_FLEET ${summary}`),
-        registerChild      : registerBrainChild,
+        registerChild      : entry => {
+            entry.respawn = async () => {
+                const next = spawnUiFleet(fleetPort);
+
+                entry.child = next;
+                registerBrainChild(entry);
+                await awaitFleetReady({bearerToken: fleetBearerToken, child: next, onSlow: logFleetStarting, port: fleetPort, productRoot, repoRoot: agentosRuntimeRoot, signal: fleetReadyAbort.signal})
+            };
+            return registerBrainChild(entry)
+        },
         repoRoot           : agentosRuntimeRoot,
-        spawn              : ({fleetPort}) => startBrainChild({
-            entry   : FLEET_SERVER_ENTRY,
-            args    : launcherRuntime.launchArgs,
-            env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-            onLog   : brainLog,
-            repoRoot: agentosRuntimeRoot
-        })
+        spawn              : ({fleetPort: port}) => spawnUiFleet(port)
     })
+}
+
+/**
+ * @summary Stops the shell's owned Fleet child while `work` runs, without tripping Brain `degraded`,
+ * then restarts it and awaits wire readiness.
+ * @param {Function} work
+ * @returns {Promise<*>}
+ */
+async function quiesceOwnedFleet(work) {
+    const index = brainState.children.findIndex(entry => entry.label === 'fleet');
+    if (index === -1) return work();
+
+    const [entry] = brainState.children.splice(index, 1);
+    entry.unwatch?.();
+    await stopBrainChild(entry.child);
+
+    try {
+        return await work()
+    } finally {
+        if (typeof entry.respawn === 'function' && !fleetReadyAbort.signal.aborted) {
+            await entry.respawn()
+        }
+    }
 }
 
 /**
@@ -1784,6 +1834,19 @@ app.whenReady().then(async () => {
         ipcMain.handle(channel, seatRootBroker[name])
     }
 
+    const seatRenameBroker = createSeatRenameBroker({
+        ...(agentosRuntimeRoot
+            ? createSeatRenameRuntime({repoRoot: agentosRuntimeRoot, userData: app.getPath('userData')})
+            : {runStep: null}),
+        isTrustedSender: isTrustedIpcSender,
+        packaged       : packagedMode || Boolean(agentosRuntimeRoot),
+        quiesceFleet   : quiesceOwnedFleet
+    });
+
+    for (const [name, channel] of Object.entries(SEAT_RENAME_CHANNELS)) {
+        ipcMain.handle(channel, seatRenameBroker[name])
+    }
+
     const win1 = createHarnessWindow(APP_URL);
 
     appLifecycle.attachCockpitWindow(win1);
@@ -1978,7 +2041,7 @@ app.whenReady().then(async () => {
             const
                 expectedShellKeys = [
                     'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane',
-                    'seatRootConsent', 'seatRootPlan', 'seatRootStatus',
+                    'seatRenameApply', 'seatRenamePlan', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus',
                     'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe',
                     'shellVersion', 'verifyPlane'
                 ],

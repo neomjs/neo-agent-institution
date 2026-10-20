@@ -135,7 +135,7 @@ test.describe('Electron harness preload capability', () => {
         const
             {exposed, invokes} = await loadPreload(),
             request            = {method: 'listAgents', params: {}},
-            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
+            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane', 'seatRenameApply', 'seatRenamePlan', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
             mainSource         = await readFile(mainPath, 'utf8'),
             smokeKeys          = mainSource.match(/expectedShellKeys\s*=\s*\[([^\]]+)\]/);
 
@@ -162,6 +162,8 @@ test.describe('Electron harness preload capability', () => {
         await exposed.value.probePlane();
         await exposed.value.attachPlane({planeBase: 'http://127.0.0.1:3102'});
         await exposed.value.verifyPlane();
+        await exposed.value.seatRenamePlan({id: 'old-id', to: 'new-id'});
+        await exposed.value.seatRenameApply({id: 'old-id', to: 'new-id', fingerprint: 'reviewed-rename'});
         await exposed.value.seatRootStatus();
         await exposed.value.seatRootPlan();
         await exposed.value.seatRootConsent({fingerprint: 'reviewed-plan'});
@@ -182,6 +184,8 @@ test.describe('Electron harness preload capability', () => {
             ['shell-plane-probe'],
             ['shell-plane-attach', {planeBase: 'http://127.0.0.1:3102'}],
             ['shell-plane-verify'],
+            ['shell-seat-rename-plan', {id: 'old-id', to: 'new-id'}],
+            ['shell-seat-rename-apply', {id: 'old-id', to: 'new-id', fingerprint: 'reviewed-rename'}],
             ['shell-seat-root-status'],
             ['shell-seat-root-plan'],
             ['shell-seat-root-consent', {fingerprint: 'reviewed-plan'}],
