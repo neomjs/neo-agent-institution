@@ -386,9 +386,13 @@ class SeatRenameContainer extends Container {
             sessionsText   = carried !== null
                 ? `${carried} sessions`
                 : (unmaterialized ? '0 sessions' : 'counted when applied'),
+            conversations  = plan.sessions?.conversations,
+            nextStep       = plan.sessions?.nextStep,
             sessionParts   = [
-                plan.sessions?.conversations,
-                plan.sessions?.nextStep ? `next: ${plan.sessions.nextStep}` : null
+                conversations,
+                nextStep && (!conversations || !conversations.includes(nextStep))
+                    ? `next: ${nextStep}`
+                    : null
             ].filter(Boolean),
             harnessState   = sessionParts.length > 0
                 ? sessionParts.join(' · ')

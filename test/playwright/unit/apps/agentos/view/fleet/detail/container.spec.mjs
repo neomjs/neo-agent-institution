@@ -2331,13 +2331,14 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
             expect(rowTextsOf()).toContain('Sessions carried: 1 sessions');
             expect(rowTextsOf()).toContain('Harness state: none');
 
-            // AC-1 + AC-2: Antigravity plan with {project: 'current', count: 0} reports 0 sessions and surfaces conversations + nextStep
+            // AC-1 + AC-2: Antigravity plan with {project: 'current', count: 0} reports 0 sessions and surfaces carrySeatSessions producer strings without duplicating nextStep
+            const antigravityConversations = 'kept: ~/.gemini/antigravity/conversations protobufs keep the old workspace URI; start a new conversation';
             expect(section.countCarriedSessions({
                 sessions: {
                     harness      : 'antigravity',
                     project      : 'current',
                     count        : 0,
-                    conversations: 'per-conversation state stays at the old path',
+                    conversations: antigravityConversations,
                     nextStep     : 'start a new conversation'
                 }
             })).toBe(0);
@@ -2359,14 +2360,38 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                         harness      : 'antigravity',
                         project      : 'current',
                         count        : 0,
-                        conversations: 'per-conversation state stays at the old path',
+                        conversations: antigravityConversations,
                         nextStep     : 'start a new conversation'
                     },
                     links          : {worktrees: []}
                 }
             });
             expect(rowTextsOf()).toContain('Sessions carried: 0 sessions');
-            expect(rowTextsOf()).toContain('Harness state: per-conversation state stays at the old path · next: start a new conversation');
+            expect(rowTextsOf()).toContain(`Harness state: ${antigravityConversations}`);
+            expect(rowTextsOf().find(row => row.startsWith('Harness state:'))?.match(/start a new conversation/g)?.length).toBe(1);
+
+            // AC-2: When nextStep is present without conversations already containing it, renderPlan surfaces `next: <nextStep>`
+            section.applyPlanResult({
+                state      : 'planned',
+                fingerprint,
+                plan       : {
+                    id             : 'neo-gemini-pro',
+                    to             : 'neo-gemini-julia',
+                    seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+                    destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+                    materialized   : true,
+                    state          : 'copy',
+                    retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename',
+                    sessions       : {
+                        harness : 'antigravity',
+                        project : 'current',
+                        count   : 0,
+                        nextStep: 'start a new conversation'
+                    },
+                    links          : {worktrees: []}
+                }
+            });
+            expect(rowTextsOf()).toContain('Harness state: next: start a new conversation');
 
             // AC-2: Claude Desktop plan surfaces records repointed count in Harness state
             section.applyPlanResult({
@@ -2398,7 +2423,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                         harness      : 'antigravity',
                         project      : 'repointed',
                         count        : 1,
-                        conversations: 'per-conversation state stays at the old path',
+                        conversations: antigravityConversations,
                         nextStep     : 'start a new conversation'
                     }
                 }
