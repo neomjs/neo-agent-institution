@@ -51,9 +51,10 @@ peer still needs to resume and verify its own memory, settings and session at th
 A seat's social display name can change in place, while its Fleet id is the durable anchor for its
 home folder, managed clones, seat memory, session ledger, wake routes and GitHub attribution. When a
 stopped seat needs a new Fleet id (for example, aligning a legacy role id with an accepted name),
-the Selected-Agent detail pane's **Change id…** flow reviews the plan (`from -> to`, home path,
-managed workspaces, memory files, ledger rows and wake routes) before applying the transition
-through the shell. Running or pending seats cannot be renamed.
+the Selected-Agent detail pane's **Change id…** flow reviews the dry-run plan returned by Brain's
+`renameSeat` (`from -> to`, current and destination seat homes, and disposition, with post-re-key
+counts reported on apply) before applying the transition through the shell. Running or pending seats
+cannot be renamed.
 
 ## Closing the window is a different intent from quitting
 

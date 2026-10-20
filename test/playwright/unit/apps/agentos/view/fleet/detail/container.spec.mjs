@@ -2194,25 +2194,12 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                             state      : 'planned',
                             fingerprint,
                             plan       : {
-                                id             : req.id,
-                                to             : req.to,
-                                seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
-                                destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
-                                retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020',
-                                harnessType    : 'antigravity',
-                                records        : {
-                                    registry        : 1,
-                                    planeCredentials: 1,
-                                    windowRecord    : 'present',
-                                    continuity      : ['presence', 'memory', 'wakes', 'continuity']
-                                },
-                                sessionsSummary: {harnessType: 'antigravity', total: 4},
-                                carriedSessions: 4,
-                                repointed      : {
-                                    claudeDesktopPresets: true,
-                                    antigravityNote     : 'Antigravity: open conversations keep the old workspace — start a new one'
-                                },
-                                worktrees      : 2
+                                id          : req.id,
+                                to          : req.to,
+                                seatHome    : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+                                destination : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+                                materialized: true,
+                                state       : 'copy'
                             }
                         }
                     },
@@ -2224,7 +2211,7 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
                             plan : {
                                 id             : req.id,
                                 to             : req.to,
-                                carriedSessions: 4,
+                                sessions       : {transcripts: ['a', 'b', 'c', 'd']},
                                 retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020'
                             }
                         }
@@ -2261,8 +2248,9 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
             const rowTexts = planBox.vdom.cn.map(row => `${row.cn[0].text}: ${row.cn[1].text}`);
             expect(rowTexts.some(t => t.includes('neo-gemini-pro → neo-gemini-julia'))).toBe(true);
-            expect(rowTexts.some(t => t.includes('Antigravity: open conversations keep the old workspace — start a new one'))).toBe(true);
-            expect(rowTexts.some(t => t.includes('Worktrees repaired: 2'))).toBe(true);
+            expect(rowTexts.some(t => t.includes('Retired copy: counted when applied'))).toBe(true);
+            expect(rowTexts.some(t => t.includes('Sessions carried: counted when applied'))).toBe(true);
+            expect(rowTexts.some(t => t.includes('Worktrees repaired: counted when applied'))).toBe(true);
 
             // Editing New id invalidates the reviewed plan until re-reviewed
             section.onNewIdChange({value: 'neo-gemini-other'});

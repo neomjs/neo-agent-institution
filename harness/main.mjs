@@ -1299,24 +1299,26 @@ async function bootUiFleetTransport() {
     // The three-outcome routing AND the ownership≠observation invariant live in the witnessable
     // composition (brain.mjs#resolveUiFleetTransport); this wrapper only binds the real
     // collaborators: env coordinates, the shell bearer, the child spawner, and the owner registry.
+    const
+        fleetPort    = Number(process.env.NEO_FLEET_PORT) || 8083,
+        spawnUiFleet = port => startBrainChild({
+            entry   : FLEET_SERVER_ENTRY,
+            args    : launcherRuntime.launchArgs,
+            env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(port)},
+            onLog   : brainLog,
+            repoRoot: agentosRuntimeRoot
+        });
+
     return resolveUiFleetTransport({
         productRoot,
         agentIdentityNodeId: process.env.NEO_AGENT_IDENTITY,
         awaitReady         : options => awaitFleetReady({...options, onSlow: logFleetStarting, signal: fleetReadyAbort.signal}),
         bearerToken        : fleetBearerToken,
-        fleetPort          : Number(process.env.NEO_FLEET_PORT) || 8083,
+        fleetPort,
         onOutcome          : summary => console.log(`HARNESS_UI_FLEET ${summary}`),
         registerChild      : entry => {
             entry.respawn = async () => {
-                const
-                    fleetPort = Number(process.env.NEO_FLEET_PORT) || 8083,
-                    next      = startBrainChild({
-                        entry   : FLEET_SERVER_ENTRY,
-                        args    : launcherRuntime.launchArgs,
-                        env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-                        onLog   : brainLog,
-                        repoRoot: agentosRuntimeRoot
-                    });
+                const next = spawnUiFleet(fleetPort);
 
                 entry.child = next;
                 registerBrainChild(entry);
@@ -1325,13 +1327,7 @@ async function bootUiFleetTransport() {
             return registerBrainChild(entry)
         },
         repoRoot           : agentosRuntimeRoot,
-        spawn              : ({fleetPort}) => startBrainChild({
-            entry   : FLEET_SERVER_ENTRY,
-            args    : launcherRuntime.launchArgs,
-            env     : {...(app.isPackaged ? {ELECTRON_RUN_AS_NODE: '1'} : {}), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-            onLog   : brainLog,
-            repoRoot: agentosRuntimeRoot
-        })
+        spawn              : ({fleetPort: port}) => spawnUiFleet(port)
     })
 }
 

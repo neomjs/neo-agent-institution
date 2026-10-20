@@ -1,6 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {
     SEAT_RENAME_CHANNELS,
+    SEAT_RENAME_SCRIPT,
     computeRenamePlanFingerprint,
     createSeatRenameBroker,
     createSeatRenameRuntime,
@@ -12,31 +13,12 @@ test.describe('harness/seatRenameBroker (#760)', () => {
         trustedEvent   = {senderFrame: {url: 'http://127.0.0.1:8080/apps/agentos/index.html'}},
         untrustedEvent = {senderFrame: {url: 'https://evil.example/'}},
         samplePlan     = (overrides = {}) => ({
-            id             : 'neo-gemini-pro',
-            to             : 'neo-gemini-julia',
-            seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
-            destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
-            retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020',
-            materialized   : true,
-            state          : 'copy',
-            harnessType    : 'antigravity',
-            records        : {
-                registry        : 1,
-                planeCredentials: 1,
-                windowRecord    : 'present',
-                continuity      : ['presence', 'memory', 'wakes', 'continuity']
-            },
-            sessionsSummary: {
-                harnessType: 'antigravity',
-                total      : 3,
-                byHarness  : {antigravity: 3}
-            },
-            carriedSessions: 3,
-            repointed      : {
-                claudeDesktopPresets: false,
-                antigravityNote     : 'Antigravity: open conversations keep the old workspace — start a new one'
-            },
-            worktrees      : 2,
+            id          : 'neo-gemini-pro',
+            to          : 'neo-gemini-julia',
+            seatHome    : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+            destination : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+            materialized: true,
+            state       : 'copy',
             ...overrides
         });
 
@@ -61,7 +43,11 @@ test.describe('harness/seatRenameBroker (#760)', () => {
         })
     });
 
-    test('plan returns all required preview facts and a 64-hex SHA-256 fingerprint', async () => {
+    test('plan returns Brain renameSeat dry-run facts without shell-side derivation and computes a 64-hex SHA-256 fingerprint', async () => {
+        expect(SEAT_RENAME_SCRIPT).not.toContain('claudeSlug');
+        expect(SEAT_RENAME_SCRIPT).not.toContain('retired-seats');
+        expect(SEAT_RENAME_SCRIPT).toContain('renameSeat({registry, tenants: FleetTenantService, id, to, moveId: moveId || null, dryRun})');
+
         const
             basePlan = samplePlan(),
             broker   = createSeatRenameBroker({
@@ -78,18 +64,15 @@ test.describe('harness/seatRenameBroker (#760)', () => {
         expect(result.state).toBe('planned');
         expect(result.fingerprint).toMatch(/^[0-9a-f]{64}$/);
         expect(result.fingerprint).toBe(computeRenamePlanFingerprint(basePlan));
-        expect(result.plan).toMatchObject({
-            id             : 'neo-gemini-pro',
-            to             : 'neo-gemini-julia',
-            seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
-            destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
-            retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020',
-            worktrees      : 2,
-            fingerprint    : result.fingerprint
-        });
-        expect(result.plan.repointed.antigravityNote).toBe(
-            'Antigravity: open conversations keep the old workspace — start a new one'
-        )
+        expect(result.plan).toEqual({
+            id          : 'neo-gemini-pro',
+            to          : 'neo-gemini-julia',
+            seatHome    : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+            destination : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+            materialized: true,
+            state       : 'copy',
+            fingerprint : result.fingerprint
+        })
     });
 
     test('refuses plan when seat is still running or ids are invalid/identical', async () => {
@@ -151,8 +134,8 @@ test.describe('harness/seatRenameBroker (#760)', () => {
                             id,
                             to,
                             state          : 'copy',
-                            carriedSessions: 3,
-                            retiredSeatHome: basePlan.retiredSeatHome
+                            sessions       : {project: '/Users/op/.gemini/projects/neo-gemini-julia'},
+                            retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020'
                         }
                     }
                 }
@@ -183,7 +166,7 @@ test.describe('harness/seatRenameBroker (#760)', () => {
 
         expect(applied.state).toBe('renamed');
         expect(applied.agent).toEqual({id: 'neo-gemini-julia', displayName: 'Julia', harnessType: 'antigravity'});
-        expect(applied.plan.carriedSessions).toBe(3);
+        expect(applied.plan.sessions).toEqual({project: '/Users/op/.gemini/projects/neo-gemini-julia'});
         expect(applied.plan.retiredSeatHome).toBe('/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020');
         expect(events).toEqual(['step:plan', 'fleet:stop', 'step:apply', 'fleet:restart'])
     });

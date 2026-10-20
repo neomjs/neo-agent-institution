@@ -5,11 +5,11 @@ import {readSeatRootRecord}                                     from './seatRoot
 
 /**
  * @module harness/seatRenameBroker
- * @summary Main-owned review and apply for a stopped seat's durable Fleet-id transition. The renderer reviews a fingerprinted plan (`from -> to`,
- * seat home, retired path, records that follow, carried sessions, repointed harness state, and
- * repaired worktrees); main validates sender trust, verifies the plan fingerprint before apply,
- * quiesces its owned Fleet child while `renameSeat` runs against the registry, and restarts the
- * Fleet child afterwards.
+ * @summary Main-owned review and apply for a stopped seat's durable Fleet-id transition. The renderer reviews the fingerprinted plan Brain's
+ * `renameSeat({dryRun: true})` reports (`id`, `to`, `seatHome`, `destination`, `materialized`,
+ * `state`); main validates sender trust, verifies the plan fingerprint before apply, quiesces its
+ * owned Fleet child while `renameSeat` runs against the registry, and restarts the Fleet child
+ * afterwards.
  */
 export const SEAT_RENAME_CHANNELS = Object.freeze({
     apply: 'shell-seat-rename-apply',
@@ -27,83 +27,21 @@ const
  */
 export const SEAT_RENAME_SCRIPT = [
     "import 'dotenv/config';",
-    "import fs from 'node:fs/promises';",
-    "import os from 'node:os';",
-    "import path from 'node:path';",
     "import Neo from 'neo.mjs/src/Neo.mjs';",
     "import * as core from 'neo.mjs/src/core/_export.mjs';",
     "import InstanceManager from 'neo.mjs/src/manager/Instance.mjs';",
     "import AiConfig from './ai/config.mjs';",
     "import FleetRegistryService from './ai/services/fleet/FleetRegistryService.mjs';",
     "import FleetTenantService from './ai/services/fleet/FleetTenantService.mjs';",
-    "import {claudeSlug} from './ai/services/fleet/carrySeatSessions.mjs';",
-    "import {deriveAgentInstanceHome} from './ai/services/fleet/deriveAgentInstanceHome.mjs';",
     "import {renameSeat} from './ai/services/fleet/renameSeat.mjs';",
-    "import {readSeatWindowRecord} from './ai/services/fleet/seatWindowRect.mjs';",
     "const {NEO_HARNESS_SEAT_RENAME_STEP: step, NEO_HARNESS_SEAT_RENAME_ID: id, NEO_HARNESS_SEAT_RENAME_TO: to, NEO_HARNESS_SEAT_RENAME_MOVE_ID: moveId} = process.env;",
-    "const agents = FleetRegistryService.listAgents();",
-    "const agent = agents.find(row => row.id === id) ?? agents.find(row => row.id === to && row.previousId === id) ?? null;",
     "const dryRun = step === 'plan';",
-    "const registry = dryRun && agent ? {",
+    "const registry = dryRun ? {",
     "    listAgents: () => FleetRegistryService.listAgents(),",
     "    getDataDir: () => null,",
     "    admissionDirectory: () => null",
     "} : FleetRegistryService;",
     "const outcome = await renameSeat({registry, tenants: FleetTenantService, id, to, moveId: moveId || null, dryRun});",
-    "if (outcome.plan && agent) {",
-    "    const harnessType = agent.harnessType ?? null;",
-    "    const seatHome = outcome.plan.seatHome ?? agent.seatHome ?? null;",
-    "    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');",
-    "    outcome.plan.harnessType = harnessType;",
-    "    outcome.plan.retiredSeatHome = outcome.plan.retiredSeatHome ?? (seatHome ? path.join(path.dirname(path.dirname(seatHome)), 'retired-seats', `${id}.pre-rename-${today}`) : null);",
-    "    let worktrees = 0, sessionCount = 0, claudeDesktopPresets = false, windowRecord = 'absent';",
-    "    if (seatHome && outcome.plan.materialized) {",
-    "        const instanceHome = deriveAgentInstanceHome({instanceRoot: path.dirname(seatHome), agentId: id, harnessType});",
-    "        windowRecord = readSeatWindowRecord(instanceHome) ? 'present' : 'absent';",
-    "        for (const entry of await fs.readdir(seatHome, {recursive: true, withFileTypes: true}).catch(() => [])) {",
-    "            if (entry.isFile() && entry.name === '.git') {",
-    "                const raw = await fs.readFile(path.join(entry.parentPath, entry.name), 'utf8').catch(() => '');",
-    "                if (/^gitdir:\\s*(.+?)\\r?\\n?$/.test(raw)) worktrees++;",
-    "            }",
-    "        }",
-    "        if (harnessType === 'claude-code' || harnessType === 'claude-desktop') {",
-    "            const projects = harnessType === 'claude-code' ? path.join(instanceHome, 'projects') : path.join(os.homedir(), '.claude', 'projects');",
-    "            const prefix = claudeSlug(seatHome);",
-    "            const dirs = (await fs.readdir(projects, {withFileTypes: true}).catch(() => [])).filter(e => e.isDirectory() && e.name.startsWith(prefix));",
-    "            sessionCount = dirs.length;",
-    "            if (harnessType === 'claude-desktop') {",
-    "                const presetsRaw = await fs.readFile(path.join(instanceHome, 'ccd-session-presets.json'), 'utf8').catch(() => '');",
-    "                claudeDesktopPresets = presetsRaw.includes(seatHome);",
-    "            }",
-    "        } else if (harnessType === 'antigravity') {",
-    "            sessionCount = 1;",
-    "        }",
-    "    }",
-    "    if (!dryRun && outcome.plan.sessions) {",
-    "        const s = outcome.plan.sessions;",
-    "        sessionCount = Array.isArray(s.transcripts) ? s.transcripts.length : (typeof s.threads === 'number' ? s.threads : (s.project ? 1 : sessionCount));",
-    "    }",
-    "    if (!dryRun && outcome.plan.links?.worktrees) {",
-    "        worktrees = outcome.plan.links.worktrees.length;",
-    "    }",
-    "    outcome.plan.records = {",
-    "        registry: 1,",
-    "        planeCredentials: Array.isArray(outcome.plan.planeCredentials) ? outcome.plan.planeCredentials.length : 0,",
-    "        windowRecord,",
-    "        continuity: ['presence', 'memory', 'wakes', 'continuity']",
-    "    };",
-    "    outcome.plan.sessionsSummary = {",
-    "        harnessType,",
-    "        total: sessionCount,",
-    "        byHarness: harnessType ? {[harnessType]: sessionCount} : {}",
-    "    };",
-    "    outcome.plan.carriedSessions = sessionCount;",
-    "    outcome.plan.repointed = {",
-    "        claudeDesktopPresets,",
-    "        antigravityNote: 'Antigravity: open conversations keep the old workspace — start a new one'",
-    "    };",
-    "    outcome.plan.worktrees = worktrees;",
-    "}",
     "if (!dryRun && outcome.state === 'renamed') {",
     "    outcome.agent = FleetRegistryService.listAgents().find(row => row.id === to) ?? null;",
     "}",
@@ -130,18 +68,17 @@ export function isValidSeatId(value) {
  */
 export function computeRenamePlanFingerprint(plan = {}) {
     const canonical = {
-        destination    : plan.destination ?? null,
-        harnessType    : plan.harnessType ?? null,
-        id             : plan.id ?? null,
-        materialized   : Boolean(plan.materialized),
-        records        : plan.records ?? null,
-        repointed      : plan.repointed ?? null,
-        retiredSeatHome: plan.retiredSeatHome ?? null,
-        seatHome       : plan.seatHome ?? null,
-        sessionsSummary: plan.sessionsSummary ?? null,
-        state          : plan.state ?? null,
-        to             : plan.to ?? null,
-        worktrees      : Number.isFinite(plan.worktrees) ? plan.worktrees : 0
+        destination     : plan.destination ?? null,
+        id              : plan.id ?? null,
+        links           : plan.links ?? null,
+        materialized    : Boolean(plan.materialized),
+        planeCredentials: plan.planeCredentials ?? null,
+        retiredSeatHome : plan.retiredSeatHome ?? null,
+        seatHome        : plan.seatHome ?? null,
+        sessions        : plan.sessions ?? null,
+        state           : plan.state ?? null,
+        to              : plan.to ?? null,
+        windowRecord    : plan.windowRecord ?? null
     };
 
     return crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex')
@@ -329,9 +266,7 @@ export function createSeatRenameBroker({packaged, isTrustedSender, runStep, quie
                         agent: applied.agent ?? null,
                         plan : {
                             ...fresh.plan,
-                            ...applied.plan,
-                            carriedSessions: applied.plan?.carriedSessions ?? fresh.plan?.carriedSessions ?? 0,
-                            retiredSeatHome: applied.plan?.retiredSeatHome ?? fresh.plan?.retiredSeatHome ?? null
+                            ...applied.plan
                         }
                     }
                 } catch (error) {

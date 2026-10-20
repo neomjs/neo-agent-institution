@@ -309,7 +309,7 @@ class SeatRenameContainer extends Container {
             plan            = result.plan,
             from            = plan.id ?? me.agentId,
             to              = plan.to ?? me.proposedId,
-            carriedSessions = plan.carriedSessions ?? plan.sessionsSummary?.total ?? 0,
+            carriedSessions = me.countCarriedSessions(plan) ?? 0,
             retiredSeatHome = plan.retiredSeatHome ?? 'none';
 
         me.plan           = null;
@@ -321,6 +321,22 @@ class SeatRenameContainer extends Container {
             text: `Renamed ${from} → ${to} · carried ${carriedSessions} sessions · retired ${retiredSeatHome}`
         });
         me.syncButtons()
+    }
+
+    /**
+     * @summary Extracts the carried session count when Brain's plan/outcome includes `sessions` (or `carriedSessions`),
+     * returning `null` when the dry-run plan has not counted sessions yet.
+     * @param {Object|null} plan
+     * @returns {Number|null}
+     */
+    countCarriedSessions(plan) {
+        if (Number.isFinite(plan?.carriedSessions)) return plan.carriedSessions;
+        const sessions = plan?.sessions;
+        if (!sessions || typeof sessions !== 'object') return null;
+        if (Array.isArray(sessions.transcripts)) return sessions.transcripts.length;
+        if (typeof sessions.threads === 'number') return sessions.threads;
+        if ('project' in sessions) return sessions.project ? 1 : 0;
+        return null
     }
 
     /**
@@ -337,7 +353,8 @@ class SeatRenameContainer extends Container {
     }
 
     /**
-     * @summary Renders the reviewed plan rows as inert `text` VDOM nodes.
+     * @summary Renders the reviewed plan rows from Brain's `renameSeat` dry run as inert `text` VDOM nodes,
+     * showing `"counted when applied"` for post-re-key rows the dry run does not report yet.
      * @param {Object|null} plan
      */
     renderPlan(plan) {
@@ -354,19 +371,29 @@ class SeatRenameContainer extends Container {
         }
 
         const
-            carried    = plan.sessionsSummary?.total ?? plan.carriedSessions ?? 0,
-            harness    = plan.harnessType ?? 'seat',
-            presets    = plan.repointed?.claudeDesktopPresets ? 'Claude Desktop presets repointed · ' : '',
-            agNote     = plan.repointed?.antigravityNote ?? 'Antigravity: open conversations keep the old workspace — start a new one',
-            continuity = (plan.records?.continuity ?? ['presence', 'memory', 'wakes', 'continuity']).join(', '),
-            rows       = [
+            unmaterialized = plan.materialized === false,
+            carried        = this.countCarriedSessions(plan),
+            retiredCopy    = plan.retiredSeatHome ?? (unmaterialized ? 'none' : 'counted when applied'),
+            records        = Array.isArray(plan.planeCredentials) || plan.windowRecord
+                ? `registry (1) · plane credentials (${plan.planeCredentials?.length ?? 0}) · window (${plan.windowRecord ?? 'absent'})`
+                : 'registry (1) · plane credentials and window record counted when applied',
+            sessionsText   = carried !== null
+                ? `${carried} sessions`
+                : (unmaterialized ? '0 sessions' : 'counted when applied'),
+            harnessState   = plan.sessions?.note
+                ? plan.sessions.note
+                : (plan.sessions?.presets ? 'Claude Desktop presets repointed' : (unmaterialized ? 'none' : 'counted when applied')),
+            worktrees      = Array.isArray(plan.links?.worktrees)
+                ? String(plan.links.worktrees.length)
+                : (Number.isFinite(plan.worktrees) ? String(plan.worktrees) : (unmaterialized ? '0' : 'counted when applied')),
+            rows           = [
                 ['Id', `${plan.id} → ${plan.to}`],
-                ['Folder', `${plan.seatHome ?? 'unmaterialized'} → ${plan.destination ?? 'unmaterialized'}`],
-                ['Retired copy', `${plan.retiredSeatHome ?? 'none'}`],
-                ['Records', `registry (${plan.records?.registry ?? 1}) · plane credentials (${plan.records?.planeCredentials ?? 0}) · window (${plan.records?.windowRecord ?? 'absent'}) · ${continuity}`],
-                ['Sessions carried', `${carried} sessions (${harness})`],
-                ['Harness state', `${presets}${agNote}`],
-                ['Worktrees repaired', `${plan.worktrees ?? 0}`],
+                ['Folder', `${plan.seatHome ?? 'unmaterialized'} → ${plan.destination ?? 'unmaterialized'} (${plan.state ?? 'copy'})`],
+                ['Retired copy', retiredCopy],
+                ['Records', records],
+                ['Sessions carried', sessionsText],
+                ['Harness state', harnessState],
+                ['Worktrees repaired', worktrees],
                 ['Execution', 'Quiesces the Fleet registry writer during apply, then restarts it']
             ];
 
