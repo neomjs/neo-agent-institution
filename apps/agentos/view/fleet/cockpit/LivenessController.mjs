@@ -26,9 +26,8 @@ const
      */
     bearerSchemeRegex   = /\b(?:authorization\s*[:=]\s*)?bearer\s+[^\s,;)]+/gi,
     credentialPairRegex = /\b(authorization|token|secret|password|pat|credential)\s*[:=]\s*[^\s,;)]+/gi,
-    githubTokenRegex      = /\bgh[pousr]_[A-Za-z0-9_]+/g,
-    gitlabTokenRegex      = /\bglpat-[A-Za-z0-9_-]+/g,
-    rowControlReasonKinds = new Set(['cleanup', 'pending', 'failed', 'unavailable', 'exited']);
+    githubTokenRegex    = /\bgh[pousr]_[A-Za-z0-9_]+/g,
+    gitlabTokenRegex    = /\bglpat-[A-Za-z0-9_-]+/g;
 
 /**
  * @summary The cockpit's liveness layer — the fenced wire reads that make `live` mean live, and
@@ -667,9 +666,9 @@ class LivenessController extends ViewerWakeController {
                 if (record) {
                     const next = {...row};
 
-                    if (!next.controlReason && rowControlReasonKinds.has(record.controlReason?.kind)) {
+                    if (!next.controlReason && SourceHealth.isRowControlReasonKind(record.controlReason?.kind)) {
                         next.controlReason = null
-                    } else if (rowControlReasonKinds.has(next.controlReason?.kind) && (record.pendingAction || (record.controlReason && !rowControlReasonKinds.has(record.controlReason.kind)))) {
+                    } else if (SourceHealth.isRowControlReasonKind(next.controlReason?.kind) && (record.pendingAction || (record.controlReason && !SourceHealth.isRowControlReasonKind(record.controlReason.kind)))) {
                         delete next.controlReason
                     }
 

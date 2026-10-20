@@ -699,6 +699,15 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             expect(record.controlReason, `${rowReason.kind}:cleared`).toBeNull()
         }
 
+        const
+            pendingReason = {action: 'stop',  kind: 'pending', reason: 'stopping'},
+            failedReason  = {action: 'start', kind: 'failed',  reason: 'spawn ENOENT'};
+
+        controller.reconcileRoster(store, [rowFor(pendingReason, 'ok')]);
+        expect(store.get('neo-gpt-emmy').controlReason).toEqual(pendingReason);
+        controller.reconcileRoster(store, [rowFor(failedReason, 'off')]);
+        expect(store.get('neo-gpt-emmy').controlReason).toEqual(failedReason);
+
         store.destroy()
     });
 

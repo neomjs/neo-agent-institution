@@ -9,7 +9,10 @@ import {FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/f
  * and attention-bearing, never a healthy fact and never silently absent.
  */
 
-const FLEET_SOURCE_KEYS = Object.freeze(['roster', 'repoStatus', 'runtime', 'lane']);
+const
+    FLEET_SOURCE_KEYS           = Object.freeze(['roster', 'repoStatus', 'runtime', 'lane']),
+    ROW_CONTROL_REASON_KINDS    = Object.freeze(['cleanup', 'pending', 'failed', 'unavailable', 'exited']),
+    ROW_CONTROL_REASON_KIND_SET = new Set(ROW_CONTROL_REASON_KINDS);
 
 const
     FLEET_SOURCE_BY_KEY = Object.freeze({
@@ -26,7 +29,18 @@ const
  * @extends Neo.core.Base
  */
 class SourceHealth extends Base {
-    static FLEET_SOURCE_KEYS = FLEET_SOURCE_KEYS
+    static FLEET_SOURCE_KEYS        = FLEET_SOURCE_KEYS
+    static ROW_CONTROL_REASON_KINDS = ROW_CONTROL_REASON_KINDS
+
+    /**
+     * @summary Return true when `kind` is one of the row-mapped `controlReason` kinds emitted by
+     * {@link mapFleetSessionHealth} (rather than an active C2 lifecycle round-trip kind).
+     * @param {*} kind
+     * @returns {Boolean}
+     */
+    static isRowControlReasonKind(kind) {
+        return ROW_CONTROL_REASON_KIND_SET.has(kind)
+    }
 
     static config = {
         /**
