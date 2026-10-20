@@ -318,6 +318,58 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
         expect(FleetStartPlan.describeFleetButton([{agentId: 'gemini', state: 'ok', sources: wiredRuntime(), participationStatus: 'operator_benched'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('operator_benched')})
     });
 
+    test('describeFleetButtons exposes independent start and stop descriptors across split (4 up / 4 down, 1 up / 9 down), all-down, all-up, and 0/0 fallback states (#772 AC-1, AC-2)', () => {
+        const
+            up   = id => ({agentId: id, state: 'ok',  sources: wiredRuntime()}),
+            down = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
+            ten  = ['ada', 'grace', 'vega', 'sophie', 'emmy', 'euclid', 'clio', 'fable', 'maryam', 'julia'];
+
+        // AC-1: split fleet (4 up, 4 down) shows both Stop fleet · 4 and Start fleet · 4
+        expect(FleetStartPlan.describeFleetButtons([...ten.slice(0, 4).map(up), ...ten.slice(4, 8).map(down)])).toEqual({
+            start: {action: 'start', count: 4, hidden: false, text: 'Start fleet · 4', title: null},
+            stop : {action: 'stop',  count: 4, hidden: false, text: 'Stop fleet · 4',  title: null}
+        });
+
+        // AC-1: split fleet (1 up, 9 down) shows both Stop fleet · 1 and Start fleet · 9
+        expect(FleetStartPlan.describeFleetButtons([up(ten[0]), ...ten.slice(1).map(down)])).toEqual({
+            start: {action: 'start', count: 9, hidden: false, text: 'Start fleet · 9', title: null},
+            stop : {action: 'stop',  count: 1, hidden: false, text: 'Stop fleet · 1',  title: null}
+        });
+
+        // AC-2: all eligible seats down (N === 0, M >= 1) -> only Start fleet · M is visible
+        expect(FleetStartPlan.describeFleetButtons(ten.slice(0, 8).map(down))).toEqual({
+            start: {action: 'start', count: 8, hidden: false, text: 'Start fleet · 8', title: null},
+            stop : {action: null,    count: 0, hidden: true,  text: 'Stop fleet',      title: null}
+        });
+
+        // AC-2: all eligible seats up (N >= 1, M === 0) -> only Stop fleet · N is visible (including N === 1)
+        expect(FleetStartPlan.describeFleetButtons([
+            ...ten.slice(0, 8).map(up),
+            {agentId: 'benched', state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched'}
+        ])).toEqual({
+            start: {action: null,   count: 0, hidden: true,  text: 'Start fleet',    title: null},
+            stop : {action: 'stop', count: 8, hidden: false, text: 'Stop fleet · 8', title: null}
+        });
+        expect(FleetStartPlan.describeFleetButtons([up('ada')])).toEqual({
+            start: {action: null,   count: 0, hidden: true,  text: 'Start fleet',    title: null},
+            stop : {action: 'stop', count: 1, hidden: false, text: 'Stop fleet · 1', title: null}
+        });
+
+        // AC-2: N === 0 && M === 0 (unobserved, unwired, or all excluded) -> Stop fleet hidden, plain Start fleet with reason on title
+        expect(FleetStartPlan.describeFleetButtons([])).toEqual({
+            start: {action: null, count: 0, hidden: false, text: 'Start fleet', title: expect.stringContaining('roster')},
+            stop : {action: null, count: 0, hidden: true,  text: 'Stop fleet',  title: null}
+        });
+        expect(FleetStartPlan.describeFleetButtons([{agentId: 'ada', state: 'off'}, {agentId: 'vega', state: 'ok'}])).toEqual({
+            start: {action: null, count: 0, hidden: false, text: 'Start fleet', title: expect.stringContaining('wired')},
+            stop : {action: null, count: 0, hidden: true,  text: 'Stop fleet',  title: null}
+        });
+        expect(FleetStartPlan.describeFleetButtons([{agentId: 'gemini', state: 'ok', sources: wiredRuntime(), participationStatus: 'operator_benched'}])).toEqual({
+            start: {action: null, count: 0, hidden: false, text: 'Start fleet', title: expect.stringContaining('operator_benched')},
+            stop : {action: null, count: 0, hidden: true,  text: 'Stop fleet',  title: null}
+        })
+    });
+
     test('the summary speaks both directions: N stopped · M excluded, every reason reachable (#618)', () => {
         const
             partition = {eligible: [{agentId: 'ada'}, {agentId: 'grace'}], excluded: [{agentId: 'vega', reason: 'already down — session state \'off\''}]},

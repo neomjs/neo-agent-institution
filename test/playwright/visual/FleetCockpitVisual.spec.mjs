@@ -2620,10 +2620,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await bootSettledCockpit(page);
 
         const
-            bar     = page.locator('.fm-cockpit-bar'),
-            button  = bar.locator('.fm-fleet-start'),
-            summary = bar.locator('.fm-fleet-start-summary'),
-            wired   = {
+            bar        = page.locator('.fm-cockpit-bar'),
+            stopButton = bar.locator('.fm-fleet-stop'),
+            button     = bar.locator('.fm-fleet-start'),
+            summary    = bar.locator('.fm-fleet-start-summary'),
+            wired      = {
                 roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
                 repoStatus: {source: 'fleet:fleetStatus',   state: 'wired', confidence: 'observed'},
                 runtime   : {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed'}
@@ -2634,35 +2635,84 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
                 return sampleRoster.map(row => ({...row, sources: wired, state: row.participationStatus === 'active' ? state(active++) : 'off'}))
             },
+            readButtonStyles = locator => locator.evaluate(el => {
+                const s = getComputedStyle(el);
+                return {
+                    backgroundColor: s.backgroundColor,
+                    borderColor    : s.borderColor,
+                    color          : s.color,
+                    fontWeight     : s.fontWeight
+                }
+            }),
             settle  = async () => { await page.mouse.move(0, 0); await page.waitForTimeout(400) };
 
-        // the static sample roster carries no lifecycle evidence: the plain verb, the reason on the title
+        // the static sample roster carries no lifecycle evidence: Stop fleet is hidden, plain Start fleet carries the reason on the title
+        await expect(stopButton).toHaveCount(0);
         await expect(button).toHaveText('Start fleet');
         await expect(button).toHaveAttribute('title', /not wired/);
 
-        // four active seats up and four ready: current counts accompany the next start plan
+        // four active seats up and four ready (#772 AC-1, AC-4): both Stop fleet · 4 and Start fleet · 4 render side by side
         await landFleetRoster(page, live(index => index % 2 ? 'off' : 'ok'));
+        await expect(stopButton).toHaveText('Stop fleet · 4');
         await expect(button).toHaveText('Start fleet · 4');
         await expect(button).not.toHaveAttribute('title', /./);
         await expect(summary).toHaveText('4 started · 3 excluded');
         await settle();
+
+        const [stopBox, startBox, stopRestStyle, startStyle] = await Promise.all([
+            stopButton.boundingBox(),
+            button.boundingBox(),
+            readButtonStyles(stopButton),
+            readButtonStyles(button)
+        ]);
+        expect(stopBox.x + stopBox.width, 'Stop fleet sits immediately to the left of Start fleet').toBeLessThanOrEqual(startBox.x);
+        expect(stopRestStyle.color, '.fm-fleet-stop at rest is visually distinct from primary .fm-fleet-start ink').not.toBe(startStyle.color);
+        expect(stopRestStyle.backgroundColor, '.fm-fleet-stop at rest uses the quiet panel ground, not the signal fill').not.toBe(startStyle.backgroundColor);
+        expect(stopRestStyle.borderColor, '.fm-fleet-stop at rest uses the quiet line border, not the signal border').not.toBe(startStyle.borderColor);
+        expect(stopRestStyle.fontWeight).toBe('500');
+        expect(startStyle.fontWeight).toBe('600');
+
         await expect(button).toHaveScreenshot('fleet-button-start-4.png');
 
-        // every active seat up: the plan is a stop of eight
+        // below 760px container width (#772 AC-4): .fm-fleet-stop collapses its text label to its icon
+        await page.setViewportSize({width: 720, height: 900});
+        await settle();
+        const narrowStop = await stopButton.evaluate(el => ({
+            glyphDisplay: getComputedStyle(el.querySelector('.neo-button-glyph')).display,
+            textDisplay : getComputedStyle(el.querySelector('.neo-button-text')).display,
+            title       : el.getAttribute('title')
+        }));
+        expect(narrowStop.textDisplay, '.fm-fleet-stop collapses its text label below 760px container width').toBe('none');
+        expect(narrowStop.glyphDisplay).not.toBe('none');
+        expect(narrowStop.title).toBe('Stop fleet · 4');
+
+        await page.setViewportSize({width: 1600, height: 900});
+        await settle();
+
+        // every active seat up: Start fleet hides and the plan is a stop of eight on fleet-stop-button
         await landFleetRoster(page, live(() => 'ok'));
-        await expect(button).toHaveText('Stop fleet · 8');
+        await expect(button).toHaveCount(0);
+        await expect(stopButton).toHaveText('Stop fleet · 8');
         await expect(summary).toHaveText('8 started · 3 excluded');
         await settle();
-        await expect(button).toHaveScreenshot('fleet-button-stop-8.png');
+        await expect(stopButton).toHaveScreenshot('fleet-button-stop-8.png');
 
         // the first press: the plan where the summaries live (the names in the grid's own order), the
-        // chip the second press, nothing sent
-        await button.click();
-        await expect(button).toHaveText('Stop fleet · press again');
+        // chip the second press with its armed caution/danger accent, nothing sent
+        await stopButton.click();
+        await expect(stopButton).toHaveText('Stop fleet · press again');
+        await expect(stopButton).toHaveClass(/fm-fleet-stop-armed/);
         await expect(summary).toHaveText('Stop fleet · 8 seats: Ada, Clio, Emmy, Eos, Euclid, Grace, Mnemosyne, Vega · 3 excluded');
         await expect(summary).toHaveAttribute('title', /operator_benched/);
         await settle();
-        await expect(button).toHaveScreenshot('fleet-button-stop-armed.png');
+
+        const stopArmedStyle = await readButtonStyles(stopButton);
+        expect(stopArmedStyle.color, 'armed .fm-fleet-stop is visually distinct from rest .fm-fleet-stop').not.toBe(stopRestStyle.color);
+        expect(stopArmedStyle.backgroundColor, 'armed .fm-fleet-stop is visually distinct from rest ground').not.toBe(stopRestStyle.backgroundColor);
+        expect(stopArmedStyle.color, 'armed .fm-fleet-stop is visually distinct from primary .fm-fleet-start').not.toBe(startStyle.color);
+        expect(stopArmedStyle.borderColor, 'armed .fm-fleet-stop border is distinct from primary .fm-fleet-start').not.toBe(startStyle.borderColor);
+
+        await expect(stopButton).toHaveScreenshot('fleet-button-stop-armed.png');
         await expect(summary).toHaveScreenshot('fleet-button-stop-plan.png')
     });
 

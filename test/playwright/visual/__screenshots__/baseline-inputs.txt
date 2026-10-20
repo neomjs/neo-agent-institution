@@ -240,7 +240,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
 
 apps/agentos/util/FleetStartPlan.mjs
-    9d364965b8a4173e57ed395035f04579c7fbea61
+    e076405e1d41c254c8e34c2f5f1a474aaf59915d
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -375,13 +375,13 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     48056c19f941531d51746227d6d7cda0115c27d6
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
-    d9cd2d635593a12df350d75f79cfbd4cbdaa172f
+    175c864f7296e249c8fe26385dbec7a8a798c291
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     6d358c7d06b2b3aecbe374f978661c448a79ee8b
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
-    3deb1a7ceae97b9697dc4c2dcee0af7c57085193
+    677b3dc6374ef42143101dc1b3fd327a3b3888e6
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     72c6a2426360b03466d3e3c56d21c051576b0c51
@@ -663,7 +663,7 @@ resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
 
 resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    f61ac21d5f0ec990b0d74bc93b1722db188c6abd
+    16460d43cba83bd65d4edbacffe8e876de027985
 
 resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
     a76f2a2b6be68b4938b5625da00489fbb71a85f7
@@ -855,7 +855,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    160ee8f4689f1ab52e850813e5e47bcfbea82fd8
+    7164011de3b05356d4d5852b07097ae5e673214f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -957,10 +957,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-
     9aed84b024912244259e813d0b145445188f4ba9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-stop-8.png
-    a0505f06517616ac45c41abcbdd44b84bd24ad59
+    9dbf655f9f675c8cc812b36bf3e9aedb7ccd7c90
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-stop-armed.png
-    ee94b56d8283b1ae0ff07e5cbaf5313d15972676
+    3a3f7b24be9e73668f41ac4d6a9b292da87ea335
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-stop-plan.png
     72bae4a185cd35ba771176de2a0d4c63ec4d89e1

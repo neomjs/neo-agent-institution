@@ -873,4 +873,222 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         expect(writes.some(write => write.controlReason?.kind === 'unauthorized')).toBe(true)
     });
+
+    test('ControlToolbar renders fleet-stop-button immediately left of fleet-button and FleetBatchController updates both buttons across split, all-down, all-up, and 0/0 states (#772 AC-1, AC-2)', async () => {
+        const
+            ControlToolbar = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/ControlToolbar.mjs')).default,
+            items          = ControlToolbar.config.items,
+            stopIndex      = items.findIndex(item => item?.reference === 'fleet-stop-button'),
+            startIndex     = items.findIndex(item => item?.reference === 'fleet-button');
+
+        expect(stopIndex).toBeGreaterThan(-1);
+        expect(startIndex).toBe(stopIndex + 1);
+        expect(items[stopIndex]).toMatchObject({
+            cls      : ['fm-fleet-stop'],
+            handler  : 'onStopFleet',
+            hidden   : true,
+            hideMode : 'removeDom',
+            iconCls  : 'fa-solid fa-stop',
+            reference: 'fleet-stop-button',
+            text     : 'Stop fleet'
+        });
+        expect(items[startIndex]).toMatchObject({
+            cls      : ['fm-fleet-start'],
+            handler  : 'onStartFleet',
+            hideMode : 'removeDom',
+            iconCls  : 'fa-solid fa-play',
+            reference: 'fleet-button',
+            text     : 'Start fleet'
+        });
+
+        const
+            stopButton  = fakeButton(),
+            startButton = fakeButton(),
+            slot        = {vdom: {}, set(values) { Object.assign(this, values) }},
+            controller  = Object.create(FleetCockpitController.prototype),
+            records     = [];
+
+        controller.getReference = name => ({
+            'fleet-grid'         : {store: {items: records}},
+            'fleet-stop-button'  : stopButton,
+            'fleet-button'       : startButton,
+            'fleet-start-summary': slot
+        })[name] ?? null;
+
+        // AC-2: 0/0 unobserved -> stop hidden, plain Start fleet with reason on title
+        controller.onRosterSettled();
+        expect(stopButton).toMatchObject({disabled: false, hidden: true, text: 'Stop fleet'});
+        expect(startButton).toMatchObject({disabled: false, hidden: false, text: 'Start fleet'});
+        expect(startButton.vdom.title).toContain('roster');
+
+        // AC-1: split fleet (4 up, 4 down) -> both buttons visible side by side
+        records.splice(0, records.length, ...Array.from({length: 8}, (_, index) => ({
+            agentId: `seat-${index}`,
+            sources: wiredSources(),
+            state  : index < 4 ? 'ok' : 'off'
+        })));
+        controller.onRosterSettled();
+        expect(stopButton).toMatchObject({cls: ['fm-fleet-stop'], disabled: false, hidden: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · 4'});
+        expect(startButton).toMatchObject({disabled: false, hidden: false, iconCls: 'fa-solid fa-play', text: 'Start fleet · 4'});
+        expect(startButton.vdom.title).toBeUndefined();
+
+        // AC-1: split fleet (1 up, 9 down) -> both buttons visible
+        records.splice(0, records.length, ...Array.from({length: 10}, (_, index) => ({
+            agentId: `seat-${index}`,
+            sources: wiredSources(),
+            state  : index === 0 ? 'ok' : 'off'
+        })));
+        controller.onRosterSettled();
+        expect(stopButton).toMatchObject({hidden: false, text: 'Stop fleet · 1'});
+        expect(startButton).toMatchObject({hidden: false, text: 'Start fleet · 9'});
+
+        // AC-2: all eligible seats down (0 up, 8 down) -> only Start fleet · 8 visible
+        records.splice(0, records.length, ...Array.from({length: 8}, (_, index) => ({
+            agentId: `seat-${index}`,
+            sources: wiredSources(),
+            state  : 'off'
+        })));
+        controller.onRosterSettled();
+        expect(stopButton).toMatchObject({hidden: true, text: 'Stop fleet'});
+        expect(startButton).toMatchObject({hidden: false, text: 'Start fleet · 8'});
+
+        // AC-2: all eligible seats up (8 up, 0 down) -> only Stop fleet · 8 visible
+        records.forEach(record => { record.state = 'ok' });
+        controller.onRosterSettled();
+        expect(stopButton).toMatchObject({hidden: false, text: 'Stop fleet · 8'});
+        expect(startButton).toMatchObject({hidden: true, text: 'Start fleet'});
+
+        // AC-2: 0/0 unwired -> stop hidden, plain Start fleet with unwired reason on title
+        records.forEach(record => { record.sources = {} });
+        controller.onRosterSettled();
+        expect(stopButton).toMatchObject({hidden: true, text: 'Stop fleet'});
+        expect(startButton).toMatchObject({hidden: false, text: 'Start fleet'});
+        expect(startButton.vdom.title).toContain('wired')
+    });
+
+    test('in a split fleet, arming Stop fleet keeps Start fleet · M visible, pressing Start fleet · M disarms the stop and starts the down seats, and in-flight batches disable both buttons with settled labels (#772 AC-3)', async () => {
+        const
+            startCalls    = [],
+            stopCalls     = [],
+            startReleases = [],
+            stopReleases  = [],
+            records       = [
+                {agentId: 'ada',    displayName: 'Ada',    controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok',  set(values) { Object.assign(this, values) }},
+                {agentId: 'grace',  displayName: 'Grace',  controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok',  set(values) { Object.assign(this, values) }},
+                {agentId: 'vega',   displayName: 'Vega',   controlReason: null, pendingAction: null, sources: wiredSources(), state: 'off', set(values) { Object.assign(this, values) }},
+                {agentId: 'euclid', displayName: 'Euclid', controlReason: null, pendingAction: null, sources: wiredSources(), state: 'off', set(values) { Object.assign(this, values) }},
+                {agentId: 'gemini', displayName: 'Gemini', controlReason: null, pendingAction: null, sources: wiredSources(), state: 'off', participationStatus: 'operator_benched', set(values) { Object.assign(this, values) }}
+            ],
+            store       = {items: records, get: id => records.find(r => r.agentId === id)},
+            stopButton  = fakeButton(),
+            startButton = fakeButton(),
+            slot        = {vdom: {}, set(values) { Object.assign(this, values) }},
+            controller  = Object.create(FleetCockpitController.prototype);
+
+        (globalThis.AgentOS ??= {}).fleet = {
+            registryBridge: {
+                startAgent(agentId) {
+                    startCalls.push(agentId);
+                    return new Promise(resolve => startReleases.push(() => resolve({state: 'ok'})))
+                },
+                stopAgent(agentId) {
+                    stopCalls.push(agentId);
+                    return new Promise(resolve => stopReleases.push(() => resolve({state: 'off'})))
+                }
+            }
+        };
+
+        Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
+        controller.resolveFleetRosterStore = () => store;
+        controller.getReference            = name => ({
+            'fleet-grid'         : {store},
+            'fleet-stop-button'  : stopButton,
+            'fleet-button'       : startButton,
+            'fleet-start-summary': slot
+        })[name] ?? null;
+        controller.refreshRosterOnSettle   = settledOk => settledOk;
+        controller.stopFleetArmMs          = 10000;
+
+        try {
+            controller.onRosterSettled();
+            expect(stopButton).toMatchObject({cls: ['fm-fleet-stop'], disabled: false, hidden: false, text: 'Stop fleet · 2'});
+            expect(startButton).toMatchObject({disabled: false, hidden: false, text: 'Start fleet · 2'});
+
+            // Pressing Stop fleet · 2 once arms Stop fleet · press again and writes the stop plan to fleet-start-summary while Start fleet · 2 remains visible
+            controller.onStopFleet();
+            expect(stopButton).toMatchObject({
+                cls     : ['fm-fleet-stop', 'fm-fleet-stop-armed'],
+                disabled: false,
+                hidden  : false,
+                text    : 'Stop fleet · press again'
+            });
+            expect(startButton).toMatchObject({
+                disabled: false,
+                hidden  : false,
+                text    : 'Start fleet · 2'
+            });
+            expect(slot).toMatchObject({
+                hidden: false,
+                text  : 'Stop fleet · 2\u00a0seats: Ada, Grace · 3\u00a0excluded'
+            });
+            expect(stopCalls).toEqual([]);
+
+            // Pressing Start fleet · 2 while armed disarms the stop and starts the 2 down seats; while in flight, both buttons are disabled and keep their settled labels
+            const startBatch = controller.onStartFleet();
+            expect(controller.stopFleetArmed).toBeNull();
+            expect(stopButton).toMatchObject({
+                cls     : ['fm-fleet-stop'],
+                disabled: true,
+                hidden  : false,
+                text    : 'Stop fleet · 2'
+            });
+            expect(startButton).toMatchObject({
+                disabled: true,
+                hidden  : false,
+                text    : 'Start fleet · 2'
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(startCalls).toEqual(['vega', 'euclid']);
+            expect(stopCalls).toEqual([]);
+
+            startReleases.forEach(release => release());
+            await startBatch;
+
+            expect(stopButton.disabled).toBe(false);
+            expect(startButton.disabled).toBe(false);
+
+            // Reset vega & euclid to 'off' to verify in-flight stop batch also disables both buttons with settled labels
+            records[2].set({controlReason: null, pendingAction: null, state: 'off'});
+            records[3].set({controlReason: null, pendingAction: null, state: 'off'});
+            controller.onRosterSettled();
+
+            controller.onStopFleet();
+            expect(stopButton.text).toBe('Stop fleet · press again');
+
+            const stopBatch = controller.onStopFleet();
+            expect(stopButton).toMatchObject({
+                cls     : ['fm-fleet-stop'],
+                disabled: true,
+                hidden  : false,
+                text    : 'Stop fleet · 2'
+            });
+            expect(startButton).toMatchObject({
+                disabled: true,
+                hidden  : false,
+                text    : 'Start fleet · 2'
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 0));
+            expect(stopCalls).toEqual(['ada', 'grace']);
+
+            stopReleases.forEach(release => release());
+            await stopBatch;
+
+            expect(stopButton.disabled).toBe(false);
+            expect(startButton.disabled).toBe(false)
+        } finally {
+            delete globalThis.AgentOS?.fleet
+        }
+    });
 });
