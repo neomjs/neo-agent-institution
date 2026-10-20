@@ -435,7 +435,7 @@ apps/agentos/view/fleet/detail/SeatModelContainer.mjs
     8ea75cb81bb7bb73bf0c935c99458fd1699ca408
 
 apps/agentos/view/fleet/detail/SeatRenameContainer.mjs
-    05da39a0f490c09fdb45d6dc6582360d979ce17e
+    0f8b44b34a4e531fec2ee41db18547ac63b0671f
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
     69c0a29d692e952cd70ffcde83191c21c81bff4e
