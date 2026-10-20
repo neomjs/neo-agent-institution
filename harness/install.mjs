@@ -598,10 +598,9 @@ export async function executePlan(steps, {
                         throw new Error('unknown step')
                 }
             } catch (error) {
-                const defaultKind = step.type === 'verify' ? 'verify' : step.type === 'custody' ? 'continuity-guard' : 'runtime';
                 throw tagStepFailure(
                     new Error(`failed at "${describeStep(step).split('\n')[0].trim()}": ${error.message}`, {cause: error}),
-                    error.stepKind ?? defaultKind,
+                    error.stepKind ?? step.type,
                     error.holders
                 )
             }
@@ -625,6 +624,10 @@ export async function executePlan(steps, {
     throw new Error(describeStoppedUpdate(stopped, reopen, reopenError), {cause: stopped})
 }
 
+/**
+ * @summary The product-word reason and next action for every pre-swap check and post-quit step type.
+ * @type {Readonly<Record<String, {reason: String, next: Function}>>}
+ */
 const STOPPED_UPDATE_STEPS = Object.freeze({
     'bundle-users': {
         reason: 'checking that nothing still holds the old bundle failed.',
@@ -636,12 +639,22 @@ const STOPPED_UPDATE_STEPS = Object.freeze({
             return `quit ${names.length ? names.join(', ') : APP_NAME}, then run the same install command again.`;
         }
     },
-    'planned-slot'    : {reason: 'checking the planned install slot failed.',   next: () => 'run the same install command again.'},
-    'continuity-guard': {reason: 'checking running-seat continuity failed.',    next: () => 'run the same install command again.'},
-    'verify'          : {reason: 'verifying the staged bundle failed.',         next: () => 'rebuild the candidate, then run the install again.'},
-    'runtime'         : {reason: 'preparing the verified runtime failed.',      next: () => 'run the same install command again; the log names the file if it stops here twice.'}
+    'planned-slot'    : {reason: 'checking the planned install slot failed.',             next: () => 'run the same install command again.'},
+    'continuity-guard': {reason: 'checking running-seat continuity failed.',              next: () => 'run the same install command again.'},
+    'custody'         : {reason: "checking the plane's custody files failed.",            next: () => 'run the same install command again.'},
+    'stage'           : {reason: 'copying the new bundle beside the installed one failed.', next: () => 'run the same install command again; the error names the path.'},
+    'verify'          : {reason: 'verifying the staged bundle failed.',                   next: () => 'rebuild the candidate, then run the install again.'},
+    'runtime'         : {reason: 'preparing the verified runtime failed.',                next: () => 'run the same install command again; the log names the file if it stops here twice.'},
+    'remove'          : {reason: 'clearing the previous rollback copy failed.',           next: () => 'run the same install command again; the error names the path.'}
 });
 
+/**
+ * @summary Binds the pre-swap check or step kind (and any observed bundle holders) to a step error.
+ * @param {Error} error The thrown step or guard error.
+ * @param {String} stepKind Key in {@link STOPPED_UPDATE_STEPS} or the step type.
+ * @param {String[]} [holders] Running executable paths when the bundle-users check fails.
+ * @returns {Error} The same error instance with `stepKind` (and optional `holders`) attached.
+ */
 function tagStepFailure(error, stepKind, holders) {
     if (!error.stepKind) error.stepKind = stepKind;
     if (holders && !error.holders) error.holders = holders;
@@ -659,13 +672,9 @@ function tagStepFailure(error, stepKind, holders) {
  */
 export function describeStoppedUpdate(error, bundle, reopenError = null) {
     const detail  = error?.message?.startsWith('failed at "') && error?.cause ? error.cause.message : error?.message;
-    const tagged  = error?.stepKind ?? error?.cause?.stepKind;
-    const kind    = STOPPED_UPDATE_STEPS[tagged] ? tagged
-        : /^bundle users appeared/.test(detail) ? 'bundle-users'
-        : /^planned package slot changed|^package slot bindings/.test(detail) ? 'planned-slot'
-        : /^carries ".*", expected "|^complete package receipts are required/.test(detail) || /^failed at "verify /.test(error?.message ?? '') ? 'verify'
-        : /^destination runtime changed/.test(detail) || /^failed at "prepare verified runtime/.test(error?.message ?? '') ? 'runtime' : 'continuity-guard';
+    const kind    = error?.stepKind ?? error?.cause?.stepKind;
     const entry   = STOPPED_UPDATE_STEPS[kind];
+    if (!entry) throw new Error(`unknown stopped-update step: ${kind}`);
     const holders = error?.holders ?? error?.cause?.holders;
 
     return [

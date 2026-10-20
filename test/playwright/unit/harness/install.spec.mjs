@@ -557,73 +557,74 @@ test.describe('harness/install.mjs — the executor on real directories', () => 
         expect(readSlot(staged).receipt).toEqual(PREVIOUS);
     });
 
-    test('each pre-swap step failure after Quit names the step in product words, keeps its verbatim error below, and gives that step\'s next action', async () => {
-        const running = [path.join(installed, 'Contents/MacOS', APP_NAME)];
-
-        // 1. Planned slot changed after Quit
-        writeBundle(installed, OLD);
-        writeBundle(artifact, NEW);
-        let calls = [];
-        let error = await executePlan(planInstall({...slots(), running, flags: {quit: true}}).steps, {
-            runFn: runFn(calls, {osascript: () => writeBundle(installed, PREVIOUS)})
-        }).catch(caught => caught);
-        expect(error.message.split('\n')).toEqual([
-            'Update stopped before the Fleet Manager was replaced.',
-            'Reason: checking the planned install slot failed.',
-            `  planned package slot changed: ${installed}; rebuild the plan before retrying`,
-            'Nothing was changed, and your Fleet Manager is open again.',
-            'Next: run the same install command again.'
-        ]);
-        expect(calls.map(call => call.command)).toEqual(['osascript', 'open']);
-
-        // 2. Continuity guard failed after Quit
-        writeBundle(installed, OLD);
-        calls = [];
-        error = await executePlan(planInstall({...slots(), custodyDir: userData, running, flags: {quit: true}}).steps, {
-            runFn       : runFn(calls),
-            continuityFn: async () => ({hold() { throw new Error('Launch admission journal refused: held') }})
-        }).catch(caught => caught);
-        expect(error.message.split('\n')).toEqual([
-            'Update stopped before the Fleet Manager was replaced.',
-            'Reason: checking running-seat continuity failed.',
-            '  Launch admission journal refused: held',
-            'Nothing was changed, and your Fleet Manager is open again.',
-            'Next: run the same install command again.'
-        ]);
-        expect(calls.map(call => call.command)).toEqual(['osascript', 'open']);
-
-        // 3. Staged verify mismatch after Quit
-        calls = [];
-        error = await executePlan(planInstall({...slots(), running, flags: {quit: true}}).steps, {
-            runFn: (command, args) => {
-                calls.push({args, command});
-                command === 'ditto' && writeBundle(args[1], receipt('1970-01-01T00:00:00.000Z'));
-            }
-        }).catch(caught => caught);
-        expect(error.message.split('\n')).toEqual([
-            'Update stopped before the Fleet Manager was replaced.',
-            'Reason: verifying the staged bundle failed.',
-            expect.stringMatching(/^  carries "staged 1970-01-01.*, expected "staged 2026-10-02/),
-            'Nothing was changed, and your Fleet Manager is open again.',
-            'Next: rebuild the candidate, then run the install again.'
-        ]);
-        expect(calls.map(call => call.command)).toEqual(['osascript', 'ditto', 'open']);
-
-        // 4. Runtime prepare failed after Quit
-        calls = [];
-        error = await executePlan(planInstall({...slots(), custodyDir: userData, running, flags: {quit: true}}).steps, {
-            runFn        : runFn(calls),
-            materializeFn: async () => { throw new Error('ENOSPC: no space left on device, copyfile runtime/server.mjs') }
-        }).catch(caught => caught);
-        expect(error.message.split('\n')).toEqual([
-            'Update stopped before the Fleet Manager was replaced.',
-            'Reason: preparing the verified runtime failed.',
-            '  ENOSPC: no space left on device, copyfile runtime/server.mjs',
-            'Nothing was changed, and your Fleet Manager is open again.',
-            'Next: run the same install command again; the log names the file if it stops here twice.'
-        ]);
-        expect(calls.map(call => call.command)).toEqual(['osascript', 'ditto', 'open']);
-    });
+    for (const arm of [
+        {
+            name    : 'a planned slot changing after Quit',
+            custody : false,
+            options : calls => ({runFn: runFn(calls, {osascript: () => writeBundle(installed, PREVIOUS)})}),
+            reason  : 'Reason: checking the planned install slot failed.',
+            detail  : () => `  planned package slot changed: ${installed}; rebuild the plan before retrying`,
+            next    : 'Next: run the same install command again.',
+            commands: ['osascript', 'open']
+        },
+        {
+            name    : 'a continuity guard refusal after Quit',
+            custody : true,
+            options : calls => ({runFn: runFn(calls), continuityFn: async () => ({hold() { throw new Error('Launch admission journal refused: held') }})}),
+            reason  : 'Reason: checking running-seat continuity failed.',
+            detail  : () => '  Launch admission journal refused: held',
+            next    : 'Next: run the same install command again.',
+            commands: ['osascript', 'open']
+        },
+        {
+            name    : 'a stage copy failure after Quit',
+            custody : false,
+            options : calls => ({runFn: runFn(calls, {ditto: () => { throw new Error(`ENOSPC: no space left on device, copyfile '${installed}.installing'`) }})}),
+            reason  : 'Reason: copying the new bundle beside the installed one failed.',
+            detail  : () => `  ENOSPC: no space left on device, copyfile '${installed}.installing'`,
+            next    : 'Next: run the same install command again; the error names the path.',
+            commands: ['osascript', 'ditto', 'open']
+        },
+        {
+            name    : 'a staged verify mismatch after Quit',
+            custody : false,
+            options : calls => ({
+                runFn: (command, args) => {
+                    calls.push({args, command});
+                    command === 'ditto' && writeBundle(args[1], receipt('1970-01-01T00:00:00.000Z'));
+                }
+            }),
+            reason  : 'Reason: verifying the staged bundle failed.',
+            detail  : () => expect.stringMatching(/^  carries "staged 1970-01-01.*, expected "staged 2026-10-02/),
+            next    : 'Next: rebuild the candidate, then run the install again.',
+            commands: ['osascript', 'ditto', 'open']
+        },
+        {
+            name    : 'a runtime prepare failure after Quit',
+            custody : true,
+            options : calls => ({runFn: runFn(calls), materializeFn: async () => { throw new Error('ENOSPC: no space left on device, copyfile runtime/server.mjs') }}),
+            reason  : 'Reason: preparing the verified runtime failed.',
+            detail  : () => '  ENOSPC: no space left on device, copyfile runtime/server.mjs',
+            next    : 'Next: run the same install command again; the log names the file if it stops here twice.',
+            commands: ['osascript', 'ditto', 'open']
+        }
+    ]) {
+        test(`${arm.name} reopens the app with its step reason, verbatim error, and next action`, async () => {
+            writeBundle(installed, OLD);
+            writeBundle(artifact, NEW);
+            const running = [path.join(installed, 'Contents/MacOS', APP_NAME)], calls = [];
+            const plan    = planInstall({...slots(), ...(arm.custody ? {custodyDir: userData} : {}), running, flags: {quit: true}});
+            const error   = await executePlan(plan.steps, arm.options(calls)).catch(caught => caught);
+            expect(error.message.split('\n')).toEqual([
+                'Update stopped before the Fleet Manager was replaced.',
+                arm.reason,
+                arm.detail(),
+                'Nothing was changed, and your Fleet Manager is open again.',
+                arm.next
+            ]);
+            expect(calls.map(call => call.command)).toEqual(arm.commands);
+        });
+    }
 
     test('a failed reopen after a stopped update is reported with its own next step, never swallowed', async () => {
         writeBundle(installed, OLD);
