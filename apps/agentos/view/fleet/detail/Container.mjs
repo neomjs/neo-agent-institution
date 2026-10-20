@@ -305,7 +305,7 @@ class AgentDetail extends Container {
                     }]
                 }, {
                     // the durable anchor, rendered small beneath the display name — changed only
-                    // through a Fleet transition that carries the seat (#760)
+                    // through a Fleet transition that carries the seat
                     ntype : 'container',
                     cls   : ['fm-detail-id-row'],
                     layout: {ntype: 'hbox', align: 'center'},

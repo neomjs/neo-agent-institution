@@ -264,7 +264,7 @@ apps/agentos/util/LivenessCadence.mjs
     ffb52e15617ccdc81d6511c910e237f1289bb9ca
 
 apps/agentos/util/NameSlot.mjs
-    3fe98fcc20425319dc01e37d905079564c308f3f
+    8becd38529a5534802d079fa18aa4fcb3c41a9c4
 
 apps/agentos/util/ObservatoryBrief.mjs
     3b152993d9973611ab078f07b62957bfca7e4abb
@@ -372,7 +372,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    8db2be874ce0a768921fddf1e90f41eadf2f5eb9
+    48056c19f941531d51746227d6d7cda0115c27d6
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     d9cd2d635593a12df350d75f79cfbd4cbdaa172f
@@ -381,7 +381,7 @@ apps/agentos/view/fleet/cockpit/Controller.mjs
     6d358c7d06b2b3aecbe374f978661c448a79ee8b
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
-    49cee569caaf2192f62d91cbb7297a32c34c534f
+    3deb1a7ceae97b9697dc4c2dcee0af7c57085193
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
     ea2d1b39d8c3dad154736ace0193b26d3e011af3
@@ -411,10 +411,10 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     d86a7108784ffdc481e58cbb7f4f406323274492
 
 apps/agentos/view/fleet/detail/Container.mjs
-    11fb623113d1eba9765b2be1ae9d4dfc7004c5eb
+    7643b6805681ddcef285412b72f53eee5c9465d7
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    7255a3182110179151ad19efc5fe989946ec2671
+    fd196594308d5c39e512fef414043d75900514ae
 
 apps/agentos/view/fleet/detail/ParticipationContainer.mjs
     e54cdc8929444ac46fe943ca17b6021d28c61375
@@ -433,6 +433,9 @@ apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
 
 apps/agentos/view/fleet/detail/SeatModelContainer.mjs
     8ea75cb81bb7bb73bf0c935c99458fd1699ca408
+
+apps/agentos/view/fleet/detail/SeatRenameContainer.mjs
+    b202e487020f75ab35dda663451664b58ce30203
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
     69c0a29d692e952cd70ffcde83191c21c81bff4e
@@ -675,7 +678,7 @@ resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
     b32ec46798ac58bb458c61c428000db96f982ea9
 
 resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    c283b93192814e3f5f3f05491db405aa4c3a77cb
+    8799210a4ce9bcf5eb9b939630d1efd7cd23f644
 
 resources/scss/src/apps/agentos/fleet/detail/ParticipationContainer.scss
     41bbe1875faf487783c4058c28146e40955c070a

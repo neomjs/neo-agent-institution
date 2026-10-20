@@ -15,7 +15,7 @@ contextBridge.exposeInMainWorld('neoShell', {
     fleetRequest: request => ipcRenderer.invoke('fleet-request', request),
     planeStatus : () => ipcRenderer.invoke('shell-plane-status'),
     probePlane  : () => ipcRenderer.invoke('shell-plane-probe'),
-    // Seat durable-id transition (neomjs/neo-agent-institution#760), independent of the Fleet child's availability.
+    // Seat durable-id transition, independent of the Fleet child's availability.
     seatRenameApply: request => ipcRenderer.invoke('shell-seat-rename-apply', request),
     seatRenamePlan : request => ipcRenderer.invoke('shell-seat-rename-plan', request),
     // Installation placement (ADR 0034 item 11), independent of the Fleet child's availability.

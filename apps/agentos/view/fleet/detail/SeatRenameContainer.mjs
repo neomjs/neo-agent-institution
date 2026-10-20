@@ -6,7 +6,7 @@ import TextField from '../../../../../node_modules/neo.mjs/src/form/field/Text.m
  * @class AgentOS.view.fleet.detail.SeatRenameContainer
  * @extends Neo.container.Base
  * @summary Inline Selected-Agent flow for reviewing and applying a stopped seat's durable Fleet-id
- * transition (`neomjs/neo-agent-institution#760`). Renders the proposed `from -> to` plan rows as
+ * transition. Renders the proposed `from -> to` plan rows as
  * inert `text` VDOM nodes, gates the confirm action on a valid 64-hex plan fingerprint while the
  * seat remains stopped, and displays the settled outcome or refusal inline.
  */

@@ -5,8 +5,7 @@ import {readSeatRootRecord}                                     from './seatRoot
 
 /**
  * @module harness/seatRenameBroker
- * @summary Main-owned review and apply for a stopped seat's durable Fleet-id transition
- * (`neomjs/neo-agent-institution#760`). The renderer reviews a fingerprinted plan (`from -> to`,
+ * @summary Main-owned review and apply for a stopped seat's durable Fleet-id transition. The renderer reviews a fingerprinted plan (`from -> to`,
  * seat home, retired path, records that follow, carried sessions, repointed harness state, and
  * repaired worktrees); main validates sender trust, verifies the plan fingerprint before apply,
  * quiesces its owned Fleet child while `renameSeat` runs against the registry, and restarts the
