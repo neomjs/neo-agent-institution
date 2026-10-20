@@ -2294,5 +2294,121 @@ test.describe('Fleet cockpit AgentDetail — drill-in inspector (#14608)', () =>
 
             detail.destroy()
         });
+
+        test('prefers sessions.count for carried-session counts and surfaces sessions.conversations, sessions.nextStep, and sessions.records (#763)', () => {
+            const
+                fingerprint = 'f'.repeat(64),
+                detail      = createDetail({
+                    agentId: 'neo-gemini-pro',
+                    state  : 'off',
+                    sources: {runtime: {state: 'wired', confidence: 'observed'}}
+                }),
+                section     = detail.getReference('seat-rename-section'),
+                planBox     = detail.getReference('seat-rename-plan'),
+                statusLine  = detail.getReference('seat-rename-status'),
+                rowTextsOf  = () => planBox.vdom.cn.map(row => `${row.cn[0].text}: ${row.cn[1].text}`);
+
+            detail.onOpenSeatRename();
+            section.onNewIdChange({value: 'neo-gemini-julia'});
+
+            // AC-1: Codex plan with {threads: 3, count: 1} reports 1 session (distinct thread rows, not changed columns)
+            expect(section.countCarriedSessions({sessions: {harness: 'codex-desktop', threads: 3, count: 1}})).toBe(1);
+            section.applyPlanResult({
+                state      : 'planned',
+                fingerprint,
+                plan       : {
+                    id             : 'neo-gemini-pro',
+                    to             : 'neo-gemini-julia',
+                    seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+                    destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+                    materialized   : true,
+                    state          : 'copy',
+                    retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename',
+                    sessions       : {harness: 'codex-desktop', threads: 3, count: 1},
+                    links          : {worktrees: []}
+                }
+            });
+            expect(rowTextsOf()).toContain('Sessions carried: 1 sessions');
+            expect(rowTextsOf()).toContain('Harness state: none');
+
+            // AC-1 + AC-2: Antigravity plan with {project: 'current', count: 0} reports 0 sessions and surfaces conversations + nextStep
+            expect(section.countCarriedSessions({
+                sessions: {
+                    harness      : 'antigravity',
+                    project      : 'current',
+                    count        : 0,
+                    conversations: 'per-conversation state stays at the old path',
+                    nextStep     : 'start a new conversation'
+                }
+            })).toBe(0);
+            expect(section.countCarriedSessions({sessions: {project: 'current'}})).toBe(0);
+            expect(section.countCarriedSessions({sessions: {project: 'repointed'}})).toBe(1);
+
+            section.applyPlanResult({
+                state      : 'planned',
+                fingerprint,
+                plan       : {
+                    id             : 'neo-gemini-pro',
+                    to             : 'neo-gemini-julia',
+                    seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+                    destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+                    materialized   : true,
+                    state          : 'copy',
+                    retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename',
+                    sessions       : {
+                        harness      : 'antigravity',
+                        project      : 'current',
+                        count        : 0,
+                        conversations: 'per-conversation state stays at the old path',
+                        nextStep     : 'start a new conversation'
+                    },
+                    links          : {worktrees: []}
+                }
+            });
+            expect(rowTextsOf()).toContain('Sessions carried: 0 sessions');
+            expect(rowTextsOf()).toContain('Harness state: per-conversation state stays at the old path · next: start a new conversation');
+
+            // AC-2: Claude Desktop plan surfaces records repointed count in Harness state
+            section.applyPlanResult({
+                state      : 'planned',
+                fingerprint,
+                plan       : {
+                    id             : 'neo-gemini-pro',
+                    to             : 'neo-gemini-julia',
+                    seatHome       : '/Users/op/.neo-ai/agents/neo-gemini-pro',
+                    destination    : '/Users/op/.neo-ai/agents/neo-gemini-julia',
+                    materialized   : true,
+                    state          : 'copy',
+                    retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename',
+                    sessions       : {harness: 'claude-desktop', count: 2, records: 2},
+                    links          : {worktrees: []}
+                }
+            });
+            expect(rowTextsOf()).toContain('Sessions carried: 2 sessions');
+            expect(rowTextsOf()).toContain('Harness state: 2 records repointed');
+
+            // AC-2: applyRenameResult appends ` · next: <nextStep>` when plan.sessions.nextStep is present
+            section.applyRenameResult({
+                state: 'renamed',
+                plan : {
+                    id             : 'neo-gemini-pro',
+                    to             : 'neo-gemini-julia',
+                    retiredSeatHome: '/Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020',
+                    sessions       : {
+                        harness      : 'antigravity',
+                        project      : 'repointed',
+                        count        : 1,
+                        conversations: 'per-conversation state stays at the old path',
+                        nextStep     : 'start a new conversation'
+                    }
+                }
+            });
+            expect(statusLine.hidden).toBe(false);
+            expect(statusLine.text).toBe(
+                'Renamed neo-gemini-pro → neo-gemini-julia · carried 1 sessions · retired /Users/op/.neo-ai/retired-seats/neo-gemini-pro.pre-rename-20261020 · next: start a new conversation'
+            );
+
+            detail.destroy()
+        });
     });
 });

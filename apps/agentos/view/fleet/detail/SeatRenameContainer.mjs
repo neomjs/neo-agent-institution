@@ -288,7 +288,8 @@ class SeatRenameContainer extends Container {
     }
 
     /**
-     * @summary Receives the broker's `seatRenameApply` result.
+     * @summary Receives the broker's `seatRenameApply` result and formats the settled status text,
+     * appending `plan.sessions.nextStep` when the harness requires a follow-up step.
      * @param {Object} result
      */
     applyRenameResult(result) {
@@ -310,32 +311,37 @@ class SeatRenameContainer extends Container {
             from            = plan.id ?? me.agentId,
             to              = plan.to ?? me.proposedId,
             carriedSessions = me.countCarriedSessions(plan) ?? 0,
-            retiredSeatHome = plan.retiredSeatHome ?? 'none';
+            retiredSeatHome = plan.retiredSeatHome ?? 'none',
+            nextStep        = typeof plan.sessions?.nextStep === 'string' && plan.sessions.nextStep.trim()
+                ? plan.sessions.nextStep.trim()
+                : null,
+            nextStepSuffix  = nextStep ? ` · next: ${nextStep}` : '';
 
         me.plan           = null;
         me.agentId        = to;
-        me.settledOutcome = {from, to, carriedSessions, retiredSeatHome};
+        me.settledOutcome = {from, to, carriedSessions, retiredSeatHome, nextStep};
         me.renderPlan(null);
         me.renderStatus({
             tone: 'settled',
-            text: `Renamed ${from} → ${to} · carried ${carriedSessions} sessions · retired ${retiredSeatHome}`
+            text: `Renamed ${from} → ${to} · carried ${carriedSessions} sessions · retired ${retiredSeatHome}${nextStepSuffix}`
         });
         me.syncButtons()
     }
 
     /**
-     * @summary Extracts the carried session count when Brain's plan/outcome includes `sessions` (or `carriedSessions`),
-     * returning `null` when the dry-run plan has not counted sessions yet.
+     * @summary Extracts the carried session count from Brain's `renameSeat` plan or outcome,
+     * preferring `plan.sessions.count` when finite and falling back to legacy fields only when `count` is absent.
      * @param {Object|null} plan
      * @returns {Number|null}
      */
     countCarriedSessions(plan) {
-        if (Number.isFinite(plan?.carriedSessions)) return plan.carriedSessions;
         const sessions = plan?.sessions;
+        if (Number.isFinite(sessions?.count)) return sessions.count;
+        if (Number.isFinite(plan?.carriedSessions)) return plan.carriedSessions;
         if (!sessions || typeof sessions !== 'object') return null;
         if (Array.isArray(sessions.transcripts)) return sessions.transcripts.length;
-        if (typeof sessions.threads === 'number') return sessions.threads;
-        if ('project' in sessions) return sessions.project ? 1 : 0;
+        if (Number.isFinite(sessions.threads)) return sessions.threads;
+        if ('project' in sessions) return sessions.project === 'repointed' || sessions.project === true ? 1 : 0;
         return null
     }
 
@@ -354,7 +360,7 @@ class SeatRenameContainer extends Container {
 
     /**
      * @summary Renders the reviewed plan rows from Brain's `renameSeat` dry run as inert `text` VDOM nodes,
-     * showing `"counted when applied"` for post-re-key rows the dry run does not report yet.
+     * surfacing `sessions.conversations`, `sessions.nextStep`, or `sessions.records` on the `Harness state` row.
      * @param {Object|null} plan
      */
     renderPlan(plan) {
@@ -380,9 +386,21 @@ class SeatRenameContainer extends Container {
             sessionsText   = carried !== null
                 ? `${carried} sessions`
                 : (unmaterialized ? '0 sessions' : 'counted when applied'),
-            harnessState   = plan.sessions?.note
-                ? plan.sessions.note
-                : (plan.sessions?.presets ? 'Claude Desktop presets repointed' : (unmaterialized ? 'none' : 'counted when applied')),
+            sessionParts   = [
+                plan.sessions?.conversations,
+                plan.sessions?.nextStep ? `next: ${plan.sessions.nextStep}` : null
+            ].filter(Boolean),
+            harnessState   = sessionParts.length > 0
+                ? sessionParts.join(' · ')
+                : Number.isFinite(plan.sessions?.records)
+                    ? `${plan.sessions.records} records repointed`
+                    : plan.sessions?.note
+                        ? plan.sessions.note
+                        : plan.sessions?.presets
+                            ? 'Claude Desktop presets repointed'
+                            : (plan.sessions && typeof plan.sessions === 'object') || unmaterialized
+                                ? 'none'
+                                : 'counted when applied',
             worktrees      = Array.isArray(plan.links?.worktrees)
                 ? String(plan.links.worktrees.length)
                 : (Number.isFinite(plan.worktrees) ? String(plan.worktrees) : (unmaterialized ? '0' : 'counted when applied')),
