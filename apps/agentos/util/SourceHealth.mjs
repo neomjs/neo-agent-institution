@@ -12,7 +12,6 @@ import {FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/f
 const FLEET_SOURCE_KEYS = Object.freeze(['roster', 'repoStatus', 'runtime', 'lane']);
 
 const
-    CARD_STATES         = Object.freeze(['ok', 'idle', 'wedged', 'limited', 'off']),
     FLEET_SOURCE_BY_KEY = Object.freeze({
         roster    : FLEET_COCKPIT_SOURCES.roster,
         repoStatus: FLEET_COCKPIT_SOURCES.repoStatus,
@@ -227,10 +226,15 @@ class SourceHealth extends Base {
      * @summary Normalize one DTO row's source facts and session state as one atomic honesty contract. A
      * lifecycle/runtime mismatch downgrades runtime provenance to `not-wired` + `none`, so downstream
      * cards cannot show `RUN OBSERVED` or enable controls while the lifecycle fact itself is unusable.
-     * A matching stopped lifecycle remains a wired, honestly off session.
+     * Every word of the Fleet's lifecycle contract (`neo-agent-brain/fleet-contract`) maps onto the
+     * card's vocabulary with the control it obliges: `running` ok · `stopping` ok + a pending stop ·
+     * `stopped` off · `failed` off + Start (the helper cleanup first while it is owed) · `unavailable`
+     * off + Start · `exited` off + Start, named as the exit it was. `unknown` and any word outside the
+     * contract are rejected evidence (`invalid`), never relabelled.
      * @param {*} lifecycle Lifecycle input; malformed values fail closed.
      * @param {*} sources Source collection; malformed values fail closed.
-     * @returns {{sources: Object, state: String}}
+     * @returns {{controlReason: Object|undefined, sources: Object, state: String}} `controlReason` is
+     *     the card's `{action, kind, reason}` when the word obliges one.
      */
     static mapFleetSessionHealth(lifecycle, sources) {
         const
@@ -266,31 +270,36 @@ class SourceHealth extends Base {
             return downgradeRuntime()
         }
 
-        if (state === 'running') {
-            return {sources: normalizedSources, state: 'ok'}
-        }
-
-        if (state === 'stopped') {
-            return {sources: normalizedSources, state: 'off'}
-        }
-
-        if (state === 'failed' && lifecycle.cleanupUnresolved === true) {
-            const reason = typeof lifecycle.failureReason === 'string' && lifecycle.failureReason.trim()
+        const
+            retainedReason = fallback => typeof lifecycle.failureReason === 'string' && lifecycle.failureReason.trim()
                 ? lifecycle.failureReason.trim()
-                : runtime.reason ?? 'helper cleanup unresolved';
+                : runtime.reason ?? fallback,
+            off            = controlReason => ({controlReason, sources: normalizedSources, state: 'off'});
 
-            return {
-                controlReason: {action: 'stop', kind: 'cleanup', reason},
-                sources      : normalizedSources,
-                state        : 'off'
-            }
+        switch (state) {
+            case 'running':
+                return {sources: normalizedSources, state: 'ok'};
+            case 'stopping':
+                // Stop was requested and the process is being signalled: still up, so Start reads
+                // "already up"; the pending stop is the card's control status, never a second Stop
+                return {controlReason: {action: 'stop', kind: 'pending', reason: 'stopping'}, sources: normalizedSources, state: 'ok'};
+            case 'stopped':
+                return {sources: normalizedSources, state: 'off'};
+            case 'failed':
+                return lifecycle.cleanupUnresolved === true
+                    ? off({action: 'stop',  kind: 'cleanup', reason: retainedReason('helper cleanup unresolved')})
+                    : off({action: 'start', kind: 'failed',  reason: retainedReason('a start or stop ended in an error')});
+            case 'unavailable':
+                return off({action: 'start', kind: 'unavailable', reason: retainedReason('the harness cannot be launched on this host')});
+            case 'exited':
+                // a read-only word from the first durable-custody builds (recovery re-persists it as
+                // `stopped`): off, and the card names what happened instead of relabelling it
+                return off({action: 'start', kind: 'exited', reason: 'the harness exited on its own'});
+            default:
+                // `unknown` (the row producer's word for a record naming no state) and any word
+                // outside the contract: rejected evidence — no CARD word passes through here either
+                return downgradeRuntime()
         }
-
-        if (!CARD_STATES.includes(state)) {
-            return downgradeRuntime()
-        }
-
-        return {sources: normalizedSources, state}
     }
 
     /**

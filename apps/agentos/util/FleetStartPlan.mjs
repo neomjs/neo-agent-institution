@@ -41,6 +41,13 @@ class FleetStartPlan extends Base {
     }
 
     /**
+     * Control-reason kinds a fleet start re-checks rather than excludes: the seat is down and Start
+     * retries and re-proves it, so its reason rides the plan line.
+     * @type {ReadonlyArray<String>}
+     */
+    static #recheckedKinds = Object.freeze(['failed', 'unavailable'])
+
+    /**
      * @summary Partition roster records into start-eligible members and excluded-with-reason entries.
      *
      * Rules, first match wins, each derived from a wire fact on the record:
@@ -67,6 +74,9 @@ class FleetStartPlan extends Base {
      * 7. session `state` other than `off` → the resident is already up (ok / idle / wedged / limited
      *    are all live states) — a fleet start targets the DOWN fleet (a WIRED stopped record —
      *    `observed` or `inferred` — is exactly that fleet).
+     * The plan names why each eligible seat starts: `ready to start`, `re-checks helper cleanup`,
+     * or `re-checks: <reason>` for a seat whose last start failed or whose harness the host could
+     * not launch — Start retries and re-proves, so the reason rides the plan, never an exclusion.
      * @param {Object[]} records FleetAgent records (or plain field bags in tests).
      * @returns {{eligible: Object[], excluded: Object[]}} `excluded` entries are
      * `{record, agentId, reason}` — the reason is always present and wire-derived.
@@ -106,7 +116,9 @@ class FleetStartPlan extends Base {
                 eligible.push(record);
                 plan.push({
                     agentId,
-                    reason: cleanupUnresolved ? 're-checks helper cleanup' : 'ready to start',
+                    reason: cleanupUnresolved
+                        ? 're-checks helper cleanup'
+                        : FleetStartPlan.#recheckedKinds.includes(record.controlReason?.kind) ? `re-checks: ${record.controlReason.reason}` : 'ready to start',
                     record
                 })
             }
@@ -302,7 +314,9 @@ class FleetStartPlan extends Base {
         rows.forEach(record => {
             const agentId = record.agentId ?? '(guest)';
 
-            if (record.controlReason?.kind !== 'timeout' && record.controlReason?.kind !== 'cleanup' && record.controlReason?.reason) {
+            // a timeout prints as the unanswered action, and a reason the plan line carries
+            // (cleanup, failed, unavailable) prints once, there
+            if (record.controlReason?.reason && !['timeout', 'cleanup', ...FleetStartPlan.#recheckedKinds].includes(record.controlReason.kind)) {
                 detail.push(`${agentId}: ${record.controlReason.reason}`)
             }
 
