@@ -535,7 +535,7 @@ export async function bootFleetWithPlaneRecovery({
                     secrets,
                     typeRefusal
                 });
-                watch?.(child, entry.label ?? 'fleet');
+                entry.unwatch = watch?.(child, entry.label ?? 'fleet') ?? null;
                 return {child, ok: true}
             } catch (error) {
                 if (children && (child.exitCode !== null || child.signalCode)) {
@@ -1481,7 +1481,7 @@ export function registerOwnedChild({children, entry, watch, onUnobservedExit = n
             entry.child.once('exit', (code, signal) => onUnobservedExit(`${entry.label ?? 'child'}: ${signal ? `exit signal ${signal}` : `exit code ${code}`}`))
         }
     } else {
-        watch(entry.child, entry.label)
+        entry.unwatch = watch(entry.child, entry.label) ?? null
     }
 
     return entry

@@ -58,7 +58,7 @@ test.describe('nameSlot — display state over the durable id, provenance-honest
         expect(slot.text).toBe('guest-agent-7');
         expect(slot.isFallback).toBe(true);
         expect(slot.provenance.state).toBe('durable-id');
-        expect(slot.provenance.label).toContain('never-renamed anchor')
+        expect(slot.provenance.label).toContain('changed only through a Fleet transition that carries the seat')
     });
 
     test('blank-string names are not names; a trail on a nameless record cannot fabricate one', () => {

@@ -96,5 +96,25 @@ test.describe('Neo.main.addon.ShellPlane — the cockpit\'s reach into the shell
         expect(calls).toEqual([{fingerprint: 'reviewed'}]);
         globalThis.neoShell.seatRootPlan = async () => { throw new Error('transport lost') };
         await expect(seatRootPlan()).rejects.toThrow('transport lost')
+    });
+
+    test('seat rename forwards only {id, to} for plan and {fingerprint, id, to} for apply', async () => {
+        const {seatRenamePlan, seatRenameApply} = ShellPlane.prototype;
+        for (const result of [seatRenamePlan({id: 'a', to: 'b'}), seatRenameApply({id: 'a', to: 'b', fingerprint: 'f'})]) {
+            expect(await result).toEqual({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+        }
+
+        const calls = [];
+        globalThis.neoShell = {
+            seatRenamePlan : async request => { calls.push(['plan', request]); return {state: 'planned', fingerprint: 'fp'} },
+            seatRenameApply: async request => { calls.push(['apply', request]); return {state: 'renamed'} }
+        };
+
+        expect(await seatRenamePlan({id: 'old-id', to: 'new-id', windowId: 7})).toEqual({state: 'planned', fingerprint: 'fp'});
+        expect(await seatRenameApply({id: 'old-id', to: 'new-id', fingerprint: 'fp', windowId: 7})).toEqual({state: 'renamed'});
+        expect(calls).toEqual([
+            ['plan',  {id: 'old-id', to: 'new-id'}],
+            ['apply', {fingerprint: 'fp', id: 'old-id', to: 'new-id'}]
+        ])
     })
 });

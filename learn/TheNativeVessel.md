@@ -46,6 +46,15 @@ remain available while the destination is checked. System reports a held move or
 archive even when the Fleet child cannot start. A placement marked committed is only that: each
 peer still needs to resume and verify its own memory, settings and session at the destination.
 
+## Renaming a seat's durable id
+
+A seat's social display name can change in place, while its Fleet id is the durable anchor for its
+home folder, managed clones, seat memory, session ledger, wake routes and GitHub attribution. When a
+stopped seat needs a new Fleet id (for example, aligning a legacy role id with an accepted name),
+the Selected-Agent detail pane's **Change id…** flow reviews the plan (`from -> to`, home path,
+managed workspaces, memory files, ledger rows and wake routes) before applying the transition
+through the shell. Running or pending seats cannot be renamed.
+
 ## Closing the window is a different intent from quitting
 
 When the tray is available, closing the primary cockpit hides it. **Open Cockpit** restores the same window and its worker-backed UI identity. Popup windows keep their normal close behavior. **Quit** is the action that drains the child processes the harness owns. The tray displays a coarse lifecycle projection; it is not a second health service and cannot certify each Fleet source. This is why the cockpit's own roster, activity, task, and connection words remain necessary after the shell says it is running.

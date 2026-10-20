@@ -43,6 +43,8 @@ class ShellPlane extends Base {
                 'attachPlane',
                 'planeStatus',
                 'probePlane',
+                'seatRenameApply',
+                'seatRenamePlan',
                 'seatRootConsent',
                 'seatRootPlan',
                 'seatRootStatus',
@@ -88,6 +90,33 @@ class ShellPlane extends Base {
         return globalThis.neoShell?.probePlane
             ? globalThis.neoShell.probePlane()
             : Promise.resolve({ok: false, reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Plans a stopped seat's durable-id transition in main.
+     * @param {Object} data
+     * @param {String} data.id
+     * @param {String} data.to
+     * @returns {Promise<Object>} Main's plan or refusal
+     */
+    seatRenamePlan({id, to} = {}) {
+        return globalThis.neoShell?.seatRenamePlan
+            ? globalThis.neoShell.seatRenamePlan({id, to})
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Applies a reviewed seat durable-id transition in main.
+     * @param {Object} data
+     * @param {String} data.id
+     * @param {String} data.to
+     * @param {String} data.fingerprint
+     * @returns {Promise<Object>} Main's result or refusal
+     */
+    seatRenameApply({fingerprint, id, to} = {}) {
+        return globalThis.neoShell?.seatRenameApply
+            ? globalThis.neoShell.seatRenameApply({fingerprint, id, to})
+            : Promise.resolve({state: 'refused', code: 'no-shell', reason: 'no-shell'})
     }
 
     /**

@@ -5,7 +5,7 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * social display name renders as MUTABLE DISPLAY STATE over the durable id (never as a key), and
  * its provenance is stated honestly. Today's live vocabulary is TWO states: `declared-proxy`
  * (a name exists as registry/identity display state; no assent trail is wired anywhere yet) and
- * `durable-id` (no display name — the never-renamed anchor itself renders). Pure and
+ * `durable-id` (no display name — the durable anchor itself renders, changed only through a Fleet transition that carries the seat). Pure and
  * record-shaped (no clock, no instance coupling); fails closed toward the durable id exactly like
  * the sibling {@link module:apps/agentos/util/AgentFreshness} contract fails toward
  * `unobserved`.
@@ -75,7 +75,7 @@ class NameSlot extends Base {
                 provenance: {
                     state: 'durable-id',
                     label: agentId
-                        ? 'Durable id — no display name declared; the id is the never-renamed anchor'
+                        ? 'Durable id — no display name declared; the id is the durable anchor changed only through a Fleet transition that carries the seat'
                         : 'No identity facts on this record'
                 }
             }

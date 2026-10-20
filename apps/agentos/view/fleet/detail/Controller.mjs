@@ -3,6 +3,7 @@ import AddAgentFlow          from '../../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
 import SeatGitIdentity       from '../../../util/SeatGitIdentity.mjs';
 import SeatModel             from '../../../util/SeatModel.mjs';
+import SourceHealth          from '../../../util/SourceHealth.mjs';
 
 /**
  * @class AgentOS.view.fleet.detail.Controller
@@ -58,6 +59,11 @@ class Controller extends ComponentController {
 
         card.on({configIntent: me.onConfigIntent, scope: me});
         me.getReference('seat-runtime').on({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
+        me.getReference('seat-rename-section')?.on({
+            requestSeatRenameApply: me.onRequestSeatRenameApply,
+            requestSeatRenamePlan : me.onRequestSeatRenamePlan,
+            scope                 : me
+        });
         me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model').on({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         me.getReference('seat-memory').on({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
@@ -88,6 +94,11 @@ class Controller extends ComponentController {
 
         me.component.agentDefinitions?.un(me.getDefinitionsStoreListeners());
         me.getReference('config-pane')?.un({configIntent: me.onConfigIntent, scope: me});
+        me.getReference('seat-rename-section')?.un({
+            requestSeatRenameApply: me.onRequestSeatRenameApply,
+            requestSeatRenamePlan : me.onRequestSeatRenamePlan,
+            scope                 : me
+        });
         me.getReference('seat-runtime')?.un({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model')?.un({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
@@ -405,6 +416,129 @@ class Controller extends ComponentController {
                 }
             }
         })
+    }
+
+    /**
+     * @summary Synchronizes the `Change id…` button and inline `SeatRenameContainer` when `record` changes.
+     * @param {Object|null} record
+     */
+    syncSeatRename(record) {
+        const
+            me      = this,
+            section = me.getReference('seat-rename-section'),
+            button  = me.getReference('change-seat-id-button');
+
+        if (!record) {
+            section?.reset();
+            return
+        }
+
+        const
+            display   = SourceHealth.resolveFleetDisplayState(record),
+            agentId   = record.agentId ?? '',
+            canRename = (display.reason === 'stopped' || (record.state === 'off' && display.state !== 'ok' && display.state !== 'idle')) && !record.pendingAction;
+
+        if (button) {
+            const stopReason = 'stop the seat to change its id';
+            button.disabled = !canRename;
+            if (canRename) {
+                delete button.vdom.title;
+                delete button.vdom['aria-label']
+            } else {
+                button.vdom.title        = stopReason;
+                button.vdom['aria-label'] = `Change id… (${stopReason})`
+            }
+            button.update()
+        }
+
+        section?.updateSeat({agentId, canRename})
+    }
+
+    /**
+     * @summary Resolves the shell-plane addon (or an injected test seam on the component).
+     * @returns {Object|null}
+     * @protected
+     */
+    resolveShellPlane() {
+        return this.component.shellPlane ?? Neo.main?.addon?.ShellPlane ?? null
+    }
+
+    /**
+     * @summary Requests a dry-run seat-rename plan from the shell broker and paints the section.
+     * @param {Object} data `{id, to}`
+     * @returns {Promise<Object>}
+     */
+    async onRequestSeatRenamePlan({id, to} = {}) {
+        const
+            me      = this,
+            section = me.getReference('seat-rename-section'),
+            shell   = me.resolveShellPlane();
+
+        let result;
+        try {
+            result = shell?.seatRenamePlan
+                ? await shell.seatRenamePlan({id, to})
+                : {state: 'refused', code: 'no-shell', reason: 'no-shell'}
+        } catch (error) {
+            result = {state: 'refused', code: 'plan-failed', stage: 'plan', reason: error?.message || String(error)}
+        }
+
+        if (!me.isDestroyed && !me.component.isDestroying && !me.component.isDestroyed) {
+            section?.applyPlanResult(result)
+        }
+
+        return result
+    }
+
+    /**
+     * @summary Applies a fingerprinted seat rename through the shell broker, updates the shared
+     * definitions Store, and fires `seatRenamed` so the cockpit re-seats selection onto `to`.
+     * @param {Object} data `{id, to, fingerprint}`
+     * @returns {Promise<Object>}
+     */
+    async onRequestSeatRenameApply({id, to, fingerprint} = {}) {
+        const
+            me          = this,
+            {component} = me,
+            section     = me.getReference('seat-rename-section'),
+            shell       = me.resolveShellPlane();
+
+        let result;
+        try {
+            result = shell?.seatRenameApply
+                ? await shell.seatRenameApply({id, to, fingerprint})
+                : {state: 'refused', code: 'no-shell', reason: 'no-shell'}
+        } catch (error) {
+            result = {state: 'refused', code: 'apply-failed', stage: 'apply', reason: error?.message || String(error)}
+        }
+
+        if (me.isDestroyed || component.isDestroying || component.isDestroyed) {
+            return result
+        }
+
+        section?.applyRenameResult(result);
+
+        if (result?.state === 'renamed') {
+            const
+                store    = component.agentDefinitions,
+                previous = store?.get(id) ?? null;
+
+            if (store) {
+                previous && store.remove(previous);
+                if (result.agent) {
+                    store.add(result.agent)
+                }
+            }
+
+            component.fire('seatRenamed', {
+                agent: result.agent ?? null,
+                from : id,
+                result,
+                to
+            })
+        }
+
+        return result
     }
 
     /**
