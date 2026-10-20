@@ -431,5 +431,37 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             'vega: ready to start'
         ])
     });
+
+    test('a cleanup-free failed seat and an unavailable seat are planned with their reason and counted once in the state line; a stopping seat is up — Stop stays, Start reads already up (#749 AC-2)', () => {
+        const
+            failedSeat      = {agentId: 'ada',  state: 'off', sources: wiredRuntime(), controlReason: {action: 'start', kind: 'failed',      reason: 'spawn ENOENT'}},
+            unavailableSeat = {agentId: 'emmy', state: 'off', sources: wiredRuntime(), controlReason: {action: 'start', kind: 'unavailable', reason: 'bundled CLI missing'}},
+            stoppingSeat    = {agentId: 'vega', state: 'ok',  sources: wiredRuntime(), controlReason: {action: 'stop',  kind: 'pending',     reason: 'stopping'}},
+            records         = [failedSeat, unavailableSeat, stoppingSeat],
+            start           = FleetStartPlan.partitionFleetStart(records),
+            stop            = FleetStartPlan.partitionFleetStop(records);
+
+        expect(start.eligible.map(r => r.agentId)).toEqual(['ada', 'emmy']);
+        expect(start.plan).toEqual([
+            {agentId: 'ada',  reason: 're-checks: spawn ENOENT',        record: failedSeat},
+            {agentId: 'emmy', reason: 're-checks: bundled CLI missing', record: unavailableSeat}
+        ]);
+        expect(start.excluded).toEqual([{agentId: 'vega', reason: "already up \u2014 session state 'ok'", record: stoppingSeat}]);
+
+        expect(stop.eligible).toEqual([stoppingSeat]);
+        expect(stop.excluded.map(entry => entry.reason)).toEqual([
+            "already down \u2014 session state 'off'",
+            "already down \u2014 session state 'off'"
+        ]);
+
+        const stateLine = FleetStartPlan.renderFleetState(records);
+
+        expect(stateLine.text).toBe('1\u00a0started');
+        expect(stateLine.detail.split('\n')).toEqual([
+            'ada: re-checks: spawn ENOENT',
+            'emmy: re-checks: bundled CLI missing',
+            'vega: stopping'
+        ])
+    });
 });
 

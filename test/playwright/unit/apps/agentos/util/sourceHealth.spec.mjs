@@ -12,6 +12,8 @@ import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_exp
 
 import SourceHealth from '../../../../../../apps/agentos/util/SourceHealth.mjs';
 
+import {SEAT_LIFECYCLE_READ_ONLY_STATES, SEAT_LIFECYCLE_ROW_FALLBACK, SEAT_LIFECYCLE_STATES} from 'neo-agent-brain/fleet-contract';
+
 /**
  * @summary The display-state resolver the card, the detail pane, the health tally and the roster's
  * offline filter share: five states, and why an offline seat is offline as its reason.
@@ -83,7 +85,7 @@ test.describe('AgentOS.util.SourceHealth.mapFleetSessionHealth (#725)', () => {
         normalized   = SourceHealth.normalizeFleetSources(wired),
         failureReason = '1 helper(s) still alive: pid 4242';
 
-    test('maps {state: "failed", cleanupUnresolved: true, failureReason} to off + the cleanup control reason; {state: "stopping"} unchanged (#725 AC-1)', () => {
+    test('maps {state: "failed", cleanupUnresolved: true, failureReason} to off + the cleanup control reason (#725 AC-1)', () => {
         expect(SourceHealth.mapFleetSessionHealth({
             source           : 'fleet:runtimeStatus',
             state            : 'failed',
@@ -94,18 +96,71 @@ test.describe('AgentOS.util.SourceHealth.mapFleetSessionHealth (#725)', () => {
             controlReason: {action: 'stop', kind: 'cleanup', reason: failureReason},
             sources      : normalized,
             state        : 'off'
+        })
+    });
+});
+
+/**
+ * @summary Every word the Fleet writes maps onto the card's vocabulary with the control it obliges;
+ * `unknown` and a word outside the contract stay rejected evidence.
+ */
+test.describe('AgentOS.util.SourceHealth.mapFleetSessionHealth reads every Fleet lifecycle word (#749)', () => {
+    const
+        wired      = {runtime: {source: 'fleet:runtimeStatus', state: 'wired', confidence: 'observed', reason: null}},
+        normalized = SourceHealth.normalizeFleetSources(wired),
+        map        = (state, extra = {}) => SourceHealth.mapFleetSessionHealth({source: 'fleet:runtimeStatus', confidence: 'observed', state, ...extra}, wired),
+        invalid    = words => words.filter(word => map(word).sources.runtime.state === 'invalid');
+
+    test('stopping: still up, Stop stays as the pending control, Start reads already up', () => {
+        expect(map('stopping')).toEqual({
+            controlReason: {action: 'stop', kind: 'pending', reason: 'stopping'},
+            sources      : normalized,
+            state        : 'ok'
+        })
+    });
+
+    test('a cleanup-free failed seat is off and startable, with the Fleet\'s failure reason or the contract\'s fallback', () => {
+        expect(map('failed', {failureReason: 'spawn ENOENT'})).toEqual({
+            controlReason: {action: 'start', kind: 'failed', reason: 'spawn ENOENT'},
+            sources      : normalized,
+            state        : 'off'
         });
 
-        // {state: 'stopping'} unchanged (downgrades runtime without a cleanup controlReason)
-        const stopping = SourceHealth.mapFleetSessionHealth({
-            source    : 'fleet:runtimeStatus',
-            state     : 'stopping',
-            confidence: 'observed'
-        }, wired);
+        expect(map('failed').controlReason).toEqual({action: 'start', kind: 'failed', reason: 'a start or stop ended in an error'})
+    });
 
-        expect(stopping.controlReason).toBeUndefined();
-        expect(stopping.state).toBe('off');
-        expect(stopping.sources.runtime.state).toBe('invalid')
+    test('unavailable: off and startable, the reason names why this host cannot launch the harness', () => {
+        expect(map('unavailable', {failureReason: 'bundled CLI missing'})).toEqual({
+            controlReason: {action: 'start', kind: 'unavailable', reason: 'bundled CLI missing'},
+            sources      : normalized,
+            state        : 'off'
+        });
+
+        expect(map('unavailable').controlReason.reason).toBe('the harness cannot be launched on this host')
+    });
+
+    test('exited (read-only): off, and the card names the exit instead of relabelling it stopped', () => {
+        expect(map('exited')).toEqual({
+            controlReason: {action: 'start', kind: 'exited', reason: 'the harness exited on its own'},
+            sources      : normalized,
+            state        : 'off'
+        })
+    });
+
+    test('unknown, a word outside the contract and a CARD word are rejected evidence — nothing passes through unmapped', () => {
+        ['unknown', 'limbo', 'idle', 'wedged', 'limited'].forEach(word => {
+            const health = map(word);
+
+            expect(health.controlReason, word).toBeUndefined();
+            expect(health.state, word).toBe('off');
+            expect(health.sources.runtime, word).toEqual({source: 'fleet:runtimeStatus', state: 'invalid', confidence: 'none', reason: 'lifecycle and runtime facts contradict'})
+        })
+    });
+
+    test('the contract arm: every word neo-agent-brain/fleet-contract exports maps, the row fallback does not, and a planted word turns the arm red (AC-3)', () => {
+        expect(invalid([...SEAT_LIFECYCLE_STATES, ...SEAT_LIFECYCLE_READ_ONLY_STATES])).toEqual([]);
+        expect(invalid([SEAT_LIFECYCLE_ROW_FALLBACK])).toEqual([SEAT_LIFECYCLE_ROW_FALLBACK]);
+        expect(invalid([...SEAT_LIFECYCLE_STATES, 'planted'])).toEqual(['planted'])
     });
 });
 

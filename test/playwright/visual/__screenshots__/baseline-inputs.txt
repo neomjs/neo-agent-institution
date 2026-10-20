@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    fe6ab42c75675a007bd9d7390fdc09afb4493f74
+    9771bebcb8579b6fb961f1db12d949b38ce2d3fb
 
 apps/agentos/CARD-CONTRACT.md
     8557e8e96e524eee681c5d94624dc72a309adcc0
@@ -240,7 +240,7 @@ apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
 
 apps/agentos/util/FleetStartPlan.mjs
-    260b75364e5e8d335ac21017706d30aa4ac7c3f7
+    9d364965b8a4173e57ed395035f04579c7fbea61
 
 apps/agentos/util/FloatingMenuTheme.mjs
     84b03b77166b024f051b7aeb611873323c0e5cfb
@@ -321,7 +321,7 @@ apps/agentos/util/SetupAsks.mjs
     5631188ae6808c721ebb030ad191ea3bc70b797b
 
 apps/agentos/util/SourceHealth.mjs
-    bfc624a86fdd0a70313358d6a850be6e015911dd
+    3ea2f9747a9e81fdfb08b3310a3d144e2930a7b8
 
 apps/agentos/util/SpineBanner.mjs
     22c150b777bf668aa44c9f67c5ec282de3278d05
