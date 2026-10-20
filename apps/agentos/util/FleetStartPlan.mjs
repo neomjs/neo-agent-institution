@@ -303,25 +303,6 @@ class FleetStartPlan extends Base {
     }
 
     /**
-     * @summary Single-button descriptor delegating to {@link describeFleetButtons}: `Start fleet · m`
-     * while any eligible seat is down, `Stop fleet · n` when all eligible seats are up, or plain
-     * `Start fleet` with its reason in `title` when both partitions are empty.
-     * @param {Object[]|null} records FleetAgent records
-     * @returns {{action: String|null, count: Number, text: String, title: String|null}}
-     */
-    static describeFleetButton(records) {
-        const {start, stop} = FleetStartPlan.describeFleetButtons(records),
-              chosen        = !start.hidden ? start : stop;
-
-        return {
-            action: chosen.action,
-            count : chosen.count,
-            text  : chosen.text,
-            title : chosen.title
-        }
-    }
-
-    /**
      * @summary Project the current roster cohorts, independently of a previous batch's results.
      * Eligibility remains owned by the start/stop partitions. A ready stopped seat is not excluded;
      * pending and unknown evidence keep their own buckets instead of becoming stopped or running.

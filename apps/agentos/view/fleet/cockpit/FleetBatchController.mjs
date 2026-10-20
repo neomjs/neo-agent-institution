@@ -69,20 +69,6 @@ class FleetBatchController extends ReadingSurfacesController {
     stopFleetPromise = null
 
     /**
-     * @summary The fleet button's press, routed by the plan it shows: an armed stop's second press
-     * sends; a `Stop fleet · n` label arms the stop; any `Start fleet` label starts — the plain one
-     * too, whose press reports in the summary why nothing started.
-     * @returns {Object|Promise<Object>} The armed plan, or the batch outcome summary.
-     */
-    onFleetButton() {
-        const me = this;
-
-        if (me.stopFleetArmed) return me.onStopFleet();
-
-        return FleetStartPlan.describeFleetButton(me.getRosterRecords()).action === 'stop' ? me.onStopFleet() : me.onStartFleet()
-    }
-
-    /**
      * @summary Write the fleet buttons' words and visibility. During a batch the last settled labels
      * stay and both buttons are disabled. While stop is armed `fleet-stop-button` reads
      * `Stop fleet · press again` while `fleet-button` stays visible in a split fleet.
@@ -99,26 +85,6 @@ class FleetBatchController extends ReadingSurfacesController {
         if (me.startFleetPromise || me.stopFleetPromise) {
             if (stopButton)  stopButton.disabled  = true;
             if (startButton) startButton.disabled = true;
-            return
-        }
-
-        if (!stopButton && startButton) {
-            const label = me.stopFleetArmed
-                ? {action: 'stop', text: 'Stop fleet · press again', title: null}
-                : FleetStartPlan.describeFleetButton(me.getRosterRecords());
-
-            if (label.title) {
-                startButton.vdom.title = label.title
-            } else {
-                delete startButton.vdom.title
-            }
-
-            startButton.set({
-                disabled: false,
-                iconCls : label.action === 'stop' ? 'fa-solid fa-stop' : 'fa-solid fa-play',
-                text    : label.text
-            });
-            startButton.update();
             return
         }
 

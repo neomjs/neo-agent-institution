@@ -304,18 +304,24 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             down  = id => ({agentId: id, state: 'off', sources: wiredRuntime()}),
             eight = ['ada', 'grace', 'vega', 'sophie', 'emmy', 'euclid', 'clio', 'fable'];
 
-        expect(FleetStartPlan.describeFleetButton([...eight.slice(0, 4).map(up), ...eight.slice(4).map(down)]))
-            .toEqual({action: 'start', count: 4, text: 'Start fleet · 4', title: null});
+        expect(FleetStartPlan.describeFleetButtons([...eight.slice(0, 4).map(up), ...eight.slice(4).map(down)]))
+            .toEqual({
+                start: {action: 'start', count: 4, hidden: false, text: 'Start fleet · 4', title: null},
+                stop : {action: 'stop',  count: 4, hidden: false, text: 'Stop fleet · 4',  title: null}
+            });
         // a benched seat never counts in either direction
-        expect(FleetStartPlan.describeFleetButton([...eight.map(up), {agentId: 'gemini', state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched'}]))
-            .toEqual({action: 'stop', count: 8, text: 'Stop fleet · 8', title: null});
+        expect(FleetStartPlan.describeFleetButtons([...eight.map(up), {agentId: 'gemini', state: 'off', sources: wiredRuntime(), participationStatus: 'operator_benched'}]))
+            .toEqual({
+                start: {action: null,   count: 0, hidden: true,  text: 'Start fleet',    title: null},
+                stop : {action: 'stop', count: 8, hidden: false, text: 'Stop fleet · 8', title: null}
+            });
         // the roster unobserved: the plain label, the reason in the title, no count the partition did not produce
-        expect(FleetStartPlan.describeFleetButton([])).toMatchObject({action: null, count: 0, text: 'Start fleet', title: expect.stringContaining('roster')});
-        expect(FleetStartPlan.describeFleetButton(null)).toMatchObject({action: null, text: 'Start fleet'});
+        expect(FleetStartPlan.describeFleetButtons([]).start).toMatchObject({action: null, count: 0, hidden: false, text: 'Start fleet', title: expect.stringContaining('roster')});
+        expect(FleetStartPlan.describeFleetButtons(null).start).toMatchObject({action: null, hidden: false, text: 'Start fleet'});
         // every row unwired: nothing can be planned — still the plain label, the reason names the source
-        expect(FleetStartPlan.describeFleetButton([{agentId: 'ada', state: 'off'}, {agentId: 'vega', state: 'ok'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('wired')});
+        expect(FleetStartPlan.describeFleetButtons([{agentId: 'ada', state: 'off'}, {agentId: 'vega', state: 'ok'}]).start).toMatchObject({action: null, hidden: false, text: 'Start fleet', title: expect.stringContaining('wired')});
         // every row benched: nothing to start or stop — the reasons reachable in the title
-        expect(FleetStartPlan.describeFleetButton([{agentId: 'gemini', state: 'ok', sources: wiredRuntime(), participationStatus: 'operator_benched'}])).toMatchObject({action: null, text: 'Start fleet', title: expect.stringContaining('operator_benched')})
+        expect(FleetStartPlan.describeFleetButtons([{agentId: 'gemini', state: 'ok', sources: wiredRuntime(), participationStatus: 'operator_benched'}]).start).toMatchObject({action: null, hidden: false, text: 'Start fleet', title: expect.stringContaining('operator_benched')})
     });
 
     test('describeFleetButtons exposes independent start and stop descriptors across split (4 up / 4 down, 1 up / 9 down), all-down, all-up, and 0/0 fallback states (#772 AC-1, AC-2)', () => {
@@ -468,11 +474,21 @@ test.describe('fleetStartPlan — the staged fleet bring-up (pure half)', () => 
             {agentId: 'vega', reason: 'ready to start',           record: stoppedSeat}
         ]);
 
-        expect(FleetStartPlan.describeFleetButton(records)).toEqual({
-            action: 'start',
-            count : 2,
-            text  : 'Start fleet · 2',
-            title : null
+        expect(FleetStartPlan.describeFleetButtons(records)).toEqual({
+            start: {
+                action: 'start',
+                count : 2,
+                hidden: false,
+                text  : 'Start fleet · 2',
+                title : null
+            },
+            stop: {
+                action: 'stop',
+                count : 1,
+                hidden: false,
+                text  : 'Stop fleet · 1',
+                title : null
+            }
         });
 
         const stateLine = FleetStartPlan.renderFleetState(records);

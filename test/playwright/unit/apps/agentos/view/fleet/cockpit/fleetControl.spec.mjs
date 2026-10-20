@@ -52,17 +52,18 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             agentId            : `seat-${index}`, sources: wiredSources(), state: index < 4 ? 'ok' : 'off',
             participationStatus: index < 8 ? 'active' : 'operator_benched',
             set(values) { Object.assign(this, values) }
-        })), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
+        })), stopButton = fakeButton(), button = fakeButton(), slot = {vdom: {}, set(values) { Object.assign(this, values) }},
               controller = Object.create(FleetCockpitController.prototype);
 
-        controller.getReference = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
+        controller.getReference = name => ({'fleet-grid': {store: {items: records}}, 'fleet-stop-button': stopButton, 'fleet-button': button, 'fleet-start-summary': slot})[name] ?? null;
         controller.renderStartSummary({started: 4, unknown: [], rejected: [], excluded: records.slice(4).map(record => ({agentId: record.agentId, reason: 'excluded'}))});
         expect(slot.hidden).toBe(false);
 
         records.slice(0, 8).forEach(record => record.set({state: 'ok'}));
         controller.onRosterSettled();
 
-        expect(button.text).toBe('Stop fleet · 8');
+        expect(stopButton).toMatchObject({hidden: false, text: 'Stop fleet · 8'});
+        expect(button.hidden).toBe(true);
         expect(slot).toMatchObject({hidden: false, text: '8\u00a0started · 4\u00a0excluded'})
     });
 
@@ -235,6 +236,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
         const
             releases   = [],
             records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'off', set(values) { Object.assign(this, values) }})),
+            stopButton = fakeButton(),
             button     = fakeButton(),
             controller = Object.create(FleetCockpitController.prototype);
 
@@ -244,7 +246,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             }
         };
 
-        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button})[name] ?? null;
+        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-stop-button': stopButton, 'fleet-button': button})[name] ?? null;
         controller.renderStartSummary    = () => {};
         // the settle re-poll: registry truth replaces the round-trip residue and the roster settles
         // while the batch is still in flight — the button keeps its words and stays disabled
@@ -256,12 +258,13 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         try {
             controller.onRosterSettled();
-            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-play', text: 'Start fleet · 2'});
+            expect(stopButton.hidden).toBe(true);
+            expect(button).toMatchObject({disabled: false, hidden: false, iconCls: 'fa-solid fa-play', text: 'Start fleet · 2'});
             expect(button.vdom.title).toBeUndefined();
 
             // in flight: the last settled words stay and the button is disabled (the adapter reaches
             // the bridge after its own awaits — a tick lets both round-trips open before they are released)
-            const batch = controller.onFleetButton();
+            const batch = controller.onStartFleet();
 
             expect(button).toMatchObject({disabled: true, text: 'Start fleet · 2'});
             await new Promise(resolve => setTimeout(resolve, 0));
@@ -271,12 +274,14 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             releases.forEach(release => release());
             await batch;
 
-            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · 2'});
+            expect(stopButton).toMatchObject({disabled: false, hidden: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · 2'});
+            expect(button.hidden).toBe(true);
 
             // the plain label: every row unwired — the reason rides the title, no count
             records.forEach(record => record.set({sources: {}}));
             controller.onRosterSettled();
-            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-play', text: 'Start fleet'});
+            expect(stopButton.hidden).toBe(true);
+            expect(button).toMatchObject({disabled: false, hidden: false, iconCls: 'fa-solid fa-play', text: 'Start fleet'});
             expect(button.vdom.title).toContain('wired')
         } finally {
             delete globalThis.AgentOS?.fleet
@@ -288,12 +293,13 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             calls      = [],
             lines      = [],
             records    = ['ada', 'euclid'].map(agentId => ({agentId, displayName: agentId[0].toUpperCase() + agentId.slice(1), controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
+            stopButton = fakeButton(),
             button     = fakeButton(),
             controller = Object.create(FleetCockpitController.prototype);
 
         (globalThis.AgentOS ??= {}).fleet = {registryBridge: {stopAgent: agentId => (calls.push(agentId), Promise.resolve({state: 'off'}))}};
 
-        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-button': button})[name] ?? null;
+        controller.getReference          = name => ({'fleet-grid': {store: {items: records}}, 'fleet-stop-button': stopButton, 'fleet-button': button})[name] ?? null;
         controller.refreshRosterOnSettle = settledOk => settledOk;
         controller.renderStartSummary    = () => {};
         controller.renderSummarySlot     = line => lines.push(line);
@@ -301,12 +307,13 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         try {
             controller.onRosterSettled();
-            expect(button.text).toBe('Stop fleet · 2');
+            expect(stopButton.text).toBe('Stop fleet · 2');
+            expect(button.hidden).toBe(true);
 
             // the first press: the plan where the summaries live, the chip the second press, nothing sent
-            controller.onFleetButton();
+            controller.onStopFleet();
             expect(calls).toEqual([]);
-            expect(button).toMatchObject({disabled: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · press again'});
+            expect(stopButton).toMatchObject({disabled: false, hidden: false, iconCls: 'fa-solid fa-stop', text: 'Stop fleet · press again'});
             expect(lines.at(-1)).toEqual({detail: '', text: 'Stop fleet · 2\u00a0seats: Ada, Euclid'});
 
             // a settled roster whose plan matches keeps the arm; one whose plan differs takes it back
@@ -316,21 +323,22 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             controller.onRosterSettled();
             expect(controller.stopFleetArmed).toBeNull();
             expect(lines.at(-1)).toMatchObject({text: '1\u00a0started', detail: expect.stringContaining('euclid: ready to start')});
-            expect(button.text).toBe('Start fleet · 1');
+            expect(stopButton).toMatchObject({hidden: false, text: 'Stop fleet · 1'});
+            expect(button).toMatchObject({hidden: false, text: 'Start fleet · 1'});
 
             // armed again with both up: the window's end takes it back, the button reads its plan
             records[1].set({state: 'ok'});
             controller.onRosterSettled();
-            controller.onFleetButton();
+            controller.onStopFleet();
             expect(controller.stopFleetArmed).not.toBeNull();
             await new Promise(resolve => setTimeout(resolve, 60));
             expect(controller.stopFleetArmed).toBeNull();
-            expect(button.text).toBe('Stop fleet · 2');
+            expect(stopButton.text).toBe('Stop fleet · 2');
             expect(calls).toEqual([]);
 
             // the second press inside the window sends one stop intent per planned seat
-            controller.onFleetButton();
-            await controller.onFleetButton();
+            controller.onStopFleet();
+            await controller.onStopFleet();
             expect(calls).toEqual(['ada', 'euclid'])
         } finally {
             delete globalThis.AgentOS?.fleet
@@ -342,6 +350,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             calls      = [],
             records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
             store      = {items: records, get: id => store.items.find(record => record.agentId === id)},
+            stopButton = fakeButton(),
             button     = fakeButton(),
             controller = Object.create(FleetCockpitController.prototype);
 
@@ -349,7 +358,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
         controller.resolveFleetRosterStore = () => store;
-        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-button': button})[name] ?? null;
+        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-stop-button': stopButton, 'fleet-button': button})[name] ?? null;
         controller.refreshRosterOnSettle   = settledOk => settledOk;
         controller.renderStartSummary      = () => {};
         controller.renderSummarySlot       = () => {};
@@ -357,7 +366,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         try {
             controller.onRosterSettled();
-            controller.onFleetButton();
+            controller.onStopFleet();
             expect(controller.stopFleetArmed).toMatchObject({profileId: 'profile-a', store});
 
             // the real switch retires the roster before the new bridge is read: the arm goes with it
@@ -371,17 +380,17 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             store.items = records;
             controller.bridgeProfileId = 'profile-a';
             controller.onRosterSettled();
-            controller.onFleetButton();
+            controller.onStopFleet();
             controller.bridgeProfileId = 'profile-b';
-            expect(controller.onFleetButton()).toBeNull();
+            expect(controller.onStopFleet()).toBeNull();
             expect(calls).toEqual([]);
             expect(controller.stopFleetArmed).toBeNull();
 
             // the unchanged target and plan still send one Stop per planned seat
             controller.bridgeProfileId = 'profile-a';
             controller.onRosterSettled();
-            controller.onFleetButton();
-            await controller.onFleetButton();
+            controller.onStopFleet();
+            await controller.onStopFleet();
             expect(calls).toEqual(['ada', 'euclid'])
         } finally {
             delete globalThis.AgentOS?.fleet
@@ -394,6 +403,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             held       = [],
             records    = ['ada', 'euclid'].map(agentId => ({agentId, controlReason: null, pendingAction: null, sources: wiredSources(), state: 'ok', set(values) { Object.assign(this, values) }})),
             store      = {items: records, get: id => store.items.find(record => record.agentId === id)},
+            stopButton = fakeButton(),
             button     = fakeButton(),
             controller = Object.create(FleetCockpitController.prototype);
 
@@ -401,7 +411,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         Object.defineProperty(controller, 'bridgeProfileId', {value: 'profile-a', writable: true});
         controller.resolveFleetRosterStore = () => store;
-        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-button': button})[name] ?? null;
+        controller.getReference            = name => ({'fleet-grid': {store}, 'fleet-stop-button': stopButton, 'fleet-button': button})[name] ?? null;
         controller.refreshRosterOnSettle   = settledOk => settledOk;
         controller.renderStartSummary      = () => {};
         controller.renderSummarySlot       = () => {};
@@ -410,7 +420,7 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
 
         try {
             controller.onRosterSettled();
-            controller.onFleetButton();
+            controller.onStopFleet();
             expect(controller.stopFleetArmed).not.toBeNull();
 
             // the card's own Stop: the adapter writes `pending` before the bridge answers
@@ -421,10 +431,10 @@ test.describe('Fleet cockpit — whole-fleet control (B4, #14611)', () => {
             expect(calls).toEqual(['ada']);
 
             // the second press before any roster settles: withdrawn, nothing more sent, the plan re-read
-            expect(controller.onFleetButton()).toBeNull();
+            expect(controller.onStopFleet()).toBeNull();
             expect(calls).toEqual(['ada']);
             expect(controller.stopFleetArmed).toBeNull();
-            expect(button.text).toBe('Stop fleet · 1');
+            expect(stopButton.text).toBe('Stop fleet · 1');
 
             held.forEach(release => release());
             await card
