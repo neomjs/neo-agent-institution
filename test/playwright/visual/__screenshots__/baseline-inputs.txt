@@ -384,7 +384,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     3deb1a7ceae97b9697dc4c2dcee0af7c57085193
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    ea2d1b39d8c3dad154736ace0193b26d3e011af3
+    c055b8e14ef465cef574ead6c3b20ed48674318a
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
