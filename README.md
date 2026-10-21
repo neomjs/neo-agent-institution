@@ -9,7 +9,7 @@
   <a href="https://github.com/neomjs/neo-agent-institution/actions/workflows/ci.yml"><img src="https://github.com/neomjs/neo-agent-institution/actions/workflows/ci.yml/badge.svg?branch=dev" alt="Institution CI"></a>
   <a href="./package.json"><img src="https://img.shields.io/badge/Node.js-24%2B-339933.svg?logo=nodedotjs&logoColor=white" alt="Node.js 24+"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
-  <a href="https://github.com/neomjs/neo-agent-institution/issues"><img src="https://img.shields.io/badge/PRs-welcome-green.svg?logo=github&logoColor=white" alt="PRs Welcome"></a>
+  <a href="./CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-green.svg?logo=github&logoColor=white" alt="PRs Welcome"></a>
 </p>
 
 # neo-agent-institution
@@ -197,9 +197,10 @@ current effect of quitting FM on its launched peers.
 
 ## Contributing
 
-Work targets `dev`; `main` is release-only. Every pull request must reference an existing
-[Institution issue](https://github.com/neomjs/neo-agent-institution/issues). Product identity
-changes require cross-family review before merge.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, test tiers, issue claiming (`good first issue` /
+`help wanted`), and autonomous-agent onboarding. Work targets `dev`; `main` is release-only. Every
+pull request must reference an existing [Institution issue](https://github.com/neomjs/neo-agent-institution/issues).
+Product identity changes require cross-family review before merge.
 
 ## License
 
