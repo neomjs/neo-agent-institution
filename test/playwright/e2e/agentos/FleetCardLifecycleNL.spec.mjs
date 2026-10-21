@@ -312,43 +312,49 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
             const app = await bootWiredCockpit(page, neuralLink, fleet);
 
             const
-                button  = page.locator('.fm-cockpit-bar .fm-fleet-start'),
-                summary = page.locator('.fm-fleet-start-summary'),
-                stops   = () => fleet.requests.filter(request => request.method === 'stopAgent');
+                stopButton = page.locator('.fm-cockpit-bar .fm-fleet-stop'),
+                button     = page.locator('.fm-cockpit-bar .fm-fleet-start'),
+                summary    = page.locator('.fm-fleet-start-summary'),
+                stops      = () => fleet.requests.filter(request => request.method === 'stopAgent');
 
             // one stopped, wired seat: the plan is a start of one
+            await expect(stopButton).toHaveCount(0);
             await expect(button).toHaveText('Start fleet · 1');
             await expect(button.locator('.fa-play')).toBeVisible();
 
             // the press starts it; the settle re-poll re-words the button from registry truth
             await button.click();
-            await expect(button).toHaveText('Stop fleet · 1', {timeout: 15000});
-            await expect(button.locator('.fa-stop')).toBeVisible();
-            await expect(button).toBeEnabled();
+            await expect(stopButton).toHaveText('Stop fleet · 1', {timeout: 15000});
+            await expect(stopButton.locator('.fa-stop')).toBeVisible();
+            await expect(stopButton).toBeEnabled();
+            await expect(button).toHaveCount(0);
             await expect(summary).toHaveText('1\u00a0started');
 
             // Individual controls must replace the fleet command's receipt with current state.
             const toggle = page.locator('.fm-fleet-cards .fm-card-control-verbs button').first();
             await toggle.click();
             await expect(button).toHaveText('Start fleet · 1', {timeout: 15000});
+            await expect(stopButton).toHaveCount(0);
             await expect(summary).toHaveText('0\u00a0started');
             expect((await getRosterRecord(app)).state).toBe('off');
 
             await toggle.click();
-            await expect(button).toHaveText('Stop fleet · 1', {timeout: 15000});
+            await expect(stopButton).toHaveText('Stop fleet · 1', {timeout: 15000});
+            await expect(button).toHaveCount(0);
             await expect(summary).toHaveText('1\u00a0started');
             expect((await getRosterRecord(app)).state).toBe('ok');
             expect(stops()).toHaveLength(1);
 
             // the first Stop press: the plan where the summaries live, the chip the second press, nothing sent
-            await button.click();
-            await expect(button).toHaveText('Stop fleet · press again');
+            await stopButton.click();
+            await expect(stopButton).toHaveText('Stop fleet · press again');
             await expect(summary).toHaveText('Stop fleet · 1\u00a0seat: Lifecycle Witness');
             expect(stops()).toHaveLength(1);
 
             // the second press sends one stop per planned seat; the re-poll re-words the button
-            await button.click();
+            await stopButton.click();
             await expect(button).toHaveText('Start fleet · 1', {timeout: 15000});
+            await expect(stopButton).toHaveCount(0);
             await expect(summary).toHaveText('0\u00a0started');
             expect(stops()).toHaveLength(2);
             expectMinimalLifecyclePayload(stops()[1], 'stopAgent');
@@ -362,16 +368,19 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
         const fleet = await startLifecycleFleetBridge({cohort: true});
 
         try {
-            const app     = await bootWiredCockpit(page, neuralLink, fleet, 12),
-                  button  = page.locator('.fm-cockpit-bar .fm-fleet-start'),
-                  summary = page.locator('.fm-fleet-start-summary');
+            const app        = await bootWiredCockpit(page, neuralLink, fleet, 12),
+                  stopButton = page.locator('.fm-cockpit-bar .fm-fleet-stop'),
+                  button     = page.locator('.fm-cockpit-bar .fm-fleet-start'),
+                  summary    = page.locator('.fm-fleet-start-summary');
 
-            await expect(button).toHaveText('Stop fleet · 8');
+            await expect(stopButton).toHaveText('Stop fleet · 8');
+            await expect(button).toHaveCount(0);
             await expect(summary).toHaveText('8\u00a0started · 4\u00a0excluded');
 
             const unbenchedId = fleet.unbench();
             await reloadRoster(app);
 
+            await expect(stopButton).toHaveText('Stop fleet · 8');
             await expect(button).toHaveText('Start fleet · 1');
             await expect(summary).toHaveText('8\u00a0started · 3\u00a0excluded');
             expect((await getRosterRecord(app, unbenchedId))).toMatchObject({state: 'off', participationStatus: 'active'});

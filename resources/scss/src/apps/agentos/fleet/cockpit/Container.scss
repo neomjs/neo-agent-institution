@@ -182,6 +182,39 @@
             }
         }
 
+        .neo-button.fm-fleet-stop {
+            border     : 1px solid var(--fm-line);
+            background : var(--fm-panel-2);
+            color      : var(--fm-ink-dim);
+            box-shadow : none;
+            font-weight: 500;
+            transition : background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+
+            &:hover {
+                border-color: color-mix(in srgb, var(--fm-state-wedged) 55%, var(--fm-line));
+                background  : color-mix(in srgb, var(--fm-state-wedged) 12%, var(--fm-panel-2));
+                color       : var(--fm-state-wedged);
+            }
+
+            &.fm-fleet-stop-armed {
+                border-color: color-mix(in srgb, var(--fm-state-wedged) 65%, var(--fm-line));
+                background  : color-mix(in srgb, var(--fm-state-wedged) 16%, var(--fm-panel-2));
+                color       : var(--fm-state-wedged);
+                font-weight : 600;
+
+                &:hover {
+                    border-color: var(--fm-state-wedged);
+                    background  : color-mix(in srgb, var(--fm-state-wedged) 24%, var(--fm-panel-2));
+                    color       : var(--fm-state-wedged);
+                }
+            }
+
+            .neo-button-glyph,
+            .neo-button-text {
+                color: inherit;
+            }
+        }
+
         .neo-button.fm-fleet-start {
             border       : 1px solid color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
             background: color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
@@ -323,6 +356,7 @@
             /* action labels drop to their glyphs; the view labels NEVER drop — they are the
                navigation (the declared order's last step is a step that never happens). */
             .neo-button.fm-reconnect-button .neo-button-text,
+            .neo-button.fm-fleet-stop .neo-button-text,
             .neo-button.fm-fleet-start .neo-button-text,
             .neo-button.fm-memories-window-toggle .neo-button-text,
             .neo-button.fm-detail-window-toggle .neo-button-text {

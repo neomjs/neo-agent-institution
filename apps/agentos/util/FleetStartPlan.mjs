@@ -248,33 +248,42 @@ class FleetStartPlan extends Base {
     }
 
     /**
-     * @summary The fleet button's words, from the plan a click would run: `Start fleet · n` while
-     * anything eligible is down; `Stop fleet · n` only when nothing is left to start and n eligible
-     * seats are up; the plain `Start fleet` with the reason in `title` when no plan can be computed —
-     * the roster unobserved, every runtime source unwired, or every row excluded — never a count the
-     * partition did not produce. The caller decides WHEN to read it (settled rosters only: a batch in
-     * flight keeps the last settled label).
+     * @summary Independent start and stop button descriptors from the two partitions so `startCount > 0`
+     * never masks `stopCount > 0` in a split fleet.
      * @param {Object[]|null} records FleetAgent records
-     * @returns {{action: String|null, count: Number, text: String, title: String|null}} `action` is
-     * `start` · `stop` · `null` (nothing to run)
+     * @returns {{start: {action: String|null, count: Number, hidden: Boolean, text: String, title: String|null}, stop: {action: String|null, count: Number, hidden: Boolean, text: String, title: String|null}}}
      */
-    static describeFleetButton(records) {
-        const rows = (records ?? []).filter(Boolean);
+    static describeFleetButtons(records) {
+        const
+            rows  = (records ?? []).filter(Boolean),
+            start = FleetStartPlan.partitionFleetStart(rows),
+            stop  = FleetStartPlan.partitionFleetStop(rows),
+            m     = start.eligible.length,
+            n     = stop.eligible.length;
+
+        const stopDesc = n > 0
+            ? {action: 'stop', count: n, hidden: false, text: `Stop fleet · ${n}`, title: null}
+            : {action: null,   count: 0, hidden: true,  text: 'Stop fleet',       title: null};
+
+        if (m > 0) {
+            return {
+                start: {action: 'start', count: m, hidden: false, text: `Start fleet · ${m}`, title: null},
+                stop : stopDesc
+            }
+        }
+
+        if (n > 0) {
+            return {
+                start: {action: null, count: 0, hidden: true, text: 'Start fleet', title: null},
+                stop : stopDesc
+            }
+        }
 
         if (rows.length === 0) {
-            return {action: null, count: 0, text: 'Start fleet', title: 'the roster has not answered — no plan to run yet'}
-        }
-
-        const start = FleetStartPlan.partitionFleetStart(rows);
-
-        if (start.eligible.length > 0) {
-            return {action: 'start', count: start.eligible.length, text: `Start fleet · ${start.eligible.length}`, title: null}
-        }
-
-        const stop = FleetStartPlan.partitionFleetStop(rows);
-
-        if (stop.eligible.length > 0) {
-            return {action: 'stop', count: stop.eligible.length, text: `Stop fleet · ${stop.eligible.length}`, title: null}
+            return {
+                start: {action: null, count: 0, hidden: false, text: 'Start fleet', title: 'the roster has not answered — no plan to run yet'},
+                stop : stopDesc
+            }
         }
 
         const
@@ -282,10 +291,14 @@ class FleetStartPlan extends Base {
             reasons = [...new Set(stop.excluded.map(({reason}) => reason))].join(' · ');
 
         return {
-            action: null,
-            count : 0,
-            text  : 'Start fleet',
-            title : unwired ? 'no usable lifecycle evidence — the runtime source is not wired' : `nothing to start or stop — ${reasons}`
+            start: {
+                action: null,
+                count : 0,
+                hidden: false,
+                text  : 'Start fleet',
+                title : unwired ? 'no usable lifecycle evidence — the runtime source is not wired' : `nothing to start or stop — ${reasons}`
+            },
+            stop: stopDesc
         }
     }
 

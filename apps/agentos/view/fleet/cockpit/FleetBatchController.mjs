@@ -69,54 +69,63 @@ class FleetBatchController extends ReadingSurfacesController {
     stopFleetPromise = null
 
     /**
-     * @summary The fleet button's press, routed by the plan it shows: an armed stop's second press
-     * sends; a `Stop fleet · n` label arms the stop; any `Start fleet` label starts — the plain one
-     * too, whose press reports in the summary why nothing started.
-     * @returns {Object|Promise<Object>} The armed plan, or the batch outcome summary.
-     */
-    onFleetButton() {
-        const me = this;
-
-        if (me.stopFleetArmed) return me.onStopFleet();
-
-        return FleetStartPlan.describeFleetButton(me.getRosterRecords()).action === 'stop' ? me.onStopFleet() : me.onStartFleet()
-    }
-
-    /**
-     * @summary Write the fleet button's words. During a batch the last settled label stays and the
-     * button is disabled — a press mid-cascade is impossible, not ignored. While the stop is armed the
-     * chip reads `Stop fleet · press again`. Otherwise the plan's own label, the icon following the
-     * verb, and a plain label's reason on the title. Read it on settled rosters only.
+     * @summary Write the fleet buttons' words and visibility. During a batch the last settled labels
+     * stay and both buttons are disabled. While stop is armed `fleet-stop-button` reads
+     * `Stop fleet · press again` while `fleet-button` stays visible in a split fleet.
      * @protected
      */
     renderFleetButton() {
         const
-            me     = this,
-            button = me.getReference('fleet-button');
+            me          = this,
+            startButton = me.getReference('fleet-button'),
+            stopButton  = me.getReference('fleet-stop-button');
 
-        if (!button) return;
+        if (!startButton && !stopButton) return;
 
         if (me.startFleetPromise || me.stopFleetPromise) {
-            button.disabled = true;
+            if (stopButton)  stopButton.disabled  = true;
+            if (startButton) startButton.disabled = true;
             return
         }
 
-        const label = me.stopFleetArmed
-            ? {action: 'stop', text: 'Stop fleet · press again', title: null}
-            : FleetStartPlan.describeFleetButton(me.getRosterRecords());
+        const {start, stop} = FleetStartPlan.describeFleetButtons(me.getRosterRecords());
 
-        if (label.title) {
-            button.vdom.title = label.title
-        } else {
-            delete button.vdom.title
+        if (stopButton) {
+            const
+                armed    = Boolean(me.stopFleetArmed) && !stop.hidden,
+                stopText = armed ? 'Stop fleet · press again' : stop.text;
+
+            if (!stop.hidden) {
+                stopButton.vdom.title = stop.title ?? stopText
+            } else {
+                delete stopButton.vdom.title
+            }
+
+            stopButton.set({
+                cls     : armed ? ['fm-fleet-stop', 'fm-fleet-stop-armed'] : ['fm-fleet-stop'],
+                disabled: false,
+                hidden  : stop.hidden,
+                iconCls : 'fa-solid fa-stop',
+                text    : stopText
+            });
+            !stop.hidden && stopButton.update()
         }
 
-        button.set({
-            disabled: false,
-            iconCls : label.action === 'stop' ? 'fa-solid fa-stop' : 'fa-solid fa-play',
-            text    : label.text
-        });
-        button.update()
+        if (startButton) {
+            if (start.title) {
+                startButton.vdom.title = start.title
+            } else {
+                delete startButton.vdom.title
+            }
+
+            startButton.set({
+                disabled: false,
+                hidden  : start.hidden,
+                iconCls : 'fa-solid fa-play',
+                text    : start.text
+            });
+            !start.hidden && startButton.update()
+        }
     }
 
     /**
@@ -317,6 +326,7 @@ class FleetBatchController extends ReadingSurfacesController {
         clearTimeout(me.stopFleetArmTimer);
         me.stopFleetArmTimer = null;
         me.stopFleetArmed    = null;
+        me.renderFleetButton();
         me.stopFleetPromise  = me.executeStopFleetBatch(fresh).finally(() => {
             me.stopFleetPromise = null;
             me.renderFleetButton();
