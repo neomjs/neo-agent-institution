@@ -595,3 +595,14 @@
         --container-background-color: transparent;
     }
 }
+
+/* The engine Splitter's drag proxy is a document.body child, outside every pane and the cockpit's
+   splitter mapping: it wears the dock splitter's active formula (cockpit/Container.scss) on the FM
+   signal its own theme class declares, and the dock's flat, borderless geometry. */
+.neo-dragproxy.neo-splitter {
+    --splitter-border           : none;
+    --splitter-border-radius    : 0;
+    --splitter-hover-color      : color-mix(in srgb, var(--fm-signal) 45%, transparent);
+    --splitter-margin-horizontal: 0;
+    --splitter-margin-vertical  : 0;
+}

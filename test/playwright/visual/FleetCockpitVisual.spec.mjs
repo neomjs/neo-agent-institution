@@ -1251,7 +1251,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720-light.png')
     });
 
-    test('the Memories pane reading at 1280 — the engine splitter beside the reader wears the dock splitter\'s paint at rest and under the pointer, square and flush; both skins', async ({page}) => {
+    test('the Memories pane reading at 1280 — the engine splitter beside the reader wears the dock splitter\'s paint at rest, under the pointer and in a drag, square and flush; both skins', async ({page}) => {
         // 1000 tall: at 800 the strip leaves the grid body 130px, short of one 132px card row, and no row renders
         await page.setViewportSize({width: 1280, height: 1000});
         await bootSettledCockpit(page);
@@ -1289,6 +1289,32 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
             await splitter.hover();
             await expect.poll(async () => (await paint(splitter)).background, `${skin}: under the pointer, too`).toBe(hover);
+
+            // a real drag: the engine's proxy is a document.body child, outside the cockpit; the pointer
+            // returns before the release, so the rail keeps its width for the capture
+            const
+                box    = await splitter.boundingBox(),
+                x      = box.x + box.width / 2,
+                y      = box.y + box.height / 2,
+                proxy  = page.locator('.neo-dragproxy.neo-splitter'),
+                active = await dock.evaluate(el => {
+                    const probe = el.appendChild(document.createElement('div'));
+
+                    probe.style.backgroundColor = 'var(--dock-splitter-background-active)';
+
+                    const value = getComputedStyle(probe).backgroundColor;
+
+                    probe.remove();
+                    return value
+                });
+
+            await page.mouse.move(x, y);
+            await page.mouse.down();
+            await page.mouse.move(x + 30, y, {steps: 5});
+            await expect(proxy).toHaveCount(1);
+            await expect.poll(() => paint(proxy), `${skin}: the drag proxy wears the dock's active paint`).toEqual({...rest, background: active});
+            await page.mouse.move(x, y, {steps: 5});
+            await page.mouse.up();
 
             await page.mouse.move(0, 0);
             await expect.poll(async () => (await paint(splitter)).background).toBe(rest.background);
