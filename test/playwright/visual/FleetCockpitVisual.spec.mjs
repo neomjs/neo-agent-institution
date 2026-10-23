@@ -1221,6 +1221,46 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0)
     };
 
+    test('the Memories pane at 1280 — a selected summary row wears the roster card\'s selection paint: the selection shadow, no inset ring; both skins', async ({page}) => {
+        // 1000 tall: at 800 the strip leaves the grid body 130px, short of one 132px card row, and no row renders
+        await page.setViewportSize({width: 1280, height: 1000});
+        await bootSettledCockpit(page);
+        await openMemoriesPane(page);
+
+        const
+            pane       = page.locator('.fm-memories-pane'),
+            selected   = pane.locator('.neo-grid-row.neo-selected .fm-memories-card'),
+            cardShadow = () => selected.evaluate(card => getComputedStyle(card).boxShadow),
+            token      = () => page.evaluate(() => {
+                const probe = document.createElement('div');
+
+                probe.style.boxShadow = 'var(--fm-shadow-selection)';
+                document.body.appendChild(probe);
+
+                const value = getComputedStyle(probe).boxShadow;
+
+                probe.remove();
+                return value
+            }),
+            loaded     = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${MEMORIES_DRIVER}?state=three&t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await expect(pane.locator('.fm-memories-card')).toHaveCount(3);
+        await pane.locator('.fm-memories-card-title', {hasText: 'Terminal audit'}).click();
+        await expect(selected).toHaveCount(1);
+
+        for (const [skin, golden] of [['dark', 'memories-row-selected-1280.png'], ['light', 'memories-row-selected-1280-light.png']]) {
+            skin === 'light' && await switchToLightSkin(page);
+            await page.mouse.move(0, 0);
+
+            const expected = await token();
+
+            await expect.poll(cardShadow, `${skin}: the selected card casts the roster's --fm-shadow-selection`).toBe(expected);
+            expect(await cardShadow(), `${skin}: no inset ring remains`).not.toContain('inset');
+            await expect(pane.locator('.fm-memories-list'), skin).toHaveScreenshot(golden)
+        }
+    });
+
     test('the Memories pane at the 720 band — the head on the pane contract, the registers without grid chrome; both skins', async ({page}) => {
         await page.setViewportSize({width: 720, height: 900});
         await bootSettledCockpit(page);

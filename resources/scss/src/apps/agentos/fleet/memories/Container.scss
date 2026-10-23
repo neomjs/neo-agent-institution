@@ -167,9 +167,17 @@
         cursor: pointer;   /* the whole row reads: a click selects it into the reading surface */
     }
 
+    /* the roster card's selection language (roster/Container.scss): a calm signal tint, the border
+       shifted toward the signal and the selection shadow, never a ring */
     .neo-grid-row.neo-selected :is(.fm-memories-card, .fm-memories-turn) {
-        border-color: var(--fm-signal);
-        box-shadow  : inset 0 0 0 1px var(--fm-signal);
+        background-color: color-mix(in srgb, var(--fm-signal) 8%, var(--fm-panel));
+        border-color    : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-line-soft));
+        box-shadow      : var(--fm-shadow-selection);
+    }
+
+    /* a turn's signal stripe is its authored provenance, not selection paint: selected, it stays */
+    .neo-grid-row.neo-selected .fm-memories-turn {
+        border-left-color: var(--fm-signal);
     }
 
     &.neo-grid-container {
