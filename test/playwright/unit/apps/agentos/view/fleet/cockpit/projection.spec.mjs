@@ -39,7 +39,7 @@ const declaredDockConfigs = (cls, stopAt) => {
         Object.entries(ctor.config || {}).forEach(([key, value]) => {
             const name = key.replace(/_$/, '');
 
-            if (/^(dock|enableDock|flipMarkerPrefix|maximizeMarkerPrefix|maximizedNodeId|tearOutHostParam)/.test(name)) {
+            if (/^(dock|enableDock|flipMarkerPrefix|headerActions|maximizeMarkerPrefix|maximizedNodeId|tearOutHostParam)/.test(name)) {
                 acc[name] = value
             }
         });

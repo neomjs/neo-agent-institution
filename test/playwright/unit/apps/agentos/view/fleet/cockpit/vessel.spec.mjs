@@ -69,8 +69,10 @@ function installWindowVessel({openResult = true, closeResult = true, screen = nu
  * ownership, a pending admission, a provisional connection — writable by the arms, plus the one
  * write it routes: `retire`, which asks the cockpit's close effect and answers with the engine's
  * documented grammar (`false` or a rejection retains the retirement, anything else retires). The
- * real lifecycle's own contract is the engine's spec territory, met by the coupling arm below;
- * here it is the input.
+ * records are keyed by the Group key minted at admission (`popup:<itemId>`, then `:<n>` while that
+ * is held) and name the item they were opened for; `keyOf` resolves an item's newest record the
+ * engine's way. The real lifecycle's own contract is the engine's spec territory, met by the
+ * coupling arm below; here it is the input.
  * @param {Neo.component.Base} cockpit
  * @returns {Object}
  */
@@ -79,9 +81,11 @@ const fakeLifecycle = cockpit => {
 
     return {
         admissions, connections, owners, retirements,
-        getAdmission    : (sourceId, itemId) => admissions.get(itemId)  ?? null,
-        getConnection   : (sourceId, itemId) => connections.get(itemId) ?? null,
-        getOwner        : (sourceId, itemId) => owners.get(itemId)      ?? null,
+        getAdmission    : (sourceId, workspaceKey) => admissions.get(workspaceKey)  ?? null,
+        getConnection   : (sourceId, workspaceKey) => connections.get(workspaceKey) ?? null,
+        getOwner        : (sourceId, workspaceKey) => owners.get(workspaceKey)      ?? null,
+        keyOf           : (sourceId, itemId) => [admissions, connections, owners].reduce((key, records) =>
+            key ?? [...records].findLast(([, entry]) => entry.itemId === itemId)?.[0] ?? null, null),
         connectionEntries: () => [...connections],
         ownerEntries     : () => [...owners],
         // the engine registers and withdraws its effects on construct/destroy; inert here
@@ -211,11 +215,14 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(await cockpit.openTearOutVessel({itemId: 'perspectives', proxyRect: null, topologyIdentity: {}})).toBeNull();
         expect(vessel.openCalls, 'no vessel for an unprojected pane').toHaveLength(0);
 
-        // an item the Group already records as vessel-owned opens no second window
-        lifecycle.owners.set('stream', {itemId: 'stream', windowName: 'elsewhere'});
-        expect(await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: null, topologyIdentity: {}})).toBeNull();
+        // an item the Group already records as vessel-owned opens no second window — though the slot the
+        // Group reserved before asking, minted past the held key, is the item's newest record
+        lifecycle.owners.set('popup:stream', {itemId: 'stream', windowName: 'elsewhere'});
+        lifecycle.admissions.set('popup:stream:2', {itemId: 'stream'});
+        expect(await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: null, topologyIdentity: {workspaceKey: 'popup:stream:2'}})).toBeNull();
         expect(vessel.openCalls, 'no vessel for an owned item').toHaveLength(0);
         lifecycle.owners.clear();
+        lifecycle.admissions.clear();
 
         // Boolean grammar: windowOpen resolving false IS the blocked popup — null, never a throw
         vessel.restore();
@@ -256,6 +263,10 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         });
 
         expect(floored).toEqual({popupHeight: 240, popupWidth: 320, windowName: `fm-tearout-stream-${cockpit.id}`});
+
+        // a slot minted past its item's held key names a window of its own: two vessels never share one
+        expect(await cockpit.openTearOutVessel({itemId: 'stream', proxyRect: null, topologyIdentity: {...identity, workspaceKey: 'popup:stream:2'}}))
+            .toMatchObject({windowName: `fm-tearout-stream:2-${cockpit.id}`});
 
         expect(await cockpit.closeTearOutVessel({itemId: 'stream', windowName: 'fm-tearout-stream-x'}), 'the platform confirmed the close').toBe(true);
         expect(vessel.closeCalls).toEqual([{names: ['fm-tearout-stream-x'], windowId: cockpit.windowId}])
@@ -320,11 +331,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(cockpit.isVesselOwned('detail')).toBe(false);
         expect(cockpit.isVesselPending('detail')).toBe(false);
 
-        lifecycle.admissions.set('detail', {itemId: 'detail'});
+        lifecycle.admissions.set('popup:detail', {itemId: 'detail'});
         expect(cockpit.isVesselPending('detail'), 'a pending admission is in flight').toBe(true);
         lifecycle.admissions.clear();
 
-        lifecycle.connections.set('detail', {windowId: 'w1'});
+        lifecycle.connections.set('popup:detail', {itemId: 'detail', windowId: 'w1'});
         expect(cockpit.isVesselPending('detail'), 'a provisional connection is in flight').toBe(true);
         lifecycle.connections.clear();
 
@@ -336,7 +347,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         cockpit.tearOutHandlers = {...handlers, heldPane: itemId => itemId === 'detail' ? {id: 'held'} : null};
         expect(cockpit.isVesselPending('detail'), 'a held handle is in flight').toBe(true);
 
-        lifecycle.owners.set('detail', {itemId: 'detail', windowName: 'w'});
+        lifecycle.owners.set('popup:detail', {itemId: 'detail', windowName: 'w'});
         expect(cockpit.isVesselOwned('detail')).toBe(true);
         expect(cockpit.isVesselPending('detail'), 'committed ownership is never pending').toBe(false);
 
@@ -351,13 +362,13 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         vessel = installWindowVessel();
 
         // owned → return: the window closes by the owner's immutable name; the engine does the rest
-        lifecycle.owners.set('memories', {itemId: 'memories', windowName: `fm-tearout-memories-${cockpit.id}`});
+        lifecycle.owners.set('popup:memories', {itemId: 'memories', windowName: `fm-tearout-memories-${cockpit.id}`});
         expect(await cockpit.onMemoriesWindowToggle()).toEqual({returned: true, errors: []});
         expect(vessel.closeCalls).toEqual([{names: [`fm-tearout-memories-${cockpit.id}`], windowId: cockpit.windowId}]);
         lifecycle.owners.clear();
 
         // in flight → refuse instead of racing the admission
-        lifecycle.admissions.set('memories', {itemId: 'memories'});
+        lifecycle.admissions.set('popup:memories', {itemId: 'memories'});
         expect(await cockpit.onMemoriesWindowToggle()).toEqual({errors: ['a vessel is in flight for this pane'], detached: false});
         lifecycle.admissions.clear();
 
@@ -370,9 +381,9 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
     });
 
     test('returnPane reports the Group\'s retirement of the owner\'s exact vessel: a refused or failed close is not a return, and the owner stays for the retry', async () => {
-        const owner = {itemId: 'memories', windowName: `fm-tearout-memories-${cockpit.id}`, generationToken: 'gen-1'};
+        const owner = {itemId: 'memories', windowName: `fm-tearout-memories-${cockpit.id}`, generationToken: 'gen-1', workspaceKey: 'popup:memories'};
 
-        lifecycle.owners.set('memories', owner);
+        lifecycle.owners.set('popup:memories', owner);
 
         // the platform refuses (no such window, already closed, not closable)
         vessel = installWindowVessel({closeResult: false});
@@ -416,15 +427,19 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             const identity = await group.acquire(cockpit.id, {itemId: 'stream', proxyRect: {x: 0, y: 0, width: 640, height: 420}});
 
             expect(identity, 'admitted through the cockpit\'s open effect').toMatchObject({itemId: 'stream', windowName: name, workspaceKey: 'popup:stream'});
+
+            // the Group keys its records by the key it minted at admission, never by the item
+            const {workspaceKey} = identity;
+
             await group.onBind({...identity, windowId: 'vessel-1', generation: 1});
-            expect(group.getAdmission(cockpit.id, 'stream')).toBeTruthy();
-            expect(group.getConnection(cockpit.id, 'stream')).toBeTruthy();
+            expect(group.getAdmission(cockpit.id, workspaceKey)).toBeTruthy();
+            expect(group.getConnection(cockpit.id, workspaceKey)).toBeTruthy();
 
             // refused: the Group keeps its retry authority over the exact vessel; nothing is cleared
             expect(await group.retire(cockpit.id, identity)).toBe(false);
             expect(group.pendingRetirements(cockpit.id)).toEqual([identity]);
-            expect(group.getAdmission(cockpit.id, 'stream'), 'admission retained').toBeTruthy();
-            expect(group.getConnection(cockpit.id, 'stream'), 'connection retained').toBeTruthy();
+            expect(group.getAdmission(cockpit.id, workspaceKey), 'admission retained').toBeTruthy();
+            expect(group.getConnection(cockpit.id, workspaceKey), 'connection retained').toBeTruthy();
             expect(vessel.closeCalls).toEqual([{names: [name], windowId: cockpit.windowId}]);
 
             // failed: the rejection reaches the Group unchanged and is the same refusal
@@ -440,11 +455,11 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             answer = () => true;
             expect(await group.retire(cockpit.id, identity)).toBe(true);
             expect(group.pendingRetirements(cockpit.id)).toEqual([]);
-            expect(group.getAdmission(cockpit.id, 'stream')).toBeNull();
-            expect(group.getConnection(cockpit.id, 'stream')).toBeNull();
+            expect(group.getAdmission(cockpit.id, workspaceKey)).toBeNull();
+            expect(group.getConnection(cockpit.id, workspaceKey)).toBeNull();
 
             // committed ownership: the return is that same retirement, reported
-            group.recordOwner(cockpit.id, 'stream', {...identity, windowId: 'vessel-1'});
+            group.recordOwner(cockpit.id, workspaceKey, {...identity, windowId: 'vessel-1'});
             answer = () => false;
             expect(await cockpit.returnPane('stream')).toEqual({returned: false, errors: ['the vessel window did not close']});
             expect(group.pendingRetirements(cockpit.id)).toHaveLength(1);
@@ -464,7 +479,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         cockpit.syncControlBar = () => synced.push(1);
 
         // already in a vessel
-        lifecycle.owners.set('detail', {itemId: 'detail', windowName: 'w'});
+        lifecycle.owners.set('popup:detail', {itemId: 'detail', windowName: 'w'});
         expect(await cockpit.popOutPane('detail')).toEqual({detached: false, errors: ['detail is already in a vessel']});
         lifecycle.owners.clear();
 
@@ -549,7 +564,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         expect(recall.hidden).toBe(true);
 
         // in flight: the pane-side verb shows but refuses to race, the recall verb shows disabled
-        lifecycle.admissions.set('detail', {itemId: 'detail'});
+        lifecycle.admissions.set('popup:detail', {itemId: 'detail'});
         cockpit.syncControlBar();
         expect(detailToggle.hidden).toBe(false);
         expect(detailToggle.disabled).toBe(true);
@@ -559,7 +574,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         lifecycle.admissions.clear();
 
         // owned: both verbs offer the way home
-        lifecycle.owners.set('detail', {itemId: 'detail', windowName: 'w'});
+        lifecycle.owners.set('popup:detail', {itemId: 'detail', windowName: 'w'});
         cockpit.syncControlBar();
         expect(detailToggle.hidden).toBe(false);
         expect(detailToggle.disabled).toBe(false);
@@ -571,7 +586,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         // the memories twin
         const memoriesRecall = cockpit.getReference('memories-recall-chrome');
 
-        lifecycle.owners.set('memories', {itemId: 'memories', windowName: 'm'});
+        lifecycle.owners.set('popup:memories', {itemId: 'memories', windowName: 'm'});
         cockpit.syncControlBar();
         expect(memoriesRecall.hidden).toBe(false);
         expect(cockpit.getMemoriesPane()?.getReference('memories-window-toggle')?.text ?? 'Return memories').toBe('Return memories')
@@ -593,7 +608,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         expect(cockpit.tearOutHandlers.capturePane('detail'), 'capture precedes the owner row').toBe(true);
 
-        lifecycle.owners.set('detail', {itemId: 'detail', windowId: ownerWindowId, windowName});
+        lifecycle.owners.set('popup:detail', {itemId: 'detail', windowId: ownerWindowId, windowName});
 
         let ownershipId = 'fleet-cockpit-test-group';
 
@@ -651,7 +666,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             expect(cockpit.nativeVesselConversionSourceWindowId).toBe(ownerWindowId);
             expect(await seams.resumeNativeWindowDrag('detail'), 'cancel leaves the popup open').toBe(true);
             expect(vessel.closeCalls).toEqual([]);
-            expect(lifecycle.owners.has('detail')).toBe(true);
+            expect(lifecycle.owners.has('popup:detail')).toBe(true);
 
             vessel.restore();
             vessel = installWindowVessel({closeResult: false});
@@ -660,7 +675,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             })).toBe(true);
             expect(await seams.retireNativeWindowDrag(drag.draggedItem), 'a refused close retains the Group owner').toBe(false);
             expect(vessel.closeCalls).toEqual([{names: [windowName], windowId: cockpit.windowId}]);
-            expect(lifecycle.owners.has('detail')).toBe(true);
+            expect(lifecycle.owners.has('popup:detail')).toBe(true);
 
             vessel.restore();
             vessel = installWindowVessel();
@@ -732,7 +747,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             expect(owner).toBeTruthy();
             await group.onBind({...owner, windowId: popupWindowId, generation: 1});
             expect(cockpit.tearOutHandlers.capturePane('detail')).toBe(true);
-            group.recordOwner(cockpit.id, 'detail', {...owner, windowId: popupWindowId});
+            group.recordOwner(cockpit.id, owner.workspaceKey, {...owner, windowId: popupWindowId});
 
             const detached = cockpit.applyDockZoneOperation({operation: 'detachItem', itemId: 'detail'});
             expect(detached.errors).toEqual([]);
@@ -773,13 +788,13 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             expect(WorkspaceDocument.findContainingTabsId(cockpit.dockModel, 'detail')).toBe(targetTabsId);
             expect(cockpit.vesselPane('detail')).toBe(pane);
             expect(vessel.closeCalls).toEqual([{names: [owner.windowName], windowId: mainWindowId}]);
-            expect(group.getOwner(cockpit.id, 'detail')).toBeTruthy();
+            expect(group.getOwner(cockpit.id, owner.workspaceKey)).toBeTruthy();
 
             closeNow = true;
             await expect.poll(() => vessel.closeCalls.length, {timeout: 1000}).toBe(2);
             await expect.poll(() => Coordinator.nativeWindowDropCandidates.has(popupWindowId), {timeout: 1000}).toBe(false);
             expect(addTabCalls).toHaveLength(1);
-            expect(group.getOwner(cockpit.id, 'detail')).toBeNull();
+            expect(group.getOwner(cockpit.id, owner.workspaceKey)).toBeNull();
             await cockpit.refreshPromise;
             expect(cockpit.getAgentDetailPane()).toBe(pane);
             expect(pane.isDestroyed).toBeFalsy()
@@ -809,7 +824,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         const detailPane = cockpit.getReference('agent-detail'),
               item       = cockpit.dockModel.items.detail;
 
-        lifecycle.owners.set('detail', {itemId: 'detail', windowName: 'w'});
+        lifecycle.owners.set('popup:detail', {itemId: 'detail', windowName: 'w'});
 
         const standIn = cockpit.resolvePane('detail', item);
 
@@ -819,7 +834,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         // the pending phase leaves the same stand-in
         lifecycle.owners.clear();
-        lifecycle.connections.set('detail', {windowId: 'w1'});
+        lifecycle.connections.set('popup:detail', {itemId: 'detail', windowId: 'w1'});
         expect(cockpit.resolvePane('detail', item).cls).toContain('fm-pane-placeholder');
 
         // docked again: the SAME live instance — the declared pane is parked, never re-created
@@ -920,8 +935,8 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         });
 
         test('names the pane first, then the resident it shows, then the instance — two vessels never share a title', () => {
-            lifecycle.owners.set('detail',   {windowId: 'w-detail'});
-            lifecycle.owners.set('memories', {windowId: 'w-memories'});
+            lifecycle.owners.set('popup:detail',   {itemId: 'detail',   windowId: 'w-detail'});
+            lifecycle.owners.set('popup:memories', {itemId: 'memories', windowId: 'w-memories'});
             cockpit.detailRecord = {agentId: 'neo-fable-clio', displayName: 'Clio'};
             titles.length        = 0;
 
@@ -937,7 +952,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
             cockpit.getStateProvider().getData = () => undefined;
 
             cockpit.afterTearOutWindowConnect({connection: {windowId: 'w-tasks'}, itemId: 'tasks'});
-            lifecycle.connections.set('operator', {windowId: 'w-operator'});
+            lifecycle.connections.set('popup:operator', {itemId: 'operator', windowId: 'w-operator'});
             cockpit.pushVesselTitles();
 
             expect(titles).toEqual([
@@ -947,7 +962,7 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
         });
 
         test('the inspector\'s window follows the resident it shows', () => {
-            lifecycle.owners.set('detail', {windowId: 'w-detail'});
+            lifecycle.owners.set('popup:detail', {itemId: 'detail', windowId: 'w-detail'});
             cockpit.detailRecord = {agentId: 'neo-opus-ada', displayName: 'Ada'};
 
             expect(titles.at(-1)).toEqual({value: 'Agent detail · Ada — Local fleet', windowId: 'w-detail'})
