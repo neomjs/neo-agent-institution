@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    395f4c83dc41da9dd39f8e88db9b352801088361
+    0ab667195e4ef9bacbf4a9f9a1aa3636dfec2c70
 
 apps/agentos/CARD-CONTRACT.md
     8557e8e96e524eee681c5d94624dc72a309adcc0
@@ -741,7 +741,7 @@ resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
     9f6319dfbd483b6b548a1fdfd985d6af2714e1f8
 
 resources/scss/src/apps/agentos/fleet/memories/Container.scss
-    10af8bce87524fc8b3f4e1e69517d901a6002427
+    0cd72b5cce626d6c3160c2478f482066823ab48d
 
 resources/scss/src/apps/agentos/fleet/memories/ReaderComponent.scss
     3049137e41605023cbfe0ed9d15f9a12cfe9e41e
@@ -855,7 +855,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    6ed3e23d53360d77f3013cab424dcabeef20f721
+    4e7f9b2dcd28077336efa4b4a13a45f5fdc2e1a7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -1062,10 +1062,16 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane
     e2a3e6e4e821e3f2150299f148878d4dc2d0570c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280-light.png
-    2b96a3ffd0788e1160d52fd10d9ab0aa2ce968d5
+    0ee3fb82cc21e6558a2e5cfc4a6d8629aea60261
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280.png
-    ca22575833d75020e5a33ccc7ff944030aae342a
+    6c9c228b275e39e87d0d3fa1ba1a1a83a48c9a69
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-row-selected-1280-light.png
+    f29b1604adc6e42ed60e9e4434cedc54f8205fb9
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-row-selected-1280.png
+    46bae7c59420ba3a291fab386ac8d82ad162e8c5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-current.png
     55f8d85e0e1d3ec2f6e11a9c889e21d50f3c0729
