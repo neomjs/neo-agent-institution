@@ -101,8 +101,8 @@ class VesselContainer extends Workspace {
             resolveNativeWindowDrag(movingWindowId) {
                 const
                     ownerEntry   = me.nativeWindows?.ownerEntries(me.id)?.find(([, owner]) => owner.windowId === movingWindowId),
-                    itemId       = ownerEntry?.[0],
                     owner        = ownerEntry?.[1],
+                    itemId       = owner?.itemId,
                     pane         = itemId ? me.vesselPane(itemId) : null,
                     ownershipId  = me.participation?.ownershipId,
                     workspaceId  = me.participation?.workspaceId;
@@ -118,14 +118,16 @@ class VesselContainer extends Workspace {
                 return {draggedItem: pane, embodyNativeHover: true, sourceWindowId: movingWindowId, widgetName: itemId}
             },
             suspendNativeWindowDrag(itemId, data) {
-                const owner = me.nativeWindows?.getOwner(me.id, itemId);
+                const
+                    workspaceKey = me.vesselKey(itemId),
+                    owner        = me.nativeWindows?.getOwner(me.id, workspaceKey);
 
                 if (me.windowId == null || !me.nativeVesselParkHandlers || data?.targetWindowId !== me.windowId ||
                     !owner?.windowName || owner.windowId !== data.sourceWindowId) {
                     return false
                 }
 
-                return me.nativeVesselParkHandlers.onConversionIn({itemId, windowName: owner.windowName})
+                return me.nativeVesselParkHandlers.onConversionIn({itemId, windowName: owner.windowName, workspaceKey})
             },
             resumeNativeWindowDrag: itemId => me.finishNativeVesselDrag(itemId, 'rejected'),
             retireNativeWindowDrag: draggedItem => me.finishNativeVesselDrag(draggedItem?.dockItemId, 'committed')
@@ -153,10 +155,13 @@ class VesselContainer extends Workspace {
      * @summary Accepts the native-main handoff without moving or focusing the source popup.
      * The hold is the gesture; the exact Group-owned window retires only after commit.
      * @param {Object} vessel
+     * @param {String} vessel.itemId
+     * @param {String} vessel.windowName
+     * @param {String} [vessel.workspaceKey] The vessel's Group key; without it the item's vessel answers.
      * @returns {Boolean}
      */
-    parkNativeVessel({itemId, windowName}) {
-        const owner = this.nativeWindows?.getOwner(this.id, itemId);
+    parkNativeVessel({itemId, windowName, workspaceKey=this.vesselKey(itemId)}) {
+        const owner = this.nativeWindows?.getOwner(this.id, workspaceKey);
 
         if (this.windowId == null || !owner || owner.windowId == null || owner.windowName !== windowName) return false;
 
@@ -168,10 +173,13 @@ class VesselContainer extends Workspace {
     /**
      * @summary A cancelled main-target gesture leaves the exact source popup in place.
      * @param {Object} vessel
+     * @param {String} vessel.itemId
+     * @param {String} vessel.windowName
+     * @param {String} [vessel.workspaceKey] The vessel's Group key; without it the item's vessel answers.
      * @returns {Boolean}
      */
-    reshowNativeVessel({itemId, windowName}) {
-        const owner = this.nativeWindows?.getOwner(this.id, itemId);
+    reshowNativeVessel({itemId, windowName, workspaceKey=this.vesselKey(itemId)}) {
+        const owner = this.nativeWindows?.getOwner(this.id, workspaceKey);
 
         return Boolean(owner && owner.windowId === this.nativeVesselConversionSourceWindowId &&
             owner.windowName === windowName)
@@ -185,7 +193,7 @@ class VesselContainer extends Workspace {
     async disposeNativeVessel(vessel) {
         if (!this.reshowNativeVessel(vessel)) return false;
 
-        const result = await this.returnPane(vessel.itemId);
+        const result = await this.returnPane(vessel.itemId, vessel.workspaceKey);
 
         return result?.returned === true
     }
@@ -430,6 +438,18 @@ class VesselContainer extends Workspace {
     }
 
     /**
+     * @summary The Group key of the vessel holding one item, or `null`. The Group keys its records by the key
+     * it minted at admission, and each Fleet vessel holds the one pane it was opened for, so the item's
+     * newest native record is its vessel.
+     * @param {String} itemId
+     * @returns {String|null}
+     * @protected
+     */
+    vesselKey(itemId) {
+        return this.nativeWindows?.keyOf(this.id, itemId) ?? null
+    }
+
+    /**
      * @summary Whether the Group records committed vessel ownership for an item — the pane lives
      * in its own window, and the return path is that window's death.
      * @param {String} itemId
@@ -437,7 +457,7 @@ class VesselContainer extends Workspace {
      * @protected
      */
     isVesselOwned(itemId) {
-        return !!this.nativeWindows?.getOwner(this.id, itemId)
+        return !!this.nativeWindows?.getOwner(this.id, this.vesselKey(itemId))
     }
 
     /**
@@ -452,10 +472,12 @@ class VesselContainer extends Workspace {
 
         if (!handlers || this.isVesselOwned(itemId)) return false;
 
+        const workspaceKey = this.vesselKey(itemId);
+
         return handlers.activeVessel?.itemId === itemId
             || !!handlers.heldPane(itemId)
-            || !!this.nativeWindows?.getAdmission(this.id, itemId)
-            || !!this.nativeWindows?.getConnection(this.id, itemId)
+            || !!this.nativeWindows?.getAdmission(this.id, workspaceKey)
+            || !!this.nativeWindows?.getConnection(this.id, workspaceKey)
     }
 
     /**
@@ -545,10 +567,12 @@ class VesselContainer extends Workspace {
      */
     async openTearOutVessel({itemId, proxyRect, sourceRect=null, topologyIdentity}) {
         let me         = this,
-            windowName = `fm-tearout-${itemId}-${me.id}`;
+            windowName = me.tearOutWindowName(itemId, topologyIdentity?.workspaceKey);
 
-        // fail-closed preconditions: only a live, projected, singly-owned pane may embody
-        if (me.isVesselOwned(itemId) || !me.findProjectedDockPane(itemId)) {
+        // fail-closed preconditions: only a live, projected, singly-owned pane may embody. The slot being
+        // opened is the item's newest Group record, so an older vessel's ownership is found by its item
+        if (me.nativeWindows?.ownerEntries(me.id).some(([, owner]) => owner.itemId === itemId) ||
+            !me.findProjectedDockPane(itemId)) {
             return null
         }
 
@@ -575,6 +599,18 @@ class VesselContainer extends Workspace {
         } catch (error) {
             return null
         }
+    }
+
+    /**
+     * @summary Names a vessel's window by its pane and this cockpit, plus the suffix its Group key was minted
+     * with: two live vessels never share a name, which `Main#windowOpen` would answer by reusing the first window.
+     * @param {String} itemId
+     * @param {String} [workspaceKey] The vessel's Group key.
+     * @returns {String}
+     * @protected
+     */
+    tearOutWindowName(itemId, workspaceKey) {
+        return `fm-tearout-${itemId}${this.tearOutKeySuffix(itemId, workspaceKey)}-${this.id}`
     }
 
     /**
@@ -651,11 +687,12 @@ class VesselContainer extends Workspace {
      * again), keeps the owner, and is reported as not returned. An attempted close is never a
      * return, and no window is ever closed around the Group's back.
      * @param {String} itemId
+     * @param {String} [workspaceKey] The vessel's Group key; without it the item's vessel answers.
      * @returns {Promise<{returned: Boolean, errors: String[]}>}
      */
-    async returnPane(itemId) {
+    async returnPane(itemId, workspaceKey=this.vesselKey(itemId)) {
         let me    = this,
-            owner = me.nativeWindows?.getOwner(me.id, itemId),
+            owner = me.nativeWindows?.getOwner(me.id, workspaceKey),
             retired;
 
         if (!owner) {
@@ -663,7 +700,7 @@ class VesselContainer extends Workspace {
         }
 
         try {
-            retired = await me.nativeWindows.retire(me.id, {...owner, itemId})
+            retired = await me.nativeWindows.retire(me.id, {...owner, itemId, workspaceKey})
         } catch (error) {
             return {returned: false, errors: [`the vessel window did not close: ${error?.message ?? error}`]}
         }
@@ -762,7 +799,7 @@ class VesselContainer extends Workspace {
         let me = this;
 
         [...(me.nativeWindows?.ownerEntries(me.id) ?? []), ...(me.nativeWindows?.connectionEntries(me.id) ?? [])]
-            .forEach(([itemId, {windowId}]) => me.pushVesselTitle(itemId, windowId))
+            .forEach(([, {itemId, windowId}]) => me.pushVesselTitle(itemId, windowId))
     }
 
     /**

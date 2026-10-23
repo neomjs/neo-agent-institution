@@ -396,7 +396,8 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
             // the Group holds the vessel as a PROVISIONAL connection until the terminal commits —
             // a window bound to its reserved slot while the source gesture is still live
             await expect.poll(async () => {
-                const connection = await app.callMethod(cockpitId, 'nativeWindows.getConnection', [cockpitId, 'operator']);
+                const key        = await app.callMethod(cockpitId, 'vesselKey', ['operator']),
+                      connection = key && await app.callMethod(cockpitId, 'nativeWindows.getConnection', [cockpitId, key]);
 
                 midGestureWindowId = connection?.windowId;
                 return midGestureWindowId || null
