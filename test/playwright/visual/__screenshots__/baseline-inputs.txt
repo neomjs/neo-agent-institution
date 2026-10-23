@@ -639,7 +639,7 @@ apps/agentos/view/system/SeatRootController.mjs
     11d0ce4be716d394c51f275b56112e2c4aa19fac
 
 resources/scss/src/apps/agentos/Viewport.scss
-    d77e0b6dd6e910a1bf534d6d464998622cd57dfc
+    97e5b1359e8dd279907b78047cb10165d13d6397
 
 resources/scss/src/apps/agentos/accounts/List.scss
     94fa05801c3e3642c6586cb2c9072418bfa8081c
@@ -663,7 +663,7 @@ resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
 
 resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    16460d43cba83bd65d4edbacffe8e876de027985
+    145f2f4db994d542e33c3d93da90f89dd97bb1b7
 
 resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
     a76f2a2b6be68b4938b5625da00489fbb71a85f7
@@ -855,7 +855,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     8d9a0d039b5069c616ed031322e7ecffa5200c49
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    a3640e61424f61df46af9eae95492e0e37e2e2f7
+    6ed3e23d53360d77f3013cab424dcabeef20f721
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -1060,6 +1060,12 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720.png
     e2a3e6e4e821e3f2150299f148878d4dc2d0570c
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280-light.png
+    2b96a3ffd0788e1160d52fd10d9ab0aa2ce968d5
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280.png
+    ca22575833d75020e5a33ccc7ff944030aae342a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-current.png
     55f8d85e0e1d3ec2f6e11a9c889e21d50f3c0729
