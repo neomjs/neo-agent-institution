@@ -1251,6 +1251,51 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.fm-memories-pane')).toHaveScreenshot('memories-pane-720-light.png')
     });
 
+    test('the Memories pane reading at 1280 — the engine splitter beside the reader wears the dock splitter\'s paint at rest and under the pointer, square and flush; both skins', async ({page}) => {
+        // 1000 tall: at 800 the strip leaves the grid body 130px, short of one 132px card row, and no row renders
+        await page.setViewportSize({width: 1280, height: 1000});
+        await bootSettledCockpit(page);
+        await openMemoriesPane(page);
+
+        const
+            pane     = page.locator('.fm-memories-pane'),
+            splitter = pane.locator('.fm-memories-splitter'),
+            dock     = page.locator('.neo-dashboard-dock-splitter').first(),
+            paint    = locator => locator.evaluate(el => {
+                const style = getComputedStyle(el);
+
+                return {background: style.backgroundColor, margin: style.margin, radius: style.borderRadius}
+            }),
+            loaded   = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${MEMORIES_DRIVER}?state=three&t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await expect(pane.locator('.fm-memories-card')).toHaveCount(3);
+        await pane.locator('.fm-memories-card-title', {hasText: 'Wake transport'}).click();
+        await expect(pane).toHaveClass(/\bis-reading\b/);
+        await expect(splitter).toBeVisible();
+
+        for (const [skin, golden] of [['dark', 'memories-pane-reading-1280.png'], ['light', 'memories-pane-reading-1280-light.png']]) {
+            skin === 'light' && await switchToLightSkin(page);
+            await page.mouse.move(0, 0);
+
+            const rest = await paint(dock);
+
+            await expect.poll(() => paint(splitter), `${skin}: at rest the pane's splitter is the dock splitter`).toEqual(rest);
+
+            await dock.hover();
+            await expect.poll(async () => (await paint(dock)).background, `${skin}: the dock splitter answers the pointer`).not.toBe(rest.background);
+
+            const hover = (await paint(dock)).background;
+
+            await splitter.hover();
+            await expect.poll(async () => (await paint(splitter)).background, `${skin}: under the pointer, too`).toBe(hover);
+
+            await page.mouse.move(0, 0);
+            await expect.poll(async () => (await paint(splitter)).background).toBe(rest.background);
+            await expect(pane, skin).toHaveScreenshot(golden)
+        }
+    });
+
     test('every strip and rail pane reads one head — the chrome title on the pane inset, no button at a slab\'s scale (computed, no golden)', async ({page}) => {
         await page.setViewportSize({width: 1280, height: 800});
         await bootSettledCockpit(page);
@@ -1414,6 +1459,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
      * @type {String}
      */
     const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
+
+    /**
+     * The Memories driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: the cockpit's bridge answers a selected
+     * resident's session summaries.
+     * @type {String}
+     */
+    const MEMORIES_DRIVER = '../../../../test/playwright/visual/memoriesEnvelope.driver.mjs';
 
     /**
      * The Skip-verb driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: it puts the verb a newer pin adds on the wire.
