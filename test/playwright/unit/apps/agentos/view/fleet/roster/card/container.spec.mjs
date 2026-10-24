@@ -1426,7 +1426,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('a wired lane carries its claim age; a wired-empty lane says so, with open-lane count orthogonal', () => {
+    test('a wired lane carries its claim age leading the subject; a wired-empty lane says so, with open-lane count orthogonal', () => {
         const
             card = createCard({
                 agentId: 'vega',
@@ -1439,13 +1439,18 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             lane = () => card.down({reference: 'card-lane'}),
             text = () => lane().vdom.cn.map(node => node.text).join('');
 
-        expect(text()).toBe('working on #418 · claimed 2m ago');
+        expect(lane().vdom.cn).toEqual([
+            {tag: 'span', cls: ['fm-lane-age'], text: '2m ago · '},
+            {tag: 'span', text: 'working on #418'}
+        ]);
+        expect(text()).toBe('2m ago · working on #418');
         expect(lane().vdom.title).toBe('working on #418 · claimed 2m ago');
         expect(lane().vdom.cn.every(node => node.html == null)).toBe(true);
         expect(card.down({reference: 'card-lane-count'}).text).toBe('17 lanes');
 
         // A wired read with no current subject is explicit; a zero open-work count remains unbadged.
         applySet(card, {laneLine: null, laneClaimedAt: null, openLaneCount: 0});
+        expect(lane().vdom.cn).toEqual([{tag: 'span', text: 'no lane claimed'}]);
         expect(text()).toBe('no lane claimed');
         expect(lane().vdom.title).toBeFalsy();
         expect(card.down({reference: 'card-lane-count'}).hidden).toBe(true);
@@ -1462,14 +1467,14 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             state: 'ok'
         });
 
-        expect(card.down({reference: 'card-lane'}).vdom.cn[0].text).toBe('existing lane text');
+        expect(card.down({reference: 'card-lane'}).vdom.cn).toEqual([{tag: 'span', text: 'existing lane text'}]);
         expect(card.down({reference: 'card-lane'}).vdom.cn[0].text).not.toContain('claimed');
         expect(card.down({reference: 'card-lane'}).vdom.title).toBeFalsy();
 
         card.destroy()
     });
 
-    test('a claim age preserves the distinguishing tail of long lane subjects', () => {
+    test('a claim age leads long lane subjects verbatim without middle elision', () => {
         const subjects = ['source-alpha', 'source-beta'].map(source =>
             `control-plane state synchronization for ${source} continuation`);
         const rendered = subjects.map(laneLine => {
@@ -1486,11 +1491,11 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             return {text, title}
         });
 
-        expect(rendered[0].text).toContain('source-alpha continuation · claimed 2m ago');
-        expect(rendered[1].text).toContain('source-beta continuation · claimed 2m ago');
+        expect(rendered[0].text).toBe(`2m ago · ${subjects[0]}`);
+        expect(rendered[1].text).toBe(`2m ago · ${subjects[1]}`);
         expect(rendered[0].text).not.toBe(rendered[1].text);
-        expect(rendered[0].title).toContain('source-alpha continuation · claimed 2m ago');
-        expect(rendered[1].title).toContain('source-beta continuation · claimed 2m ago')
+        expect(rendered[0].title).toBe(`${subjects[0]} · claimed 2m ago`);
+        expect(rendered[1].title).toBe(`${subjects[1]} · claimed 2m ago`)
     });
 
     test('a wired claim ages without a record change and its ticker is canceled on reseat and destroy', async () => {
@@ -1523,7 +1528,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
             await Promise.resolve();
             await Promise.resolve();
             expect(card.record).toBe(record);
-            expect(card.down({reference: 'card-lane'}).vdom.cn.map(node => node.text).join('')).toBe('working on #418 · claimed 2m ago');
+            expect(card.down({reference: 'card-lane'}).vdom.cn.map(node => node.text).join('')).toBe('2m ago · working on #418');
             expect(card.down({reference: 'card-lane'}).vdom.title).toBe('working on #418 · claimed 2m ago');
             expect(waits).toHaveLength(2);
 
@@ -1748,53 +1753,51 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         card.destroy()
     });
 
-    test('lane-elision-distinguishes (#15536): two lanes sharing a long prefix collapse to the SAME head yet keep DIFFERENT tails — the shared-prefix falsifier, without hover', () => {
-        // The AC's falsifier, using the same two fixtures the AgentCardSynthesisRenderNL goldens render
-        // (both share "control-plane", both carry a 2-digit overflow count) so the unit and the e2e
-        // cannot drift apart. The goldens catch a VISUAL regression; this owns the SEMANTIC claim, which
-        // a regenerated baseline could otherwise bless away.
+    test('lane-reads-subject (#801): two real A2A subjects sharing [lane-claim] render different visible text, the age node precedes the subject, and no row renders — … —', () => {
         const
-            laneA = 'control-plane restart actuator R3 seam reconciliation across the multi-window dock topology',
-            laneB = 'control-plane deployment-state bridge self-heal recent-event-limit tuning + overlay migration',
-            cut   = line => AgentCard.elideLaneLine(line);
+            laneA     = '[lane-claim] Institution #801 — retire middle elision in the roster card lane row · Requested action: none',
+            laneB     = '[lane-claim] Stage #353 — native temporal groom capture and fresh worker replay · Requested action: none',
+            claimedAt = new Date(Date.now() - 55 * 60_000).toISOString(),
+            cardA     = createCard({agentId: 'maryam', laneLine: laneA, laneClaimedAt: claimedAt, openLaneCount: 23, sources: {...observedSources, lane: observedLane}, state: 'ok'}),
+            cardB     = createCard({agentId: 'sophie', laneLine: laneB, laneClaimedAt: claimedAt, openLaneCount: 17, sources: {...observedSources, lane: observedLane}, state: 'ok'}),
+            laneOf    = card => card.down({reference: 'card-lane'}),
+            textOf    = card => laneOf(card).vdom.cn.map(node => node.text).join('');
 
-        // both elide (each is past the two-line clamp), so each yields a head+tail pair, never `whole`
-        expect(cut(laneA).whole).toBeUndefined();
-        expect(cut(laneB).whole).toBeUndefined();
+        expect(AgentCard.elideLaneLine).toBeUndefined();
 
-        // the HEADS are identical — that is what makes this a real falsifier rather than a happy path:
-        // a head-only elision would render these two distinct lanes as the same visible fragment
-        expect(cut(laneA).head).toBe(cut(laneB).head);
+        // two real A2A subjects sharing [lane-claim] and trailing boilerplate render different visible text,
+        // the age node precedes the subject verbatim, and no row renders ` — … — `
+        expect(textOf(cardA)).not.toBe(textOf(cardB));
+        expect(textOf(cardA)).not.toContain(' — … — ');
+        expect(textOf(cardB)).not.toContain(' — … — ');
 
-        // ...and the preserved TAILS are what still tell them apart, each non-empty
-        expect(cut(laneA).tail).not.toBe(cut(laneB).tail);
-        expect(cut(laneA).tail.length).toBeGreaterThan(0);
-        expect(cut(laneB).tail.length).toBeGreaterThan(0);
+        expect(laneOf(cardA).vdom.cn).toEqual([
+            {tag: 'span', cls: ['fm-lane-age'], text: '55m ago · '},
+            {tag: 'span', text: laneA}
+        ]);
+        expect(laneOf(cardB).vdom.cn).toEqual([
+            {tag: 'span', cls: ['fm-lane-age'], text: '55m ago · '},
+            {tag: 'span', text: laneB}
+        ]);
+        expect(laneOf(cardA).vdom.cn.every(node => node.html == null)).toBe(true);
+        expect(laneOf(cardB).vdom.cn.every(node => node.html == null)).toBe(true);
+        expect(laneOf(cardA).vdom.title).toBe(`${laneA} · claimed 55m ago`);
+        expect(laneOf(cardB).vdom.title).toBe(`${laneB} · claimed 55m ago`);
 
-        // rendered: the distinguishing tail reaches the DOM as its own inert text node, with NO hover or
-        // title fallback carrying the truth — a tooltip-only tail would fail the touch-access AC
-        const
-            card = createCard({agentId: 'vega', laneLine: laneA, openLaneCount: 23, state: 'ok'}),
-            lane = () => card.down({reference: 'card-lane'});
+        // re-seating onto the sibling lane keeps the same instance and swaps the verbatim subject
+        const laneId = laneOf(cardA).id;
 
-        expect(lane().vdom.cn).toHaveLength(2);
-        expect(lane().vdom.cn[0].cls).toContain('fm-lane-elide');
-        expect(lane().vdom.cn[1].cls).toContain('fm-lane-tail');
-        expect(lane().vdom.cn[1].text).toBe(cut(laneA).tail);
-        expect(lane().vdom.cn[1].html ?? null).toBeNull();      // inert node, not innerHTML
-        expect(lane().vdom.title ?? null).toBeNull();           // the tail is VISIBLE, never hover-only
+        applySet(cardA, {laneLine: laneB, openLaneCount: 17});
+        expect(laneOf(cardA).id).toBe(laneId);
+        expect(laneOf(cardA).vdom.cn).toEqual([
+            {tag: 'span', cls: ['fm-lane-age'], text: '55m ago · '},
+            {tag: 'span', text: laneB}
+        ]);
+        expect(laneOf(cardA).vdom.title).toBe(`${laneB} · claimed 55m ago`);
+        expect(cardA.down({reference: 'card-lane-count'}).text).toBe('17 lanes');
 
-        // re-seating onto the sibling lane keeps the same instance and swaps only the tail — the badge
-        // count is a separate axis and must not be what distinguishes them
-        const laneId = lane().id;
-
-        applySet(card, {laneLine: laneB, openLaneCount: 17});
-        expect(lane().id).toBe(laneId);
-        expect(lane().vdom.cn[0].text).toBe(cut(laneB).head);
-        expect(lane().vdom.cn[1].text).toBe(cut(laneB).tail);
-        expect(card.down({reference: 'card-lane-count'}).text).toBe('17 lanes');
-
-        card.destroy()
+        cardA.destroy();
+        cardB.destroy()
     });
 
     test('avatar-persists (#15536): a null avatarUrl keeps the slot and its accessible name — the monogram holds it, the head row never collapses, and no lifecycle state hides the keeper', () => {

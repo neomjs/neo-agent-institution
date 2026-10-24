@@ -6,8 +6,8 @@ import {expect, landFleetRoster, test} from '../../fixtures.mjs';
  * falsifiers the retired design-evidence baseline established (the carry-forward where they earn permanence):
  *
  * - long display/engine names crowding the identity column;
- * - two lanes sharing their first seven characters + 2-digit overflow counts — the narrow falsifier:
- *   the head+tail middle elision must preserve each lane's DISTINGUISHING tail;
+ * - two long lanes sharing their first seven characters + 2-digit overflow counts — the single-line
+ *   subject ellipsizes at the right edge while the hover title retains the full line;
  * - wake/throttle telltales + a pending control + a retained reject reason;
  * - mixed session state (wedged/limited/idle/off) and the full source-health vocabulary
  *   (wired-observed / wired-inferred / missing / not-wired) — the summary strip must NAME the
@@ -50,7 +50,7 @@ const
     repo    = (state, confidence = 'none') => ({source: 'fleet:fleetStatus',    state, confidence}),
     runtime = (state, confidence = 'none') => ({source: 'fleet:runtimeStatus',  state, confidence});
 
-// two lanes sharing the first seven chars ("control") + 2-digit overflow — the tail-elision falsifier
+// two long lanes sharing the first seven chars ("control") + 2-digit overflow
 const PATHOLOGICAL_ROSTER = [
     {
         // the faceless row: no avatarUrl at all — the S5 path before a GitHub face resolves. The
@@ -164,7 +164,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         expect(same.properties.id).toBe(observed.properties.id)
     });
 
-    test('the selected composition under long names, tail-elided shared-prefix lanes, mixed source health, telltales, and the avatar keeper', async ({page, neuralLink}) => {
+    test('the selected composition under long names, shared-prefix lanes, mixed source health, telltales, and the avatar keeper', async ({page, neuralLink}) => {
         await page.setViewportSize({width: 900, height: 1000});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
