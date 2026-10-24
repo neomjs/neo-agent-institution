@@ -229,9 +229,10 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         expect(dockBefore.items.detail.autoHidden).toBe(true);
         await expect.poll(centerWidth).toBe(1332);
 
-        const rectsBefore = await cardRects();
+        // the roster renders its cards hidden until the row height it measures sizes them: the claim starts once both show
+        await expect(page.locator('.fm-agent-card:visible'), 'both residents render a card').toHaveCount(2);
 
-        expect(rectsBefore, 'both residents render a card').toHaveLength(2);
+        const rectsBefore = await cardRects();
 
         // 1. a select reveals detail over the layout: no card, no center width and no document moves
         await card('Ada').locator('.fm-card-name').click();
