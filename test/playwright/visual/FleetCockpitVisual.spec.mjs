@@ -203,7 +203,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             has: page.getByRole('img', {name: row.displayName, exact: true})
         });
 
-        await expect(card(sampleRoster[0]).locator('.fm-card-lane')).toContainText('source-alpha continuation · claimed 12m ago');
+        await expect(card(sampleRoster[0]).locator('.fm-card-lane')).toHaveText(`12m ago · ${laneLine}`);
         await expect(card(sampleRoster[1]).locator('.fm-card-lane')).toHaveText('no lane claimed');
         await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-lane-claim.png');
         await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')

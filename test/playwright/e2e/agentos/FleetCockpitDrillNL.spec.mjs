@@ -195,7 +195,7 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(detail.locator('.fm-detail-ledger'), 'the header row reads the same fact').toContainText(/repository\s*wired · observed/);
 
         await expect(targetItem.locator('.fm-card-lane')).toContainText(laneLine);
-        await expect(targetItem.locator('.fm-card-lane')).toContainText(/claimed \d+m ago/);
+        await expect(targetItem.locator('.fm-card-lane')).toContainText(/\d+m ago · /);
         await expect(pill('lane')).toHaveText(/^updated \d+s ago$/);
         await expect(pill('lane')).toHaveClass(/\bis-fresh\b/);
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(laneLine);
