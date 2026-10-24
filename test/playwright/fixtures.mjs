@@ -22,7 +22,7 @@ export const departedWindowSends = /^App Worker: Error: (?:worker\.Base#promiseM
  * @summary Docks the selection's revealed Agent detail through the reveal's own pin, for an arm that pops the
  * detail out next: a pop-out admits only the visible pane of a tab flow, and the reveal toolbar carries no
  * pop-out. A no-op when no reveal shows the detail (it is docked already). Delete with its callers once the
- * reveal toolbar carries the item's header actions (ticket-ref-ok: neomjs/neo#20095 is the deletion anchor).
+ * reveal toolbar carries the item's header actions.
  * @param {Object} page The Playwright page.
  * @returns {Promise<void>}
  */
