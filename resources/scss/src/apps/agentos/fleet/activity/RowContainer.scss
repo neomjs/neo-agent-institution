@@ -1,5 +1,6 @@
 /* One fixed-height pooled row. Wide and narrow layouts move the same five child components; no
-   record recycle inserts, removes, or replaces row-local DOM. */
+   record recycle inserts, removes, or replaces row-local DOM. The inline step keeps the text clear
+   of the open row's tint edge and the keyboard ring (activity/Container.scss). */
 .fm-activity-row {
     align-items          : center;
     block-size           : 100%;
@@ -8,7 +9,7 @@
     column-gap           : 10px;
     display              : grid;
     grid-template-columns: auto auto auto auto minmax(0, 1fr);
-    padding              : var(--fm-space-1) 0;
+    padding              : var(--fm-space-1);
 
     .fm-ev-time {
         color      : var(--fm-ink-dim);
@@ -48,7 +49,7 @@
         /* Two lines inside the SAME 32px pool height as the wide grammar: 1px row border +
            2px vertical padding leave 27px of content, so 13px lines are the ceiling. */
         grid-template-rows   : 13px 13px;
-        padding              : 2px 0;
+        padding              : 2px var(--fm-space-1);
 
         .fm-ev-object {
             grid-column: 1 / -1;

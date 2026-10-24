@@ -95,6 +95,12 @@
     }
 
     .fm-activity-list {
+        /* the list is the row pool and the selection target, not the surface: its stock selected paint
+           and navigator outline stay off, and the row below owns every visible pixel */
+        --list-item-background-color-selected: transparent;
+        --list-item-color-selected           : var(--list-container-list-color);
+        --list-item-focus-outline            : none;
+
         background: transparent;
         min-height: 0;
         min-width : 0;
@@ -109,6 +115,21 @@
             &:active {
                 background: transparent;
                 color     : inherit;
+            }
+
+            /* keyboard focus only, inside the row's inline step: the list's scroll box clips anything
+               outside a full-width row, and a pointer's click must not stack the ring onto the open
+               row's tint */
+            &:focus-visible > .fm-activity-row {
+                outline       : 2px solid var(--fm-signal);
+                outline-offset: -2px;
+            }
+
+            /* the open message wears the roster card's selection language: a calm signal tint, and the
+               row's existing hairline shifted toward the signal; no shadow, a log row is not a card */
+            &[aria-selected="true"] > .fm-activity-row {
+                background-color: color-mix(in srgb, var(--fm-signal) 8%, var(--fm-panel));
+                border-color    : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-line-soft));
             }
         }
     }

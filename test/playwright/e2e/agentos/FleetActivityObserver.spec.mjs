@@ -1,4 +1,4 @@
-import {expect, landFleetActivity, readFleetMailboxReads, serveFleetMailbox, test} from '../../fixtures.mjs';
+import {expect, landFleetActivity, landFleetSample, readFleetMailboxReads, serveFleetMailbox, test} from '../../fixtures.mjs';
 
 const
     ALL       = {memorySharing: 'team', scope: 'all'},
@@ -126,5 +126,103 @@ test.describe('AgentOS Fleet activity — All A2A and involves me', () => {
         await expect(sources).toHaveText('');
         expect((await readFleetMailboxReads(page)).activity.at(-1)).toBeNull();
         expect(pageErrors).toEqual([])
+    });
+
+    test('by keyboard: the rows are one Tab stop, arrows move the row focus, Enter opens the focused message, Escape closes it', async ({page}) => {
+        const
+            pageErrors = [],
+            all        = Array.from({length: 12}, (_, index) => message('all', index)),
+            own        = Array.from({length: 6}, (_, index) => message('mailbox', index)),
+            stream     = page.locator('.fm-activity-stream'),
+            detail     = stream.locator('.fm-mailbox-detail'),
+            chip       = text => stream.locator('.fm-stream-mode-chip', {hasText: text}),
+            item       = text => stream.locator('.fm-activity-list > .neo-list-item', {hasText: new RegExp(`${text}$`)}),
+            // the subject of the row holding DOM focus; null outside every row
+            focused    = () => page.evaluate(() => document.activeElement?.closest('.fm-activity-list > .neo-list-item')?.querySelector('.fm-ev-object')?.textContent ?? null);
+
+        page.on('pageerror', error => pageErrors.push(error.message));
+
+        await page.goto('/apps/agentos/index.html');
+        await expect(stream).toBeVisible({timeout: 60000});
+        await serveFleetMailbox(page, own, {all});
+        await landFleetActivity(page, own);
+        await expect(item('mailbox message 0')).toBeVisible();
+
+        // a row's chips are not controls: nothing inside a row is a stop of its own
+        await expect(stream.locator('.fm-activity-list > .neo-list-item :is(a, button, [tabindex])')).toHaveCount(0);
+
+        // from the head's last chip, one Tab reaches the rows
+        await chip('all A2A').click();
+        await expect(item('all message 0')).toBeVisible();
+        await page.keyboard.press('Tab');
+        await expect.poll(focused, 'Tab enters the rows at the first').toBe('all message 0');
+
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('ArrowDown');
+        await expect.poll(focused, 'ArrowDown moves the row focus').toBe('all message 2');
+
+        await page.keyboard.press('Enter');
+        await expect(detail).toBeVisible();
+        await expect(detail.locator('.fm-mailbox-detail-subject')).toHaveText('all message 2');
+        await expect(item('all message 2')).toHaveAttribute('aria-selected', 'true');
+        expect((await readFleetMailboxReads(page)).messages, 'one open, one body read').toEqual([{messageId: 'MESSAGE:all-2', observer: ALL}]);
+
+        await page.keyboard.press('Escape');
+        await expect(detail).toBeHidden();
+        await expect(item('all message 2')).not.toHaveAttribute('aria-selected', 'true');
+        expect(await focused(), 'Escape keeps the row focus').toBe('all message 2');
+
+        await page.keyboard.press('Tab');
+        await expect.poll(focused, 'Tab leaves the rows: they are one stop').toBeNull();
+
+        // the mailbox opens nothing in the stream, by keyboard either
+        await chip('mailbox').click();
+        await item('mailbox message 1').click();
+        await page.keyboard.press('Enter');
+        await expect(item('mailbox message 1')).not.toHaveAttribute('aria-selected', 'true');
+        await expect(detail).toBeHidden();
+        expect((await readFleetMailboxReads(page)).messages).toEqual([{messageId: 'MESSAGE:all-2', observer: ALL}]);
+        expect(pageErrors).toEqual([])
+    });
+
+    test('the open row wears a selected roster card\'s paint, its background and border, in both skins', async ({page}) => {
+        const
+            all    = Array.from({length: 4}, (_, index) => message('all', index)),
+            own    = Array.from({length: 4}, (_, index) => message('mailbox', index)),
+            stream = page.locator('.fm-activity-stream'),
+            row    = text => stream.locator('.fm-activity-list > .neo-list-item > .fm-activity-row', {hasText: new RegExp(`${text}$`)}),
+            card   = page.locator('.fm-fleet-cards > .neo-list-item[aria-selected="true"] > .fm-agent-card'),
+            paint  = locator => locator.evaluate(el => {
+                const style = getComputedStyle(el);
+
+                return {background: style.backgroundColor, border: style.borderColor}
+            });
+
+        // the card eases into its selection paint; without motion both paints are final at once
+        await page.emulateMedia({reducedMotion: 'reduce'});
+        await page.goto('/apps/agentos/index.html');
+        await expect(stream).toBeVisible({timeout: 60000});
+        await landFleetSample(page, {activity: false});
+        await serveFleetMailbox(page, own, {all});
+        await landFleetActivity(page, own);
+
+        await stream.locator('.fm-stream-mode-chip', {hasText: 'all A2A'}).click();
+        await row('all message 1').click();
+        await page.locator('.fm-fleet-cards > .neo-list-item').first().click();
+        await expect(card).toHaveCount(1);
+        await expect(stream.locator('.fm-activity-list > .neo-list-item[aria-selected="true"]'), 'a roster pick leaves the message open').toHaveText(/all message 1$/);
+
+        for (const skin of ['dark', 'light']) {
+            if (skin === 'light') {
+                await page.locator('.agent-theme-button').focus();
+                await page.keyboard.press('Enter');
+                await expect(page.locator('.agent-os-viewport.neo-theme-neo-light')).toBeVisible()
+            }
+
+            await page.mouse.move(0, 0);
+
+            expect(await paint(row('all message 1')), `${skin}: the open row wears the selected card's tint and border`).toEqual(await paint(card));
+            expect(await paint(row('all message 2')), `${skin}: a closed row wears neither`).not.toEqual(await paint(card))
+        }
     })
 });

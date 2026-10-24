@@ -4,6 +4,7 @@ import Component       from '../../../../../node_modules/neo.mjs/src/component/B
 import Container       from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
 import DetailContainer from '../mailbox/DetailContainer.mjs';
 import RowContainer    from './RowContainer.mjs';
+import SelectionModel  from './SelectionModel.mjs';
 import Splitter        from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 import ViewerTime      from '../../../util/ViewerTime.mjs';
 import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
@@ -160,7 +161,9 @@ export function describeQuietSince(occurredAt, now = Date.now()) {
  * viewer's own mailbox, or the observer reads involves me and all A2A. A chip only asks; the owner
  * switches the mode and retires the old population. In an observer mode a message row opens beside
  * the list in the mailbox's shared {@link AgentOS.view.fleet.mailbox.DetailContainer}, entered as
- * `observer`, so it is read-only. The owner reads the body and writes it back as {@link #messageRead}; the detail
+ * `observer`, so it is read-only. The open message is the list's one selection
+ * ({@link AgentOS.view.fleet.activity.SelectionModel}), opened by a click or by Enter on the focused row
+ * and closed by Escape. The owner reads the body and writes it back as {@link #messageRead}; the detail
  * closes when its row leaves the store, which every change of authority empties.
  *
  * @class AgentOS.view.fleet.activity.Container
@@ -259,13 +262,6 @@ class ActivityStream extends Container {
     pendingNewEventCount = 0
     /** @member {Number} announcementSequence=0 @protected */
     announcementSequence = 0
-    /**
-     * The open message row's producer id, kept here so the detail follows its record and closes once the
-     * store no longer holds it.
-     * @member {String|null} selectedEventId=null
-     * @protected
-     */
-    selectedEventId = null
 
     /**
      * @param {Object} config
@@ -346,12 +342,12 @@ class ActivityStream extends Container {
                 autoDestroyStore: false,
                 bufferRowRange  : 4,
                 cls             : ['fm-activity-list'],
-                disableSelection: true,
+                disableSelection: me.mode === 'mailbox',
                 flex            : 2,
                 itemConfig      : () => ({module: RowContainer, actorDirectory: me.actorDirectory}),
                 itemHeight      : me.itemHeight,
-                itemsFocusable  : false,
                 reference       : 'list',
+                selectionModel  : SelectionModel,
                 useInternalId   : false,
                 vdom            : {'aria-label': 'Fleet activity history', 'aria-live': 'off'}
             }, {
@@ -393,7 +389,7 @@ class ActivityStream extends Container {
         const me = this;
 
         if (me.isConstructed) {
-            value === 'cold' && (me.selectedEventId = null);
+            value === 'cold' && me.getReference('list').selectionModel.deselectAll();
             me.applyDetail();
             me.updateHeader()
         }
@@ -426,7 +422,7 @@ class ActivityStream extends Container {
     /**
      * Triggered after the provider's mode changed. The new population's first page is this stream's
      * baseline, never news: no announcement, no pending pill, no open message of the old one, and the
-     * list reads it from its newest row.
+     * list reads it from its newest row. The mailbox opens nothing here, so it reads with selection off.
      * @param {String} value
      * @param {String} oldValue
      * @protected
@@ -437,10 +433,13 @@ class ActivityStream extends Container {
         me.toggleCls('is-observing', value !== 'mailbox');
 
         if (me.isConstructed) {
-            me.getReference('list')?.scrollToIndex(0);
+            const list = me.getReference('list');
+
+            list.selectionModel.deselectAll();
+            list.disableSelection = value === 'mailbox';
+            list.scrollToIndex(0);
             me.hasObservedStore     = false;
             me.pendingNewEventCount = 0;
-            me.selectedEventId      = null;
             me.updateNewEventsButton();
             me.applyDetail();
             me.updateHeader()
@@ -495,7 +494,7 @@ class ActivityStream extends Container {
 
         Object.assign(me.vdom, {'aria-label': 'Live fleet activity', role: 'log', tabIndex: 0});
 
-        list?.on({createItems: me.onListCreateItems, itemClick: me.onListItemClick, scope: me});
+        list?.on({createItems: me.onListCreateItems, select: me.onListSelect, scope: me});
         list && (list.store = me.store);
 
         me.syncKnownEventIds(false);
@@ -515,21 +514,26 @@ class ActivityStream extends Container {
 
     /**
      * @summary Hand the detail the open message row as the store holds it now, or close it: in the mailbox
-     * mode, and once the store no longer holds the row.
+     * mode, and once the store no longer holds the row, whose selection then goes with it.
      * @protected
      */
     applyDetail() {
         const
             me       = this,
-            record   = me.mode !== 'mailbox' && me.selectedEventId ? me.store?.get(me.selectedEventId) ?? null : null,
+            list     = me.getReference('list'),
             detail   = me.getReference('stream-detail'),
             splitter = me.getReference('stream-splitter');
 
-        record || (me.selectedEventId = null);
-
-        if (!detail || !splitter) {
+        if (!list || !detail || !splitter) {
             return
         }
+
+        const
+            {selectionModel} = list,
+            [itemId]         = selectionModel.items,
+            record           = me.mode !== 'mailbox' && itemId ? me.store?.get(list.getItemRecordId(itemId)) ?? null : null;
+
+        !record && itemId && selectionModel.deselectAll();
 
         splitter.hidden = !record;
 
@@ -542,24 +546,17 @@ class ActivityStream extends Container {
     }
 
     /**
-     * @summary A row was clicked: in an observer mode an admitted message opens beside the list, and the owner
-     * is asked for its body; a click on the open row closes it. A retracted message has no body to ask for.
-     * @param {Object} data `{record}`
+     * @summary The list's open message changed: the detail follows it, and the owner is asked for a newly
+     * opened message's body. A retracted message has no body to ask for.
+     * @param {Object} data `{records}`: the opened row, none when the open message closed
      * @protected
      */
-    onListItemClick({record}) {
-        const me = this;
+    onListSelect({records}) {
+        const [record] = records;
 
-        if (me.mode === 'mailbox' || record?.source !== FLEET_COCKPIT_SOURCES.a2a || !record.payload?.messageId) {
-            return
-        }
+        this.applyDetail();
 
-        const open = record.eventId !== me.selectedEventId;
-
-        me.selectedEventId = open ? record.eventId : null;
-        me.applyDetail();
-
-        open && record.payload.status !== 'retracted' && me.fire('messageOpen', {messageId: record.payload.messageId})
+        record && record.payload.status !== 'retracted' && this.fire('messageOpen', {messageId: record.payload.messageId})
     }
 
     /**
@@ -753,7 +750,7 @@ class ActivityStream extends Container {
         const me = this;
 
         me.store?.un('load', me.onActivityStoreLoad, me);
-        me.getReference('list')?.un({createItems: me.onListCreateItems, itemClick: me.onListItemClick, scope: me});
+        me.getReference('list')?.un({createItems: me.onListCreateItems, select: me.onListSelect, scope: me});
 
         super.destroy(...args)
     }
