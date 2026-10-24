@@ -88,7 +88,7 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
         expect(cockpit.dockModel).toEqual(SHIPPED)
     });
 
-    test('every declared perspective protects Fleet from close without locking it or the optional panes', () => {
+    test('every declared perspective protects Fleet and the inspector from close without locking them or the optional panes (#791 AC-3)', () => {
         for (const zones of Object.values(cockpit.perspectives)) {
             const {document, errors} = Authoring.fromZones(cockpit.panes, zones);
 
@@ -96,6 +96,8 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the dock declaration low
             expect(document.items.fleet.closable).toBe(false);
             expect(document.items.fleet.locked).not.toBe(true);
             expect(Operations.closeItem(document, {itemId: 'fleet'}).errors).toEqual(['item "fleet" is not closable']);
+            // the inspector's lifecycle is the selection and the pin: a closed one would strand it
+            expect(Operations.closeItem(document, {itemId: 'detail'}).errors).toEqual(['item "detail" is not closable']);
             expect(Operations.closeItem(document, {itemId: 'stream'}).errors).toEqual([]);
             expect(Operations.detachItem(document, {itemId: 'fleet'}).errors, 'non-closable does not prevent tear-out').toEqual([])
         }
