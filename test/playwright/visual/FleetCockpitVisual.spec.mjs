@@ -377,6 +377,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await define({model: 'gpt-6-astra', reasoningEffort: null});
         await roster({state: 'off', seatModel: {state: 'refused', model: 'gpt-6-astra', reasoningEffort: null, reason: 'model gpt-6-astra is not available'}});
         await expect(card('Sophie').locator('.fm-card-control-status')).toHaveText('start refused: model gpt-6-astra is not available');
+        await uncoverRoster(page);
         await settle();
         await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused.png');
 
@@ -386,9 +387,11 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(group).toHaveScreenshot('seat-model-refused.png');
 
         await switchToLightSkin(page);
+        await uncoverRoster(page);
         await settle();
         await expect(card('Sophie')).toHaveScreenshot('fleet-card-model-refused-light.png');
 
+        await open('Sophie');
         await define({model: 'gpt-6-sol', reasoningEffort: 'max'});
         await roster({state: 'off'});
         await expect(modelLine).toHaveText('declared gpt-6-sol · reads gpt-6-luna (configured on disk) · applies at next start');
@@ -585,6 +588,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(head).toHaveText('Preparation · last start');
         await settle();
         await expect(pane).toHaveScreenshot('detail-repo-preparation-light.png');
+        await uncoverRoster(page);
+        await settle();
         await expect(card).toHaveScreenshot('fleet-card-skills-unverified-light.png')
     });
 
@@ -635,6 +640,8 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await switchToLightSkin(page);
         await settle();
         await expect(pane).toHaveScreenshot('detail-repo-skip-light.png');
+        await uncoverRoster(page);
+        await settle();
         await expect(card).toHaveScreenshot('fleet-card-preparing-light.png')
     });
 
@@ -1138,6 +1145,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(page.locator('.agent-os-viewport.neo-theme-neo-light'), 'the first activation switches').toBeVisible();
         await toggle.blur();
         await page.evaluate(() => document.fonts.ready)
+    };
+
+    /** @summary Uncovers the roster for a card's golden: the selection's reveal lies over the right card column,
+     * and a press outside it ends the reveal and keeps the selection. The fleet title is never under it. */
+    const uncoverRoster = async page => {
+        await page.locator('.fm-fleet-title').click();
+        await expect(page.locator('.neo-dashboard-dock-reveal-overlay:not(.neo-dashboard-dock-reveal-overlay-hidden)')).toHaveCount(0)
     };
 
     /** @summary The tasks pane's no-clip geometry: the pane and every structural row inside their own width. */
