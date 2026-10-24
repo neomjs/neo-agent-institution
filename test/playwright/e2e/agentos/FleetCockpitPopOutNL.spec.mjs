@@ -1,4 +1,4 @@
-import {test, expect, landFleetSample} from '../../fixtures.mjs';
+import {test, expect, landFleetSample, pinRevealedDetail} from '../../fixtures.mjs';
 
 /**
  * Whitebox-e2e for the cockpit's click pop-out: the agent-detail inspector detaches to a REAL
@@ -64,6 +64,7 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         const detailRoot = page.locator('.fm-agent-detail');
 
         await expect(detailRoot).toBeVisible({timeout: 30000});
+        await pinRevealedDetail(page);
 
         // docked, the dock header owns the ONE pop-out verb; the SHELL's pane-side verb is the
         // way home and renders only while the pane is away in a vessel — so the detail strip

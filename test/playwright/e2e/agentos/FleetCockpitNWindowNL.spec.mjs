@@ -1,4 +1,4 @@
-import {departedWindowSends, test, expect, loadAgentOsModule} from '../../fixtures.mjs';
+import {departedWindowSends, test, expect, loadAgentOsModule, pinRevealedDetail} from '../../fixtures.mjs';
 import {
     authenticatedFleetOptions,
     fleetE2EFailure,
@@ -255,6 +255,8 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                 timeout  : 10000,
                 intervals: [100, 250]
             }).toBe('neo-fable');
+
+            await pinRevealedDetail(page);
 
             const detailPopupPromise = page.waitForEvent('popup', {timeout: 30000}),
                   detailResult       = await app.callMethod(cockpitId, 'popOutPane', ['detail']),
