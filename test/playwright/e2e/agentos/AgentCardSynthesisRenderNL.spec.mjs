@@ -6,8 +6,8 @@ import {expect, landFleetRoster, test} from '../../fixtures.mjs';
  * falsifiers the retired design-evidence baseline established (the carry-forward where they earn permanence):
  *
  * - long display/engine names crowding the identity column;
- * - two lanes sharing their first seven characters + 2-digit overflow counts — the narrow falsifier:
- *   the head+tail middle elision must preserve each lane's DISTINGUISHING tail;
+ * - two long lanes sharing their first seven characters + 2-digit overflow counts — the single-line
+ *   subject ellipsizes at the right edge while the hover title retains the full line;
  * - wake/throttle telltales + a pending control + a retained reject reason;
  * - mixed session state (wedged/limited/idle/off) and the full source-health vocabulary
  *   (wired-observed / wired-inferred / missing / not-wired) — the summary strip must NAME the
@@ -50,7 +50,7 @@ const
     repo    = (state, confidence = 'none') => ({source: 'fleet:fleetStatus',    state, confidence}),
     runtime = (state, confidence = 'none') => ({source: 'fleet:runtimeStatus',  state, confidence});
 
-// two lanes sharing the first seven chars ("control") + 2-digit overflow — the tail-elision falsifier
+// two long lanes sharing the first seven chars ("control") + 2-digit overflow
 const PATHOLOGICAL_ROSTER = [
     {
         // the faceless row: no avatarUrl at all — the S5 path before a GitHub face resolves. The
@@ -164,7 +164,7 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         expect(same.properties.id).toBe(observed.properties.id)
     });
 
-    test('the selected composition under long names, tail-elided shared-prefix lanes, mixed source health, telltales, and the avatar keeper', async ({page, neuralLink}) => {
+    test('the selected composition under long names, shared-prefix lanes, mixed source health, telltales, and the avatar keeper', async ({page, neuralLink}) => {
         await page.setViewportSize({width: 900, height: 1000});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
@@ -744,5 +744,102 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
         }
 
         expect([...lineHeights], 'the name line is one row at every width').toHaveLength(1)
+    });
+
+    test('the work-row budget across the card-width matrix: a no-lane card, a one-line lane, a two-line lane and a control-live card render the same height at one width', async ({page}) => {
+        const LONG_LANE   = 'feat(agentos): retire middle elision in the roster card lane row so the verbatim lane subject wraps cleanly across the two-line work budget (#801)',
+              seat        = (id, displayName, extra = {}) => ({
+                  agentId : id, githubUsername: `@${id}`, displayName, engineTag: 'opus-5', family: 'claude',
+                  laneLine: null, avatarUrl: avatar('#c0873a'), state: 'ok', openLaneCount: 2,
+                  sources : {roster: roster('wired', 'observed'), repoStatus: repo('wired', 'observed'), runtime: runtime('wired', 'observed')},
+                  ...extra
+              }),
+              NO_LANE     = seat('work-none',    'Aa no lane'),
+              ONE_LINE    = seat('work-one',     'Ab one line',     {laneLine: 'awaiting review', laneClaimedAt: '2026-09-04T21:40:00.000Z'}),
+              TWO_LINE    = seat('work-two',     'Ac two lines',    {laneLine: LONG_LANE,         laneClaimedAt: '2026-09-04T21:40:00.000Z'}),
+              CONTROL     = seat('work-control', 'Ad control live', {laneLine: LONG_LANE,         laneClaimedAt: '2026-09-04T21:40:00.000Z',
+                  sessionFolder: {state: 'wrong', path: '/tmp/other'}}),
+              WORK_ROSTER = [NO_LANE, ONE_LINE, TWO_LINE, CONTROL],
+              WIDTHS      = [191, 294, 328, 410, 720];
+
+        await page.setViewportSize({width: 900, height: 1400});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+        const seatRoster = async rows => {
+                  await landFleetRoster(page, rows);
+                  await expect.poll(async () => page.locator('.fm-agent-card').count(), {
+                      message: 'the grid renders one card per row', timeout: 15000, intervals: [250]
+                  }).toBe(rows.length)
+              },
+              pinWidth   = async width => {
+                  await page.evaluate(({width}) => {
+                      const list = document.querySelector('.fm-fleet-cards');
+
+                      list.style.width = list.style.minWidth = list.style.maxWidth = `${width + 20}px`;
+                      list.style.height    = '1200px';
+                      list.style.maxHeight = 'none'
+                  }, {width});
+
+                  await expect.poll(async () => page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().width)), {
+                      message: `[${width}] Animate re-seats the card at exactly ${width}px`, timeout: 15000, intervals: [100, 250]
+                  }).toBe(width);
+                  await page.evaluate(() => document.fonts.ready)
+              };
+
+        // the no-lane card alone establishes each width's baseline height before any multi-line or control-live sibling joins
+        const noLaneHeights = {};
+
+        await seatRoster([NO_LANE]);
+
+        for (const width of WIDTHS) {
+            await pinWidth(width);
+            noLaneHeights[width] = await page.evaluate(() => Math.round(document.querySelector('.fm-agent-card').getBoundingClientRect().height))
+        }
+
+        await seatRoster(WORK_ROSTER);
+
+        for (const width of WIDTHS) {
+            await pinWidth(width);
+
+            const cards = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.fm-agent-card')].map(card => {
+                const q          = sel => card.querySelector(sel),
+                      rect       = el => el.getBoundingClientRect(),
+                      prevHeight = card.style.height,
+                      cardHeight = Math.round(rect(card).height);
+
+                // measure natural un-pinned height as well so Animate's shared rowHeight cannot mask a taller sibling
+                card.style.height = 'auto';
+                const naturalHeight = Math.round(rect(card).height * 10) / 10;
+                card.style.height = prevHeight;
+
+                const status = q('.fm-card-control-status');
+
+                return [q('.fm-card-name').textContent, {
+                    cardHeight,
+                    naturalHeight,
+                    controlLive : card.classList.contains('fm-control-live'),
+                    laneHeight  : Math.round(rect(q('.fm-card-lane')).height * 10) / 10,
+                    workHeight  : Math.round(rect(q('.fm-card-work-row')).height * 10) / 10,
+                    statusHeight: status && getComputedStyle(status).display !== 'none' ? Math.round(rect(status).height * 10) / 10 : 0
+                }]
+            })));
+
+            const noLane      = cards['Aa no lane'],
+                  oneLine     = cards['Ab one line'],
+                  twoLine     = cards['Ac two lines'],
+                  controlLive = cards['Ad control live'];
+
+            // two-line lane genuinely wraps to two lines; control-live clamps the lane to one line and shows the status sibling
+            expect(twoLine.laneHeight,       `[${width}] two-line lane wraps past one line`).toBeGreaterThan(oneLine.laneHeight);
+            expect(controlLive.controlLive,  `[${width}] control-live card carries .fm-control-live`).toBe(true);
+            expect(controlLive.laneHeight,   `[${width}] control-live clamps .fm-card-lane to one line`).toBe(oneLine.laneHeight);
+            expect(controlLive.statusHeight, `[${width}] control-live renders the sibling status row`).toBeGreaterThan(0);
+
+            for (const [label, card] of Object.entries(cards)) {
+                expect(card.naturalHeight, `[${width}] ${label}: natural height matches the no-lane card`).toBe(noLane.naturalHeight);
+                expect(card.cardHeight,    `[${width}] ${label}: rendered height matches the solo no-lane card`).toBe(noLaneHeights[width])
+            }
+        }
     });
 });

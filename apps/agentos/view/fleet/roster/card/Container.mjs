@@ -401,31 +401,6 @@ class AgentCard extends Container {
     admissionUntil = null
 
     /**
-     * @summary Split a long lane into a short context head + a preserved distinguishing tail with an
-     * elided middle. Two lanes sharing a prefix (the narrow-density falsifier) still distinguish by
-     * their tail. A lane short enough for the two-line clamp is returned whole (no elision).
-     * @param {String} text The lane line.
-     * @returns {{whole: String}|{head: String, tail: String}}
-     * @private
-     */
-    static elideLaneLine(text) {
-        const line = (text ?? '').trim();
-
-        // short enough for the two-line clamp to render whole — no semantic elision needed
-        if (line.length <= 52) {
-            return {whole: line}
-        }
-
-        // keep a short head for context + a generous tail (the distinguishing end), eliding the
-        // middle; trim each to a word boundary so the elision reads cleanly
-        const
-            head = line.slice(0, 20).replace(/\s+\S*$/, '').trim(),
-            tail = line.slice(-30).replace(/^\S*\s+/, '').trim();
-
-        return {head: `${head} — … — `, tail}
-    }
-
-    /**
      * @summary The monogram a faceless record shows in its avatar slot: the initials of the name's
      * first two words, else its first two characters, upper-cased. An empty name yields an empty
      * monogram — the family-inked circle alone.
@@ -510,7 +485,7 @@ class AgentCard extends Container {
 
     /**
      * @summary Renders the claim as inert text (no disclosure affordance on a non-interactive node),
-     * eliding the subject before appending its age so the distinguishing tail remains visible.
+     * with the claim age leading in dim ink and the subject reading verbatim inside the CSS clamp.
      * @param {Object} record
      * @param {Object} laneSource Normalized `sources.lane` fact.
      * @returns {Boolean} true when this wired subject has a parseable claim instant.
@@ -518,24 +493,23 @@ class AgentCard extends Container {
      */
     renderLaneLine(record, laneSource) {
         const
-            laneLine    = typeof record.laneLine === 'string' ? record.laneLine : null,
-            claimedMs   = typeof record.laneClaimedAt === 'string' ? Date.parse(record.laneClaimedAt) : NaN,
-            hasSubject  = laneSource?.state === 'wired' && Boolean(laneLine?.trim()),
-            active      = hasSubject && Number.isFinite(claimedMs),
-            now         = Number.isFinite(this.now) ? this.now : Date.now(),
-            ageMs       = active ? now - claimedMs : NaN,
-            claimAge    = Number.isFinite(ageMs) ? AgentFreshness.formatAge(ageMs) : null,
-            laneText    = laneSource?.state === 'wired' ? laneLine?.trim() ? laneLine : 'no lane claimed' : laneLine,
-            suffix      = active && claimAge ? ` · claimed ${claimAge}` : '',
-            lane        = this.getReference('card-lane'),
-            elided      = AgentCard.elideLaneLine(laneText);
+            laneLine   = typeof record.laneLine === 'string' ? record.laneLine : null,
+            claimedMs  = typeof record.laneClaimedAt === 'string' ? Date.parse(record.laneClaimedAt) : NaN,
+            hasSubject = laneSource?.state === 'wired' && Boolean(laneLine?.trim()),
+            active     = hasSubject && Number.isFinite(claimedMs),
+            now        = Number.isFinite(this.now) ? this.now : Date.now(),
+            ageMs      = active ? now - claimedMs : NaN,
+            claimAge   = Number.isFinite(ageMs) ? AgentFreshness.formatAge(ageMs) : null,
+            laneText   = laneSource?.state === 'wired' ? laneLine?.trim() ? laneLine : 'no lane claimed' : laneLine,
+            suffix     = active && claimAge ? ` · claimed ${claimAge}` : '',
+            lane       = this.getReference('card-lane');
 
-        lane.vdom.cn = elided.whole !== undefined
-            ? [{tag: 'span', cls: ['fm-lane-whole'], text: `${elided.whole}${suffix}`}]
-            : [
-                {tag: 'span', cls: ['fm-lane-elide'], text: elided.head},
-                {tag: 'span', cls: ['fm-lane-tail'],  text: `${elided.tail}${suffix}`}
-            ];
+        lane.vdom.cn = active && claimAge
+            ? [
+                {tag: 'span', cls: ['fm-lane-age'], text: `${claimAge} · `},
+                {tag: 'span', text: laneText}
+            ]
+            : [{tag: 'span', text: laneText}];
         lane.changeVdomRootKey('title', hasSubject ? `${laneLine}${suffix}` : null);
         lane.update();
 
@@ -930,8 +904,7 @@ class AgentCard extends Container {
 
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
-        // row height at every card width — the lane stays reachable via line one, its middle elision
-        // and the title.
+        // row height at every card width — the lane stays reachable via line one and the title.
         me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine || exitLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip

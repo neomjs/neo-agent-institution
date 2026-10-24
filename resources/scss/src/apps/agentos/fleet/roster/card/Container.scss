@@ -396,9 +396,13 @@
         }
     }
 
-    /* ── work-row: the current lane, two-line clamped with head+tail middle elision ── */
+    /* ── work-row: the current lane, two-line clamped with leading claim age.
+       Reserves the full two-row work budget (one lane line + the sibling .fm-card-control-status
+       row and its --fm-space-2 flex gap, which >= 2lh of --fm-text-body) so no-lane, one-line,
+       two-line and control-live cards share one natural height. ── */
     .fm-card-work-row {
-        min-height: 30px;
+        font      : var(--fm-text-body);
+        min-height: calc(1lh + var(--fm-space-2) + 13px);
     }
 
 
@@ -413,13 +417,9 @@
         line-clamp               : 2;
         -webkit-box-orient       : vertical;
 
-        /* the preserved distinguishing tail reads full-ink; the elided context head recedes */
-        .fm-lane-tail {
-            color: var(--fm-ink);
-        }
-
-        .fm-lane-elide {
-            color: color-mix(in srgb, var(--fm-ink-dim) 80%, transparent);
+        /* the leading age recedes on dim ink; the verbatim subject inherits full ink */
+        .fm-lane-age {
+            color: var(--fm-ink-dim);
         }
     }
 
@@ -469,10 +469,18 @@
     }
 
     /* While a control round-trip is live (root cls from the card component), the second work line
-       belongs to the status row: the lane clamps to ONE line so a reason-carrying card keeps the
-       roster's uniform row height at every width — including the 44px-touch narrow head. */
-    &.fm-control-live .fm-card-lane {
-        -webkit-line-clamp: 1;
+       belongs to the status row: the lane clamps to ONE line and the work-row yields the status
+       row's height + gap so a reason-carrying card keeps the roster's uniform row height at every
+       width — including the 44px-touch narrow head. */
+    &.fm-control-live {
+        .fm-card-work-row {
+            min-height: 1lh;
+        }
+
+        .fm-card-lane {
+            -webkit-line-clamp: 1;
+            line-clamp        : 1;
+        }
     }
 
     /* ══ card-owned width modes (ADR 0029): the card responds to ITS OWN width, not the viewport ══ */
