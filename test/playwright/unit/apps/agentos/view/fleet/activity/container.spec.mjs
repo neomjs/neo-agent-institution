@@ -651,6 +651,13 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
             return stream.getReference('stream-detail')
         };
 
+        // a row click, as the list delegates it to its selection model
+        const click = id => {
+            const list = stream.getReference('list');
+
+            list.selectionModel.onListClick({currentTarget: list.getItemId(id)})
+        };
+
         test('the head\'s chips press the mode in view and ask for another, never for the current one', async () => {
             await createStream({count: 1});
 
@@ -720,12 +727,13 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
         });
 
         test('a message row opens read-only beside the list and asks for its body; a click on it again closes it', async () => {
-            const detail = await createObserving(), opened = [], list = stream.getReference('list');
+            const detail = await createObserving(), opened = [], {selectionModel} = stream.getReference('list');
 
             stream.on('messageOpen', data => opened.push(data.messageId));
-            list.fire('itemClick', {record: store.get('a2a:MESSAGE:2')});
+            click('a2a:MESSAGE:2');
 
             expect(opened).toEqual(['MESSAGE:2']);
+            expect(selectionModel.getSelection(), 'the open message is the list\'s one selection').toHaveLength(1);
             expect(detail.hidden).toBe(false);
             expect(stream.getReference('stream-splitter').hidden).toBe(false);
             expect(detail.entry, 'the observer entry renders no action strip').toBe('observer');
@@ -738,42 +746,67 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
             stream.messageRead = {message: {body: 'the words', messageId: 'MESSAGE:2'}, messageId: 'MESSAGE:2', state: 'ok'};
             expect(detail.getReference('detail-body').text).toBe('the words');
 
-            list.fire('itemClick', {record: store.get('a2a:MESSAGE:2')});
+            click('a2a:MESSAGE:2');
             expect(detail.hidden).toBe(true);
+            expect(selectionModel.hasSelection()).toBe(false);
             expect(opened).toEqual(['MESSAGE:2'])
+        });
+
+        test('another message moves the open detail to it, and Escape closes it; one body read per open', async () => {
+            const detail = await createObserving(), opened = [], {selectionModel} = stream.getReference('list');
+
+            stream.on('messageOpen', data => opened.push(data.messageId));
+            click('a2a:MESSAGE:1');
+            click('a2a:MESSAGE:2');
+
+            expect(detail.hidden).toBe(false);
+            expect(detail.row.messageId).toBe('MESSAGE:2');
+            expect(selectionModel.getSelection()).toHaveLength(1);
+            expect(opened).toEqual(['MESSAGE:1', 'MESSAGE:2']);
+
+            selectionModel.onKeyDownEscape({});
+            expect(detail.hidden).toBe(true);
+            expect(stream.getReference('stream-splitter').hidden).toBe(true);
+            expect(selectionModel.hasSelection()).toBe(false);
+
+            // with nothing open, Escape is a no-op
+            selectionModel.onKeyDownEscape({});
+            expect(opened).toEqual(['MESSAGE:1', 'MESSAGE:2'])
         });
 
         test('a retracted message opens without a body read; the mailbox mode and a PR row open nothing', async () => {
             const detail = await createObserving({events: [message(1, {status: 'retracted', subject: '[retracted by sender]'}), message(2), event('pr', 3, {
                 eventId: 'pr:1', type: 'pr-activity', source: 'github-workflow:pull-requests', payload: {number: 1}
-            })]}), opened = [], list = stream.getReference('list');
+            })]}), opened = [], {selectionModel} = stream.getReference('list');
 
             stream.on('messageOpen', data => opened.push(data.messageId));
 
-            list.fire('itemClick', {record: store.get('a2a:MESSAGE:1')});
+            click('a2a:MESSAGE:1');
             expect(detail.hidden).toBe(false);
             expect(detail.getReference('detail-body').text).toBe('The sender retracted this message.');
             expect(opened).toEqual([]);
 
-            list.fire('itemClick', {record: store.get('pr:1')});
+            click('pr:1');
             expect(detail.row.messageId, 'a PR row is no message').toBe('MESSAGE:1');
 
             stream.mode = 'mailbox';
             expect(detail.hidden).toBe(true);
-            list.fire('itemClick', {record: store.get('a2a:MESSAGE:2')});
+            expect(selectionModel.hasSelection(), 'the mailbox reads with selection off').toBe(false);
+            click('a2a:MESSAGE:2');
             expect(detail.hidden).toBe(true);
+            expect(selectionModel.hasSelection()).toBe(false);
             expect(opened, 'the mailbox mode asks for no body').toEqual([])
         });
 
         test('the open message closes once its row leaves the store, as every change of authority empties it', async () => {
             const detail = await createObserving();
 
-            stream.getReference('list').fire('itemClick', {record: store.get('a2a:MESSAGE:1')});
+            click('a2a:MESSAGE:1');
             expect(detail.hidden).toBe(false);
 
             store.clear();
             expect(detail.hidden).toBe(true);
-            expect(stream.selectedEventId).toBeNull();
+            expect(stream.getReference('list').selectionModel.hasSelection()).toBe(false);
 
             // the same message landing again under the new authority does not reopen it
             store.ingestSnapshot([message(1)]);
@@ -784,7 +817,7 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
             const detail = await createObserving();
 
             stream.historyExhausted = true;
-            stream.getReference('list').fire('itemClick', {record: store.get('a2a:MESSAGE:1')});
+            click('a2a:MESSAGE:1');
             expect(detail.hidden).toBe(false);
             expect(stream.getReference('retention').text).toBe('all 2 shown');
 
@@ -792,7 +825,7 @@ test.describe('Fleet activity — Store-backed list.Buffered history (#17550)', 
             stream.adapterState = 'cold';
 
             expect(detail.hidden).toBe(true);
-            expect(stream.selectedEventId).toBeNull();
+            expect(stream.getReference('list').selectionModel.hasSelection()).toBe(false);
             expect(stream.getReference('header').cls, 'the skin hides the rows of a cold feed').toContain('is-cold');
             expect(stream.getReference('retention').text, 'nothing shown is held').toBe('');
             expect(stream.getReference('empty-note').hidden).toBe(true)

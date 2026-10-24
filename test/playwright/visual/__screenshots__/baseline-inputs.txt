@@ -360,13 +360,16 @@ apps/agentos/view/fleet/activity/ActorChipComponent.mjs
     1c56919c8f0feb284f2711d598592f3df910377f
 
 apps/agentos/view/fleet/activity/Container.mjs
-    4ca11c4554a17b5b3f00aaa116e03d466633bfdc
+    4c51e77e04aed69e14803a07d1528a29fa05ddfb
 
 apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
 
 apps/agentos/view/fleet/activity/RowContainer.mjs
     55fc244f9104bdffce056d7529f4d57f3ebee12b
+
+apps/agentos/view/fleet/activity/SelectionModel.mjs
+    bccf458eaa03ae2f4d576211589c0a649b64f93f
 
 apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
@@ -651,13 +654,13 @@ resources/scss/src/apps/agentos/fleet/activity/ActorChipComponent.scss
     5e6f2c481596221cca5b1227ffa42406fbcb65a7
 
 resources/scss/src/apps/agentos/fleet/activity/Container.scss
-    0805d78512684fcf9d8500dad439e8344b50850f
+    06e833c55debf3a4b8d5a0103836107cdb17c35b
 
 resources/scss/src/apps/agentos/fleet/activity/EventChipComponent.scss
     32a9f3a84da7c788e06377188ab78644d9cf0b62
 
 resources/scss/src/apps/agentos/fleet/activity/RowContainer.scss
-    632861b1ec62d5a08c9271c15b99507c28a0f11f
+    a5eb9a8e1c73f9891722d33b501b44e5299ab34b
 
 resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
@@ -879,7 +882,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-conf
     79ef986dbd47dae389a52b9af764a66ddfaf00ec
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
-    87ecb8c74d97f1eb23d8df9ded5fbd800d1b4f52
+    298c54b101f14bc49f7ccd4d6116f5fc12398ec6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-11-candidates-light.png
     697af9c28dd2593325c06a5e85cc68f00d956077
@@ -915,7 +918,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.
     efbc77dd53eb6358424b6a27d86a48d7cb811dfa
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-default-shell.png
-    ba305bd4ace2e5a88cf3703dc864a84364dab4c3
+    d8002c0c9023c8fd3df1dae68cf944040a74fc18
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty-light.png
     f59bca89bfb5b41792ab29ab76de51b56eae57e5
@@ -927,10 +930,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-inter
     222b29fe6f360efd9578019b31ac3eb33cc3e1e8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    34fd71f9525d4d77b5b6d95cf116d20f071bfe21
+    af8ef0f2652aef9d6c322d9263cb71a8073d4b84
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    6ffb1151aa0e31cfa0c322d53da461060164c52f
+    c33ea55ece5a0fff3b8b4b37d4b074608d68c1f9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-light.png
     a956a5fd4f9879cd74e242d7ff6f338d09cb110b
@@ -1122,7 +1125,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-p
     5d0bc7ccb5108140a6f8f6ab732ecd35745a4fcf
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-activity.png
-    280bdc970c66afdb980c4fc7bd328c993617af4b
+    de91f21cc5d7fc0e8c655b5e2e2549130c15715a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agent.png
     658b87fbcdcb7bf13f9f10723e3d8fb65e9bdc68
