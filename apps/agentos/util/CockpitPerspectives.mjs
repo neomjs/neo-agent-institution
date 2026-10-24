@@ -187,7 +187,7 @@ class CockpitPerspectives extends Base {
      * resident is selected, and dismissed when the selection clears. The reveal is the rail's
      * overlay, never a document operation, so a selection never reflows the roster, and focus stays
      * on it. Only the pin verb commits the inspector as a column. The person ends the reveal with
-     * Escape or its rail tab, and the selection ends with it (`Controller#onDockRailRevealChange`).
+     * Escape or its rail tab, and the selection ends with it (`Container#onDetailRevealChange`).
      * A pinned or center-docked inspector is in the layout already, and a closed one is untouched.
      * @param {Neo.dashboard.dock.Workspace} cockpit
      * @param {Boolean} selected Whether a resident is currently selected.

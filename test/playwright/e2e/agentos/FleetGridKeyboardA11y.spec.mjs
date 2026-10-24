@@ -362,13 +362,16 @@ test.describe('AgentOS fleet roster — semantic list selection + stable animate
         expect((await selectionState()).selectedAgentId, 'selection survives the index shift').toBe('a11y-c');
 
         // FILTER: Delta is authoritative-offline. The filter owns a fade-capable transition and
-        // removes/re-adds it without touching Charlie's selection.
+        // removes/re-adds it without touching Charlie's selection. The selection's held reveal covers
+        // the roster's right-aligned filters, so the inspector is pinned first; the pin keeps the selection.
         const
             deltaItem      = itemFor('Delta'),
             itemTransition = await deltaItem.evaluate(item => getComputedStyle(item).transitionProperty),
             offlineToggle  = page.getByRole('button', {name: 'Hide offline'});
 
         expect(itemTransition, 'animated list items carry opacity in their transition set').toMatch(/opacity/);
+        await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
         await offlineToggle.click();
         await expect(cards).toHaveCount(3, {timeout: 10000});
         await expect(offlineToggle).toHaveClass(/\bpressed\b/);

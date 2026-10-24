@@ -416,11 +416,11 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane).toContainText(/@neo-opus-ada · 3 of 3 sessions/);
             await page.evaluate(() => document.fonts.ready);
 
-            // the roster selection revealed the inspector on the right rail; a mousedown outside the
-            // rail dismisses the reveal (Rail#onAppMouseDown → the machine's outsideClick) — the
-            // register must be uncovered for the drill button and for the goldens
-            await pane.locator('.fm-pane-title').click();
-            await expect(page.locator('.neo-dashboard-dock-rail-tab.pressed'), 'the reveal is dismissed').toHaveCount(0, {timeout: 10000});
+            // the roster selection holds the inspector revealed over the register, and an outside click
+            // leaves a held reveal alone; the drill button and the goldens need the register uncovered
+            // with the resident still selected, so the inspector is pinned as a column
+            await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();
+            await expect(page.locator('.neo-dashboard-dock-rail-tab.pressed'), 'the pin ends the reveal').toHaveCount(0, {timeout: 10000});
             await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 
             const
@@ -559,7 +559,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
             await expect(pane.locator('.fm-memories-card')).toHaveCount(3, {timeout: 10000});
-            await pane.locator('.fm-pane-title').click();   // dismiss the inspector's reveal
+            await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();   // uncovers the strip, keeps the resident
             await settle();
 
             await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-meta').click();
@@ -613,7 +613,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
 
             await page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/}).click();
             await expect(pane.locator('.fm-memories-card')).toHaveCount(3, {timeout: 10000});
-            await pane.locator('.fm-pane-title').click();   // dismiss the inspector's reveal
+            await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();   // uncovers the strip, keeps the resident
             await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 
             await pane.locator('.fm-memories-card').nth(0).locator('.fm-memories-card-meta').click();
