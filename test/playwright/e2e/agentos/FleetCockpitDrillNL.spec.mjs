@@ -7,7 +7,7 @@ import {sampleOpenWork, sampleRoster}                                      from 
  * selects its li, reveals the auto-hidden AgentDetail inspector, and renders THAT resident: the
  * whole chain — native DOM click →
  * `Neo.selection.ListModel` → roster `onRosterSelect` → `agentSelect` → cockpit `onAgentSelect` → owner-held `detailRecord`
- * → dock `setItemAutoHidden` reveal → projection — is exercised end-to-end, never via a
+ * → the rail's held reveal (`Workspace#revealRailItem`, no document operation) — is exercised end-to-end, never via a
  * controller call. Whitebox: the DOM proves the render, the possessed component proves the engine
  * truth (the mounted inspector holds the activated resident's record).
  *
@@ -34,12 +34,12 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         const [original] = await readDetail();
 
         expect((await app.callMethod(cockpit.properties.id, 'activatePerspective', ['Overview'])).errors).toEqual([]);
-        await expect(detail).toBeHidden();
-        const [parked] = await readDetail();
-        expect(parked.properties.id, 'Overview retained the existing inspector').toBe(original.properties.id);
+        await expect(detail.locator('.fm-detail-name'), 'the reset keeps the standing selection revealed').toHaveText('Ada');
+        const [retained] = await readDetail();
+        expect(retained.properties.id, 'Overview retained the existing inspector').toBe(original.properties.id);
 
         await card('Grace').locator('.fm-card-name').click();
-        await expect(detail.locator('.fm-detail-name'), 'hidden selection reaches the returning pane').toHaveText('Grace');
+        await expect(detail.locator('.fm-detail-name'), 'the next selection reaches the same inspector').toHaveText('Grace');
         const [revealed] = await readDetail();
         expect(revealed.properties.id).toBe(original.properties.id);
         expect(revealed.properties['record.agentId']).toBe('neo-opus-grace');
@@ -106,7 +106,8 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         expect(ledgerReadout, 'the inspector states the roster source axis').toMatch(/roster/i);
 
         const dockAfterDrill = await readDockModel();
-        expect(dockAfterDrill.items.detail.autoHidden, 'nested avatar selection must commit the reveal').toBe(false);
+        expect(dockAfterDrill.items.detail.autoHidden, 'the selection reveals the inspector over the layout, never in the document').toBe(true);
+        await expect(page.locator('.neo-dashboard-dock-reveal-overlay .fm-agent-detail'), 'the rail\'s reveal hosts it').toBeVisible();
 
         // Engine truth: the mounted inspector holds the EXACT activated resident — equality, not
         // set-membership. Delegated item selection routed through owner-held state to the durable id.
@@ -201,7 +202,7 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await expect(detail.locator('.fm-detail-pane-lane .fm-detail-pane-body')).toContainText(/claimed \d+m ago/)
     });
 
-    test('at 1400 px the center drops (1332 -> 988 px) only while an agent is selected or detail is pinned; Escape or deselect restores 1332 px and the pre-selection dock document (#712 AC-3)', async ({page, neuralLink}) => {
+    test('at 1400 px a selection reveals detail over the layout and nothing moves: the cards, the 1332 px center and the dock document stay put; the reveal\'s pin needs no click into the pane, and only a pin drops the center to 988 px (#791 AC-1, AC-2)', async ({page, neuralLink}) => {
         await page.setViewportSize({width: 1400, height: 900});
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
@@ -212,50 +213,66 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
               [list]        = await app.queryComponent({className: 'AgentOS.view.fleet.roster.List'}, ['selectionModel.id']),
               card          = name => page.locator('.fm-agent-card', {has: page.locator('.fm-card-name', {hasText: new RegExp(`^${name}$`)})}),
               detail        = page.locator('.fm-agent-detail'),
+              revealed      = page.locator('.neo-dashboard-dock-reveal-overlay .fm-agent-detail'),
+              revealPin     = page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first(),
               readDockModel = async () => (await app.getComponent(cockpit.properties.id, ['dockModel'])).dockModel,
               centerWidth   = () => page.locator('.fm-fleet-cockpit .neo-dashboard-dock-edge-row > :first-child').first()
                   .evaluate(el => Math.round(el.getBoundingClientRect().width)),
+              cardRects     = () => page.locator('.fm-agent-card').evaluateAll(cards => cards.map(el => {
+                  const {height, width, x, y} = el.getBoundingClientRect();
+
+                  return [x, y, width, height].map(Math.round)
+              })),
+              settled       = () => expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0),
               dockBefore    = await readDockModel();
 
         expect(dockBefore.items.detail.autoHidden).toBe(true);
         await expect.poll(centerWidth).toBe(1332);
 
-        // 1. select reveals detail and drops center width 1332 -> 988 px
-        await card('Ada').locator('.fm-card-name').click();
-        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await expect.poll(centerWidth).toBe(988);
-        expect((await readDockModel()).items.detail.autoHidden).toBe(false);
+        const rectsBefore = await cardRects();
 
-        // 2. Escape clears selection, returns center to 1332 px, and restores the pre-selection dock document
+        expect(rectsBefore, 'both residents render a card').toHaveLength(2);
+
+        // 1. a select reveals detail over the layout: no card, no center width and no document moves
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Ada');
+        await settled();
+        expect(await cardRects(), 'a selection moves no card').toEqual(rectsBefore);
+        expect(await centerWidth()).toBe(1332);
+        expect(await readDockModel(), 'a selection commits no operation').toEqual(dockBefore);
+        await expect(revealPin, 'the reveal\'s own pin shows without a click into the pane').toBeVisible();
+
+        // 2. Escape clears the selection and dismisses the reveal; still nothing moved
         await page.locator('.fm-fleet-cards').press('Escape');
         await expect(detail).toBeHidden();
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await expect.poll(centerWidth).toBe(1332);
+        await settled();
+        expect(await cardRects()).toEqual(rectsBefore);
         expect(await readDockModel()).toEqual(dockBefore);
 
-        // 3. select again -> 988 px, then deselect -> 1332 px and pre-selection dock document
+        // 3. select again, then deselect: the same
         await card('Grace').locator('.fm-card-name').click();
-        await expect(detail.locator('.fm-detail-name')).toHaveText('Grace');
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await expect.poll(centerWidth).toBe(988);
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Grace');
+        await settled();
+        expect(await cardRects()).toEqual(rectsBefore);
 
         await app.callMethod(list.properties['selectionModel.id'], 'deselectAll', []);
         await expect(detail).toBeHidden();
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await expect.poll(centerWidth).toBe(1332);
+        await settled();
+        expect(await cardRects()).toEqual(rectsBefore);
         expect(await readDockModel()).toEqual(dockBefore);
 
-        // 4. when detail is pinned, center stays at 988 px even after Escape clears the selection
-        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Agent detail'}).first().click();
-        await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
-        await expect.poll(centerWidth).toBe(988);
-
+        // 4. pinning the revealed selection commits the column: the center drops once, the selection stays
         await card('Ada').locator('.fm-card-name').click();
-        await expect(detail.locator('.fm-detail-name')).toHaveText('Ada');
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Ada');
+        await revealPin.click();
+        await settled();
+        await expect.poll(centerWidth).toBe(988);
+        expect((await readDockModel()).items.detail).toMatchObject({autoHidden: false, pinned: true});
+        await expect(detail.locator('.fm-detail-name'), 'the pinned column keeps the selected resident').toHaveText('Ada');
+
+        // 5. a pinned column stays when Escape clears the selection
         await page.locator('.fm-fleet-cards').press('Escape');
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await settled();
         await expect.poll(centerWidth).toBe(988);
         expect((await readDockModel()).items.detail).toMatchObject({autoHidden: false, pinned: true})
     })

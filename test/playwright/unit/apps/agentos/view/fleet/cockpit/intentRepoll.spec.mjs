@@ -17,6 +17,7 @@ import * as core      from '../../../../../../../../node_modules/neo.mjs/src/cor
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                             '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeControllerFake, makeProviderFake, wireDetailRecord, wiredSources} from './cockpitFakes.mjs';
+import {shippedDockDocument} from './shippedDockDocument.mjs';
 
 const deferred = () => {
     let resolve, reject;
@@ -216,22 +217,25 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
         expect(calls.length).toBe(1)   // three residents started, ONE roster re-poll — never N polls
     });
 
-    test('onAgentSelect: a card select holds the owner-side detailRecord + reveals the auto-hidden inspector through the commit loop', () => {
+    test('onAgentSelect: a card select holds the owner-side detailRecord + reveals the railed inspector over the layout, never through a document operation', () => {
         const
-            record  = {agentId: 'vega', displayName: 'Vega', githubUsername: 'neo-opus-vega'},
-            detail  = {record: null, set(cfg) { Object.assign(this, cfg) }},
-            applied = [],
-            cockpit = {
+            record   = {agentId: 'vega', displayName: 'Vega', githubUsername: 'neo-opus-vega'},
+            detail   = {record: null, set(cfg) { Object.assign(this, cfg) }},
+            applied  = [],
+            revealed = [],
+            cockpit  = {
                 detailRecord  : null,
-                dockModel     : {items: {detail: {autoHidden: true}}},
+                dockModel     : shippedDockDocument(),
                 selectionState: {},
-                applyDockZoneOperation(op) { applied.push(op); return {document: {revealed: true}, errors: []} },
+                applyDockZoneOperation(op) { applied.push(op); return {document: {}, errors: []} },
+                dismissRailReveal(itemId) { revealed.push(`-${itemId}`) },
                 // the controller drill routes through the OWNER accessor (docked pane here;
                 // the vessel-held handle while detached — the pop-out suite covers that phase)
                 getAgentDetailPane() { return detail },
                 getMemoriesPane() { return null },
                 onDockZoneDocumentChange(doc) { this.committed = doc },
                 resolveFleetRosterStore() { return {get: id => id === 'vega' ? record : null} },
+                revealRailItem(itemId) { revealed.push(itemId) },
                 setState(values) { Object.assign(this.selectionState, values) }
             },
             controller = Object.create(FleetCockpitController.prototype);
@@ -252,9 +256,10 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
             selectedAgentId      : 'vega',
             selectedAgentIdentity: '@neo-opus-vega'
         });
-        // the auto-hidden inspector is revealed through the standard commit loop, not a bespoke path
-        expect(applied).toEqual([{operation: 'setItemAutoHidden', itemId: 'detail', autoHidden: false}]);
-        expect(cockpit.committed).toEqual({revealed: true})
+        // the railed inspector is held revealed over the layout: no operation, no re-projection
+        expect(revealed).toEqual(['detail']);
+        expect(applied).toEqual([]);
+        expect(cockpit.committed).toBeUndefined()
     });
 
     test('onAgentSelect: an already-revealed inspector updates in place (no re-projection); an unknown agent is a fail-closed no-op', () => {

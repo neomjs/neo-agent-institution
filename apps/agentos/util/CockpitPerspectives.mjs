@@ -149,10 +149,21 @@ class CockpitPerspectives extends Base {
      */
     static revealsInspector(document) {
         const tabsId = WorkspaceDocument.findContainingTabsId(document, 'detail'),
-              node   = tabsId ? document.nodes[tabsId] : null,
-              railed = document.items.detail?.autoHidden === true && this.isEdgeMember(document, tabsId);
+              node   = tabsId ? document.nodes[tabsId] : null;
 
-        return !!node && !railed && (node.activeItemId === 'detail' || node.items.length === 1)
+        return !!node && !this.railsInspector(document) && (node.activeItemId === 'detail' || node.items.length === 1)
+    }
+
+    /**
+     * @summary TRUE when the inspector waits on a rail: the detail item is auto-hidden in a tabs node
+     * of an EDGE zone, so the engine projects it as a rail tab, never in the tab flow. Only a railed
+     * inspector follows the selection through the rail's reveal ({@link #syncDetailReveal}).
+     * @param {Object} document A committed `neo.dock.zone.v1` document.
+     * @returns {Boolean}
+     */
+    static railsInspector(document) {
+        return document?.items?.detail?.autoHidden === true && !!document.nodes &&
+            this.isEdgeMember(document, WorkspaceDocument.findContainingTabsId(document, 'detail'))
     }
 
     /**
@@ -171,39 +182,20 @@ class CockpitPerspectives extends Base {
     }
 
     /**
-     * @summary The ONE dock-write site for the selection-driven inspector (`detail.autoHidden`),
-     * paired with `Controller#applySelection`: reveals `detail` when an agent is selected and
-     * restores `autoHidden: true` when the selection clears unless the operator pinned the item
-     * through the dock's pin verb (`detail.pinned === true` in the dock document). Center-docked
-     * arrangements (`Review`) and closed items are untouched.
+     * @summary The ONE dock site for the selection-driven inspector, paired with
+     * `Controller#applySelection`: a railed inspector is held revealed over the layout while a
+     * resident is selected, and dismissed when the selection clears. The reveal is the rail's
+     * overlay, never a document operation, so a selection never reflows the roster, and focus stays
+     * on it. Only the pin verb commits the inspector as a column. The person ends the reveal with
+     * Escape or its rail tab, and the selection ends with it (`Controller#onDockRailRevealChange`).
+     * A pinned or center-docked inspector is in the layout already, and a closed one is untouched.
      * @param {Neo.dashboard.dock.Workspace} cockpit
      * @param {Boolean} selected Whether a resident is currently selected.
      */
-    static syncDetailAutoHidden(cockpit, selected) {
-        const doc    = cockpit?.dockModel,
-              detail = doc?.items?.detail;
-
-        if (!detail || typeof cockpit.applyDockZoneOperation !== 'function') {
-            return
+    static syncDetailReveal(cockpit, selected) {
+        if (typeof cockpit?.revealRailItem === 'function' && this.railsInspector(cockpit.dockModel)) {
+            selected ? cockpit.revealRailItem('detail') : cockpit.dismissRailReveal('detail')
         }
-
-        if (doc.nodes) {
-            const tabsId = WorkspaceDocument.findContainingTabsId(doc, 'detail');
-
-            if (!tabsId || !this.isEdgeMember(doc, tabsId)) {
-                return
-            }
-        }
-
-        const autoHidden = !selected;
-
-        if (detail.autoHidden === autoHidden || (autoHidden && detail.pinned === true)) {
-            return
-        }
-
-        const result = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'detail', autoHidden});
-
-        result && !result.errors?.length && cockpit.onDockZoneDocumentChange?.(result.document)
     }
 
     /**

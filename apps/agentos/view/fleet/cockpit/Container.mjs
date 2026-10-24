@@ -208,6 +208,8 @@ class FleetCockpit extends VesselContainer {
                 // synchronously (park → window → reattach); a lazy module resolves through an async
                 // placeholder the vessel flow cannot carry
                 module    : AgentDetail,
+                // the selection and the pin are its lifecycle; a closed inspector would strand it
+                closable  : false,
                 header    : {text: 'Agent detail'},
                 reference : 'agent-detail',
                 autoHidden: true,
@@ -267,6 +269,11 @@ class FleetCockpit extends VesselContainer {
          * @member {Neo.controller.Component} controller=FleetCockpitController
          */
         controller: FleetCockpitController,
+        /**
+         * The end of the selection-driven inspector's reveal ({@link #onDetailRevealChange}).
+         * @member {Object} listeners
+         */
+        listeners: {dockRailRevealChange: 'onDetailRevealChange'},
         /**
          * The cockpit's state scope — shared render truths + formulas + the provider-owned
          * stores; see {@link AgentOS.view.fleet.cockpit.StateProvider}.
@@ -571,6 +578,9 @@ class FleetCockpit extends VesselContainer {
             return me.refusePerspective(name, errors)
         }
 
+        // the switch may have re-railed the inspector (Review → Overview): it follows the selection there too
+        CockpitPerspectives.syncDetailReveal(me, Boolean(me.detailRecord));
+
         return {errors: [], switched: true}
     }
 
@@ -605,6 +615,26 @@ class FleetCockpit extends VesselContainer {
         if (document && CockpitPerspectives.revealsInspector(document) && !me.detailRecord) {
             controller = me.getController();
             controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null, {syncDock: false})
+        }
+    }
+
+    /**
+     * @summary The person ended the inspector's reveal: Escape, its rail tab, or another rail tool
+     * opened over it. The selection ends with it, so the inspector keeps following the selection.
+     * The roster's own selection clears first, so its card, the provider pair and the owner settle
+     * through the one select seam. A reveal end the cockpit caused finds no selection left, and an
+     * inspector the document now shows (pinned, or docked in the center) keeps its selection.
+     * @param {Object} data The workspace's `dockRailRevealChange` `{next, previous, rail, railItem}`.
+     * @protected
+     */
+    onDetailRevealChange({next, previous}) {
+        const me = this;
+
+        if (previous.revealedItemId === 'detail' && next.revealedItemId !== 'detail' && me.detailRecord &&
+            CockpitPerspectives.railsInspector(me.dockModel)) {
+            const selection = me.getReference('fleet-grid')?.getReference('roster-list')?.selectionModel;
+
+            selection?.hasSelection() ? selection.deselectAll() : me.getController().applySelection(null)
         }
     }
 
