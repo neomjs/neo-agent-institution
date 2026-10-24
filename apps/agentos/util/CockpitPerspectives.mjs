@@ -186,15 +186,67 @@ class CockpitPerspectives extends Base {
      * `Controller#applySelection`: a railed inspector is held revealed over the layout while a
      * resident is selected, and dismissed when the selection clears. The reveal is the rail's
      * overlay, never a document operation, so a selection never reflows the roster, and focus stays
-     * on it. Only the pin verb commits the inspector as a column. The person ends the reveal with
-     * Escape or its rail tab, and the selection ends with it (`Container#onDetailRevealChange`).
-     * A pinned or center-docked inspector is in the layout already, and a closed one is untouched.
-     * @param {Neo.dashboard.dock.Workspace} cockpit
+     * on it. Only the pin verb commits the inspector as a column. A press outside the reveal ends it
+     * and keeps the selection (`Container#onCockpitMouseDown`); Escape or its rail tab end both
+     * (`Container#onDetailRevealChange`). The cockpit's own dismissal leaves the selection to its
+     * writer. A pinned or center-docked inspector is in the layout already, and a closed one is untouched.
+     * @param {AgentOS.view.fleet.cockpit.Container} cockpit
      * @param {Boolean} selected Whether a resident is currently selected.
      */
     static syncDetailReveal(cockpit, selected) {
         if (typeof cockpit?.revealRailItem === 'function' && this.railsInspector(cockpit.dockModel)) {
-            selected ? cockpit.revealRailItem('detail') : cockpit.dismissRailReveal('detail')
+            selected ? cockpit.revealRailItem('detail') : cockpit.dismissDetailReveal()
+        }
+    }
+
+    /**
+     * @summary A press while a railed inspector's reveal follows a selection. A press inside
+     * the rail's subtree (its tabs, the overlay over a covered card) is the rail's. A press that
+     * selects a card keeps the reveal: another card re-targets it through the selection, and the
+     * selected card, which a re-select leaves silent, reveals it again. Any other press, a card's
+     * lifecycle controls included, ends the reveal, keeps the selection and still lands on what it
+     * aimed at. The rail's own outside listener leaves a held reveal alone, so only this press does.
+     * @param {AgentOS.view.fleet.cockpit.Container} cockpit
+     * @param {Object[]} [path=[]] The `mousedown` DOM path, innermost first.
+     */
+    static detailPress(cockpit, path=[]) {
+        const rail = cockpit.detailRecord && this.railsInspector(cockpit.dockModel) && cockpit.findDockRail('detail');
+
+        if (!rail || path.some(node => node.id === rail.id)) {
+            return
+        }
+
+        const list  = cockpit.getReference('fleet-grid')?.getReference('roster-list'),
+              index = list?.getInteractiveItemIndex(path);
+
+        if (index === undefined || list.selectionModel.insideLifecycleControls(path)) {
+            cockpit.dismissDetailReveal()
+        } else if (path[index].id === list.getItemId(cockpit.detailRecord)) {
+            cockpit.revealRailItem('detail')
+        }
+    }
+
+    /**
+     * @summary A railed inspector's reveal changed. When the person ends it (Escape, its rail tab,
+     * another rail tool opened over it), the selection ends with it: the roster's own selection
+     * clears first, so its card, the provider pair and the owner settle through the one select seam.
+     * When the rail tab opens it again, the cockpit holds it at once, so focus leaving it ends
+     * nothing. An end the cockpit caused (`Container#dismissDetailReveal`) keeps the selection, and
+     * an inspector the document shows (pinned, or docked in the center) is untouched.
+     * @param {AgentOS.view.fleet.cockpit.Container} cockpit
+     * @param {Object} data The workspace's `dockRailRevealChange` `{next, previous, rail, railItem}`.
+     */
+    static detailRevealChange(cockpit, {next, previous}) {
+        if (cockpit.dismissingDetailReveal || !cockpit.detailRecord || !this.railsInspector(cockpit.dockModel)) {
+            return
+        }
+
+        if (previous.revealedItemId === 'detail' && next.revealedItemId !== 'detail') {
+            const selection = cockpit.getReference('fleet-grid')?.getReference('roster-list')?.selectionModel;
+
+            selection?.hasSelection() ? selection.deselectAll() : cockpit.getController().applySelection(null)
+        } else if (next.revealedItemId === 'detail' && next.state !== 'revealed-held') {
+            cockpit.revealRailItem('detail')
         }
     }
 

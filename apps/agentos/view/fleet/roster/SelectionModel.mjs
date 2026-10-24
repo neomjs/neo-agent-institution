@@ -33,24 +33,29 @@ class SelectionModel extends ListModel {
     }
 
     /**
-     * @summary The control-cluster carve-out: when the click path reaches a card's lifecycle
-     * control cluster BEFORE the list item (i.e. the click landed inside the controls), the click
-     * belongs to the lifecycle seam (`lifecycleIntent`) and selection stays untouched. Every other
-     * item click selects through the base path.
-     * @param {Object} data The delegated list click; `data.path` is the DOM path, innermost first.
+     * @summary The control-cluster carve-out: TRUE when a pointer path reaches a card's lifecycle
+     * control cluster BEFORE the list item, i.e. the press landed inside the controls. Such a press
+     * belongs to the lifecycle seam (`lifecycleIntent`) and selects nothing. The cockpit reads the same
+     * rule to tell a selecting press from any other ({@link AgentOS.view.fleet.cockpit.Container#onCockpitMouseDown}).
+     * @param {Object[]} [path=[]] The DOM path, innermost first.
+     * @returns {Boolean}
      */
-    onListClick(data) {
+    insideLifecycleControls(path=[]) {
         const
-            path         = data.path || [],
             {itemCls}    = this.view,
             controlIndex = path.findIndex(node => node.cls?.includes('fm-card-control-verbs')),
             itemIndex    = path.findIndex(node => node.cls?.includes(itemCls));
 
-        if (controlIndex > -1 && (itemIndex === -1 || controlIndex < itemIndex)) {
-            return
-        }
+        return controlIndex > -1 && (itemIndex === -1 || controlIndex < itemIndex)
+    }
 
-        super.onListClick(data)
+    /**
+     * @summary A click inside a card's lifecycle controls operates the agent and leaves the selection
+     * untouched ({@link #insideLifecycleControls}); every other item click selects through the base path.
+     * @param {Object} data The delegated list click; `data.path` is the DOM path, innermost first.
+     */
+    onListClick(data) {
+        this.insideLifecycleControls(data.path) || super.onListClick(data)
     }
 
     /**

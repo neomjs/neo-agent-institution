@@ -504,6 +504,7 @@ class Controller extends FleetBatchController {
             cockpit  = me.component,
             identity = record?.githubUsername ? `@${record.githubUsername}` : null;
 
+        !record && syncDock && CockpitPerspectives.syncDetailReveal(cockpit, false);   // the reveal ends before the inspector empties
         cockpit.detailRecord = record ?? null;   // afterSetDetailRecord pushes the live pane
 
         cockpit.setState({
@@ -526,7 +527,7 @@ class Controller extends FleetBatchController {
             me.loadRecentTurns({agentIdentity: identity})
         }
 
-        syncDock && CockpitPerspectives.syncDetailReveal(cockpit, Boolean(record))
+        record && syncDock && CockpitPerspectives.syncDetailReveal(cockpit, true)
     }
 
     /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */

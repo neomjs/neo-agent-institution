@@ -275,5 +275,90 @@ test.describe('AgentOS fleet cockpit — semantic roster item→detail live dril
         await settled();
         await expect.poll(centerWidth).toBe(988);
         expect((await readDockModel()).items.detail).toMatchObject({autoHidden: false, pinned: true})
+    });
+
+    test('at 1400 px an outside press ends the held reveal and keeps the selection; the selected card or the rail tab reveals it again; another card re-targets it with no frame without the overlay; after Escape the card under the reveal takes the press (#791 AC-4)', async ({page, neuralLink}) => {
+        await page.setViewportSize({width: 1400, height: 900});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+        await landFleetRoster(page, sampleRoster.slice(0, 2).map(row => ({...row, avatarUrl: null})));
+
+        const app       = await neuralLink.connectToApp('AgentOS'),
+              card      = name => page.locator('.fm-agent-card', {has: page.locator('.fm-card-name', {hasText: new RegExp(`^${name}$`)})}),
+              revealed  = page.locator('.neo-dashboard-dock-reveal-overlay .fm-agent-detail'),
+              settled   = () => expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0),
+              selected  = async () => (await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['detailRecord.agentId']))[0].properties['detailRecord.agentId'] ?? null,
+              // the engine's word on the reveal: the overlay's DOM shows it, only the rail's machine says it is held
+              revealState = async () => (await app.queryComponent({className: 'Neo.dashboard.dock.interaction.Rail'}, ['revealMachine.revealedItemId', 'revealMachine.state']))
+                  .map(rail => rail.properties).find(rail => rail['revealMachine.revealedItemId'] === 'detail')?.['revealMachine.state'] ?? 'idle',
+              // the left edge of a card: the part of the right column the reveal leaves uncovered
+              pressEdge = name => card(name).click({position: {x: 8, y: 24}}),
+              outside   = () => page.locator('.fm-fleet-title').click();
+
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Ada');
+
+        // 1. a press outside the rail ends the reveal, and the selection stays
+        await outside();
+        await expect(revealed).toBeHidden();
+        expect(await selected(), 'the outside press keeps the selection').toBe('neo-opus-ada');
+
+        // 2. a press on the selected card reveals it again
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Ada');
+        await settled();
+
+        // 3. a press on another card re-targets the reveal, and the overlay stays up in every frame between
+        await page.evaluate(() => {
+            const frames = window.fmRevealFrames = [],
+                  tick   = () => {
+                      const overlay = document.querySelector('.fm-agent-detail')?.closest('.neo-dashboard-dock-reveal-overlay');
+
+                      frames.push(!!overlay && !overlay.classList.contains('neo-dashboard-dock-reveal-overlay-hidden') &&
+                          !overlay.classList.contains('neo-dashboard-dock-reveal-overlay-leaving'));
+                      window.fmRevealFrames === frames && requestAnimationFrame(tick)
+                  };
+
+            requestAnimationFrame(tick)
+        });
+        await pressEdge('Grace');
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Grace');
+        await settled();
+
+        const frames = await page.evaluate(() => {const frames = window.fmRevealFrames; window.fmRevealFrames = null; return frames});
+
+        expect(frames.length, 'the probe saw the press').toBeGreaterThan(2);
+        expect(frames.filter(shown => !shown), 'no frame without the overlay').toEqual([]);
+        expect(await revealState()).toBe('revealed-held');
+
+        // 4. the rail tab reveals it again after an outside press, held again: the next outside press ends it
+        await outside();
+        await expect(revealed).toBeHidden();
+        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Agent detail'}).first().click();
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Grace');
+        await expect.poll(revealState, {message: 'the cockpit holds the reveal the tab opened'}).toBe('revealed-held');
+        await outside();
+        await expect(revealed).toBeHidden();
+        expect(await selected()).toBe('neo-opus-grace');
+
+        // 5. Escape clears both, and whatever lay under the reveal takes a press at its centre again
+        await card('Ada').locator('.fm-card-name').click();
+        await expect(revealed.locator('.fm-detail-name')).toHaveText('Ada');
+        await settled();
+
+        const centre     = await revealed.evaluate(el => {
+                  const {height, width, x, y} = el.closest('.neo-dashboard-dock-reveal-overlay').getBoundingClientRect();
+
+                  return [x + width / 2, y + height / 2]
+              }),
+              overlayHit = () => page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.neo-dashboard-dock-reveal-overlay'), centre);
+
+        expect(await overlayHit(), 'the held reveal takes a press at its centre').toBe(true);
+
+        await page.locator('.fm-fleet-cards').press('Escape');
+        await expect(revealed).toBeHidden();
+        await settled();
+        expect(await selected()).toBeNull();
+        await expect.poll(overlayHit, {message: 'the gone reveal intercepts no press', timeout: 2000}).toBe(false)
     })
 });

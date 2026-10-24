@@ -270,6 +270,11 @@ class FleetCockpit extends VesselContainer {
          */
         controller: FleetCockpitController,
         /**
+         * A press outside the inspector's held reveal ends it and keeps the selection ({@link #onCockpitMouseDown}).
+         * @member {Object} domListeners
+         */
+        domListeners: {mousedown: 'onCockpitMouseDown'},
+        /**
          * The end of the selection-driven inspector's reveal ({@link #onDetailRevealChange}).
          * @member {Object} listeners
          */
@@ -410,6 +415,9 @@ class FleetCockpit extends VesselContainer {
      * @member {String|null} publishedPerspectives=null
      */
     publishedPerspectives = null
+
+    /** @member {Boolean} dismissingDetailReveal=false TRUE while {@link #dismissDetailReveal} runs. @protected */
+    dismissingDetailReveal = false
 
     /**
      * @summary The one service member the cockpit composes at construct. The layout SSOT is the
@@ -618,24 +626,21 @@ class FleetCockpit extends VesselContainer {
         }
     }
 
-    /**
-     * @summary The person ended the inspector's reveal: Escape, its rail tab, or another rail tool
-     * opened over it. The selection ends with it, so the inspector keeps following the selection.
-     * The roster's own selection clears first, so its card, the provider pair and the owner settle
-     * through the one select seam. A reveal end the cockpit caused finds no selection left, and an
-     * inspector the document now shows (pinned, or docked in the center) keeps its selection.
-     * @param {Object} data The workspace's `dockRailRevealChange` `{next, previous, rail, railItem}`.
-     * @protected
-     */
-    onDetailRevealChange({next, previous}) {
-        const me = this;
+    /** @summary Ends the inspector's reveal on the cockpit's own word; that end keeps the selection. */
+    dismissDetailReveal() {
+        this.dismissingDetailReveal = true;
+        this.dismissRailReveal('detail');   // the rail reports the end synchronously, inside the flag
+        this.dismissingDetailReveal = false
+    }
 
-        if (previous.revealedItemId === 'detail' && next.revealedItemId !== 'detail' && me.detailRecord &&
-            CockpitPerspectives.railsInspector(me.dockModel)) {
-            const selection = me.getReference('fleet-grid')?.getReference('roster-list')?.selectionModel;
+    /** @summary A press anywhere in the cockpit ({@link AgentOS.util.CockpitPerspectives#detailPress}). @protected */
+    onCockpitMouseDown({path}) {
+        CockpitPerspectives.detailPress(this, path)
+    }
 
-            selection?.hasSelection() ? selection.deselectAll() : me.getController().applySelection(null)
-        }
+    /** @summary A rail's reveal changed ({@link AgentOS.util.CockpitPerspectives#detailRevealChange}). @protected */
+    onDetailRevealChange(data) {
+        CockpitPerspectives.detailRevealChange(this, data)
     }
 
     /**

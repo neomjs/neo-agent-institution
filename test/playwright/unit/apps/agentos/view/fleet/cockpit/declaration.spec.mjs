@@ -593,6 +593,70 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         expect(detailReveal(cockpit)).toEqual(IDLE)
     });
 
+    test('an outside press ends the detail\'s reveal and keeps the selection; the selected card or the rail tab reveals it again; another card re-targets it without passing through idle; a press inside the rail is the rail\'s, one on a card\'s controls is outside; Escape ends the reveal before the inspector empties (#791 AC-4)', async () => {
+        cockpit = create();
+        seatRoster(cockpit);
+
+        const
+            list    = cockpit.getReference('fleet-grid').getReference('roster-list'),
+            model   = list.selectionModel,
+            rail    = cockpit.findDockRail('detail'),
+            card    = id => ({id: list.getItemId(id), cls: [list.itemCls]}),
+            press   = path => cockpit.onCockpitMouseDown({path}),
+            states  = [];
+
+        let ownerAtEnd;
+
+        cockpit.on('dockRailRevealChange', ({next}) => {
+            states.push(next.state);
+            next.state === 'idle' && (ownerAtEnd = cockpit.detailRecord?.agentId ?? null)
+        });
+
+        model.select(list.getItemId('ada'));
+        await cockpit.refreshPromise;
+        expect(detailReveal(cockpit)).toEqual(HELD);
+
+        // 1. a press outside the rail ends the reveal, and the selection stays
+        press([{id: 'fm-press-title', cls: ['fm-pane-title']}]);
+        expect(detailReveal(cockpit)).toEqual(IDLE);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'ada', pane: 'ada', provider: 'ada'});
+
+        // 2. a press on the selected card, which a re-select leaves silent, reveals it again
+        press([card('ada')]);
+        expect(detailReveal(cockpit)).toEqual(HELD);
+
+        // 3. a press on another card keeps the reveal: the selection re-targets it, never through idle
+        states.length = 0;
+        press([card('vega')]);
+        model.onListClick({currentTarget: list.getItemId('vega'), path: [card('vega')]});
+        await cockpit.refreshPromise;
+        expect(detailReveal(cockpit)).toEqual(HELD);
+        expect(states, 'the card-to-card press published no end').not.toContain('idle');
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'vega', pane: 'vega', provider: 'vega'});
+
+        // 4. a press inside the rail's subtree, as on the overlay over a covered card, is the rail's
+        press([{id: 'fm-press-overlay', cls: []}, {id: rail.id, cls: []}]);
+        expect(detailReveal(cockpit)).toEqual(HELD);
+
+        // 5. a press on a card's lifecycle controls selects nothing, so it is an outside press
+        press([{id: 'fm-press-verbs', cls: ['fm-card-control-verbs']}, card('ada')]);
+        expect(detailReveal(cockpit)).toEqual(IDLE);
+        expect(inspectorTruth(cockpit)).toEqual({owner: 'vega', pane: 'vega', provider: 'vega'});
+
+        // 6. the rail tab reveals it again, and the cockpit holds it at once
+        rail.revealMachine.tabClick('detail');
+        expect(detailReveal(cockpit)).toEqual(HELD);
+
+        // 7. Escape clears both, and the reveal ends while the inspector still shows its resident
+        ownerAtEnd = undefined;
+        model.onKeyDownEscape({});
+        await cockpit.refreshPromise;
+        expect(ownerAtEnd, 'the reveal ended before the inspector emptied').toBe('vega');
+        expect(detailReveal(cockpit)).toEqual(IDLE);
+        expect(inspectorTruth(cockpit)).toEqual({owner: null, pane: null, provider: null});
+        expect(cockpit.dockModel, 'no press moved the document').toEqual(SHIPPED)
+    });
+
     test('a perspective restore or a reload keeps a pinned detail and drops an unpinned one (#712 AC-2)', async () => {
         cockpit = create();
         seatRoster(cockpit);
