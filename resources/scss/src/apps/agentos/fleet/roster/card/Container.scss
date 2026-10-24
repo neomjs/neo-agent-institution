@@ -396,7 +396,7 @@
         }
     }
 
-    /* ── work-row: the current lane, two-line clamped with head+tail middle elision ── */
+    /* ── work-row: the current lane, two-line clamped with leading claim age ── */
     .fm-card-work-row {
         min-height: 30px;
     }
@@ -413,13 +413,9 @@
         line-clamp               : 2;
         -webkit-box-orient       : vertical;
 
-        /* the preserved distinguishing tail reads full-ink; the elided context head recedes */
-        .fm-lane-tail {
-            color: var(--fm-ink);
-        }
-
-        .fm-lane-elide {
-            color: color-mix(in srgb, var(--fm-ink-dim) 80%, transparent);
+        /* the leading age recedes on dim ink; the verbatim subject inherits full ink */
+        .fm-lane-age {
+            color: var(--fm-ink-dim);
         }
     }
 
