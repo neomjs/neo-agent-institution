@@ -904,8 +904,7 @@ class AgentCard extends Container {
 
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
         // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
-        // row height at every card width — the lane stays reachable via line one, its middle elision
-        // and the title.
+        // row height at every card width — the lane stays reachable via line one and the title.
         me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine || exitLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
         // the runtime-source gating is already shown by the disabled controls + the source strip
