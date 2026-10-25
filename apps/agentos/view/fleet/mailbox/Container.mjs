@@ -341,9 +341,13 @@ class MailboxPane extends Container {
         // the detail's intents leave through this pane (fire stamps the pane as their source); its host
         // relays them to the owner
         me.getReference('mailbox-detail').on({
-            markReadRequest: data => me.fire('markReadRequest', {...data}),
-            replyRequest   : data => me.fire('replyRequest',    {...data}),
-            resolveRequest : data => me.fire('resolveRequest',  {...data})
+            approvePublishRequest: data => me.fire('approvePublishRequest', {...data}),
+            dropPublishRequest   : data => me.fire('dropPublishRequest',    {...data}),
+            editPublishRequest   : data => me.fire('editPublishRequest',    {...data}),
+            markReadRequest      : data => me.fire('markReadRequest',       {...data}),
+            openPublishSwitch    : data => me.fire('openPublishSwitch',     {...data}),
+            replyRequest         : data => me.fire('replyRequest',          {...data}),
+            resolveRequest       : data => me.fire('resolveRequest',        {...data})
         });
 
         me.applySnapshot()

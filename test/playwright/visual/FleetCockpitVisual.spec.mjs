@@ -1542,6 +1542,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
 
     /**
+     * The publish-gate driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: drives `PublishRequestComponent`
+     * (`queued`, `publishing`, `published`) and `PublishSwitchComponent` (`switches`).
+     * @type {String}
+     */
+    const PUBLISH_GATE_DRIVER = '../../../../test/playwright/visual/publishGate.driver.mjs';
+
+    /**
      * The Memories driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: the cockpit's bridge answers a selected
      * resident's session summaries.
      * @type {String}
@@ -2991,6 +2998,370 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landPlaneAdmission(page, admitted);
         await expect(chip).toBeHidden()
+    });
+
+    test('the operator inbox publish request card and Configuration\'s Publishing switch — 314 · 720 · 1280, both skins, and the publishing → published transition (#673)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 1100});
+        await bootSettledCockpit(page);
+
+        const
+            name       = /^\s*Mailbox\s*$/i,
+            strip      = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+            tab        = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+            pane       = page.locator('.fm-operator-mailbox:visible').first(),
+            card       = pane.locator('.fm-publish-request-card'),
+            detail     = page.locator('.fm-agent-detail:visible').first(),
+            switches   = detail.locator('.fm-publish-switches'),
+            drive      = async state => {
+                const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${PUBLISH_GATE_DRIVER}?state=${state}&t=${++driverTick}`);
+                expect(loaded.success, `publishGate driver (${state}) loaded: ${JSON.stringify(loaded)}`).toBe(true)
+            },
+            setBandCss = async cssText => {
+                await page.evaluate(css => {
+                    let style = document.getElementById('__fm_publish_width_pin');
+                    if (!style) {
+                        style = document.createElement('style');
+                        style.id = '__fm_publish_width_pin';
+                        document.head.appendChild(style)
+                    }
+                    style.textContent = css || ''
+                }, cssText)
+            },
+            pinCardBand = async band => {
+                const base = `
+                    .neo-dashboard-dock-tabs:has(.fm-operator-mailbox),
+                    .neo-dashboard-dock-reveal-overlay:has(.fm-operator-mailbox) {
+                        min-height: 680px !important;
+                    }
+                    .fm-operator-mailbox,
+                    .fm-mailbox-pane,
+                    .fm-mailbox-body,
+                    .fm-mailbox-detail {
+                        height: auto !important;
+                        max-height: none !important;
+                        overflow: visible !important;
+                    }
+                `;
+                if (band === 1280) {
+                    await setBandCss(`${base}
+                        .neo-dashboard-dock-reveal-overlay:has(.fm-operator-mailbox) {
+                            width: 1200px !important;
+                            max-width: 1200px !important;
+                        }
+                    `)
+                } else if (band === 720) {
+                    await setBandCss(`${base}
+                        .fm-operator-mailbox {
+                            width: 720px !important;
+                            max-width: 720px !important;
+                        }
+                    `)
+                } else if (band === 314) {
+                    await setBandCss(`${base}
+                        .fm-operator-mailbox {
+                            width: 314px !important;
+                            max-width: 314px !important;
+                        }
+                        .fm-mailbox-detail {
+                            padding-top: 0 !important;
+                        }
+                    `)
+                } else {
+                    await setBandCss('')
+                }
+            },
+            pinSwitchBand = async band => {
+                if (!band) {
+                    await setBandCss('');
+                    return
+                }
+                const overlayWidth = band === 1280 ? 860 : band;
+                await setBandCss(`
+                    .neo-dashboard-dock-reveal-overlay:has(.fm-agent-detail) {
+                        width: ${overlayWidth}px !important;
+                        max-width: ${overlayWidth}px !important;
+                        min-width: ${overlayWidth}px !important;
+                    }
+                    .fm-agent-detail,
+                    .fm-agent-detail .fm-detail-tabs,
+                    .fm-agent-detail .neo-tab-body-container,
+                    .fm-agent-detail .fm-detail-config {
+                        overflow: visible !important;
+                        height: auto !important;
+                        max-height: none !important;
+                    }
+                `)
+            },
+            assertCardGeometry = async (label, expectedBand) => {
+                await card.evaluate(el => el.scrollIntoView({block: 'nearest'}));
+                const m = await card.evaluate(el => {
+                    const r = el.getBoundingClientRect(),
+                          children = [
+                              '.fm-publish-channel-chip',
+                              '.fm-publish-post-text',
+                              '.fm-publish-reply-target',
+                              '.fm-publish-revision-chip',
+                              '.fm-publish-attestation-chip',
+                              '.fm-publish-switch-chip',
+                              '.fm-publish-hypothesis',
+                              '.fm-publish-approve',
+                              '.fm-publish-edit',
+                              '.fm-publish-drop',
+                              '.fm-publish-outcome'
+                          ].map(sel => {
+                              const node = el.querySelector(sel);
+                              if (!node) return {sel, missing: true};
+                              const nr = node.getBoundingClientRect();
+                              return {
+                                  sel,
+                                  width     : Math.round(nr.width),
+                                  height    : Math.round(nr.height),
+                                  pastRight : Math.round(nr.right - r.right),
+                                  pastBottom: Math.round(nr.bottom - r.bottom),
+                                  pastLeft  : Math.round(r.left - nr.left),
+                                  pastTop   : Math.round(r.top - nr.top),
+                                  hOverflow : node.scrollWidth - node.clientWidth
+                              }
+                          }),
+                          clippers = [];
+                    let anc = el.parentElement;
+                    while (anc && anc !== document.body) {
+                        const cs = getComputedStyle(anc);
+                        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+                            const ar = anc.getBoundingClientRect();
+                            if (r.right > ar.right + 1 || r.bottom > ar.bottom + 1 || r.left < ar.left - 1 || r.top < ar.top - 1) {
+                                clippers.push({
+                                    cls       : anc.className,
+                                    pastRight : Math.round(r.right - ar.right),
+                                    pastBottom: Math.round(r.bottom - ar.bottom)
+                                })
+                            }
+                        }
+                        anc = anc.parentElement
+                    }
+                    const textRect  = el.querySelector('.fm-publish-post-text')?.getBoundingClientRect(),
+                          replyRect = el.querySelector('.fm-publish-reply-target')?.getBoundingClientRect(),
+                          gateRect  = el.querySelector('.fm-publish-card-gate')?.getBoundingClientRect(),
+                          actRect   = el.querySelector('.fm-publish-card-actions')?.getBoundingClientRect(),
+                          btnRects  = [...el.querySelectorAll('.fm-publish-card-actions .fm-publish-card-btn')].map(b => b.getBoundingClientRect());
+                    return {
+                        width          : Math.round(r.width),
+                        height         : Math.round(r.height),
+                        hOverflow      : el.scrollWidth - el.clientWidth,
+                        inViewport     : r.bottom <= window.innerHeight + 1 && r.right <= window.innerWidth + 1 && r.top >= -1 && r.left >= -1,
+                        replyBesideText: Boolean(textRect && replyRect && Math.round(replyRect.left) >= Math.round(textRect.right) - 2),
+                        actionsBesideGate: Boolean(gateRect && actRect && Math.round(actRect.left) >= Math.round(gateRect.right) - 2),
+                        buttonsStacked : btnRects.length === 3 && Math.round(btnRects[1].top) >= Math.round(btnRects[0].bottom) - 1 && Math.round(btnRects[2].top) >= Math.round(btnRects[1].bottom) - 1,
+                        children,
+                        clippers
+                    }
+                });
+                expect(m.hOverflow, `${label}: card has no horizontal overflow (${JSON.stringify(m)})`).toBeLessThanOrEqual(1);
+                expect(m.inViewport, `${label}: card is completely inside viewport (${JSON.stringify(m)})`).toBe(true);
+                expect(m.clippers, `${label}: no ancestor clips the card`).toEqual([]);
+                for (const c of m.children) {
+                    expect(c.missing, `${label}: ${c.sel} is present`).toBeFalsy();
+                    expect(c.width, `${label}: ${c.sel} has positive width`).toBeGreaterThan(0);
+                    expect(c.height, `${label}: ${c.sel} has positive height`).toBeGreaterThan(0);
+                    expect(c.pastRight, `${label}: ${c.sel} stays inside card right edge`).toBeLessThanOrEqual(1);
+                    expect(c.pastBottom, `${label}: ${c.sel} stays inside card bottom edge`).toBeLessThanOrEqual(1);
+                    expect(c.hOverflow, `${label}: ${c.sel} does not truncate horizontally`).toBeLessThanOrEqual(1)
+                }
+                if (expectedBand === 1280) {
+                    expect(m.width, `${label}: 1280 band exercises >= 760px container regime`).toBeGreaterThanOrEqual(760);
+                    expect(m.replyBesideText, `${label}: at 1280 reply target sits beside text`).toBe(true);
+                    expect(m.actionsBesideGate, `${label}: at 1280 actions sit beside gate`).toBe(true)
+                } else if (expectedBand === 720) {
+                    expect(m.width, `${label}: 720 band is >= 560px`).toBeGreaterThanOrEqual(560);
+                    expect(m.width, `${label}: 720 band is < 760px`).toBeLessThan(760);
+                    expect(m.replyBesideText, `${label}: at 720 reply target stacks under text`).toBe(false);
+                    expect(m.actionsBesideGate, `${label}: at 720 gate and actions form two columns`).toBe(true)
+                } else if (expectedBand === 314) {
+                    expect(m.width, `${label}: 314 band is <= 360px`).toBeLessThanOrEqual(360);
+                    expect(m.buttonsStacked, `${label}: at 314 actions stack vertically`).toBe(true)
+                }
+            },
+            assertSwitchesGeometry = async (label, expectedBand) => {
+                await switches.evaluate(el => el.scrollIntoView({block: 'nearest'}));
+                const m = await switches.evaluate(el => {
+                    const r = el.getBoundingClientRect(),
+                          chipsDisplay  = getComputedStyle(el.querySelector('.fm-publish-switch-chips')).display,
+                          selectDisplay = getComputedStyle(el.querySelector('.fm-publish-switch-select')).display,
+                          visibleNodes  = [...el.querySelectorAll('.fm-publish-switches-header, .fm-publish-switches-sub, .fm-publish-switch-row, .fm-publish-switch-row-head, .fm-publish-switch-current, .fm-publish-switch-chip, .fm-publish-switch-select, .fm-publish-switch-audit, .fm-publish-switch-audit-last, .fm-publish-switch-proposal')]
+                              .filter(n => n.getClientRects().length > 0)
+                              .map(n => {
+                                  const nr = n.getBoundingClientRect();
+                                  return {
+                                      cls       : n.className,
+                                      pastRight : Math.round(nr.right - r.right),
+                                      pastBottom: Math.round(nr.bottom - r.bottom),
+                                      hOverflow : n.scrollWidth - n.clientWidth
+                                  }
+                              }),
+                          clippers = [];
+                    let anc = el.parentElement;
+                    while (anc && anc !== document.body) {
+                        const cs = getComputedStyle(anc);
+                        if (cs.overflowX !== 'visible' || cs.overflowY !== 'visible') {
+                            const ar = anc.getBoundingClientRect();
+                            if (r.right > ar.right + 1 || r.bottom > ar.bottom + 1 || r.left < ar.left - 1 || r.top < ar.top - 1) {
+                                clippers.push({
+                                    cls       : anc.className,
+                                    pastRight : Math.round(r.right - ar.right),
+                                    pastBottom: Math.round(r.bottom - ar.bottom)
+                                })
+                            }
+                        }
+                        anc = anc.parentElement
+                    }
+                    return {
+                        width       : Math.round(r.width),
+                        height      : Math.round(r.height),
+                        hOverflow   : el.scrollWidth - el.clientWidth,
+                        inViewport  : r.bottom <= window.innerHeight + 1 && r.right <= window.innerWidth + 1 && r.top >= -1 && r.left >= -1,
+                        chipsDisplay,
+                        selectDisplay,
+                        overflowing : visibleNodes.filter(n => n.pastRight > 1 || n.pastBottom > 1 || n.hOverflow > 1),
+                        clippers
+                    }
+                });
+                expect(m.hOverflow, `${label}: switches has no horizontal overflow (${JSON.stringify(m)})`).toBeLessThanOrEqual(1);
+                expect(m.inViewport, `${label}: switches is completely inside viewport (${JSON.stringify(m)})`).toBe(true);
+                expect(m.clippers, `${label}: no ancestor clips switches`).toEqual([]);
+                expect(m.overflowing, `${label}: no child overflows switches`).toEqual([]);
+                if (expectedBand === 314) {
+                    expect(m.width, `${label}: 314 band is <= 560px`).toBeLessThanOrEqual(560);
+                    expect(m.chipsDisplay, `${label}: chips collapse at <= 560px`).toBe('none');
+                    expect(m.selectDisplay, `${label}: native select shows at <= 560px`).toBe('block')
+                } else {
+                    expect(m.width, `${label}: ${expectedBand} band is > 560px`).toBeGreaterThan(560);
+                    expect(m.chipsDisplay, `${label}: 4-state chip strip shows above 560px`).toBe('flex');
+                    expect(m.selectDisplay, `${label}: native select hides above 560px`).toBe('none')
+                }
+            },
+            settle     = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(300)
+            };
+
+        await tab.click();
+        await expect(pane).toBeVisible({timeout: 30000});
+
+        await drive('queued');
+        await expect(card).toBeVisible();
+        await expect(card.locator('.fm-publish-channel-chip')).toHaveText('x · @neomjs · post');
+        await expect(card.locator('.fm-publish-revision-chip')).toHaveText('rev 1 · 7f83b165');
+        await expect(card.locator('.fm-publish-attestation-chip')).toHaveText('@neo-gpt-sophie · gpt · attests rev 1');
+        await expect(card.locator('.fm-publish-switch-chip')).toHaveText('auto-approve after a cross-family review attestation');
+        await expect(card.locator('.fm-publish-hypothesis')).toHaveText('Hypothesis: Concrete multi-window + Neural Link receipts resonate with systems engineers.');
+        await expect(card.locator('.fm-publish-approve')).toHaveText('Approve rev 1 · 7f83b165');
+        await expect(card.locator('.fm-publish-outcome')).toHaveText('queued · 07:20');
+        await expect(pane.getByRole('button', {name: /Resolve/i})).toBeHidden();
+
+        await pinCardBand(1280);
+        await settle();
+        await assertCardGeometry('card-1280-dark', 1280);
+        await expect(card).toHaveScreenshot('publish-request-card-1280.png');
+
+        await pinCardBand(720);
+        await settle();
+        await assertCardGeometry('card-720-dark', 720);
+        await expect(card).toHaveScreenshot('publish-request-card-720.png');
+
+        await pinCardBand(314);
+        await settle();
+        await assertCardGeometry('card-314-dark', 314);
+        await expect(card).toHaveScreenshot('publish-request-card-314.png');
+
+        // Asynchronous transition: publishing -> published (at 1280 band, outcome line visible inside frame)
+        await pinCardBand(1280);
+        await drive('publishing');
+        await expect(card.locator('.fm-publish-approval-chip')).toHaveText('approved by @tobiu · rev 1');
+        await expect(card.locator('.fm-publish-outcome')).toHaveText('publishing · 07:25');
+        await expect(card.locator('.fm-publish-approve')).toBeDisabled();
+        await settle();
+        await assertCardGeometry('card-publishing-dark', 1280);
+        const publishingShot = await card.screenshot();
+        await expect(card).toHaveScreenshot('publish-request-card-publishing.png');
+
+        await drive('published');
+        await expect(card.locator('.fm-publish-outcome')).toHaveText('published · 07:28 · 1900000000000000777');
+        await expect(card.locator('.fm-publish-receipt-link')).toHaveAttribute('href', 'https://x.com/neomjs/status/1900000000000000777');
+        await settle();
+        await assertCardGeometry('card-published-dark', 1280);
+        const publishedShot = await card.screenshot();
+        expect(Buffer.compare(publishingShot, publishedShot), 'publishing and published frames must differ in pixels').not.toBe(0);
+        await expect(card).toHaveScreenshot('publish-request-card-published.png');
+        await pinCardBand(null);
+
+        // AgentDetail -> Configuration -> Publishing switch group
+        await page.locator('.fm-agent-card', {hasText: 'Ada'}).click();
+        await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+        await expect(switches).toBeVisible({timeout: 30000});
+        await drive('switches');
+        await expect(switches.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-current')).toHaveText('approve the batch');
+        await expect(switches.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-audit-last')).toHaveText('@tobiu · 5 Jul 06:45 · approve each → approve the batch · initial release batch verified');
+        await expect(switches.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-proposal')).toHaveText('eligible for auto-approve after a cross-family review attestation: 5 batches released, 0 edits since 2026-06-20');
+
+        await pinSwitchBand(1280);
+        await settle();
+        await assertSwitchesGeometry('switches-1280-dark', 1280);
+        await expect(switches).toHaveScreenshot('publish-switch-group-1280.png');
+
+        await pinSwitchBand(720);
+        await settle();
+        await assertSwitchesGeometry('switches-720-dark', 720);
+        await expect(switches).toHaveScreenshot('publish-switch-group-720.png');
+
+        await pinSwitchBand(314);
+        await settle();
+        await assertSwitchesGeometry('switches-314-dark', 314);
+        await expect(switches).toHaveScreenshot('publish-switch-group-314.png');
+        await pinSwitchBand(null);
+
+        // Light skin coverage across both surfaces and all 3 width bands
+        await switchToLightSkin(page);
+
+        await pinSwitchBand(1280);
+        await settle();
+        await assertSwitchesGeometry('switches-1280-light', 1280);
+        await expect(switches).toHaveScreenshot('publish-switch-group-1280-light.png');
+
+        await pinSwitchBand(720);
+        await settle();
+        await assertSwitchesGeometry('switches-720-light', 720);
+        await expect(switches).toHaveScreenshot('publish-switch-group-720-light.png');
+
+        await pinSwitchBand(314);
+        await settle();
+        await assertSwitchesGeometry('switches-314-light', 314);
+        await expect(switches).toHaveScreenshot('publish-switch-group-314-light.png');
+        await pinSwitchBand(null);
+
+        await uncoverRoster(page);
+        await expect(card).toBeVisible();
+        await pinCardBand(1280);
+        await settle();
+        await assertCardGeometry('card-published-light', 1280);
+        await expect(card).toHaveScreenshot('publish-request-card-published-light.png');
+
+        await drive('queued');
+        await pinCardBand(1280);
+        await settle();
+        await assertCardGeometry('card-1280-light', 1280);
+        await expect(card).toHaveScreenshot('publish-request-card-1280-light.png');
+
+        await pinCardBand(720);
+        await settle();
+        await assertCardGeometry('card-720-light', 720);
+        await expect(card).toHaveScreenshot('publish-request-card-720-light.png');
+
+        await pinCardBand(314);
+        await settle();
+        await assertCardGeometry('card-314-light', 314);
+        await expect(card).toHaveScreenshot('publish-request-card-314-light.png');
+        await pinCardBand(null)
     });
 });
 

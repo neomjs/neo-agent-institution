@@ -3,11 +3,13 @@
    beyond the divider that separates it from the rows; every color reads from the --fm-* token
    layer, T1 role tokens only. */
 .fm-mailbox-detail {
-    gap         : var(--fm-space-2);
-    min-width   : 0;
-    min-height  : 0;
-    padding-left: var(--fm-space-2);
-    border-left : 1px solid var(--fm-line-soft);
+    container-type: inline-size;
+    gap           : var(--fm-space-2);
+    min-width     : 0;
+    min-height    : 0;
+    overflow-y    : auto;
+    padding-left  : var(--fm-space-2);
+    border-left   : 1px solid var(--fm-line-soft);
 
     .fm-mailbox-detail-from {
         font : var(--fm-text-detail);

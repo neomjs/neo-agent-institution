@@ -212,4 +212,208 @@ test.describe('AgentOS operator mailbox — open, mark read, reply, resolve (#55
             await fleet.close()
         }
     });
+
+    test('the operator inbox renders a requestPublish card, jumps to the peer Publishing switch view, and ignores Neural Link set_instance_properties mutations on switch state (#673)', async ({page, neuralLink}) => {
+        const
+            calls       = [],
+            publishTask = {
+                messageId     : 'MESSAGE:pub-e2e-1',
+                subject       : '[publish] X post on v13.3.1',
+                from          : '@neo-opus-ada',
+                to            : OPERATOR,
+                recipientClass: 'agent',
+                priority      : 'normal',
+                status        : 'unread',
+                task          : {state: 'InputRequired', assignee: OPERATOR},
+                partOfThread  : null,
+                relatedTickets: ['neomjs/neo#19575'],
+                taggedConcepts: ['requestPublish'],
+                wakeSuppressed: false,
+                sentAt        : '2026-10-25T05:00:00.000Z',
+                readAt        : null
+            },
+            requestPublish = {
+                channel   : 'x',
+                account   : '@neomjs',
+                format    : 'single',
+                text      : 'Neo v13.3.1 ships zero-bypass social publishing through the operator gate.',
+                media     : [],
+                inReplyTo : null,
+                hypothesis: 'Concrete architecture receipts outperform generic release announcements.'
+            };
+
+        let xSwitchState = 'approve each',
+            xAudit       = [{
+                who   : OPERATOR,
+                when  : '2026-10-25T04:00:00.000Z',
+                from  : 'approve each',
+                to    : 'approve each',
+                reason: 'initial default'
+            }];
+
+        const {startFleetBridgeServer} = await loadAgentOsModule('ai/services/fleet/fleetBridgeServer.mjs'),
+              options                  = authenticatedFleetOptions({
+                  dispatch: async request => {
+                      calls.push({method: request.method, params: request.params});
+
+                      switch (request.method) {
+                          case 'resolveViewerIdentity':
+                              return fleetE2ESuccess({ok: true, agentIdentityNodeId: OPERATOR});
+                          case 'fleetRoster':
+                              return fleetE2ESuccess({rows: [{
+                                  id                 : 'neo-opus-ada',
+                                  agentId            : 'neo-opus-ada',
+                                  githubUsername     : 'neo-opus-ada',
+                                  displayName        : 'Ada',
+                                  engineTag          : 'opus-5',
+                                  family             : 'claude',
+                                  state              : 'ok',
+                                  avatarUrl          : 'https://github.com/neo-opus-ada.png?size=80',
+                                  participationStatus: 'active',
+                                  sources            : {roster: {source: 'fleet:listAgents', state: 'wired', confidence: 'high'}}
+                              }]});
+                          case 'fleetActivity':
+                              return fleetE2ESuccess({capability: {state: 'wired'}, events: []});
+                          case 'fleetMailboxMirror':
+                              return fleetE2ESuccess(createFleetMailboxMirrorSnapshot({
+                                  messages: [{...publishTask}],
+                                  hasMore : false,
+                                  page    : {limit: 50, offset: 0},
+                                  subject : OPERATOR,
+                                  viewer  : OPERATOR
+                              }));
+                          case 'fleetOwnMessage':
+                              return fleetE2ESuccess({
+                                  ...publishTask,
+                                  body       : requestPublish.text,
+                                  requestPublish,
+                                  revision   : {
+                                      revisionNumber: 1,
+                                      attestation   : {
+                                          reviewer      : '@neo-gpt',
+                                          reviewerFamily: 'gpt',
+                                          revisionNumber: 1
+                                      }
+                                  },
+                                  publication: {state: 'queued'},
+                                  switchState: xSwitchState
+                              });
+                          case 'readPublishSwitches':
+                              return fleetE2ESuccess({
+                                  peer    : '@neo-opus-ada',
+                                  channels: {
+                                      x: {
+                                          state   : xSwitchState,
+                                          audit   : xAudit,
+                                          proposal: {
+                                              toState: 'approve the batch',
+                                              basis  : {batches: 6, edits: 0, since: '2026-10-01'}
+                                          }
+                                      },
+                                      linkedin: {
+                                          state   : 'approve each',
+                                          audit   : [],
+                                          proposal: null
+                                      }
+                                  }
+                              });
+                          case 'setPublishSwitch':
+                              xSwitchState = request.params.to;
+                              xAudit = [...xAudit, {
+                                  who   : OPERATOR,
+                                  when  : '2026-10-25T05:10:00.000Z',
+                                  from  : request.params.expectedFrom,
+                                  to    : request.params.to,
+                                  reason: request.params.reason
+                              }];
+                              return fleetE2ESuccess({
+                                  state : 'ok',
+                                  switch: {
+                                      peer   : request.params.peer,
+                                      channel: request.params.channel,
+                                      state  : xSwitchState,
+                                      audit  : xAudit
+                                  }
+                              });
+                          default:
+                              return fleetE2ESuccess({ok: true})
+                      }
+                  }
+              }),
+              server = await startFleetBridgeServer(options),
+              fleet  = {
+                  bearerToken: options.bearerToken,
+                  calls,
+                  endpoint   : `http://127.0.0.1:${server.address().port}/fleet`,
+                  close      : () => new Promise(resolve => server.close(resolve))
+              },
+              of = method => fleet.calls.filter(call => call.method === method);
+
+        try {
+            await page.setViewportSize({width: 1440, height: 1000});
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl: fleet.endpoint})}`);
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+
+            const app = await neuralLink.connectToApp('AgentOS');
+            await wireAuthenticatedFleetBridge({app, fleetUrl: fleet.endpoint, bearerToken: fleet.bearerToken});
+
+            const [cockpit] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']);
+            await app.callMethod(cockpit.properties.id, 'controller.loadRoster');
+            await app.callMethod(cockpit.properties.id, 'controller.loadOperatorIdentity');
+
+            await page.getByRole('tab', {name: 'Mailbox', exact: true}).click();
+
+            const
+                mailbox = page.locator('.fm-operator-mailbox'),
+                row     = mailbox.locator('.fm-mail-row').first(),
+                detail  = mailbox.locator('.fm-mailbox-detail');
+
+            await expect(row).toBeVisible({timeout: 30000});
+            await row.click();
+
+            // AC-1 & AC-3: PublishRequestComponent renders in DetailContainer and generic Resolve is hidden
+            const publishCard = detail.locator('.fm-publish-card');
+            await expect(publishCard).toBeVisible();
+            await expect(detail.getByRole('button', {name: 'Resolve: mark Completed', exact: true})).toBeHidden();
+            await expect(publishCard.locator('.fm-publish-post-text')).toHaveText(requestPublish.text);
+            await expect(publishCard.locator('.fm-publish-hypothesis')).toContainText(requestPublish.hypothesis);
+            await expect(publishCard.locator('.fm-publish-attestation-chip')).toContainText('@neo-gpt · gpt · attests rev 1');
+
+            // Clicking the effective switch chip opens AgentDetail › Configuration › Publishing
+            await publishCard.locator('.fm-publish-switch-chip').click();
+
+            const switchPanel = page.locator('.fm-publish-switches');
+            await expect(switchPanel).toBeVisible({timeout: 15000});
+            await expect(switchPanel.locator('.fm-publish-switch-row.is-channel-x')).toContainText('approve each');
+
+            // AC-4 (whitebox): Neural Link set_instance_properties on PublishSwitchComponent writes nothing to Fleet and re-reads Fleet state
+            const [switchView] = await app.queryComponent(
+                {className: 'AgentOS.view.fleet.detail.PublishSwitchComponent'},
+                ['id', 'xState', 'linkedinState']
+            );
+            expect(switchView.properties.xState).toBe('approve each');
+
+            const readsBeforeSet = of('readPublishSwitches').length;
+            await app.setProperties(switchView.properties.id, {
+                xState  : 'auto-approve',
+                switches: {x: {state: 'auto-approve'}, linkedin: {state: 'auto-approve'}}
+            });
+
+            await expect.poll(() => of('readPublishSwitches').length, {
+                message: 'set_instance_properties triggers a Fleet re-read'
+            }).toBeGreaterThan(readsBeforeSet);
+
+            expect(of('setPublishSwitch'), 'set_instance_properties never invokes setPublishSwitch').toHaveLength(0);
+
+            const [afterSetView] = await app.queryComponent(
+                {id: switchView.properties.id},
+                ['xState', 'linkedinState']
+            );
+            expect(afterSetView.properties.xState).toBe('approve each');
+            expect(afterSetView.properties.linkedinState).toBe('approve each');
+            await expect(switchPanel.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-current')).toHaveText('approve each');
+        } finally {
+            await fleet.close()
+        }
+    });
 });

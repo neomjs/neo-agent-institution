@@ -196,7 +196,9 @@ export function installFleetBridge({
     const request = async (method, params) => {
         const
             offer       = createFleetWireOffer(),
-            wireRequest = createFleetWireRequest(method, params, offer);
+            wireRequest = FLEET_WIRE_METHODS.includes(method)
+                ? createFleetWireRequest(method, params, offer)
+                : {method, params, protocol: {capabilities: [...offer.capabilities], versions: [...offer.versions]}};
 
         let envelope, inspection, response;
 
@@ -254,6 +256,16 @@ export function installFleetBridge({
               FLEET_WIRE_METHODS.map(method => [method, params => request(method, params)])
           ),
           agentOS = target.AgentOS = target.AgentOS || {};
+
+    for (const method of ['approvePublishRevision', 'editPublishRequest', 'publish', 'readPublishSwitches', 'setPublishSwitch']) {
+        if (!(method in registryBridge)) {
+            Object.defineProperty(registryBridge, method, {
+                configurable: true,
+                writable    : true,
+                value       : params => request(method, params)
+            })
+        }
+    }
 
     Object.defineProperty(registryBridge, 'credentialIngress', {
         configurable: true,

@@ -1,5 +1,118 @@
 import Base          from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import PublishSwitch from './PublishSwitch.mjs';
 import TargetBinding from './TargetBinding.mjs';
+
+const SHA256_K = new Uint32Array([
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+]);
+
+/**
+ * @summary Pure UTF-8 FIPS 180-4 SHA-256 hex digest computation, usable synchronously in both Node
+ * and App Worker realms.
+ * @param {String} input
+ * @returns {String} 64-character lowercase hex digest.
+ */
+function sha256Hex(input) {
+    const bytes = new TextEncoder().encode(String(input ?? '')),
+          bitLen = bytes.length * 8,
+          padLen = (((bytes.length + 8) >> 6) + 1) << 6,
+          padded = new Uint8Array(padLen),
+          view   = new DataView(padded.buffer),
+          w      = new Uint32Array(64);
+
+    padded.set(bytes);
+    padded[bytes.length] = 0x80;
+    view.setUint32(padLen - 8, Math.floor(bitLen / 0x100000000), false);
+    view.setUint32(padLen - 4, bitLen >>> 0, false);
+
+    let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a,
+        h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+    const rotr = (n, x) => (x >>> n) | (x << (32 - n));
+
+    for (let offset = 0; offset < padLen; offset += 64) {
+        for (let i = 0; i < 16; i++) {
+            w[i] = view.getUint32(offset + i * 4, false)
+        }
+        for (let i = 16; i < 64; i++) {
+            const s0 = rotr(7, w[i - 15]) ^ rotr(18, w[i - 15]) ^ (w[i - 15] >>> 3),
+                  s1 = rotr(17, w[i - 2]) ^ rotr(19, w[i - 2]) ^ (w[i - 2] >>> 10);
+            w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0
+        }
+
+        let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+
+        for (let i = 0; i < 64; i++) {
+            const S1  = rotr(6, e) ^ rotr(11, e) ^ rotr(25, e),
+                  ch  = (e & f) ^ (~e & g),
+                  t1  = (h + S1 + ch + SHA256_K[i] + w[i]) >>> 0,
+                  S0  = rotr(2, a) ^ rotr(13, a) ^ rotr(22, a),
+                  maj = (a & b) ^ (a & c) ^ (b & c),
+                  t2  = (S0 + maj) >>> 0;
+
+            h = g; g = f; f = e; e = (d + t1) >>> 0;
+            d = c; c = b; b = a; a = (t1 + t2) >>> 0
+        }
+
+        h0 = (h0 + a) >>> 0; h1 = (h1 + b) >>> 0; h2 = (h2 + c) >>> 0; h3 = (h3 + d) >>> 0;
+        h4 = (h4 + e) >>> 0; h5 = (h5 + f) >>> 0; h6 = (h6 + g) >>> 0; h7 = (h7 + h) >>> 0
+    }
+
+    return [h0, h1, h2, h3, h4, h5, h6, h7].map(v => v.toString(16).padStart(8, '0')).join('')
+}
+
+/**
+ * @summary Canonical JSON serializer with lexicographically sorted keys at every object depth,
+ * matching `ai/services/memory-core/helpers/publishDigest.mjs` in `neo-agent-brain`.
+ * @param {*} value
+ * @returns {String}
+ */
+function canonicalizePublishJson(value) {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value)
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(item => canonicalizePublishJson(item)).join(',')}]`
+    }
+    const keys = Object.keys(value).sort();
+    return `{${keys.map(key => `${JSON.stringify(key)}:${canonicalizePublishJson(value[key])}`).join(',')}}`
+}
+
+/**
+ * @summary Computes the deterministic SHA-256 hex digest over the 6 canonical `requestPublish`
+ * payload fields (`account, channel, format, inReplyTo, media, schemaVersion: 1, text`), matching
+ * `computePublishRevisionDigest` in `neo-agent-brain`.
+ * @param {Object} payload
+ * @returns {String} 64-character lowercase hex SHA-256 digest.
+ */
+function computePublishRevisionDigest(payload = {}) {
+    const media = Array.isArray(payload.media)
+        ? payload.media.map(item => ({
+            mimeType: String(item?.mimeType ?? ''),
+            sha256  : String(item?.sha256 ?? '').toLowerCase(),
+            uri     : String(item?.uri ?? '')
+        }))
+        : [];
+
+    const canonical = {
+        account      : String(payload.account ?? ''),
+        channel      : String(payload.channel ?? ''),
+        format       : String(payload.format ?? 'post'),
+        inReplyTo    : payload.inReplyTo ?? null,
+        media,
+        schemaVersion: 1,
+        text         : String(payload.text ?? '')
+    };
+
+    return sha256Hex(canonicalizePublishJson(canonical))
+}
 
 /**
  * @summary The operator's own inbox, owner-side: the list it shows, compose, and on a message opened from the
@@ -320,6 +433,261 @@ class OperatorInbox extends Base {
         }
 
         return false
+    }
+
+    /**
+     * @summary Whether a message or row record is a `requestPublish` Task.
+     * @param {Object|null} source
+     * @returns {Boolean}
+     */
+    static isPublishRequest(source) {
+        if (!source || typeof source !== 'object') return false;
+        const msg = source.message && typeof source.message === 'object' ? source.message : source;
+        return Boolean(
+            msg.requestPublish ||
+            msg.task?.requestPublish ||
+            msg.revision ||
+            msg.task?.revision ||
+            msg.publication ||
+            msg.task?.publication ||
+            (Array.isArray(msg.taggedConcepts) && msg.taggedConcepts.includes('requestPublish'))
+        )
+    }
+
+    /**
+     * @summary Computes the deterministic SHA-256 hex digest over the 6 canonical `requestPublish` fields.
+     * @param {Object} payload
+     * @returns {String}
+     */
+    static computeRevisionDigest(payload) {
+        return computePublishRevisionDigest(payload)
+    }
+
+    /**
+     * @summary WRITE: approve the displayed `requestPublish` revision digest (`approvePublishRevision`
+     * + `publish`) and refresh the open message.
+     * @param {Object} owner The cockpit controller
+     * @param {Object} data  `{messageId, revisionDigest, revisionNumber}`
+     * @returns {Promise<Boolean>}
+     */
+    static async approvePublish(owner, {messageId, revisionDigest, revisionNumber} = {}) {
+        const
+            {bridge}  = owner,
+            profileId = owner.bridgeProfileId,
+            write     = OperatorInbox.writer(owner, 'actionOutcome');
+
+        if (!messageId || !revisionDigest) {
+            write({action: 'approvePublish', messageId, reason: 'messageId and revisionDigest are required', state: 'refused'});
+            return false
+        }
+
+        write({action: 'approvePublish', messageId, revisionDigest, state: 'pending'});
+
+        const hasApprove = typeof bridge?.approvePublishRevision === 'function',
+              hasPublish = typeof bridge?.publish === 'function';
+
+        if (!hasApprove && !hasPublish) {
+            write({action: 'approvePublish', messageId, reason: 'fleet: publish executor is not wired', state: 'refused'});
+            return false
+        }
+
+        try {
+            if (hasApprove) {
+                const approval = await bridge.approvePublishRevision({
+                    messageId,
+                    taskId: messageId,
+                    revisionDigest,
+                    revisionNumber
+                });
+                if (approval && (approval.ok === false || approval.status === 'rejected' || approval.status === 'not-wired' || approval.refused)) {
+                    write({
+                        action: 'approvePublish',
+                        code  : approval.refused || approval.code || null,
+                        messageId,
+                        reason: approval.reason || 'approval refused',
+                        state : 'refused'
+                    });
+                    return false
+                }
+            }
+
+            if (hasPublish) {
+                const published = await bridge.publish({
+                    messageId,
+                    requestId: messageId,
+                    revisionDigest
+                });
+                if (!published || published.ok === false || published.status === 'rejected' || published.status === 'not-wired' || published.refused) {
+                    write({
+                        action: 'approvePublish',
+                        code  : published?.refused || published?.code || null,
+                        messageId,
+                        reason: published?.reason || 'publish refused',
+                        state : 'refused'
+                    });
+                    owner.bridgeProfileId === profileId && await OperatorInbox.open(owner, {messageId, refresh: true});
+                    return false
+                }
+            }
+
+            write({action: 'approvePublish', messageId, revisionDigest, state: 'ok'});
+            if (owner.bridgeProfileId === profileId) {
+                await Promise.all([
+                    OperatorInbox.open(owner, {messageId, refresh: true}),
+                    owner.loadOperatorInbox?.({offset: 0})
+                ])
+            }
+            return true
+        } catch (error) {
+            write({action: 'approvePublish', messageId, reason: error?.message || 'publish failed', state: 'refused'});
+            return false
+        }
+    }
+
+    /**
+     * @summary WRITE: save an operator Edit on a `requestPublish` Task (`editPublishRequest`), creating
+     * revision `N+1` with a new digest and clearing approval and attestation.
+     * @param {Object} owner The cockpit controller
+     * @param {Object} data  `{messageId, patch}`
+     * @returns {Promise<Boolean>}
+     */
+    static async editPublish(owner, {messageId, patch} = {}) {
+        const
+            {bridge}  = owner,
+            profileId = owner.bridgeProfileId,
+            write     = OperatorInbox.writer(owner, 'actionOutcome');
+
+        if (!messageId || !patch || typeof patch !== 'object') {
+            write({action: 'editPublish', messageId, reason: 'messageId and patch are required', state: 'refused'});
+            return false
+        }
+
+        write({action: 'editPublish', messageId, state: 'pending'});
+
+        if (typeof bridge?.editPublishRequest !== 'function') {
+            write({action: 'editPublish', messageId, reason: 'fleet: editPublishRequest is not wired', state: 'refused'});
+            return false
+        }
+
+        try {
+            const answer = await bridge.editPublishRequest({
+                messageId,
+                taskId: messageId,
+                patch
+            });
+
+            if (!answer || answer.ok === false || answer.status === 'rejected' || answer.status === 'not-wired' || answer.refused) {
+                write({
+                    action: 'editPublish',
+                    code  : answer?.refused || answer?.code || null,
+                    messageId,
+                    reason: answer?.reason || 'edit refused',
+                    state : 'refused'
+                });
+                return false
+            }
+
+            write({
+                action        : 'editPublish',
+                messageId,
+                revisionDigest: answer.revisionDigest ?? answer.revision?.revisionDigest ?? null,
+                revisionNumber: answer.revisionNumber ?? answer.revision?.revisionNumber ?? null,
+                state         : 'ok'
+            });
+
+            if (owner.bridgeProfileId === profileId) {
+                await Promise.all([
+                    OperatorInbox.open(owner, {messageId, refresh: true}),
+                    owner.loadOperatorInbox?.({offset: 0})
+                ])
+            }
+            return true
+        } catch (error) {
+            write({action: 'editPublish', messageId, reason: error?.message || 'editPublishRequest failed', state: 'refused'});
+            return false
+        }
+    }
+
+    /**
+     * @summary WRITE: drop a `requestPublish` Task with a required operator reason, sending `Rejected`
+     * through `transitionOwnTask`.
+     * @param {Object} owner The cockpit controller
+     * @param {Object} data  `{expectedCurrentState, messageId, reason}`
+     * @returns {Promise<Boolean>}
+     */
+    static async dropPublish(owner, {expectedCurrentState, messageId, reason} = {}) {
+        const
+            profileId     = owner.bridgeProfileId,
+            trimmedReason = String(reason ?? '').trim(),
+            write         = OperatorInbox.writer(owner, 'actionOutcome');
+
+        if (!trimmedReason) {
+            write({action: 'dropPublish', messageId, reason: 'A reason is required to drop a publish request.', state: 'refused'});
+            return false
+        }
+
+        const landed = await OperatorInbox.settle(owner, {
+            action  : 'dropPublish',
+            messageId,
+            params  : {expectedCurrentState, messageId, newState: 'Rejected', reason: trimmedReason},
+            verb    : 'transitionOwnTask',
+            accepted: answer => answer?.success === true
+        });
+
+        if (landed && owner.bridgeProfileId === profileId) {
+            await Promise.all([
+                OperatorInbox.open(owner, {messageId, refresh: true}),
+                owner.loadOpenWork?.()
+            ])
+        }
+
+        return landed
+    }
+
+    /**
+     * @summary Jumps from the `requestPublish` card's switch chip to the peer's Publishing switch
+     * section inside `AgentDetail` › `Configuration`.
+     * @param {Object} owner The cockpit controller or component
+     * @param {Object} data  `{channel, peer}`
+     */
+    static openPublishSwitch(owner, {channel, peer} = {}) {
+        const
+            cockpit  = owner?.component ?? owner,
+            barePeer = String(peer ?? '').replace(/^@/, '');
+
+        if (barePeer && typeof owner?.onAgentSelect === 'function') {
+            owner.onAgentSelect({agentId: barePeer})
+        }
+
+        const
+            detail     = cockpit?.getAgentDetailPane?.() ??
+                         cockpit?.getReference?.('agent-detail') ??
+                         Neo.manager.Component.find('ntype', 'fm-agent-detail').find(c => c.mounted) ??
+                         Neo.manager.Component.find('ntype', 'fm-agent-detail')[0] ??
+                         null,
+            rosterRows = owner?.resolveFleetRosterStore?.()?.items ??
+                         cockpit?.getStateProvider?.()?.getData?.('agents')?.rows ??
+                         cockpit?.rosterStore?.items ??
+                         [];
+
+        if (!detail) return;
+
+        const matchedRecord = rosterRows.find(row =>
+            row?.agentId === barePeer ||
+            row?.githubUsername === barePeer ||
+            PublishSwitch.peerIdOf(row) === PublishSwitch.peerIdOf(peer)
+        );
+
+        if (matchedRecord && detail.record !== matchedRecord) {
+            detail.record = matchedRecord
+        }
+
+        const tabs = detail.getReference?.('detail-tabs');
+        if (tabs) {
+            tabs.activeIndex = 1
+        }
+
+        detail.getReference?.('publish-switches')?.focusChannel?.(channel)
     }
 
     /**
