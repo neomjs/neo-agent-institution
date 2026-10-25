@@ -208,6 +208,8 @@ class FleetCockpit extends VesselContainer {
                 // synchronously (park → window → reattach); a lazy module resolves through an async
                 // placeholder the vessel flow cannot carry
                 module    : AgentDetail,
+                // the selection and the pin are its lifecycle; a closed inspector would strand it
+                closable  : false,
                 header    : {text: 'Agent detail'},
                 reference : 'agent-detail',
                 autoHidden: true,
@@ -267,6 +269,16 @@ class FleetCockpit extends VesselContainer {
          * @member {Neo.controller.Component} controller=FleetCockpitController
          */
         controller: FleetCockpitController,
+        /**
+         * A press outside the inspector's held reveal ends it and keeps the selection ({@link #onCockpitMouseDown}).
+         * @member {Object} domListeners
+         */
+        domListeners: {mousedown: 'onCockpitMouseDown'},
+        /**
+         * The end of the selection-driven inspector's reveal ({@link #onDetailRevealChange}).
+         * @member {Object} listeners
+         */
+        listeners: {dockRailRevealChange: 'onDetailRevealChange'},
         /**
          * The cockpit's state scope — shared render truths + formulas + the provider-owned
          * stores; see {@link AgentOS.view.fleet.cockpit.StateProvider}.
@@ -403,6 +415,9 @@ class FleetCockpit extends VesselContainer {
      * @member {String|null} publishedPerspectives=null
      */
     publishedPerspectives = null
+
+    /** @member {Boolean} dismissingDetailReveal=false TRUE while {@link #dismissDetailReveal} runs. @protected */
+    dismissingDetailReveal = false
 
     /**
      * @summary The one service member the cockpit composes at construct. The layout SSOT is the
@@ -571,6 +586,9 @@ class FleetCockpit extends VesselContainer {
             return me.refusePerspective(name, errors)
         }
 
+        // the switch may have re-railed the inspector (Review → Overview): it follows the selection there too
+        CockpitPerspectives.syncDetailReveal(me, Boolean(me.detailRecord));
+
         return {errors: [], switched: true}
     }
 
@@ -606,6 +624,23 @@ class FleetCockpit extends VesselContainer {
             controller = me.getController();
             controller.applySelection(controller.resolveFleetRosterStore()?.first() ?? null, {syncDock: false})
         }
+    }
+
+    /** @summary Ends the inspector's reveal on the cockpit's own word; that end keeps the selection. */
+    dismissDetailReveal() {
+        this.dismissingDetailReveal = true;
+        this.dismissRailReveal('detail');   // the rail reports the end synchronously, inside the flag
+        this.dismissingDetailReveal = false
+    }
+
+    /** @summary A press anywhere in the cockpit ({@link AgentOS.util.CockpitPerspectives#detailPress}). @protected */
+    onCockpitMouseDown({path}) {
+        CockpitPerspectives.detailPress(this, path)
+    }
+
+    /** @summary A rail's reveal changed ({@link AgentOS.util.CockpitPerspectives#detailRevealChange}). @protected */
+    onDetailRevealChange(data) {
+        CockpitPerspectives.detailRevealChange(this, data)
     }
 
     /**

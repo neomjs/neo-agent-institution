@@ -21,7 +21,7 @@ export function shippedDockDocument() {
             operator    : {reference: 'operator-mailbox', title: 'Mailbox'},
             catchUp     : {reference: 'catch-up',         title: 'Catch up'},
             goldenPath  : {reference: 'golden-path',      title: 'Golden Path'},
-            detail      : {reference: 'agent-detail',     title: 'Agent detail', autoHidden: true},
+            detail      : {reference: 'agent-detail',     title: 'Agent detail', autoHidden: true, closable: false},
             perspectives: {reference: 'perspectives',     title: 'Perspectives', autoHidden: true},
             defineAgent : {reference: 'define-agent',     title: 'Add agent',    autoHidden: true},
             wakeRoutes  : {reference: 'wakeRoutes',       title: 'Wake routes',  autoHidden: true}

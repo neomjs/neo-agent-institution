@@ -1,4 +1,4 @@
-import {test, expect, landFleetSample} from '../../fixtures.mjs';
+import {test, expect, landFleetSample, pinRevealedDetail} from '../../fixtures.mjs';
 
 /**
  * @summary Publishes one popup's observed frame after CDP automation moved the real window —
@@ -155,6 +155,8 @@ test.describe('AgentOS Fleet Cockpit — kinetic multi-window choreography (#156
             beatLog.push({beat: 'drill', resident: 'neo-fable', detailId: dockedDetail.id});
             expect(dockedDetail.properties.windowId, 'the detail starts in the main window')
                 .not.toBeUndefined();
+
+            await pinRevealedDetail(page);
 
             // ── beat 2: pop the detail out — the engine's admission path, no hand input ──────
             const popupPromise = page.waitForEvent('popup', {timeout: 30000}),

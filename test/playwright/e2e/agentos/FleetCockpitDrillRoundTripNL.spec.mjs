@@ -1,4 +1,4 @@
-import {expect, landFleetSample, test} from '../../fixtures.mjs';
+import {expect, landFleetSample, pinRevealedDetail, test} from '../../fixtures.mjs';
 
 /**
  * @summary The detail tranche's closing round-trip (T4.16): the full USER path — real semantic
@@ -119,6 +119,8 @@ test.describe('AgentOS fleet cockpit — the drill round-trip journey (card → 
         // seed the ticking pane pre-hop: 30 held events — the value the hops must not reset
         await injectTicks(30);
         expect(await readStreamTicks()).toBe(30);
+
+        await pinRevealedDetail(page);
 
         // ── join 2: pop-out — same instance, real window, the stream keeps ticking ───────────
         const popupPromise = page.waitForEvent('popup', {timeout: 30000}),

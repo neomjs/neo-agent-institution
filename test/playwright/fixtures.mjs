@@ -19,6 +19,33 @@ import {sampleActivity, sampleDefinitions, sampleRoster} from './fixture/fleetSa
 export const departedWindowSends = /^App Worker: Error: (?:worker\.Base#promiseMessage: no live port for destination "[0-9a-f-]{36}" \([^)]*\) — a window closed\?|Target worker '[0-9a-f-]{36}' does not exist\.)/;
 
 /**
+ * @summary Docks the selection's revealed Agent detail through the reveal's own pin, for an arm that pops the
+ * detail out next: a pop-out admits only the visible pane of a tab flow, and the reveal toolbar carries no
+ * pop-out. A no-op when no reveal shows the detail (it is docked already). Delete with its callers once the
+ * reveal toolbar carries the item's header actions.
+ * @param {Object} page The Playwright page.
+ * @returns {Promise<void>}
+ */
+export async function pinRevealedDetail(page) {
+    const revealed = page.locator('.neo-dashboard-dock-reveal-overlay:not(.neo-dashboard-dock-reveal-overlay-hidden)', {
+        has: page.locator('.fm-agent-detail')
+    });
+
+    // a selection seats the record before the overlay renders: decide once the detail is on screen
+    await page.locator('.fm-agent-detail:visible').first().waitFor();
+
+    if (await revealed.count()) {
+        await revealed.locator('.neo-dashboard-dock-reveal-pin').first().click();
+        // the commit lands a frame later and the tab container takes the pane after it: wait for the reveal to leave,
+        // then for the detail's own docked tab to show it, then for the reflow
+        await revealed.first().waitFor({state: 'detached'});
+        await page.waitForFunction(() => [...document.querySelectorAll('[role="tab"][aria-selected="true"]')]
+            .some(tab => tab.textContent.includes('Agent detail') && !tab.closest('.neo-dashboard-dock-reveal-overlay')));
+        await page.locator('.neo-dashboard-dock-animating').first().waitFor({state: 'detached'})
+    }
+}
+
+/**
  * The landing's path as `Neo.worker.App.loadModule` imports it: relative to the App worker's own module
  * under `node_modules/neo.mjs/src/worker/`, four levels above the checkout.
  * @type {String}

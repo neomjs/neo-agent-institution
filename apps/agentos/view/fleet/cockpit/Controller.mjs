@@ -487,8 +487,8 @@ class Controller extends FleetBatchController {
      * the provider pair (`selectedAgentId` / `selectedAgentIdentity`), the memories
      * write-through (the one-picker contract: a selected resident with a verifiable mailbox
      * identity re-targets the pane through the view's phase-blind accessor, so a vesseled pane
-     * re-targets exactly like a docked one), and the paired dock reveal/hide
-     * ({@link AgentOS.util.CockpitPerspectives#syncDetailAutoHidden}).
+     * re-targets exactly like a docked one), and the paired rail reveal/dismissal
+     * ({@link AgentOS.util.CockpitPerspectives#syncDetailReveal}).
      *
      * A null identity keeps the pane's LAST target: the summary corpus outlives the seat, so a
      * resident without identity authority (or a cleared selection) never blanks a valid read —
@@ -504,6 +504,7 @@ class Controller extends FleetBatchController {
             cockpit  = me.component,
             identity = record?.githubUsername ? `@${record.githubUsername}` : null;
 
+        !record && syncDock && CockpitPerspectives.syncDetailReveal(cockpit, false);   // the reveal ends before the inspector empties
         cockpit.detailRecord = record ?? null;   // afterSetDetailRecord pushes the live pane
 
         cockpit.setState({
@@ -526,7 +527,7 @@ class Controller extends FleetBatchController {
             me.loadRecentTurns({agentIdentity: identity})
         }
 
-        syncDock && CockpitPerspectives.syncDetailAutoHidden(cockpit, Boolean(record))
+        record && syncDock && CockpitPerspectives.syncDetailReveal(cockpit, true)
     }
 
     /* ── the fleet batches live on FleetBatchController; the roster truth they read stays here ── */

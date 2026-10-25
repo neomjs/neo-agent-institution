@@ -1,4 +1,4 @@
-import {expect, landFleetSample, test} from '../../fixtures.mjs';
+import {expect, landFleetSample, pinRevealedDetail, test} from '../../fixtures.mjs';
 
 /**
  * @summary Matrix row 4 — object permanence / reintegration WITH live-store continuity, on the
@@ -106,6 +106,7 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
         const drilled = (await queryDetail()).detail;
 
         expect(drilled?.properties?.record?.agentId, 'the inspector drilled into the exact resident').toBe(firstAgentId);
+        await pinRevealedDetail(page);
 
         const detailId     = drilled.id,
               popupPromise = page.waitForEvent('popup', {timeout: 30000}),
