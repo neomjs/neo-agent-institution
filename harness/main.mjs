@@ -1465,9 +1465,9 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
 
 /**
  * @summary The fixture-plane arm's attach. Starts the smoke's own plane, then reads the record it wrote
- * through the product's read path, so the fleet child attaches from the record alone, and the shell
- * records that plane as the one it launched with, as a product boot does. Every other plane credential
- * is exported empty: a Finder launch carries none, and a machine export must not ride into the fixture.
+ * through the product's read path, so the fleet child attaches from the record alone. Every other plane
+ * credential is exported empty: a Finder launch carries none, and a machine export must not ride into
+ * the fixture.
  * @param {Object} options
  * @param {String} options.isolationRoot
  * @param {Object} options.runtimeEnv The runtime env Brain children need.
@@ -1499,8 +1499,6 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
     if (!fragment.NEO_FLEET_PLANE_BASE) {
         throw new Error('the fixture plane record did not read back as an attachable plane')
     }
-
-    launchedPlane = launchedPlaneRecord(storedPlane, fragment);
 
     return {
         NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
