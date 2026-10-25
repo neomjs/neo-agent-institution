@@ -36,8 +36,11 @@ export async function pinRevealedDetail(page) {
 
     if (await revealed.count()) {
         await revealed.locator('.neo-dashboard-dock-reveal-pin').first().click();
-        // the commit lands a frame later: wait for the reveal to leave, then for the reflow
+        // the commit lands a frame later and the tab container takes the pane after it: wait for the reveal to leave,
+        // then for the detail's own docked tab to show it, then for the reflow
         await revealed.first().waitFor({state: 'detached'});
+        await page.waitForFunction(() => [...document.querySelectorAll('[role="tab"][aria-selected="true"]')]
+            .some(tab => tab.textContent.includes('Agent detail') && !tab.closest('.neo-dashboard-dock-reveal-overlay')));
         await page.locator('.neo-dashboard-dock-animating').first().waitFor({state: 'detached'})
     }
 }
