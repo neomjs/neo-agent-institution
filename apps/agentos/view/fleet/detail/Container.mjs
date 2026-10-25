@@ -5,6 +5,7 @@ import FamilyRail                           from '../shared/FamilyRailComponent.
 import GitIdentityContainer                 from '../shared/GitIdentityContainer.mjs';
 import Image                                from '../../../../../node_modules/neo.mjs/src/component/Image.mjs';
 import ParticipationContainer               from './ParticipationContainer.mjs';
+import PublishSwitchComponent               from './PublishSwitchComponent.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import RepositoryBodyContainer              from './RepositoryBodyContainer.mjs';
 import SeatModelContainer                   from './SeatModelContainer.mjs';
@@ -424,33 +425,24 @@ class AgentDetail extends Container {
                     hidden   : true,
                     reference: 'seat-model'
                 }, {
-                    // the seat's participation, as its identity node records it, and the plane-host command that
-                    // changes it
+                    // the seat's participation, as its identity node records it, and the plane-host command that changes it
                     module   : ParticipationContainer,
                     flex     : 'none',
                     hidden   : true,
                     reference: 'participation'
+                }, {
+                    module   : PublishSwitchComponent,
+                    flex     : 'none',
+                    reference: 'publish-switches'
                 }]
             }]
         }]
     }
 
-    /**
-     * @summary Populate the header + panes once the anatomy exists (content is record-derived).
-     * @param {...*} args
-     */
+    /** @summary Populate the header + panes once the anatomy exists (content is record-derived). */
     onConstructed(...args) {
         super.onConstructed(...args);
-        // a11y: the agent-detail drill is a named landmark region so screen-reader users land in a
-        // labeled region on drill-in, not an unnamed pane. Set on the root before applyRecord's first
-        // render flush; a later re-seat (applyRecord) keeps the root, so the region survives.
         Object.assign(this.vdom, {role: 'region', 'aria-label': 'Agent detail'});
-
-        // shell-supplied window verbs ride the tab header bar's ACTION seam: one icon at the
-        // trailing edge of the tab strip, outside the content flow — the shell shows it only
-        // while the pane is away in a vessel (docked, the dock header owns pop-out);
-        // the old identity-header placement floated the verb OVER the identity block at rail
-        // widths. The slot stays layout-blind for the shell; this pane only picks the seam.
         this.shellTools?.length && (this.getReference('detail-tabs').headerActions = this.shellTools);
         this.getReference('detail-repo-copy').set({handler: 'onCopyRepoPath', handlerScope: this});
         const configPane = this.getReference('config-pane');

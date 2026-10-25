@@ -218,11 +218,15 @@ class OperatorMailbox extends Container {
         inbox?.on('pageRequest', me.onInboxPageRequest, me);
         // the open message's intents: the owner reads and writes, reply stays a compose reveal here
         inbox?.on({
-            markReadRequest: data => me.fire('markReadRequest', {messageId: data.messageId}),
-            messageOpen    : data => me.fire('messageOpen',     {messageId: data.messageId}),
-            replyRequest   : me.onReplyRequest,
-            resolveRequest : data => me.fire('resolveRequest',  {expectedCurrentState: data.expectedCurrentState, messageId: data.messageId}),
-            scope          : me
+            approvePublishRequest: data => me.fire('approvePublishRequest', {...data}),
+            dropPublishRequest   : data => me.fire('dropPublishRequest',    {...data}),
+            editPublishRequest   : data => me.fire('editPublishRequest',    {...data}),
+            markReadRequest      : data => me.fire('markReadRequest',       {messageId: data.messageId}),
+            messageOpen          : data => me.fire('messageOpen',           {messageId: data.messageId}),
+            openPublishSwitch    : data => me.fire('openPublishSwitch',     {...data}),
+            replyRequest         : me.onReplyRequest,
+            resolveRequest       : data => me.fire('resolveRequest',        {expectedCurrentState: data.expectedCurrentState, messageId: data.messageId}),
+            scope                : me
         });
         form?.on('compose', me.onCompose, me);
 

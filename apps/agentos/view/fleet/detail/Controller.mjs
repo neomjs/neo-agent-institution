@@ -1,6 +1,7 @@
 import ComponentController   from '../../../../../node_modules/neo.mjs/src/controller/Component.mjs';
 import AddAgentFlow          from '../../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
+import PublishSwitch         from '../../../util/PublishSwitch.mjs';
 import SeatGitIdentity       from '../../../util/SeatGitIdentity.mjs';
 import SeatModel             from '../../../util/SeatModel.mjs';
 import SourceHealth          from '../../../util/SourceHealth.mjs';
@@ -46,6 +47,12 @@ class Controller extends ComponentController {
      * @protected
      */
     seatRequest = 0
+    /**
+     * The latest Publishing-switch read request fence.
+     * @member {Number} publishSwitchRequest=0
+     * @protected
+     */
+    publishSwitchRequest = 0
 
     /**
      * @summary Wire the completed inspector's config card, identity row and shared Store, then
@@ -64,6 +71,11 @@ class Controller extends ComponentController {
             requestSeatRenamePlan : me.onRequestSeatRenamePlan,
             scope                 : me
         });
+        me.getReference('publish-switches')?.on({
+            readPublishSwitches: me.readPublishSwitches,
+            setPublishSwitch   : me.onSetPublishSwitch,
+            scope              : me
+        });
         me.getReference('identity-row').on({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model').on({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         me.getReference('seat-memory').on({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
@@ -81,6 +93,7 @@ class Controller extends ComponentController {
         me.onDefinitionsStoreChange(me.component.agentDefinitions, null);
         // a seat the card showed before this subscription existed is read once here
         (card.record?.id ?? null) !== me.identityAgentId && me.readGitIdentity();
+        me.component.record && me.readPublishSwitches({peer: PublishSwitch.peerIdOf(me.component.record)});
         me.startFreshnessAging()
     }
 
@@ -99,6 +112,11 @@ class Controller extends ComponentController {
             requestSeatRenamePlan : me.onRequestSeatRenamePlan,
             scope                 : me
         });
+        me.getReference('publish-switches')?.un({
+            readPublishSwitches: me.readPublishSwitches,
+            setPublishSwitch   : me.onSetPublishSwitch,
+            scope              : me
+        });
         me.getReference('seat-runtime')?.un({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model')?.un({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
@@ -107,6 +125,7 @@ class Controller extends ComponentController {
         me.identityRequest++;
         me.memoryRequest++;
         me.seatRequest++;
+        me.publishSwitchRequest++;
         super.destroy(...args)
     }
 
@@ -419,14 +438,26 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary Synchronizes the `Change id…` button and inline `SeatRenameContainer` when `record` changes.
+     * @summary Synchronizes the `Change id…` button, inline `SeatRenameContainer`, and `PublishSwitchContainer`
+     * when `record` changes.
      * @param {Object|null} record
      */
     syncSeatRename(record) {
         const
-            me      = this,
-            section = me.getReference('seat-rename-section'),
-            button  = me.getReference('change-seat-id-button');
+            me              = this,
+            section         = me.getReference('seat-rename-section'),
+            button          = me.getReference('change-seat-id-button'),
+            publishSwitches = me.getReference('publish-switches');
+
+        if (publishSwitches) {
+            const prevPeer = publishSwitches.peerId;
+            publishSwitches.record = record;
+            const nextPeer = publishSwitches.peerId;
+
+            if (nextPeer && nextPeer !== prevPeer) {
+                me.readPublishSwitches({peer: nextPeer})
+            }
+        }
 
         if (!record) {
             section?.reset();
@@ -539,6 +570,76 @@ class Controller extends ComponentController {
         }
 
         return result
+    }
+
+    /**
+     * @summary Read the shown seat's per-channel Publishing gate switches from the Fleet bridge and admit
+     * the authoritative answer into `PublishSwitchContainer`.
+     * @param {Object} [data] `{peer?}`
+     * @returns {Promise<Object|null>}
+     */
+    async readPublishSwitches({peer} = {}) {
+        const
+            me         = this,
+            section    = me.getReference('publish-switches'),
+            targetPeer = peer || section?.peerId || PublishSwitch.peerIdOf(me.component.record);
+
+        if (!section || !targetPeer) {
+            return null
+        }
+
+        const
+            request = ++me.publishSwitchRequest,
+            answer  = await PublishSwitch.read(globalThis.AgentOS?.fleet?.registryBridge ?? null, targetPeer);
+
+        if (request === me.publishSwitchRequest && !me.isDestroyed && !section.isDestroyed && section.peerId === targetPeer) {
+            section.applyFleetSwitches(answer)
+        }
+
+        return answer
+    }
+
+    /**
+     * @summary Apply an operator-authenticated `setPublishSwitch` transition (one-click downgrade or
+     * confirmed promote with `expectedFrom` and `reason`) and re-read the seat's switches.
+     * @param {Object} data `{peer, channel, to, expectedFrom, reason}`
+     * @returns {Promise<Object>}
+     */
+    async onSetPublishSwitch({peer, channel, to, expectedFrom, reason} = {}) {
+        const
+            me         = this,
+            section    = me.getReference('publish-switches'),
+            targetPeer = peer || section?.peerId || PublishSwitch.peerIdOf(me.component.record);
+
+        if (!section || !targetPeer || !channel) {
+            return {ok: false, reason: 'invalid-switch-request'}
+        }
+
+        section.applyChannelOutcome(channel, {state: 'pending'});
+
+        const outcome = await PublishSwitch.write(globalThis.AgentOS?.fleet?.registryBridge ?? null, {
+            peer: targetPeer,
+            channel,
+            to,
+            expectedFrom,
+            reason
+        });
+
+        if (me.isDestroyed || section.isDestroyed || section.peerId !== targetPeer) {
+            return outcome
+        }
+
+        if (outcome.ok) {
+            section.applyChannelOutcome(channel, {state: 'ok', switch: outcome.switch});
+            await me.readPublishSwitches({peer: targetPeer})
+        } else {
+            section.applyChannelOutcome(channel, {state: 'refused', reason: outcome.reason || 'refused'});
+            if (outcome.reason === 'switch-moved') {
+                await me.readPublishSwitches({peer: targetPeer})
+            }
+        }
+
+        return outcome
     }
 
     /**

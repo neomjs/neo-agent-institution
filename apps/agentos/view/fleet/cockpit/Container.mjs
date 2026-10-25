@@ -178,11 +178,15 @@ class FleetCockpit extends VesselContainer {
                 reference: 'operator-mailbox',
                 bind     : {questionCount: data => data.questions},
                 listeners: {
-                    compose         : 'onOperatorCompose',
-                    inboxPageRequest: 'onOperatorInboxPageRequest',
-                    markReadRequest : 'onOperatorMarkRead',
-                    messageOpen     : 'onOperatorMessageOpen',
-                    resolveRequest  : 'onOperatorResolve'
+                    approvePublishRequest: 'onOperatorApprovePublish',
+                    compose              : 'onOperatorCompose',
+                    dropPublishRequest   : 'onOperatorDropPublish',
+                    editPublishRequest   : 'onOperatorEditPublish',
+                    inboxPageRequest     : 'onOperatorInboxPageRequest',
+                    markReadRequest      : 'onOperatorMarkRead',
+                    messageOpen          : 'onOperatorMessageOpen',
+                    openPublishSwitch    : 'onOperatorOpenPublishSwitch',
+                    resolveRequest       : 'onOperatorResolve'
                 }
             },
             catchUp: {

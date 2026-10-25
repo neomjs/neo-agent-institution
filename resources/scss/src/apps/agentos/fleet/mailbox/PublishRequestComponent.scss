@@ -1,0 +1,294 @@
+/* AgentOS.view.fleet.mailbox.PublishRequestCard — the operator inbox's publish-request card (#673):
+   1. Post as it will appear (channel · account · format chip, verbatim text in platform line measure,
+      local-verified media strip, reply target)
+   2. Gate line (rev N · <short>, cross-family attestation, effective switch chip, approval chip, gate notice)
+   3. Hypothesis line (always visible)
+   4. Actions (Approve rev N · <short>, Edit & approve, Drop with required reason)
+   5. Outcome line (queued · publishing · unresolved · published · refused)
+   Every color reads from the --fm-* token layer. */
+.fm-publish-request-card {
+    container-type: inline-size;
+    display       : flex;
+    flex-direction: column;
+    gap           : var(--fm-space-2);
+    background    : var(--fm-panel);
+    border        : 1px solid var(--fm-line);
+    border-radius : 8px;
+    padding       : var(--fm-space-3);
+    color         : var(--fm-ink);
+    font          : var(--fm-text-body);
+    min-width     : 0;
+
+    .fm-publish-card-post {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-2);
+        padding       : var(--fm-space-2);
+        background    : var(--fm-panel-2);
+        border        : 1px solid var(--fm-line-soft);
+        border-radius : 6px;
+    }
+
+    .fm-publish-card-post-head {
+        display    : flex;
+        align-items: center;
+        gap        : var(--fm-space-2);
+    }
+
+    .fm-publish-card-channel-chip,
+    .fm-publish-card-rev-chip,
+    .fm-publish-card-attestation-chip,
+    .fm-publish-card-switch-chip,
+    .fm-publish-card-approval-chip {
+        display      : inline-flex;
+        align-items  : center;
+        gap          : 4px;
+        padding      : 2px 8px;
+        border-radius: 999px;
+        border       : 1px solid var(--fm-line-soft);
+        background   : var(--fm-panel);
+        font         : var(--fm-text-micro);
+        font-family  : var(--fm-font-mono);
+        color        : var(--fm-ink);
+        max-width    : 100%;
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+    }
+
+    .fm-publish-card-switch-chip {
+        cursor: pointer;
+
+        &:hover {
+            border-color: var(--fm-ink-dim);
+        }
+    }
+
+    .fm-publish-card-attestation-chip.is-attested,
+    .fm-publish-card-approval-chip {
+        border-color: var(--fm-state-ok);
+    }
+
+    .fm-publish-card-attestation-chip.is-absent {
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-publish-card-text {
+        white-space  : pre-wrap;
+        overflow-wrap: anywhere;
+        font         : var(--fm-text-body);
+        color        : var(--fm-ink);
+        max-width    : 52ch;
+    }
+
+    &.is-channel-x .fm-publish-card-text {
+        max-width: 52ch;
+    }
+
+    &.is-channel-linkedin .fm-publish-card-text {
+        max-width: 62ch;
+    }
+
+    .fm-publish-card-media-strip {
+        display  : flex;
+        flex-wrap: wrap;
+        gap      : var(--fm-space-2);
+        font     : var(--fm-text-detail);
+
+        &.is-absent {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    .fm-publish-card-media-item {
+        display      : flex;
+        align-items  : center;
+        gap          : var(--fm-space-2);
+        padding      : var(--fm-space-1) var(--fm-space-2);
+        border       : 1px solid var(--fm-line-soft);
+        border-radius: 6px;
+        background   : var(--fm-panel);
+        max-width    : 100%;
+
+        &.is-unverified {
+            border-color: var(--fm-state-wedged);
+            color       : var(--fm-ink-dim);
+        }
+    }
+
+    .fm-publish-card-media-thumb {
+        width        : 44px;
+        height       : 44px;
+        object-fit   : cover;
+        border-radius: 4px;
+        flex         : none;
+    }
+
+    .fm-publish-card-media-meta {
+        display       : flex;
+        flex-direction: column;
+        gap           : 2px;
+        min-width     : 0;
+        font          : var(--fm-text-micro);
+    }
+
+    .fm-publish-card-reply-target {
+        font         : var(--fm-text-detail);
+        color        : var(--fm-ink-dim);
+        border-left  : 2px solid var(--fm-line);
+        padding-left : var(--fm-space-2);
+        overflow-wrap: anywhere;
+
+        &.is-absent {
+            border-left : none;
+            padding-left: 0;
+        }
+    }
+
+    .fm-publish-card-gate {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-1);
+    }
+
+    .fm-publish-card-gate-chips {
+        display    : flex;
+        flex-wrap  : wrap;
+        gap        : var(--fm-space-1);
+        align-items: center;
+    }
+
+    .fm-publish-card-gate-notice {
+        font : var(--fm-text-detail);
+        color: var(--fm-state-wedged);
+    }
+
+    .fm-publish-card-hypothesis {
+        display    : flex;
+        flex-wrap  : wrap;
+        gap        : var(--fm-space-1);
+        align-items: baseline;
+        font       : var(--fm-text-detail);
+
+        &.is-absent .fm-publish-card-hypothesis-text {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    .fm-publish-card-hypothesis-label {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-publish-card-hypothesis-text {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-publish-card-edit-box,
+    .fm-publish-card-drop-box {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-2);
+        padding       : var(--fm-space-2);
+        background    : var(--fm-panel-2);
+        border        : 1px solid var(--fm-line);
+        border-radius : 6px;
+    }
+
+    .fm-publish-card-edit-textarea,
+    .fm-publish-card-drop-input {
+        width        : 100%;
+        box-sizing   : border-box;
+        padding      : var(--fm-space-1) var(--fm-space-2);
+        background   : var(--fm-panel);
+        border       : 1px solid var(--fm-line);
+        border-radius: 4px;
+        color        : var(--fm-ink);
+        font         : var(--fm-text-body);
+    }
+
+    .fm-publish-card-edit-media-row {
+        display        : flex;
+        align-items    : center;
+        justify-content: space-between;
+        gap            : var(--fm-space-2);
+        font           : var(--fm-text-detail);
+    }
+
+    .fm-publish-card-drop-error {
+        font : var(--fm-text-detail);
+        color: var(--fm-state-wedged);
+    }
+
+    .fm-publish-card-actions,
+    .fm-publish-card-edit-actions,
+    .fm-publish-card-drop-actions {
+        display  : flex;
+        flex-wrap: wrap;
+        gap      : var(--fm-space-2);
+    }
+
+    .fm-publish-card-btn {
+        cursor       : pointer;
+        padding      : 4px 10px;
+        border-radius: 6px;
+        border       : 1px solid var(--fm-line);
+        background   : var(--fm-panel-2);
+        color        : var(--fm-ink);
+        font         : var(--fm-text-detail);
+
+        &.is-primary {
+            border-color: var(--fm-state-ok);
+            font-weight : 600;
+        }
+
+        &.is-danger {
+            border-color: var(--fm-state-wedged);
+        }
+    }
+
+    .fm-publish-card-outcome {
+        display    : flex;
+        flex-wrap  : wrap;
+        align-items: center;
+        gap        : var(--fm-space-2);
+        padding-top: var(--fm-space-1);
+        border-top : 1px solid var(--fm-line-soft);
+        font       : var(--fm-text-detail);
+        font-family: var(--fm-font-mono);
+
+        &.is-published {
+            color: var(--fm-state-ok);
+        }
+
+        &.is-unresolved,
+        &.is-refused {
+            color: var(--fm-state-wedged);
+        }
+
+        &.is-absent {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    .fm-publish-card-outcome-receipt {
+        color          : var(--fm-ink);
+        text-decoration: underline;
+    }
+
+    @container (min-width: 760px) {
+        .fm-publish-card-post {
+            display              : grid;
+            grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+            align-items          : start;
+
+            .fm-publish-card-post-head,
+            .fm-publish-card-media-strip {
+                grid-column: 1 / -1;
+            }
+        }
+    }
+}

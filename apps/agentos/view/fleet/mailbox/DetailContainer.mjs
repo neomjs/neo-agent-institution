@@ -1,6 +1,8 @@
-import Button     from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import ViewerTime from '../../../util/ViewerTime.mjs';
+import Button                  from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import Container               from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import OperatorInbox           from '../../../util/OperatorInbox.mjs';
+import PublishRequestComponent from './PublishRequestComponent.mjs';
+import ViewerTime              from '../../../util/ViewerTime.mjs';
 
 /**
  * The Task states the recipient may still move to Completed (the recipient's exits in the Task contract).
@@ -12,7 +14,13 @@ const RESOLVABLE_TASK_STATES = Object.freeze(['InputRequired', 'Working']);
  * The actions an outcome line can name.
  * @type {Object}
  */
-const ACTION_LABELS = Object.freeze({markRead: 'Mark read', resolve: 'Resolve'});
+const ACTION_LABELS = Object.freeze({
+    approvePublish: 'Approve',
+    dropPublish   : 'Drop',
+    editPublish   : 'Edit',
+    markRead      : 'Mark read',
+    resolve       : 'Resolve'
+});
 
 /**
  * One message opened from the mailbox: its facts, its full body, and on the operator's own inbox one
@@ -98,6 +106,11 @@ class DetailContainer extends Container {
             flex     : '0 1 auto',
             reference: 'detail-body'
         }, {
+            module   : PublishRequestComponent,
+            flex     : '0 1 auto',
+            hidden   : true,
+            reference: 'publish-card'
+        }, {
             ntype    : 'component',
             cls      : ['fm-mailbox-detail-outcome'],
             flex     : 'none',
@@ -157,12 +170,32 @@ class DetailContainer extends Container {
     }
 
     /**
+     * @summary Whether the open message is a `requestPublish` Task.
+     * @returns {Boolean}
+     */
+    get isPublishRequest() {
+        const read = this.currentRead;
+
+        return OperatorInbox.isPublishRequest(read?.state === 'ok' ? read.message : null) ||
+               OperatorInbox.isPublishRequest(this.row)
+    }
+
+    /**
      * @summary Render whatever was set before construction.
      * @param {...*} args
      */
     onConstructed(...args) {
         super.onConstructed(...args);
-        this.applyDetail()
+        const me   = this,
+              card = me.getReference('publish-card');
+
+        card?.on({
+            approvePublishRequest: data => me.fire('approvePublishRequest', data),
+            dropPublishRequest   : data => me.fire('dropPublishRequest', data),
+            editPublishRequest   : data => me.fire('editPublishRequest', data),
+            openPublishSwitch    : data => me.fire('openPublishSwitch', data)
+        });
+        me.applyDetail()
     }
 
     /**
@@ -216,17 +249,36 @@ class DetailContainer extends Container {
      */
     applyDetail() {
         const
-            me        = this,
-            {row}     = me,
-            facts     = me.getReference('detail-facts'),
-            retracted = row?.status === 'retracted',
-            outcome   = row && me.outcome?.messageId === row.messageId ? me.outcome : null,
-            pending   = outcome?.state === 'pending',
-            own       = me.entry === 'own' && !!row && !retracted;
+            me          = this,
+            {row}       = me,
+            read        = me.currentRead,
+            facts       = me.getReference('detail-facts'),
+            body        = me.getReference('detail-body'),
+            publishCard = me.getReference('publish-card'),
+            retracted   = row?.status === 'retracted',
+            outcome     = row && me.outcome?.messageId === row.messageId ? me.outcome : null,
+            pending     = outcome?.state === 'pending',
+            own         = me.entry === 'own' && !!row && !retracted,
+            showPublish = me.isPublishRequest && !retracted && (read?.state === 'ok' || OperatorInbox.isPublishRequest(row));
 
         facts.vdom.cn = me.buildFacts();
         facts.update();
-        me.getReference('detail-body').text = me.getBodyText();
+        body.set({
+            hidden: showPublish,
+            text  : me.getBodyText()
+        });
+
+        if (publishCard) {
+            if (showPublish) {
+                publishCard.set({
+                    hidden : false,
+                    message: {...row, ...(read?.state === 'ok' ? read.message : {})},
+                    outcome
+                })
+            } else {
+                publishCard.hidden = true
+            }
+        }
 
         me.getReference('detail-outcome').set({
             hidden: !outcome || outcome.state === 'ok',
@@ -290,11 +342,17 @@ class DetailContainer extends Container {
     }
 
     /**
-     * @summary Can the viewer resolve the open message's Task: a Task the read returned, in a state the
-     * recipient may still move, naming the viewer as its assignee.
+     * @summary Can the viewer resolve the open message's Task: a non-publish Task the read returned, in a
+     * state the recipient may still move, naming the viewer as its assignee. A `requestPublish` Task is
+     * decided only through the publish gate's own actions (`Approve` / `Edit & approve` / `Drop`), never
+     * the generic `Resolve` button.
      * @returns {Boolean}
      */
     canResolve() {
+        if (this.isPublishRequest) {
+            return false
+        }
+
         const
             task   = this.openTask,
             bare   = id => String(id ?? '').trim().replace(/^@/, ''),
@@ -373,10 +431,14 @@ class DetailContainer extends Container {
 
     /**
      * @summary Ask the host to move the open message's Task to Completed, guarded by the state the read
-     * returned.
+     * returned. Ignored for a `requestPublish` Task, which only the publish gate may decide.
      * @protected
      */
     onResolveClick() {
+        if (this.isPublishRequest) {
+            return
+        }
+
         const {row} = this, task = this.openTask;
 
         row && task && this.fire('resolveRequest', {expectedCurrentState: task.state, messageId: row.messageId})

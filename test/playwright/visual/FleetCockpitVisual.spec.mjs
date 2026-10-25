@@ -1542,6 +1542,13 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
 
     /**
+     * The publish-gate driver (#673), resolved the way {@link GOLDEN_PATH_DRIVER} is: drives `PublishRequestComponent`
+     * (`queued`, `publishing`, `published`) and `PublishSwitchComponent` (`switches`).
+     * @type {String}
+     */
+    const PUBLISH_GATE_DRIVER = '../../../../test/playwright/visual/publishGate.driver.mjs';
+
+    /**
      * The Memories driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: the cockpit's bridge answers a selected
      * resident's session summaries.
      * @type {String}
@@ -2991,6 +2998,135 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         await landPlaneAdmission(page, admitted);
         await expect(chip).toBeHidden()
+    });
+
+    test('the operator inbox publish request card and Configuration\'s Publishing switch — 314 · 720 · 1280, both skins, and the publishing → published transition (#673)', async ({page}) => {
+        await page.setViewportSize({width: 1280, height: 1100});
+        await bootSettledCockpit(page);
+
+        const
+            name       = /^\s*Mailbox\s*$/i,
+            strip      = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+            tab        = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+            pane       = page.locator('.fm-operator-mailbox:visible').first(),
+            card       = pane.locator('.fm-publish-request-card'),
+            detail     = page.locator('.fm-agent-detail:visible').first(),
+            switches   = detail.locator('.fm-publish-switches'),
+            drive      = async state => {
+                const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${PUBLISH_GATE_DRIVER}?state=${state}&t=${++driverTick}`);
+                expect(loaded.success, `publishGate driver (${state}) loaded: ${JSON.stringify(loaded)}`).toBe(true)
+            },
+            pinWidth   = async (selector, maxWidth) => {
+                await page.evaluate(({sel, mw}) => {
+                    let style = document.getElementById('__fm_publish_width_pin');
+                    if (!style) {
+                        style = document.createElement('style');
+                        style.id = '__fm_publish_width_pin';
+                        document.head.appendChild(style)
+                    }
+                    style.textContent = mw ? `${sel} { max-width: ${mw}px !important; width: ${mw}px !important; }` : ''
+                }, {sel: selector, mw: maxWidth})
+            },
+            settle     = async () => {
+                await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+                await page.mouse.move(0, 0);
+                await page.waitForTimeout(300)
+            };
+
+        await tab.click();
+        await expect(pane).toBeVisible({timeout: 30000});
+
+        await drive('queued');
+        await expect(card).toBeVisible();
+        await expect(card.locator('.fm-publish-channel-chip')).toHaveText('x · @neomjs · post');
+        await expect(card.locator('.fm-publish-revision-chip')).toHaveText('rev 1 · 7f83b165');
+        await expect(card.locator('.fm-publish-attestation-chip')).toHaveText('@neo-gpt-sophie · gpt · attests rev 1');
+        await expect(card.locator('.fm-publish-switch-chip')).toHaveText('auto-approve after a cross-family review attestation');
+        await expect(card.locator('.fm-publish-hypothesis')).toHaveText('Hypothesis: Concrete multi-window + Neural Link receipts resonate with systems engineers.');
+        await expect(card.locator('.fm-publish-approve')).toHaveText('Approve rev 1 · 7f83b165');
+        await expect(card.locator('.fm-publish-outcome')).toHaveText('queued · 07:20');
+        await expect(pane.getByRole('button', {name: /Resolve/i})).toBeHidden();
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-1280.png');
+
+        await pinWidth('.fm-publish-request-card', 720);
+        await settle();
+        expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'no horizontal overflow at 720').toBe(true);
+        await expect(card).toHaveScreenshot('publish-request-card-720.png');
+
+        await pinWidth('.fm-publish-request-card', 314);
+        await settle();
+        expect(await card.evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'no horizontal overflow at 314').toBe(true);
+        await expect(card).toHaveScreenshot('publish-request-card-314.png');
+        await pinWidth('.fm-publish-request-card', null);
+
+        // Asynchronous transition: publishing -> published
+        await drive('publishing');
+        await expect(card.locator('.fm-publish-approval-chip')).toHaveText('approved by @tobiu · rev 1');
+        await expect(card.locator('.fm-publish-outcome')).toHaveText('publishing · 07:25');
+        await expect(card.locator('.fm-publish-approve')).toBeDisabled();
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-publishing.png');
+
+        await drive('published');
+        await expect(card.locator('.fm-publish-outcome')).toHaveText('published · 07:28 · 1900000000000000777');
+        await expect(card.locator('.fm-publish-receipt-link')).toHaveAttribute('href', 'https://x.com/neomjs/status/1900000000000000777');
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-published.png');
+
+        // AgentDetail -> Configuration -> Publishing switch group
+        await page.locator('.fm-agent-card', {hasText: 'Ada'}).click();
+        await detail.getByRole('tab', {name: 'Configuration', exact: true}).click();
+        await expect(switches).toBeVisible({timeout: 30000});
+        await drive('switches');
+        await expect(switches.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-current')).toHaveText('approve the batch');
+        await expect(switches.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-audit-last')).toHaveText('@tobiu · 5 Jul 06:45 · approve each → approve the batch · initial release batch verified');
+        await expect(switches.locator('.fm-publish-switch-row.is-channel-x .fm-publish-switch-proposal')).toHaveText('eligible for auto-approve after a cross-family review attestation: 5 batches released, 0 edits since 2026-06-20');
+        await settle();
+        await expect(switches).toHaveScreenshot('publish-switch-group-1280.png');
+
+        await pinWidth('.fm-publish-switches', 720);
+        await settle();
+        await expect(switches).toHaveScreenshot('publish-switch-group-720.png');
+
+        await pinWidth('.fm-publish-switches', 314);
+        await settle();
+        expect(await switches.locator('.fm-publish-switch-chips').first().evaluate(el => getComputedStyle(el).display), 'chips collapse below 360px').toBe('none');
+        expect(await switches.locator('.fm-publish-switch-select').first().evaluate(el => getComputedStyle(el).display), 'native select takes over at 314px').toBe('block');
+        await expect(switches).toHaveScreenshot('publish-switch-group-314.png');
+        await pinWidth('.fm-publish-switches', null);
+
+        // Light skin coverage across both surfaces and all 3 width bands
+        await switchToLightSkin(page);
+        await settle();
+        await expect(switches).toHaveScreenshot('publish-switch-group-1280-light.png');
+
+        await pinWidth('.fm-publish-switches', 720);
+        await settle();
+        await expect(switches).toHaveScreenshot('publish-switch-group-720-light.png');
+
+        await pinWidth('.fm-publish-switches', 314);
+        await settle();
+        await expect(switches).toHaveScreenshot('publish-switch-group-314-light.png');
+        await pinWidth('.fm-publish-switches', null);
+
+        await uncoverRoster(page);
+        await expect(card).toBeVisible();
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-published-light.png');
+
+        await drive('queued');
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-1280-light.png');
+
+        await pinWidth('.fm-publish-request-card', 720);
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-720-light.png');
+
+        await pinWidth('.fm-publish-request-card', 314);
+        await settle();
+        await expect(card).toHaveScreenshot('publish-request-card-314-light.png');
+        await pinWidth('.fm-publish-request-card', null)
     });
 });
 
