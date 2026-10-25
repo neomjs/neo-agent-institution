@@ -56,7 +56,17 @@ test.describe('harness walk control', () => {
         seats.writeSeatTokenRegistry(registryPath, seats.buildSeatTokenRegistry({generation: 1, planeId: FIXTURE_PLANE_ID, rows: [minted.row]}))
     });
 
+    // what a sealed runtime store needs before anything under it can go; a failing arm leaves one behind
+    const unseal = dir => {
+        fs.chmodSync(dir, fs.statSync(dir).mode | 0o200);
+
+        for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+            entry.isDirectory() && unseal(path.join(dir, entry.name))
+        }
+    };
+
     test.afterEach(() => {
+        fs.existsSync(smokeRoot) && unseal(smokeRoot);
         fs.rmSync(smokeRoot, {force: true, recursive: true})
     });
 
@@ -240,6 +250,43 @@ test.describe('harness walk control', () => {
 
         expect(await cleanupHeldRun({isAlive: () => false, manifest, probePortFn: async () => false, smokeRoot}))
             .toEqual({planeStopped: true, rootRemoved: true, smokeRoot: path.resolve(smokeRoot)})
+    });
+
+    test('cleanup removes a root whose seat-runtime store is sealed read-only', async () => {
+        const manifest = manifestFor({ingressPort: 41002, pid: 4242, planePort: 41001}),
+              store    = path.join(smokeRoot, 'userData', 'brain', 'runtime'),
+              sealed   = path.join(store, 'a1b2', 'host.runtime', 'Contents');
+
+        fs.mkdirSync(sealed, {recursive: true});
+        fs.writeFileSync(path.join(sealed, 'Info.plist'), '<plist/>');
+
+        // the store's own shape: every directory from the runtime's hash down is r-x
+        for (let dir = sealed; dir !== store; dir = path.dirname(dir)) {
+            fs.chmodSync(dir, 0o500)
+        }
+
+        expect(await cleanupHeldRun({isAlive: () => false, manifest, probePortFn: async () => false, smokeRoot}))
+            .toEqual({planeStopped: true, rootRemoved: true, smokeRoot: path.resolve(smokeRoot)})
+    });
+
+    test('a cleanup that fails partway keeps the walk manifest, so it can run again', async () => {
+        const manifest = manifestFor({ingressPort: 41002, pid: 4242, planePort: 41001}),
+              busy     = path.join(smokeRoot, 'userData'),
+              stopped  = {isAlive: () => false, manifest, probePortFn: async () => false, smokeRoot},
+              fsModule = {...fs, rmSync(target, options) {
+                  if (target === busy) {
+                      throw Object.assign(new Error(`EBUSY: resource busy, rm '${target}'`), {code: 'EBUSY'})
+                  }
+
+                  return fs.rmSync(target, options)
+              }};
+
+        fs.mkdirSync(path.join(busy, 'brain'), {recursive: true});
+
+        await expect(cleanupHeldRun({...stopped, fsModule})).rejects.toThrow('EBUSY');
+        expect(fs.existsSync(walkPaths(smokeRoot).manifest), 'the manifest outlives the failed removal').toBe(true);
+
+        expect(await cleanupHeldRun(stopped)).toEqual({planeStopped: true, rootRemoved: true, smokeRoot: path.resolve(smokeRoot)})
     });
 
     test('the CLI resolves the held run\'s root and revokes through the runtime\'s own seat-token helpers', async () => {
