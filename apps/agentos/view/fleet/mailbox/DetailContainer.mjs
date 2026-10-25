@@ -107,7 +107,7 @@ class DetailContainer extends Container {
             reference: 'detail-body'
         }, {
             module   : PublishRequestComponent,
-            flex     : '0 1 auto',
+            flex     : 'none',
             hidden   : true,
             reference: 'publish-card'
         }, {

@@ -7,17 +7,26 @@
    5. Outcome line (queued · publishing · unresolved · published · refused)
    Every color reads from the --fm-* token layer. */
 .fm-publish-request-card {
-    container-type: inline-size;
-    display       : flex;
-    flex-direction: column;
-    gap           : var(--fm-space-2);
-    background    : var(--fm-panel);
-    border        : 1px solid var(--fm-line);
-    border-radius : 8px;
-    padding       : var(--fm-space-3);
-    color         : var(--fm-ink);
-    font          : var(--fm-text-body);
-    min-width     : 0;
+    container-type       : inline-size;
+    display              : grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items          : start;
+    flex                 : 0 0 auto;
+    gap                  : var(--fm-space-2);
+    background           : var(--fm-panel);
+    border               : 1px solid var(--fm-line);
+    border-radius        : 8px;
+    padding              : var(--fm-space-3);
+    color                : var(--fm-ink);
+    font                 : var(--fm-text-body);
+    height               : auto;
+    min-width            : 0;
+    box-sizing           : border-box;
+
+    > * {
+        grid-column: 1 / -1;
+        min-width  : 0;
+    }
 
     .fm-publish-card-post {
         display       : flex;
@@ -27,12 +36,22 @@
         background    : var(--fm-panel-2);
         border        : 1px solid var(--fm-line-soft);
         border-radius : 6px;
+        min-width     : 0;
     }
 
     .fm-publish-card-post-head {
         display    : flex;
+        flex-wrap  : wrap;
         align-items: center;
         gap        : var(--fm-space-2);
+        min-width  : 0;
+    }
+
+    .fm-publish-post-row {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-2);
+        min-width     : 0;
     }
 
     .fm-publish-card-channel-chip,
@@ -44,16 +63,17 @@
         align-items  : center;
         gap          : 4px;
         padding      : 2px 8px;
-        border-radius: 999px;
+        border-radius: 10px;
         border       : 1px solid var(--fm-line-soft);
         background   : var(--fm-panel);
         font         : var(--fm-text-micro);
         font-family  : var(--fm-font-mono);
         color        : var(--fm-ink);
         max-width    : 100%;
-        overflow     : hidden;
-        text-overflow: ellipsis;
-        white-space  : nowrap;
+        min-width    : 0;
+        white-space  : normal;
+        overflow-wrap: anywhere;
+        text-align   : left;
     }
 
     .fm-publish-card-switch-chip {
@@ -79,6 +99,7 @@
         font         : var(--fm-text-body);
         color        : var(--fm-ink);
         max-width    : 52ch;
+        min-width    : 0;
     }
 
     &.is-channel-x .fm-publish-card-text {
@@ -138,6 +159,7 @@
         border-left  : 2px solid var(--fm-line);
         padding-left : var(--fm-space-2);
         overflow-wrap: anywhere;
+        min-width    : 0;
 
         &.is-absent {
             border-left : none;
@@ -279,16 +301,40 @@
         text-decoration: underline;
     }
 
+    @container (max-width: 360px) {
+        .fm-publish-card-actions,
+        .fm-publish-card-edit-actions,
+        .fm-publish-card-drop-actions {
+            flex-direction: column;
+            align-items   : stretch;
+        }
+
+        .fm-publish-card-btn {
+            width     : 100%;
+            box-sizing: border-box;
+            text-align: center;
+        }
+    }
+
+    @container (min-width: 560px) {
+        .fm-publish-card-gate {
+            grid-column: 1;
+            min-width  : 0;
+        }
+
+        .fm-publish-card-actions {
+            grid-column    : 2;
+            justify-content: flex-end;
+            align-self     : start;
+        }
+    }
+
     @container (min-width: 760px) {
-        .fm-publish-card-post {
+        .fm-publish-post-row {
             display              : grid;
             grid-template-columns: minmax(0, 1fr) minmax(180px, 240px);
+            gap                  : var(--fm-space-3);
             align-items          : start;
-
-            .fm-publish-card-post-head,
-            .fm-publish-card-media-strip {
-                grid-column: 1 / -1;
-            }
         }
     }
 }

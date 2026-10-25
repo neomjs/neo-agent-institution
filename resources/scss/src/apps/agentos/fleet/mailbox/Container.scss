@@ -76,10 +76,28 @@
     }
 
     /* the list beside the open message, the Memories pane's reading split: the list two shares,
-       the detail one, the splitter resizing the list */
+       the detail one, the splitter resizing the list; when a publish-request card is open in the
+       wide regime, the detail column takes the wider share so the card's 52ch-62ch post + reply
+       target sit side-by-side without squeezing */
     .fm-mailbox-body {
         gap       : var(--fm-space-2);
         min-height: 0;
+
+        &:has(.fm-publish-request-card:not(.neo-hidden)) {
+            flex: 1 0 auto !important;
+
+            > .fm-mailbox-grid {
+                flex: 1 1 0% !important;
+            }
+
+            > .fm-mailbox-detail {
+                flex: 2.5 1 0% !important;
+            }
+        }
+    }
+
+    &:has(.fm-publish-request-card:not(.neo-hidden)) {
+        flex: 1 0 auto !important;
     }
 
     /* the rows body is the buffered mailbox grid (Grid.scss owns the designed row anatomy);

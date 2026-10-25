@@ -34,6 +34,11 @@ class PublishSwitchComponent extends Component {
      * @type {Boolean}
      */
     #applyingFleetTruth = false
+    /**
+     * Coalesces `readPublishSwitches` re-read events when multiple guarded configs are written in one `set()` call.
+     * @type {Boolean}
+     */
+    #externalReadQueued = false
 
     static config = {
         /**
@@ -138,32 +143,6 @@ class PublishSwitchComponent extends Component {
     }
 
     /**
-     * @summary Override `set()` so external mutations (`set_instance_properties` on `switches`, `xState`,
-     * `linkedinState`, or `state`) never write to Fleet state, restore from `#fleetSwitches`, and trigger
-     * a fresh `readPublishSwitches` read from the Fleet bridge (AC-4).
-     * @param {Object} values
-     * @param {Boolean} [silent=false]
-     */
-    set(values, silent = false) {
-        const
-            me              = this,
-            attemptedSwitch = values && typeof values === 'object' && !me.#applyingFleetTruth && (
-                'switches'      in values ||
-                'xState'        in values ||
-                'linkedinState' in values ||
-                'state'         in values
-            );
-
-        super.set(values, silent);
-
-        if (attemptedSwitch && me.isConstructed) {
-            me.syncPublicMirrors();
-            me.renderRows();
-            me.peerId && me.fire('readPublishSwitches', {peer: me.peerId})
-        }
-    }
-
-    /**
      * @param {Object|null} value
      * @param {Object|null} oldValue
      * @protected
@@ -187,14 +166,33 @@ class PublishSwitchComponent extends Component {
     }
 
     /**
+     * @summary Restore public mirrors from `#fleetSwitches` and request a fresh Fleet read when an external
+     * caller writes a guarded switch config (`switches`, `xState`, `linkedinState`) (AC-4).
+     * @protected
+     */
+    rejectExternalSwitchWrite() {
+        const me = this;
+
+        if (!me.isConstructed || me.#applyingFleetTruth) return;
+
+        me.syncPublicMirrors();
+        me.renderRows();
+
+        if (me.peerId && !me.#externalReadQueued) {
+            me.#externalReadQueued = true;
+            queueMicrotask(() => {
+                me.#externalReadQueued = false
+            });
+            me.fire('readPublishSwitches', {peer: me.peerId})
+        }
+    }
+
+    /**
      * @param {Object|null} value
      * @protected
      */
     afterSetSwitches(value) {
-        if (this.isConstructed && !this.#applyingFleetTruth) {
-            this.syncPublicMirrors();
-            this.renderRows()
-        }
+        this.rejectExternalSwitchWrite()
     }
 
     /**
@@ -202,10 +200,7 @@ class PublishSwitchComponent extends Component {
      * @protected
      */
     afterSetXState(value) {
-        if (this.isConstructed && !this.#applyingFleetTruth) {
-            this.syncPublicMirrors();
-            this.renderRows()
-        }
+        this.rejectExternalSwitchWrite()
     }
 
     /**
@@ -213,10 +208,7 @@ class PublishSwitchComponent extends Component {
      * @protected
      */
     afterSetLinkedinState(value) {
-        if (this.isConstructed && !this.#applyingFleetTruth) {
-            this.syncPublicMirrors();
-            this.renderRows()
-        }
+        this.rejectExternalSwitchWrite()
     }
 
     /**
