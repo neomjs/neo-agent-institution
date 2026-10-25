@@ -420,9 +420,6 @@ class FleetCockpit extends VesselContainer {
      */
     publishedPerspectives = null
 
-    /** @member {Boolean} dismissingDetailReveal=false TRUE while {@link #dismissDetailReveal} runs. @protected */
-    dismissingDetailReveal = false
-
     /**
      * @summary The one service member the cockpit composes at construct. The layout SSOT is the
      * engine's: `panes` + `zones` lower into {@link #dockModel} in `onAfterConstructed`; nothing
@@ -630,16 +627,20 @@ class FleetCockpit extends VesselContainer {
         }
     }
 
-    /** @summary Ends the inspector's reveal on the cockpit's own word; that end keeps the selection. */
-    dismissDetailReveal() {
-        this.dismissingDetailReveal = true;
-        this.dismissRailReveal('detail');   // the rail reports the end synchronously, inside the flag
-        this.dismissingDetailReveal = false
-    }
-
     /** @summary A press anywhere in the cockpit ({@link AgentOS.util.CockpitPerspectives#detailPress}). @protected */
     onCockpitMouseDown({path}) {
         CockpitPerspectives.detailPress(this, path)
+    }
+
+    /**
+     * @summary A pane came home from its vessel. The inspector a reveal popped out comes back to its
+     * rail auto-hidden, so it follows the selection again ({@link AgentOS.util.CockpitPerspectives#syncDetailReveal}).
+     * @param {Object} data `{error, errors, itemId, pane, phase, returned}`
+     * @protected
+     */
+    onDockPaneReturn(data) {
+        super.onDockPaneReturn(data);
+        data.returned && data.itemId === 'detail' && CockpitPerspectives.syncDetailReveal(this, Boolean(this.detailRecord))
     }
 
     /** @summary A rail's reveal changed ({@link AgentOS.util.CockpitPerspectives#detailRevealChange}). @protected */

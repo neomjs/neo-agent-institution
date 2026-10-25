@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    990669e5213deaf31367b6629e52c9851bf66ce9
+    a97cb2d5f8e175ccb25a9ef00ad5e28edfac9067
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -222,7 +222,7 @@ apps/agentos/util/ClosedShape.mjs
     1cb201ec5bb7b858b41a68f6abfba58824fb6ccf
 
 apps/agentos/util/CockpitPerspectives.mjs
-    c58caad152c8c24f7481c162b4b020aebec42832
+    3ed04a7ad2f738a1c382921a51a807516d906e7a
 
 apps/agentos/util/ConfigIntentRoundTrip.mjs
     304f0ae0f77b480f206457cbca31765b7edec1b9
@@ -378,7 +378,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    82556954c4155ae386764a08b0fc1d26d295160d
+    095f623728eee8ed5807596bf951ca93456b9c8a
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     d3b434dd1fc4d1bc4ba3a1bf36bddc80889e162a
@@ -873,7 +873,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     2f1c1a50b131705b0f043c553ddc52a8ebf62f5e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    368125265bb655e37778e6fdefa08ebbb3841cbd
+    e59d3d240e1b779271c0d071f8c57adb23d9a659
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f
@@ -1029,13 +1029,13 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-aw
     2f3e17b74f4c4fa42f837e6b437b000efad4077c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-open.png
-    991f9f0f2ee03b5bc499fb0f9808f8c982b0a791
+    7c5738951dd3d5f6b0f4d85e9020719522658a1d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled-light.png
-    5563e0efd41153a9e098fc6b8c2edff2f9983905
+    5d7dca78310ecea2c18fa014c54cb59bce87801a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled.png
-    05b7dd63324352f6301e069a2f5ef6767c32290e
+    15fb05c811529cc0991bb4a0641195075609404b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-plane-unresolved-light.png
     d84c03bf65204f1cbfa28d34eb99cf3ca31444ce
@@ -1074,10 +1074,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returnin
     7ab0c81788224c1364f4f319cb6dc9889f08c22b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720-light.png
-    127068ed80b3c845dae9aefc9789681fbf30ba25
+    2b9b2b43a104879c745bffa8b4dcb2dee8d633a6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720.png
-    e2a3e6e4e821e3f2150299f148878d4dc2d0570c
+    1bd2a7fec0963e2281803a14d6df5e88b7797fcc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280-light.png
     0ee3fb82cc21e6558a2e5cfc4a6d8629aea60261
@@ -1146,7 +1146,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agen
     658b87fbcdcb7bf13f9f10723e3d8fb65e9bdc68
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
-    9b214ff4017444c1ec6c116357f5e638e4f74d70
+    27a3719f97dbdce1dbaccc4e3db40ac427d1d7cc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up.png
     2ba41477f2f7e9959f085805877952ea79e12110
@@ -1293,7 +1293,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-fr
     6bdb547db1652c0ae8a389b835c2a80bc1cccaf6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run-confirming.png
-    b4209a94c3e6228988b7ad163aed65b8b197d60b
+    4fa043ace76fac5083d0ac9190d44c9b86f4a2f9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run-light.png
     e7aa290d5a2d7c73f6daa45c8ce02017519a167e
@@ -1308,7 +1308,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-las
     a0db743f789a09a5ca672627d309f4549443e956
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-confirming.png
-    33574900652f9869efc2a88e793cff6751126097
+    de03440554278649e7c488030dcc5f8fa5c4449c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-light.png
     06cec6f6ae5f1dd7c6952c0500d13d050a508317

@@ -2658,14 +2658,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await expect(pane, label).toHaveScreenshot(golden)
         }
 
-        // the inspector's section heads, drilled into the first resident
-        const detail = page.locator('.fm-agent-detail:visible').first();
+        // the inspector's section heads, drilled into the first resident. A selection reveals the railed
+        // inspector, and the reveal's pane slot carries its inset, so the frame is the slot
+        const detail = page.locator('.fm-agent-detail:visible').first(),
+              frame  = page.locator('.neo-dashboard-dock-reveal-pane-slot', {has: detail});
 
         await page.locator('.fm-agent-card').first().click();
         await expect(detail.locator('.fm-detail-pane-head').first()).toBeVisible({timeout: 30000});
         await page.waitForFunction(() => [...document.querySelectorAll('.fm-agent-detail img')].every(img => img.complete), null, {timeout: 10000});
         await settle();
-        await expect(detail, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
+        await expect(frame, 'Agent detail').toHaveScreenshot('pane-agent-detail.png')
     });
 
     test('the Add agent memory frame at 1280 — candidates with the empty row preselected first, a check that could not answer, and 11 candidates scrolling inside the list with a focused row in both skins (#521, #724)', async ({page}) => {

@@ -1,4 +1,4 @@
-import {test, expect, landFleetSample, pinRevealedDetail} from '../../fixtures.mjs';
+import {test, expect, landFleetSample} from '../../fixtures.mjs';
 
 /**
  * Whitebox-e2e for the cockpit's click pop-out: the agent-detail inspector detaches to a REAL
@@ -64,21 +64,16 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         const detailRoot = page.locator('.fm-agent-detail');
 
         await expect(detailRoot).toBeVisible({timeout: 30000});
-        await pinRevealedDetail(page);
 
-        // docked, the dock header owns the ONE pop-out verb; the SHELL's pane-side verb is the
-        // way home and renders only while the pane is away in a vessel — so the detail strip
-        // carries no toggle here, and the bar carries only the exception-only recall twin later
+        // the selection holds the railed detail revealed, and the reveal's toolbar carries the ONE
+        // pop-out verb; the SHELL's pane-side verb is the way home and renders only while the pane
+        // is away in a vessel — so the detail strip carries no toggle here
         const toggle       = page.locator('.fm-detail-window-toggle'),
-              // the detail's dock header: the engine's actions are contextual — focusing the tab
-              // reveals them (the engine's own e2e pattern), and the pop-out carries the
-              // workspace's pop-out glyph
-              header       = page.locator('.neo-tab-header-toolbar')
-                  .filter({has: page.locator('.neo-tab-header-button', {hasText: 'Agent detail'})}).first(),
-              popOutAction = header.locator('.neo-button:has([class*="fa-window-restore"])');
+              popOutAction = page.locator('.neo-dashboard-dock-reveal-overlay:not(.neo-dashboard-dock-reveal-overlay-hidden)')
+                  .filter({has: page.locator('.fm-agent-detail')})
+                  .locator('.neo-dashboard-dock-reveal-pop-out');
 
         await expect(toggle).toHaveCount(0);
-        await header.locator('.neo-tab-header-button', {hasText: 'Agent detail'}).first().click();
         await expect(popOutAction).toBeVisible();
 
         const cockpits = await app.findInstances({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
@@ -110,9 +105,8 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
 
         const homeIndexBefore = docDocked.nodes['secondary-rail'].items.indexOf('detail');
 
-        // 2) detach: ONE native click on the dock header's own pop-out action enters the engine's
-        // admission and opens the REAL vessel window — the detail's dock node is the innermost tab
-        // container holding the pane
+        // 2) detach: ONE native click on the reveal's pop-out enters the engine's admission and
+        // opens the REAL vessel window over the reveal's pane slot
         const popupPromise = page.waitForEvent('popup', {timeout: 30000});
 
         await popOutAction.click();
@@ -142,6 +136,12 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         // the Group recorded committed ownership: the vessel owns the item, and the traveling
         // toggle names the way home
         await expect.poll(queryVesselOwned, {timeout: 15000}).toBe(true);
+
+        // the reveal ended as the item leaving its rail, not as the person's dismissal: the
+        // selection stays
+        const selected = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['detailRecord.agentId']);
+
+        expect(selected[0].properties['detailRecord.agentId'], 'the pop-out keeps the selection').toBe(drilledAgentId);
         await expect(popup.locator('.fm-detail-window-toggle')).toHaveAttribute('aria-label', 'Return detail');
 
         // document truth while detached: out of the tree, still in the catalog

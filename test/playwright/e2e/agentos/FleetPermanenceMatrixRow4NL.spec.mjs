@@ -1,4 +1,4 @@
-import {expect, landFleetSample, pinRevealedDetail, test} from '../../fixtures.mjs';
+import {expect, landFleetSample, test} from '../../fixtures.mjs';
 
 /**
  * @summary Matrix row 4 — object permanence / reintegration WITH live-store continuity, on the
@@ -106,18 +106,15 @@ test.describe('matrix row 4 — AgentDetail permanence with live FleetRoster con
         const drilled = (await queryDetail()).detail;
 
         expect(drilled?.properties?.record?.agentId, 'the inspector drilled into the exact resident').toBe(firstAgentId);
-        await pinRevealedDetail(page);
 
         const detailId     = drilled.id,
               popupPromise = page.waitForEvent('popup', {timeout: 30000}),
-              // the dock header's own pop-out action (the pane-side verb is the way home and
-              // renders only while the pane is away) — native clicks, like every other hop here:
-              // focusing the tab reveals the engine's contextual actions
-              header       = page.locator('.neo-tab-header-toolbar')
-                  .filter({has: page.locator('.neo-tab-header-button', {hasText: 'Agent detail'})}).first(),
-              popOutAction = header.locator('.neo-button:has([class*="fa-window-restore"])');
+              // the reveal's own pop-out (the pane-side verb is the way home and renders only while
+              // the pane is away) — a native click, like every other hop here
+              popOutAction = page.locator('.neo-dashboard-dock-reveal-overlay:not(.neo-dashboard-dock-reveal-overlay-hidden)')
+                  .filter({has: page.locator('.fm-agent-detail')})
+                  .locator('.neo-dashboard-dock-reveal-pop-out');
 
-        await header.locator('.neo-tab-header-button', {hasText: 'Agent detail'}).first().click();
         await popOutAction.click();
 
         const popup = await popupPromise;

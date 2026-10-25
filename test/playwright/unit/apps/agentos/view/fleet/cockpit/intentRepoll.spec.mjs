@@ -233,6 +233,7 @@ test.describe('Fleet cockpit — controller re-polls the roster on a settled lif
                 // the vessel-held handle while detached — the pop-out suite covers that phase)
                 getAgentDetailPane() { return detail },
                 getMemoriesPane() { return null },
+                isVesselOwned() { return false },
                 onDockZoneDocumentChange(doc) { this.committed = doc },
                 resolveFleetRosterStore() { return {get: id => id === 'vega' ? record : null} },
                 revealRailItem(itemId) { revealed.push(itemId) },

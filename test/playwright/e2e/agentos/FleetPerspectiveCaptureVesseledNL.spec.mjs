@@ -1,4 +1,4 @@
-import {departedWindowSends, landFleetSample, pinRevealedDetail, test, expect} from '../../fixtures.mjs';
+import {departedWindowSends, landFleetSample, test, expect} from '../../fixtures.mjs';
 
 /**
  * @summary Normalizes a one-match Neural Link component query without weakening a missing match.
@@ -56,7 +56,6 @@ test.describe('AgentOS FleetCockpit — a perspective captured while a pane is i
         await expect.poll(async () => (await inspector())?.properties?.mounted, {
             message: 'the inspector must be live before it leaves', timeout: 15000, intervals: [100, 250]
         }).toBe(true);
-        await pinRevealedDetail(page);
 
         const home     = await liveHome(),
               revealed = await inspector();
@@ -64,10 +63,10 @@ test.describe('AgentOS FleetCockpit — a perspective captured while a pane is i
         expect(home, 'the inspector has a home to return to').toBeTruthy();
 
         const popupPromise = page.waitForEvent('popup', {timeout: 30000}),
-              poppedOut    = await app.callMethod(cockpitId, 'popOutPane', ['detail']),
+              poppedOut    = await app.callMethod(cockpitId, 'popOutRailItem', ['detail']),
               popup        = await popupPromise;
 
-        expect(poppedOut).toMatchObject({detached: true, errors: []});
+        expect(poppedOut).toMatchObject({errors: []});
 
         await expect.poll(() => app.callMethod(cockpitId, 'isVesselOwned', ['detail']), {
             message: 'the vessel must own the inspector', timeout: 15000, intervals: [100, 250]
