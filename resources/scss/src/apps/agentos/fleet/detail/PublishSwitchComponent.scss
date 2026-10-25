@@ -1,0 +1,250 @@
+/* AgentOS.view.fleet.detail.PublishSwitchContainer — Configuration's Publishing group (#673):
+   per-channel (`x`, `linkedin`) 4-state gate switch, collapsing from the segmented chip strip to
+   a native `<select>` when the component's container is narrower than the four-state strip (<= 560px),
+   with inline promote confirmation + reason, last audit line, disclosure history trail, and recorded
+   proposal line. */
+.fm-publish-switches {
+    container-type: inline-size;
+    display       : flex;
+    flex          : 0 0 auto;
+    flex-direction: column;
+    gap           : var(--fm-space-2);
+    background    : var(--fm-panel);
+    border        : 1px solid var(--fm-line);
+    border-radius : 8px;
+    padding       : var(--fm-space-3);
+    color         : var(--fm-ink);
+    font          : var(--fm-text-body);
+    min-width     : 0;
+    max-width     : 100%;
+    box-sizing    : border-box;
+
+    .fm-publish-switches-header {
+        display        : flex;
+        align-items    : baseline;
+        justify-content: space-between;
+        gap            : var(--fm-space-2);
+        flex-wrap      : wrap;
+        min-width      : 0;
+    }
+
+    .fm-detail-section-title {
+        color         : var(--fm-ink-dim);
+        font          : var(--fm-text-chrome);
+        letter-spacing: var(--fm-text-chrome-tracking);
+        text-transform: uppercase;
+    }
+
+    .fm-publish-switches-sub {
+        color        : var(--fm-ink-dim);
+        font         : var(--fm-text-micro);
+        font-family  : var(--fm-font-mono);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        white-space  : normal;
+    }
+
+    .fm-publish-switch-list {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-2);
+        min-width     : 0;
+    }
+
+    .fm-publish-switch-row {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-1);
+        padding       : var(--fm-space-2);
+        background    : var(--fm-panel-2);
+        border        : 1px solid var(--fm-line-soft);
+        border-radius : 6px;
+        min-width     : 0;
+        max-width     : 100%;
+        box-sizing    : border-box;
+
+        &.is-focused {
+            border-color: var(--fm-state-ok);
+        }
+    }
+
+    .fm-publish-switch-row-head {
+        display        : flex;
+        align-items    : center;
+        justify-content: space-between;
+        gap            : var(--fm-space-2);
+        flex-wrap      : wrap;
+        min-width      : 0;
+    }
+
+    .fm-publish-switch-channel {
+        font-family   : var(--fm-font-mono);
+        font-weight   : 600;
+        text-transform: lowercase;
+    }
+
+    .fm-publish-switch-current {
+        font         : var(--fm-text-micro);
+        font-family  : var(--fm-font-mono);
+        color        : var(--fm-ink-dim);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        white-space  : normal;
+    }
+
+    .fm-publish-switch-chips {
+        display  : flex;
+        flex-wrap: wrap;
+        gap      : 4px;
+        min-width: 0;
+    }
+
+    .fm-publish-switch-chip {
+        cursor       : pointer;
+        padding      : 3px 8px;
+        border-radius: 10px;
+        border       : 1px solid var(--fm-line-soft);
+        background   : var(--fm-panel);
+        color        : var(--fm-ink-dim);
+        font         : var(--fm-text-micro);
+        max-width    : 100%;
+        min-width    : 0;
+        white-space  : normal;
+        overflow-wrap: anywhere;
+        text-align   : left;
+
+        &.is-active {
+            border-color: var(--fm-state-ok);
+            color       : var(--fm-ink);
+            font-weight : 600;
+        }
+    }
+
+    .fm-publish-switch-select {
+        display      : none;
+        width        : 100%;
+        max-width    : 100%;
+        min-width    : 0;
+        box-sizing   : border-box;
+        padding      : 4px 8px;
+        border-radius: 6px;
+        border       : 1px solid var(--fm-line);
+        background   : var(--fm-panel);
+        color        : var(--fm-ink);
+        font         : var(--fm-text-detail);
+    }
+
+    @container (max-width: 560px) {
+        .fm-publish-switch-chips {
+            display: none;
+        }
+
+        .fm-publish-switch-select {
+            display: block;
+        }
+    }
+
+    .fm-publish-switch-promote-box {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-1);
+        padding       : var(--fm-space-2);
+        background    : var(--fm-panel);
+        border        : 1px solid var(--fm-line);
+        border-radius : 6px;
+        min-width     : 0;
+    }
+
+    .fm-publish-switch-promote-title {
+        font         : var(--fm-text-detail);
+        font-family  : var(--fm-font-mono);
+        overflow-wrap: anywhere;
+        white-space  : normal;
+    }
+
+    .fm-publish-switch-promote-reason {
+        width        : 100%;
+        box-sizing   : border-box;
+        padding      : 4px 8px;
+        background   : var(--fm-panel-2);
+        border       : 1px solid var(--fm-line);
+        border-radius: 4px;
+        color        : var(--fm-ink);
+        font         : var(--fm-text-detail);
+    }
+
+    .fm-publish-switch-promote-error,
+    .fm-publish-switch-outcome.is-refused {
+        font         : var(--fm-text-detail);
+        color        : var(--fm-state-wedged);
+        overflow-wrap: anywhere;
+        white-space  : normal;
+    }
+
+    .fm-publish-switch-promote-actions {
+        display  : flex;
+        flex-wrap: wrap;
+        gap      : var(--fm-space-2);
+    }
+
+    .fm-publish-switch-btn,
+    .fm-publish-switch-audit-toggle {
+        cursor       : pointer;
+        padding      : 3px 8px;
+        border-radius: 6px;
+        border       : 1px solid var(--fm-line-soft);
+        background   : var(--fm-panel);
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        flex         : none;
+    }
+
+    .fm-publish-switch-audit {
+        display        : flex;
+        align-items    : center;
+        justify-content: space-between;
+        gap            : var(--fm-space-2);
+        flex-wrap      : wrap;
+        font           : var(--fm-text-micro);
+        font-family    : var(--fm-font-mono);
+        color          : var(--fm-ink-dim);
+        min-width      : 0;
+        max-width      : 100%;
+    }
+
+    .fm-publish-switch-audit-last {
+        min-width    : 0;
+        max-width    : 100%;
+        overflow-wrap: anywhere;
+        white-space  : normal;
+    }
+
+    .fm-publish-switch-audit-trail {
+        display       : flex;
+        flex-direction: column;
+        gap           : 2px;
+        padding-left  : var(--fm-space-2);
+        border-left   : 2px solid var(--fm-line-soft);
+        font          : var(--fm-text-micro);
+        font-family   : var(--fm-font-mono);
+        color         : var(--fm-ink-dim);
+        min-width     : 0;
+        max-width     : 100%;
+        overflow-wrap : anywhere;
+        white-space   : normal;
+    }
+
+    .fm-publish-switch-proposal {
+        font         : var(--fm-text-micro);
+        font-family  : var(--fm-font-mono);
+        color        : var(--fm-ink);
+        min-width    : 0;
+        max-width    : 100%;
+        overflow-wrap: anywhere;
+        white-space  : normal;
+
+        &.is-absent {
+            color: var(--fm-ink-dim);
+        }
+    }
+}

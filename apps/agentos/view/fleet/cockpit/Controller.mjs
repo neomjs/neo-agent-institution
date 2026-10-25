@@ -305,31 +305,39 @@ class Controller extends FleetBatchController {
         return this.loadOperatorInbox({offset: data.offset})
     }
 
-    /**
-     * @summary Relay: read the open message in full ({@link AgentOS.util.OperatorInbox#open}).
-     * @param {Object} data `{messageId, refresh?, source}`
-     * @returns {Promise<void>}
-     */
+    /** @summary Relay: read the open message in full ({@link AgentOS.util.OperatorInbox#open}). */
     onOperatorMessageOpen(data) {
         return OperatorInbox.open(this, data)
     }
 
-    /**
-     * @summary Relay: mark the open message read ({@link AgentOS.util.OperatorInbox#markRead}).
-     * @param {Object} data `{messageId, source}`
-     * @returns {Promise<Boolean>}
-     */
+    /** @summary Relay: mark the open message read ({@link AgentOS.util.OperatorInbox#markRead}). */
     onOperatorMarkRead(data) {
         return OperatorInbox.markRead(this, data)
     }
 
-    /**
-     * @summary Relay: resolve the open message's Task ({@link AgentOS.util.OperatorInbox#resolve}).
-     * @param {Object} data `{expectedCurrentState, messageId, source}`
-     * @returns {Promise<Boolean>}
-     */
+    /** @summary Relay: resolve the open message's Task ({@link AgentOS.util.OperatorInbox#resolve}). */
     onOperatorResolve(data) {
         return OperatorInbox.resolve(this, data)
+    }
+
+    /** @summary Relay: approve the displayed publish revision ({@link AgentOS.util.OperatorInbox#approvePublish}). */
+    onOperatorApprovePublish(data) {
+        return OperatorInbox.approvePublish(this, data)
+    }
+
+    /** @summary Relay: edit and approve a publish request ({@link AgentOS.util.OperatorInbox#editPublish}). */
+    onOperatorEditPublish(data) {
+        return OperatorInbox.editPublish(this, data)
+    }
+
+    /** @summary Relay: drop a publish request with a reason ({@link AgentOS.util.OperatorInbox#dropPublish}). */
+    onOperatorDropPublish(data) {
+        return OperatorInbox.dropPublish(this, data)
+    }
+
+    /** @summary Relay: jump to the peer's Publishing switch view ({@link AgentOS.util.OperatorInbox#openPublishSwitch}). */
+    onOperatorOpenPublishSwitch(data) {
+        return OperatorInbox.openPublishSwitch(this, data)
     }
 
     /**
@@ -970,14 +978,6 @@ class Controller extends FleetBatchController {
         this.recentTurnsReader = null;
         super.destroy(...args)
     }
-
-    /* ── the liveness reads (provider-written surfaces; the banner + chrome bind) ── */
-
-    /* ── the shared loss edges + helpers ── */
-
-    /* ── roster mapping + reconciliation ── */
-
-    /* ── the liveness owner + reconnect + viewer-wake stream ── */
 
     /**
      * @summary The inherited re-drive, plus the operator's own mailbox, whose reads live on this layer.
