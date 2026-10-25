@@ -1,4 +1,4 @@
-import {departedWindowSends, test, expect, loadAgentOsModule, pinRevealedDetail} from '../../fixtures.mjs';
+import {departedWindowSends, test, expect, loadAgentOsModule} from '../../fixtures.mjs';
 import {
     authenticatedFleetOptions,
     fleetE2EFailure,
@@ -256,10 +256,8 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                 intervals: [100, 250]
             }).toBe('neo-fable');
 
-            await pinRevealedDetail(page);
-
             const detailPopupPromise = page.waitForEvent('popup', {timeout: 30000}),
-                  detailResult       = await app.callMethod(cockpitId, 'popOutPane', ['detail']),
+                  detailResult       = await app.callMethod(cockpitId, 'popOutRailItem', ['detail']),
                   detailPopup        = await detailPopupPromise;
 
             detailPopup.on('pageerror', error => {
@@ -268,7 +266,7 @@ test.describe('AgentOS Fleet Cockpit — N-window mailbox film beat (#15650)', (
                 value && value !== 'undefined' && popupErrors.push(value)
             });
 
-            expect(detailResult).toMatchObject({detached: true, errors: []});
+            expect(detailResult).toMatchObject({errors: []});
             await detailPopup.waitForURL(url => String(url).includes('tearout=detail'), {timeout: 30000});
 
             let detailWindowed;
