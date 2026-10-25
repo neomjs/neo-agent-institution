@@ -297,13 +297,29 @@ export function watchPlaneControl({smokeRoot, handlers, onLog = () => {}, pollMs
 }
 
 /**
+ * @summary Gives the owner write access to every directory under a root, following no link. The seat-runtime
+ * store publishes its runtime read-only, and a directory without its write bit keeps every entry it holds.
+ * @param {String} dir
+ * @param {Object} fsModule
+ */
+function unsealTree(dir, fsModule) {
+    fsModule.chmodSync(dir, fsModule.statSync(dir).mode | 0o200);
+
+    for (const entry of fsModule.readdirSync(dir, {withFileTypes: true})) {
+        entry.isDirectory() && unsealTree(path.join(dir, entry.name), fsModule)
+    }
+}
+
+/**
  * @summary After the walker closed the held run's window: proves the run and its plane gone, then removes
- * the smoke root. Only the root is removed; the held run wrote nothing outside it.
+ * the smoke root. Only the root is removed; the held run wrote nothing outside it. A sealed runtime store is
+ * made writable first, and the walk manifest goes last, so a cleanup that fails partway can run again.
  * @param {Object} options
  * @param {String} options.smokeRoot
  * @param {Object} options.manifest A checked manifest.
  * @param {Function} [options.isAlive]
  * @param {Function} [options.probePortFn=probePort]
+ * @param {Object} [options.fsModule=fs]
  * @returns {Promise<{planeStopped: Boolean, rootRemoved: Boolean, smokeRoot: String}>}
  * @throws {Error} While the held run or its plane still runs.
  */
@@ -314,7 +330,7 @@ export async function cleanupHeldRun({smokeRoot, manifest, isAlive = pid => {
     } catch {
         return false
     }
-}, probePortFn = probePort}) {
+}, probePortFn = probePort, fsModule = fs}) {
     if (Number.isInteger(manifest.pid) && isAlive(manifest.pid)) {
         throw new Error(`the held run (pid ${manifest.pid}) still runs: close its window, which stops the organism and the plane, then clean up`)
     }
@@ -325,9 +341,19 @@ export async function cleanupHeldRun({smokeRoot, manifest, isAlive = pid => {
         }
     }
 
-    fs.rmSync(smokeRoot, {force: true, recursive: true});
+    const {dir} = walkPaths(smokeRoot);
 
-    return {planeStopped: true, rootRemoved: !fs.existsSync(smokeRoot), smokeRoot: path.resolve(smokeRoot)}
+    unsealTree(smokeRoot, fsModule);
+
+    for (const entry of fsModule.readdirSync(smokeRoot)) {
+        const target = path.join(smokeRoot, entry);
+
+        target !== dir && fsModule.rmSync(target, {force: true, recursive: true})
+    }
+
+    fsModule.rmSync(smokeRoot, {force: true, recursive: true});
+
+    return {planeStopped: true, rootRemoved: !fsModule.existsSync(smokeRoot), smokeRoot: path.resolve(smokeRoot)}
 }
 
 /**
