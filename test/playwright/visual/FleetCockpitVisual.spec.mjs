@@ -1542,7 +1542,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     const OPERATOR_QUESTIONS_DRIVER = '../../../../test/playwright/visual/operatorQuestions.driver.mjs';
 
     /**
-     * The publish-gate driver (#673), resolved the way {@link GOLDEN_PATH_DRIVER} is: drives `PublishRequestComponent`
+     * The publish-gate driver, resolved the way {@link GOLDEN_PATH_DRIVER} is: drives `PublishRequestComponent`
      * (`queued`, `publishing`, `published`) and `PublishSwitchComponent` (`switches`).
      * @type {String}
      */

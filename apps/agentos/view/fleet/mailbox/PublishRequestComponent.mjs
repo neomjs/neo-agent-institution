@@ -60,7 +60,7 @@ function receiptHrefFor(channel, account, providerId) {
 /**
  * @class AgentOS.view.fleet.mailbox.PublishRequestComponent
  * @extends Neo.component.Base
- * @summary Renders a `requestPublish` Task in the operator's inbox (`neomjs/neo-agent-institution#673`):
+ * @summary Renders a `requestPublish` Task in the operator's inbox:
  * 1. Post as it will appear (`channel · account · format` chip, verbatim text in `52ch`/`62ch`, local sha256-verified media strip, reply target).
  * 2. Gate line (`rev N · <short>`, cross-family attestation chip, effective switch chip, approval chip, gate notice).
  * 3. Hypothesis line (always visible).
@@ -127,7 +127,7 @@ class PublishRequestComponent extends Component {
          */
         entry_: null,
         /**
-         * Raw or normalized `requestPublish` message record (from `#978` contract fixtures or `read.message`).
+         * Raw or normalized `requestPublish` message record (from contract fixtures or `read.message`).
          * @member {Object|null} message_=null
          * @reactive
          */

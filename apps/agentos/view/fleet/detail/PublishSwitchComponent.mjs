@@ -2,7 +2,7 @@ import Component     from '../../../../../node_modules/neo.mjs/src/component/Bas
 import PublishSwitch from '../../../util/PublishSwitch.mjs';
 
 /**
- * @summary The per-peer × per-channel outbound publication gate switch view (`neomjs/neo-agent-institution#673`).
+ * @summary The per-peer × per-channel outbound publication gate switch view.
  *
  * Rendered inside {@link AgentOS.view.fleet.detail.Container}'s `Configuration` tab as the **Publishing**
  * section:

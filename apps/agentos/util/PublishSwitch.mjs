@@ -30,8 +30,7 @@ const PUBLISH_SWITCH_RANK = Object.freeze({
 });
 
 /**
- * @summary Pure helpers and Fleet-bridge I/O for the per-peer × per-channel publish gate switch
- * (`ADR 0042 §3`, `neomjs/neo-agent-institution#673`).
+ * @summary Pure helpers and Fleet-bridge I/O for the per-peer × per-channel publish gate switch.
  *
  * The switch is Fleet-owned state with an audit record (`who · when · from → to · reason`) and an
  * optional recorded proposal; the cockpit renders a view of it and mutates it exclusively through

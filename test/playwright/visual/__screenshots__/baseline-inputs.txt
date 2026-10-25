@@ -294,7 +294,7 @@ apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
 
 apps/agentos/util/PublishSwitch.mjs
-    b8382c61c5c33c5f9aa003bdeee0dbbb59f40641
+    a80539b2274bee51a93c55dee75e178fa3e873a7
 
 apps/agentos/util/RecentTurnsRead.mjs
     7b85fc2aa5be9a86ca898dda6dbc5ed8b18de2c4
@@ -426,7 +426,7 @@ apps/agentos/view/fleet/detail/ParticipationContainer.mjs
     e54cdc8929444ac46fe943ca17b6021d28c61375
 
 apps/agentos/view/fleet/detail/PublishSwitchComponent.mjs
-    8277a06095baef19d209c5301a3518e42fc5b1eb
+    2bb8feb0899dc40e76c95a197d8a61a9b068fdbb
 
 apps/agentos/view/fleet/detail/PullRequestList.mjs
     e1edbb01b7bf2b306dd9cfff56786f95f0738f5a
@@ -525,7 +525,7 @@ apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
     987ea9811f0fce4b84928d38a945323f5a2d1623
 
 apps/agentos/view/fleet/mailbox/PublishRequestComponent.mjs
-    3c315d1c203b42ca6659dff321abf64288d09278
+    9627a6ea1c680e6ab70580d7c6799743339b0b5b
 
 apps/agentos/view/fleet/mailbox/RecipientChip.mjs
     eb2c5727a9a2dc3af3183d0b218b0be686607e5a
@@ -873,7 +873,7 @@ test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentc
     2f1c1a50b131705b0f043c553ddc52a8ebf62f5e
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    aff60937607bb10204d16c73bacea4f25f29d03d
+    049fad48095cfce5b0b42764cad14b2f888f6cf4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
     d0cde5256d75363b86324ada9145a4ac73f0ce0f

@@ -1,5 +1,5 @@
 /**
- * @summary The tests' publish-gate driver (#673): loaded into the App worker through `Neo.worker.App.loadModule`, it drives
+ * @summary The tests' publish-gate driver: loaded into the App worker through `Neo.worker.App.loadModule`, it drives
  * the operator Mailbox's `PublishRequestComponent` (`?state=queued|publishing|published&t=<n>`) and AgentDetail's
  * `PublishSwitchComponent` (`?state=switches&t=<n>`) with pinned 2026-07-05 instants so `ViewerTime` renders identical
  * strings on every capture day.
