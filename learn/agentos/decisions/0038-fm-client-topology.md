@@ -14,6 +14,7 @@
 | **Author** | @neo-fable-clio (Clio, Claude Fable 5) drafting; architecture converged operator + four families via D#16720 (12 body versions, one evening, 2026-08-08) |
 | **Runtime-continuity amendment** | 2026-10-13 (#19725, graduated at [D19723](https://github.com/orgs/neomjs/discussions/19723)): row 8 and §2.5.2 permit re-adoption of the original managed Start after a durably proved clean issuer handoff. The capability stays in its existing owned profile; original owners prove target inputs. [ADR 0034 §2.5](0034-electron-shell-architecture.md#runtime-generations-for-managed-seats) supplies immutable runtime pins. Decision authority, not a runtime-delivery receipt. |
 | **Identity-publication amendment** | 2026-10-26 ([Institution `#816`](https://github.com/neomjs/neo-agent-institution/issues/816), from [D811 C7](https://github.com/neomjs/neo-agent-institution/discussions/811)): row 9 and §2.5.3 record Fleet's distinct publication authority, boot-owned reservation and recovery boundary. The GPT author signal and Claude approval include the final raw-writer census controls. This record must be accepted before the dependent implementation merges; it is not a runtime or installed-acceptance receipt. |
+| **Membership-admission amendment** | 2026-10-26 ([D811 C8](https://github.com/neomjs/neo-agent-institution/discussions/811)): row 9 and §2.5.4 add admitted managed membership, atomic re-key and the host usability fence. Fresh GPT/Claude signals include only the Step-Back ACs A/B fold. Separate follow-up to the C7 record; decision authority, not runtime delivery. |
 | **Graduated from** | Discussion #16720 — *"FM as pure client: the fleet surface joins the composition (optional container) + PAT-grade auth for cross-hardware planes"* (family-keyed quorum: fable `AUTHOR_SIGNAL`+`APPROVED` · Opus `APPROVED` (re-stamped, blockers verified closed) · GPT `[GRADUATION_APPROVED]` at the filed state). #16720 is **archaeology** — never required reading |
 | **Resolves** | #16747 (the D1 Decision-Record carrier; parent Epic #16168) |
 | **Amends** | ADR 0020 §3 + §4 (the in-process-main sentence itself rewritten + restart affordances re-scoped for the pure client), ADR 0026 §2.7 (the reserved `restartAgent` fold — executed), and ADR 0034 §2.1 + §2.6.4 (the accepted shell-specific hosting frame + dev/prod dichotomy, re-scoped as plane bootstrap beneath the client wire). All amendment notes land in the **same PR** as this file, per the #13880 no-dangling-cross-reference precedent — at the statements a future session will retrieve, not only at the concept anchor |
@@ -113,7 +114,7 @@ One row per class. The **non-alias rule is load-bearing on every row**: two clas
 | 5 | **Plane controller → host actuator envelope** | The plane's Fleet control service (signing key in the Fleet-owned root) | The commanding controller identity | Exactly one host actuator | Command-scoped plan/apply (the #16715 / PR #16731 seam) + one-shot secret redemption (D#16176-inherited) | Plane-side signing key; the host holds only the verification trust anchor | Per-command envelopes, replay-bounded (nonce + expiry); no standing bearer exists | Plane rotates the signing key; host trust re-provisioned explicitly | Signed HTTP over a confidential channel — RFC 9421-aligned signature for integrity/authenticity PLUS TLS, or a loopback / condition-(2) confidential tunnel hop, for confidentiality (D#16176's selected default); one-shot secret redemption returns secret bytes only over that confidential authenticated channel, never signature-only plaintext | ≠ every bearer class: possession of a class-1 admission bearer NEVER signs an actuator command; role 3 cannot re-derive authority (§2.1) |
 | 6 | **Signed-wake HMAC (plane → wake receiver)** | The plane, per subscription (plane-held secret) | The subscription (identity × route) — never the operator | The seat's wake receiver (today: the local signed Shape-B receiver; target: the ingress-wake channel, S7 #16741) | Wake delivery only — carries ZERO read/write authority | Shared secret held by plane + receiver; per-subscription isolation | Subscription lifetime | Owner-scoped `rotateKey` rotates the HMAC in place (the one rotation door; re-subscribe is deliberately idempotent — an existing route returns WITHOUT minting a key); unsubscribe revokes | Local-only delivery today (ADR 0014); S7 moves it onto the authenticated ingress | ADR 0019 §10.8's own named class — never the admission bearer, never the process bearer, never a content grant |
 | 8 | **Native Desktop MCP launch-admission capability** | The Fleet control authority for an authorized managed Start (role-2 policy, distinct from role-3 host effects) | One seat, its validated forge identity and actual Desktop launch generation (§2.5.2) | Fixed launcher from the seat's verified runtime generation, for exactly one enabled MCP server and its fixed target | Supply only that server's required secret inputs from their selected owners; no caller-selected seat, plane, command, cwd or env-key list | Existing owned profile carries the capability, literal identity and resolved non-secret placement; long-lived credentials stay with their existing owners | Profile capability plus Fleet-owned durable non-secret Start/succession record; no second capability copy, durable PAT/remote bearer/provider-key cache or launcher-held master/signing key | Reserved during preparation, active after successful Start and lease commitment; sticky revocation. A clean issuer replacement preserves only positively proved original-Start authority (§2.5.2) | Separate authenticated confidential native hop; local implementation rebinds the recorded loopback origin. Reachability and caller labels confer no authority | Distinct from classes 1–7, process bearer and Bridge token; outside `FleetControlBridge` / `FLEET_WIRE_METHODS`. Possession is the boundary: a same-UID profile reader can redeem, so this is not OS isolation |
-| 9 | **Fleet → MC identity-publication envelope** | Composed Fleet's distinct Ed25519 publication signer | One stable Fleet issuer per plane; `kid` selects a key generation. The confirming operator is server-stamped provenance, not the credential subject | Exactly that plane's MC `POST /identity/family-publications` (`/mc/identity/family-publications` through ingress) | Typed manual `confirm` / `correct` for one seat at one expected admission revision; fixed `identity-family-publication` purpose | Private key owner-only in the deployment host's secrets root, mounted only into composed Fleet; MC receives derived public trust through its own ADR-0019 leaf; the FM client holds neither | Create-once generation custody and plane reservation linked to the original host run (§2.5.3); public trust is a boot/config-generation snapshot | Explicit key transition under the same issuer: verifier overlap consumed before Fleet switches its signing `kid`, old trust removed in a later verified update. An env-file edit alone is not revocation | Confidential loopback or TLS ingress; the signature authenticates the operation but does not encrypt it | Distinct from every bearer, bootstrap/healthcheck token and Bridge signer; a PAT or UID label is not this credential. Private-key possession remains the authority boundary, not same-UID isolation. The class-9 key never signs Bridge tokens |
+| 9 | **Fleet → MC identity-publication envelope** | Composed Fleet's distinct Ed25519 publication signer | One stable Fleet issuer per plane; `kid` selects a key generation. The confirming operator is server-stamped provenance, not the credential subject | Exactly that plane's MC `POST /identity/family-publications` (`/mc/identity/family-publications` through ingress) | Typed manual `confirm` / `correct` for one seat's exact incarnation at exact admission and membership revisions; typed membership `baseline` / `bind` / `retire` / `rekey` at exact incarnation(s) and membership revision (§2.5.4); fixed `identity-family-publication` purpose | Private key owner-only in the deployment host's secrets root, mounted only into composed Fleet; MC receives derived public trust through its own ADR-0019 leaf; the FM client holds neither | Create-once generation custody and plane reservation linked to the original host run (§2.5.3); public trust is a boot/config-generation snapshot | Explicit key transition under the same issuer: verifier overlap consumed before Fleet switches its signing `kid`, old trust removed in a later verified update. An env-file edit alone is not revocation | Confidential loopback or TLS ingress; the signature authenticates the operation but does not encrypt it | Distinct from every bearer, bootstrap/healthcheck token and Bridge signer; a PAT or UID label is not this credential. Private-key possession remains the authority boundary, not same-UID isolation. The class-9 key never signs Bridge tokens |
 
 **Tunnel-delegated transport — dispositioned ACCEPTED-WITH-CONDITIONS** (the OQ5 remainder; today's fleet runs one in production, seat-witnessed): (1) both tunnel ends terminate on loopback-bound listeners; (2) the tunnel itself provides the hop's confidentiality + integrity (ssh / VM-boundary class); (3) the credential requirement is UNCHANGED — a tunnel is a pipe, never an identity, so transport never substitutes for admission; (4) the deployment names the tunnel in its runbook — an unnamed tunnel is a shadow topology. **REFUSED:** plaintext HTTP forwarded across a host boundary without a confidentiality layer, and any configuration where reaching the listener is treated as authentication (the #15320 thesis: ambient reachability ≠ viewer identity).
 
@@ -279,6 +280,90 @@ Brain ADR 0041's relation is a separate decision-record prerequisite; ADR 0019 o
 configuration and parsing. The complete publication/schema/transaction controls live in the
 version-bound C7 contract cited above. Source tests and an accepted credential row do not prove the installed
 outside-roster manual-confirmation witness. Later automatic Start/read-back remains distinct work.
+
+### 2.5.4 Admitted membership and host usability
+
+[D811 C8](https://github.com/neomjs/neo-agent-institution/discussions/811) extends class 9 with typed
+`baseline`, `bind`, `retire` and `rekey` operations. The
+[GPT author signal at body 2026-10-26T07:16:28Z](https://github.com/neomjs/neo-agent-institution/discussions/811#discussioncomment-19190332)
+and [Claude Step-Back approval at 07:02:57Z, explicitly extended only to ACs A/B](https://github.com/neomjs/neo-agent-institution/discussions/811#discussioncomment-19190177)
+bind this extension. C7's signals and Institution #816 / PR #817 retain their exact earlier scope;
+this is a separate follow-up. C7's signer, reservation, recovery, trust, expiry and receipt-before-CAS
+rules remain unchanged. Membership operations publish lifecycle facts; only explicit `confirm` /
+`correct` acts declare a family, and each principal confirms only a seat they currently operate.
+
+**Identity and ordering.** Membership, its durable serialized queue and incarnation mapping use the
+provider-stable forge subject: admitted `authProvider`, `providerBaseUrl` and `providerUserId`, separate
+from mutable `providerUsername`. Missing stable identity is unavailable, with no login fallback.
+Membership record ids use a domain-separated digest of the canonical plane/subject/incarnation tuple;
+the queue uses the same tuple without incarnation in its own domain. A login rename changes display
+or alias projection, or follows an explicit identity re-key; it cannot fork membership history.
+This does not replace §2.2's `ownerPrincipal` or move Fleet definition authority into MC.
+
+Each operation binds plane/issuer, identity, exact incarnation(s), expected membership revision,
+operation identity and variant-specific provenance. Persist the source owner's logical intent before
+issuance. The per-identity queue orders membership, confirmations and corrections. Confirmations bind
+the exact membership revision alongside C7's expected admission revision; MC checks both in the same
+physical admission transaction, with membership history protected. A stale operation refuses; retry
+does not change issued logical bytes. Pending work survives restart, lost acknowledgement and operator
+transfer without resetting its journal or restoring usability.
+
+**Binding and re-key.** A new bind mints a fresh opaque incarnation and leaves the definition proposed
+for usability until MC admits that exact binding. Neither a predecessor's receipt nor a revision
+threshold suffices. Bind the launch generation separately to the current admitted incarnation.
+`renameAgent`'s seat-key/home rename, preserving forge identity, operator and definition, is one atomic
+old-key→new-key admission at MC. It keeps the incarnation, declaration and original provenance; readers
+never see a transient smaller set. The new key is unusable until acknowledgement. Historical operations
+and corrections resolve through the admitted mapping, not rewritten provenance or caller aliases.
+Remove/recreate is a new incarnation and inherits no declaration.
+
+**Retirement.** Complete the supported managed Stop/cleanup first, keeping restart and recovery closed
+for that retiring incarnation. The typed outcome binds the pending removal and exact incarnation;
+unresolved or unobserved cleanup stays pending and MC continues counting the binding. Composed Fleet
+checks the authenticated operator's authority, current binding and removal outcome before signing.
+MC verifies that service admission, not its own host-process census. Grant revocation alone cannot
+prove cleanup: a child may already hold credentials. Retirement preserves the temporal history.
+
+**Complete bootstrap.** Capture the complete current binding set under the same mutation serialization.
+Revision 1 requires both a supported target-bound MC observation that no baseline exists and intact
+Fleet publication history showing none was dispatched. Missing/corrupt history, unreadable or malformed
+registry data, or a restore fence is unknown, not an empty complete baseline. Retain exact intents
+across restart and new setup runs; later boots reconcile baseline/revisions/outbox, never replace
+revision 1. Existing or adopted processes may remain truthfully observed as running, but confirmations
+and family readers refuse `membership-unknown` until the complete baseline is admitted.
+
+**Host→plane read and usability.** The host reads the exact admitted seat/incarnation through a typed
+registered Fleet projection, using the existing fleet-surface admission credential
+(`fleet.planeAdmissionBearer`, or that client's explicitly declared forge-PAT class). An ordinary MC
+bearer cannot substitute; row 5's reverse plane→host actuator envelope is not this channel. Before new
+usability, require the exact active incarnation with no pending replacement or retirement. Unreachable
+or mismatched answers refuse; a caller field, host-local flag or copied signature grants nothing.
+Enforce this at managed Start and the final lifecycle spawn, including direct restart/cleanup retries,
+and at class-8 reserve/activate, clean-handoff recovery and redemption after asynchronous credential
+proof. The already-running shortcut reports status only. Redemption alone is insufficient: Codex
+Desktop uses it for Neural Link while other MCP rows inherit the spawned environment.
+
+**Classification and visible state.** For a non-rostered identity, every admitted managed binding
+effective at the queried time must have an applicable declaration naming the same exact family.
+Missing declarations yield `unconfirmed-seat`, disagreement `ambiguous-seats`, and absent complete
+membership `membership-unknown`; an empty set proves no family. These are states, not family strings.
+Roster precedence, submitted-at review eras, current routing, the complete author-interval union and
+the distinct unknown-approver policy remain under Brain #700. Corrections preserve replaced facts and
+affect only their applicable intervals. Operation receipts are evidence, never a second authoritative
+family ledger. An unclassified author interval remains uncertifiable: an
+audited correction is an exit only where its existing target/provenance rules allow it; otherwise use
+a PR created after that interval. A first confirmation is never backdated. The cockpit renders those
+three states, `proposed` and `retirement pending`, naming the affected seats, cause and remedy from
+source-provided state.
+
+This is a managed-set account classification: reviews posted through that account by an unmanaged
+process, another credential holder or a person still receive its derived classification. Neither
+membership admission nor class-8 revocation supplies review-bound seat provenance.
+
+**Delivery boundary.** This C8 record must be accepted before its implementation merges. The typed
+membership carrier, host projection, usability gates and UI are required work, not installed features
+established by this ADR. C7's ADR 0041 prerequisite is unchanged. Separate leaf completion cannot claim
+the joined installed manual-confirmation witness or activate automatic Start/read-back.
 
 ### 2.6 The storage boundary (binding — D#16176 Option A)
 
