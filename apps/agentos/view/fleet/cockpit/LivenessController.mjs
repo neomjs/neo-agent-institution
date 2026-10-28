@@ -100,13 +100,12 @@ class LivenessController extends ViewerWakeController {
      */
     gridReadInFlight = 0
     /**
-     * The open episode's token, from a failed roster read until one answers: the shell is asked about
-     * the plane credential once per episode, and only the asking episode's answer is published
-     * ({@link AgentOS.util.PlaneCredentialCheck}).
-     * @member {Symbol|null} planeCheckEpisode=null
+     * The plane-credential check's state: its open episode, its latest question to the shell and when it
+     * asked. Its shape is {@link AgentOS.util.PlaneCredentialCheck}'s; `null` until it first asks.
+     * @member {Object|null} planeCheck=null
      * @protected
      */
-    planeCheckEpisode = null
+    planeCheck = null
     /**
      * The last mapped LIVE roster rows — the vessel-return reconcile source.
      * @member {Object[]|null} lastLiveRows=null
@@ -456,7 +455,7 @@ class LivenessController extends ViewerWakeController {
      */
     admitRoster(answer) {
         FleetAdmission.admitRoster(this, answer);
-        PlaneCredentialCheck.settle(this);
+        PlaneCredentialCheck.observe(this, answer.capabilities);
         this.onRosterSettled()
     }
 
@@ -815,6 +814,7 @@ class LivenessController extends ViewerWakeController {
         me.livenessSchedule = dueAt;
         launch.forEach(key => me[LivenessCadence.READS[key].load]());
         launch.includes('roster') && me.loadPlaneAdmission();
+        PlaneCredentialCheck.recheck(me, now);
 
         // the system lane's cadence is also the System view's only clock: a pass that launches no
         // deployment read still publishes its instant, so a retained picture's age keeps moving

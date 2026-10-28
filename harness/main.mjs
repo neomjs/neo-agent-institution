@@ -1495,6 +1495,8 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
         fragment    = planeEnvFragment({env: {}, planeConfig: storedPlane});
 
     storedPlaneBearer = storedPlane.bearer;
+    // recorded as the product boot records it, so the shell's credential check answers in a held run too
+    launchedPlane     = launchedPlaneRecord(storedPlane, fragment);
 
     if (!fragment.NEO_FLEET_PLANE_BASE) {
         throw new Error('the fixture plane record did not read back as an attachable plane')
