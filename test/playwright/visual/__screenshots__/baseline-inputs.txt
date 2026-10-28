@@ -288,7 +288,7 @@ apps/agentos/util/PlaneAdmission.mjs
     4318f59edb22a150901ddcef670b11278c9a9806
 
 apps/agentos/util/PlaneCredentialCheck.mjs
-    a592301e40712cde24ea305c3d8f0658496b7c92
+    289abee368900826679df4617efc1a27f98a5280
 
 apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
