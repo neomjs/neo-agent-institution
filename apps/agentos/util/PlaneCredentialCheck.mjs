@@ -9,9 +9,10 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * writer of `planeCause`, which the spine banner speaks with the connect card's words and Connect. A PAT the
  * plane stops admitting mid-session rarely fails the roster read itself: the roster resolves and its plane
  * presence read degrades, and a PAT the plane now admits as another account fails no read at all. So the
- * shell is asked on three occasions: a roster read that fails upstream, an answer whose presence read is
- * degraded (once per episode each), and a periodic re-check from the liveness tick. A read that answers
- * proves the transport, never the credential, so it ends the episode without clearing the cause.
+ * shell is asked when an episode opens (a roster read that fails upstream, or an answer whose presence read
+ * is degraded), when a wired read ends it, and on a periodic re-check from the liveness tick. A read that
+ * answers proves the transport, never the credential, so it asks rather than clears: a restored PAT clears
+ * on the shell's answer, not on the next re-check.
  *
  * The state lives on the owner as `planeCheck`: `{episode, question, at}` — the open episode's token, the
  * latest question's token (only its answer publishes) and when the shell was last asked (epoch ms).
@@ -47,7 +48,8 @@ class PlaneCredentialCheck extends Base {
 
     /**
      * @summary Reads an admitted roster answer: a degraded presence read opens an episode and asks; a wired
-     * one ends the episode, so the next failure asks again, and leaves any named cause to the shell.
+     * one ends an open episode and asks once more, so the shell's answer clears a cause the recovery
+     * resolved, and the next failure asks again.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Object|null} capabilities The answer's capabilities envelope.
      * @returns {Promise<void>}
@@ -57,7 +59,13 @@ class PlaneCredentialCheck extends Base {
             return PlaneCredentialCheck.openEpisode(owner)
         }
 
-        PlaneCredentialCheck.stateOf(owner).episode = null
+        const state = PlaneCredentialCheck.stateOf(owner);
+
+        if (!state.episode) return;
+
+        state.episode = null;
+
+        return PlaneCredentialCheck.query(owner, Date.now())
     }
 
     /**

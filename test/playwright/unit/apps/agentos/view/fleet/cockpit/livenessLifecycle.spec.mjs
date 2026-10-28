@@ -195,7 +195,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.streamConnection).toEqual({state: 'failed-upstream', reason: 'activity source unavailable'})
         });
 
-        test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers ends the episode but leaves the cause to the shell', async () => {
+        test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers ends the episode with one more ask, leaving the cause to the shell', async () => {
             const
                 {host, provider} = makeRosterHost({state: 'live'}),
                 previousMain     = globalThis.Neo.main,
@@ -214,24 +214,27 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 expect(asked.length, 'one ask per failure episode').toBe(1);
 
                 await host.loadRoster();
+                expect(asked.length, 'the answered read ends the episode with one more ask').toBe(2);
                 expect(provider.data.planeCause, 'an answered read proves the transport, never the credential').toBe('plane-credential-refused');
 
                 await host.loadRoster();
-                expect(asked.length, 'the answered read ended the episode, so the next failure asks again').toBe(2)
+                expect(asked.length, 'so the next failure asks again').toBe(3)
             } finally {
                 globalThis.Neo.main = previousMain
             }
         });
 
-        test('a roster answer whose plane presence read degraded asks the shell, the shape a PAT revoked mid-session takes', async () => {
+        test('a roster answer whose plane presence read degraded asks the shell, the shape a PAT revoked mid-session takes, and the wired answer after its restore clears it', async () => {
             const
                 {host, provider} = makeRosterHost({state: 'live'}),
                 previousMain     = globalThis.Neo.main,
                 asked            = [];
+            let cause    = 'plane-credential-refused',
+                presence = {state: 'degraded', reason: 'plane who_is_online failed'};
 
-            globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => { asked.push(args); return Promise.resolve({cause: 'plane-credential-refused'}) }}}};
+            globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => { asked.push(args); return Promise.resolve({cause}) }}}};
             installWire(() => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {
-                result: {capabilities: {presence: {state: 'degraded', reason: 'plane who_is_online failed'}}, rows: [{id: 'resident', displayName: 'resident'}]}
+                result: {capabilities: {presence}, rows: [{id: 'resident', displayName: 'resident'}]}
             }));
 
             try {
@@ -240,7 +243,14 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
                 await host.loadRoster();
                 expect(asked.length, 'one ask per degraded episode').toBe(1);
-                expect(provider.data.gridAdapterState, 'the roster itself stays live').toBe('live')
+                expect(provider.data.gridAdapterState, 'the roster itself stays live').toBe('live');
+
+                cause    = null;
+                presence = {state: 'wired'};
+
+                await host.loadRoster();
+                await expect.poll(() => provider.data.planeCause, 'on the shell\'s answer, not the next re-check').toBe(null);
+                expect(asked.length).toBe(2)
             } finally {
                 globalThis.Neo.main = previousMain
             }

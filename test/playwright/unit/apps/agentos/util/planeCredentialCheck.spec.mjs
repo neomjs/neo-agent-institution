@@ -51,19 +51,18 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
     }
 
     /**
-     * @summary Question A, a wired read, question B; B's answer lands first, then A's.
+     * @summary Question A from a failed read, then question B from the wired read that ends its episode;
+     * B's answer lands first, then A's.
      * @param {Object} newer B's answer.
      * @param {Object} older A's answer.
      * @returns {Promise<String|null>} The published cause.
      */
-    async function reenter(newer, older) {
+    async function supersede(newer, older) {
         const owner = makeOwner(), releases = shellHolds();
 
-        const first = PlaneCredentialCheck.ask(owner, 'failed-upstream');
-
-        PlaneCredentialCheck.observe(owner, {presence: {state: 'wired'}});
-
-        const second = PlaneCredentialCheck.ask(owner, 'failed-upstream');
+        const
+            first  = PlaneCredentialCheck.ask(owner, 'failed-upstream'),
+            second = PlaneCredentialCheck.observe(owner, {presence: {state: 'wired'}});
 
         releases[1](newer);
         await second;
@@ -96,7 +95,7 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         expect(owner.data.planeCause).toBe('plane-credential-refused')
     });
 
-    test('a degraded presence read asks once per episode, and a wired read ends the episode', async () => {
+    test('a degraded presence read asks once per episode, and a wired read ends it with one more ask', async () => {
         const owner = makeOwner();
 
         shellAnswers(Promise.resolve({cause: 'plane-credential-refused'}));
@@ -108,11 +107,26 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         expect(owner.data.planeCause).toBe('plane-credential-refused');
 
         await PlaneCredentialCheck.observe(owner, {presence: {state: 'wired'}});
+        await PlaneCredentialCheck.observe(owner, {presence: {state: 'wired'}});
 
         expect(owner.planeCheck.episode).toBe(null);
+        expect(calls.length).toBe(2);
 
         await PlaneCredentialCheck.observe(owner, {presence: {state: 'degraded'}});
 
+        expect(calls.length).toBe(3)
+    });
+
+    test('a restored PAT clears on the ask that ends its episode, not on the next re-check', async () => {
+        const owner = makeOwner();
+
+        shellAnswers(Promise.resolve({cause: 'plane-credential-refused'}));
+        await PlaneCredentialCheck.observe(owner, {presence: {state: 'degraded'}});
+
+        shellAnswers(Promise.resolve({cause: null}));
+        await PlaneCredentialCheck.observe(owner, {presence: {state: 'wired'}});
+
+        expect(owner.data.planeCause).toBe(null);
         expect(calls.length).toBe(2)
     });
 
@@ -126,7 +140,7 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         await PlaneCredentialCheck.observe(owner, null);
 
         expect(owner.data.planeCause).toBe('plane-identity-changed');
-        expect(calls.length).toBe(1)
+        expect(calls.length).toBe(2)
     });
 
     test('only an upstream failure or a refusal asks: a timeout or a lost transport is not the credential', async () => {
@@ -142,24 +156,12 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         expect(owner.data).toEqual({})
     });
 
-    test('an answer still lands when a wired read arrives while the shell is asked', async () => {
-        const owner = makeOwner(), releases = shellHolds();
-
-        const asking = PlaneCredentialCheck.ask(owner, 'failed-upstream');
-
-        PlaneCredentialCheck.observe(owner, {presence: {state: 'wired'}});
-        releases[0]({cause: 'plane-credential-refused'});
-        await asking;
-
-        expect(owner.data.planeCause).toBe('plane-credential-refused')
-    });
-
     test('only the latest question publishes: an older refusal landing last cannot undo the newer clear', async () => {
-        expect(await reenter({cause: null}, {cause: 'plane-credential-refused'})).toBe(null)
+        expect(await supersede({cause: null}, {cause: 'plane-credential-refused'})).toBe(null)
     });
 
     test('only the latest question publishes: an older clear landing last cannot drop the newer refusal', async () => {
-        expect(await reenter({cause: 'plane-credential-refused'}, {cause: null})).toBe('plane-credential-refused')
+        expect(await supersede({cause: 'plane-credential-refused'}, {cause: null})).toBe('plane-credential-refused')
     });
 
     test('the periodic re-check asks once per interval and finds a remapped account while every read stays wired', async () => {
