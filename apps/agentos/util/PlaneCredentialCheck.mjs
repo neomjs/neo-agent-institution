@@ -2,14 +2,19 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
  * @module apps/agentos/util/PlaneCredentialCheck
- * @summary Asks the shell, once per failed roster-read episode, whether the plane still admits the PAT
- * this shell launched with — lifted beside the cockpit's liveness owner the way `BrainHealthRead` is.
+ * @summary Asks the shell whether the plane still admits the PAT this shell launched with, and publishes the
+ * answer as `planeCause` — lifted beside the cockpit's liveness owner the way `BrainHealthRead` is.
  *
- * A PAT that expires mid-session makes every roster read fail upstream, and the read cannot tell why:
- * the plane's refusal reaches the cockpit as a sanitized failure. Only the shell holds the stored
- * credential and the probe that names the cause, so the answer it gives becomes `planeCause`, which
- * the spine banner speaks with the connect card's words and Connect. A read that answers again ends
- * the episode and clears the cause.
+ * Only the shell holds the stored credential and the probe that names the cause, so its answer is the one
+ * writer of `planeCause`, which the spine banner speaks with the connect card's words and Connect. A PAT the
+ * plane stops admitting mid-session rarely fails the roster read itself: the roster resolves and its plane
+ * presence read degrades, and a PAT the plane now admits as another account fails no read at all. So the
+ * shell is asked on three occasions: a roster read that fails upstream, an answer whose presence read is
+ * degraded (once per episode each), and a periodic re-check from the liveness tick. A read that answers
+ * proves the transport, never the credential, so it ends the episode without clearing the cause.
+ *
+ * The state lives on the owner as `planeCheck`: `{episode, question, at}` — the open episode's token, the
+ * latest question's token (only its answer publishes) and when the shell was last asked (epoch ms).
  */
 
 /**
@@ -29,34 +34,95 @@ class PlaneCredentialCheck extends Base {
     }
 
     /**
-     * @summary Asks once for a failed roster read's episode, then publishes the shell's answer.
+     * @summary Asks once for a failed roster read's episode.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {String|null} connectionState The failed read's `fleetConnectionState`.
      * @returns {Promise<void>}
      */
     static async ask(owner, connectionState) {
-        if (!askingStates.includes(connectionState) || owner.planeCheckEpisode) return;
+        if (!askingStates.includes(connectionState)) return;
 
-        const episode = owner.planeCheckEpisode = Symbol('planeCheckEpisode');
+        return PlaneCredentialCheck.openEpisode(owner)
+    }
+
+    /**
+     * @summary Reads an admitted roster answer: a degraded presence read opens an episode and asks; a wired
+     * one ends the episode, so the next failure asks again, and leaves any named cause to the shell.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @param {Object|null} capabilities The answer's capabilities envelope.
+     * @returns {Promise<void>}
+     */
+    static async observe(owner, capabilities) {
+        if (capabilities?.presence?.state === 'degraded') {
+            return PlaneCredentialCheck.openEpisode(owner)
+        }
+
+        PlaneCredentialCheck.stateOf(owner).episode = null
+    }
+
+    /**
+     * @summary The liveness tick's periodic re-check, due once per the cockpit's
+     * `planeCredentialRecheckInterval`: the one occasion that finds a PAT the plane now admits as another
+     * account. A missing or non-positive interval disables it.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @param {Number} now Epoch ms of the tick.
+     * @returns {Promise<void>}
+     */
+    static async recheck(owner, now) {
+        const interval = owner.component.planeCredentialRecheckInterval;
+
+        if (!(interval > 0) || now - (PlaneCredentialCheck.stateOf(owner).at ?? 0) < interval) return;
+
+        return PlaneCredentialCheck.query(owner, now)
+    }
+
+    /**
+     * @summary Opens an episode and asks, unless one is already open.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @returns {Promise<void>}
+     * @protected
+     */
+    static async openEpisode(owner) {
+        const state = PlaneCredentialCheck.stateOf(owner);
+
+        if (state.episode) return;
+
+        state.episode = Symbol('planeCheckEpisode');
+
+        return PlaneCredentialCheck.query(owner, Date.now())
+    }
+
+    /**
+     * @summary Asks the shell and publishes its answer, unless a newer question was asked meanwhile.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @param {Number} now Epoch ms the question is asked at.
+     * @returns {Promise<void>}
+     * @protected
+     */
+    static async query(owner, now) {
+        const
+            state    = PlaneCredentialCheck.stateOf(owner),
+            question = state.question = Symbol('planeCheckQuestion');
+
+        state.at = now;
 
         const reply = await Promise.resolve(
             Neo.main?.addon?.ShellPlane?.verifyPlane({windowId: owner.component.windowId})
         ).catch(() => null);
 
-        // Only the episode that asked may answer: a read that answered since ended it, and a failure after
-        // that opened another episode, whose own answer is the newer one.
-        if (owner.isDestroyed || owner.planeCheckEpisode !== episode) return;
+        if (owner.isDestroyed || state.question !== question) return;
 
         owner.component.getStateProvider()?.setData('planeCause', typeof reply?.cause === 'string' ? reply.cause : null)
     }
 
     /**
-     * @summary Ends the episode on a roster read that answered, and clears its cause.
+     * @summary The owner's check state, created on first use.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @returns {{episode: Symbol|null, question: Symbol|null, at: Number|null}}
+     * @protected
      */
-    static settle(owner) {
-        owner.planeCheckEpisode = null;
-        owner.component.getStateProvider()?.setData('planeCause', null)
+    static stateOf(owner) {
+        return owner.planeCheck ??= {episode: null, question: null, at: null}
     }
 }
 

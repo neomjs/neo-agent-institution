@@ -195,7 +195,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.streamConnection).toEqual({state: 'failed-upstream', reason: 'activity source unavailable'})
         });
 
-        test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers clears it', async () => {
+        test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers ends the episode but leaves the cause to the shell', async () => {
             const
                 {host, provider} = makeRosterHost({state: 'live'}),
                 previousMain     = globalThis.Neo.main,
@@ -204,7 +204,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             let calls = 0;
 
             globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => { asked.push(args); return Promise.resolve({cause: 'plane-credential-refused'}) }}}};
-            installWire(() => ++calls <= 2 ? failed() : rosterReply('recovered'));
+            installWire(() => ++calls <= 2 || calls === 4 ? failed() : rosterReply('recovered'));
 
             try {
                 await host.loadRoster();
@@ -214,7 +214,33 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 expect(asked.length, 'one ask per failure episode').toBe(1);
 
                 await host.loadRoster();
-                expect(provider.data.planeCause, 'an answered read ends the episode').toBe(null)
+                expect(provider.data.planeCause, 'an answered read proves the transport, never the credential').toBe('plane-credential-refused');
+
+                await host.loadRoster();
+                expect(asked.length, 'the answered read ended the episode, so the next failure asks again').toBe(2)
+            } finally {
+                globalThis.Neo.main = previousMain
+            }
+        });
+
+        test('a roster answer whose plane presence read degraded asks the shell, the shape a PAT revoked mid-session takes', async () => {
+            const
+                {host, provider} = makeRosterHost({state: 'live'}),
+                previousMain     = globalThis.Neo.main,
+                asked            = [];
+
+            globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: args => { asked.push(args); return Promise.resolve({cause: 'plane-credential-refused'}) }}}};
+            installWire(() => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {
+                result: {capabilities: {presence: {state: 'degraded', reason: 'plane who_is_online failed'}}, rows: [{id: 'resident', displayName: 'resident'}]}
+            }));
+
+            try {
+                await host.loadRoster();
+                await expect.poll(() => provider.data.planeCause).toBe('plane-credential-refused');
+
+                await host.loadRoster();
+                expect(asked.length, 'one ask per degraded episode').toBe(1);
+                expect(provider.data.gridAdapterState, 'the roster itself stays live').toBe('live')
             } finally {
                 globalThis.Neo.main = previousMain
             }

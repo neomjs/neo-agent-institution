@@ -133,6 +133,19 @@ test.describe('harness walk control', () => {
         expect(verify().row.agentIdentityNodeId, 'a refused remap writes nothing').toBe(`AGENT_IDENTITY:${FIXTURE_REMAP_IDENTITY}`)
     });
 
+    test('a remap after a revoke re-admits the revoked token: to the seat\'s own identity it restores the seat, to the other it names the other account', () => {
+        const manifest = manifestFor();
+
+        revokeFixtureToken({manifest, seats});
+        expect(remapFixtureToken({identity: FIXTURE_IDENTITY, manifest, now: '2026-10-28T12:00:00.000Z', seats})).toEqual({generation: 3, identity: FIXTURE_IDENTITY});
+        expect(verify().ok, 'the restored seat is admitted again').toBe(true);
+        expect(verify().row).toMatchObject({agentIdentityNodeId: `AGENT_IDENTITY:${FIXTURE_IDENTITY}`, mintedAt: '2026-10-28T12:00:00.000Z'});
+
+        revokeFixtureToken({manifest, seats});
+        remapFixtureToken({identity: FIXTURE_REMAP_IDENTITY, manifest, seats});
+        expect(verify().row.agentIdentityNodeId).toBe(`AGENT_IDENTITY:${FIXTURE_REMAP_IDENTITY}`)
+    });
+
     test('plane stop and start reach the held run once each and come back answered, a failure included', async () => {
         manifestFor();
 

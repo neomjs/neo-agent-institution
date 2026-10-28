@@ -168,22 +168,27 @@ export function revokeFixtureToken({manifest, seats}) {
 
 /**
  * @summary Re-maps the fixture seat's token to another identity the fixture plane's graph holds, so the
- * plane names the stored token as another account on its next request.
+ * plane names the stored token as another account on its next request. After a revoke the registry holds
+ * no rows and the token's hash sits among the previous generation's, so the remap re-admits that hash: a
+ * remap to the seat's own identity is how a walker restores the seat after a revoke.
  * @param {Object} options
  * @param {Object} options.manifest A checked manifest.
  * @param {Object} options.seats The Brain's `seatToken` helpers.
  * @param {String} options.identity
+ * @param {String} [options.now] ISO time a re-admitted row is minted at.
  * @returns {{generation: Number, identity: String}}
  * @throws {Error} For an identity the plane's graph does not hold: the plane would refuse it as unknown
  *     rather than name it, which is a different failure from the one a remap walks.
  */
-export function remapFixtureToken({manifest, seats, identity}) {
+export function remapFixtureToken({manifest, seats, identity, now = new Date().toISOString()}) {
     if (!manifest.identities?.includes(identity)) {
         throw new Error(`walkControl refuses identity '${identity}': the fixture plane's graph holds only ${manifest.identities?.join(', ')}, and a token bound to anything else is refused as unknown, not named as another account`)
     }
 
     const previous = seats.readSeatTokenRegistry(manifest.registryPath),
-          rows     = previous.rows.map(row => ({...row, agentIdentityNodeId: `AGENT_IDENTITY:${identity}`})),
+          source   = previous.rows.length > 0 ? previous.rows
+                   : previous.previousGenerationHashes.map(tokenHash => ({tokenHash, mintedAt: now})),
+          rows     = source.map(row => ({...row, agentIdentityNodeId: `AGENT_IDENTITY:${identity}`})),
           next     = seats.buildSeatTokenRegistry({generation: previous.generation + 1, planeId: previous.planeId, previousRegistry: previous, rows});
 
     seats.writeSeatTokenRegistry(manifest.registryPath, next);
