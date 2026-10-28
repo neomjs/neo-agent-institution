@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    a97cb2d5f8e175ccb25a9ef00ad5e28edfac9067
+    95e63df6db65dcbbafc1d22817b5c895e06087ec
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -288,7 +288,7 @@ apps/agentos/util/PlaneAdmission.mjs
     4318f59edb22a150901ddcef670b11278c9a9806
 
 apps/agentos/util/PlaneCredentialCheck.mjs
-    e90a4505028072781fd15134801cc3c9cb0a37b5
+    a592301e40712cde24ea305c3d8f0658496b7c92
 
 apps/agentos/util/PlaneVerdict.mjs
     64f745a119e321684026b59ddebe957a538022f7
@@ -378,7 +378,7 @@ apps/agentos/view/fleet/catchup/Container.mjs
     48b38b075e8d7afb4609d6794dca9b039f09e014
 
 apps/agentos/view/fleet/cockpit/Container.mjs
-    095f623728eee8ed5807596bf951ca93456b9c8a
+    3248f4acc41d899259bc287b1b0d660b39a7e9e7
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     d3b434dd1fc4d1bc4ba3a1bf36bddc80889e162a
@@ -390,7 +390,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    72c6a2426360b03466d3e3c56d21c051576b0c51
+    c2a824f40c10a6970a4cfbfe05ae759baf62d16b
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
