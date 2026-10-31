@@ -752,6 +752,25 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(at60s.kind).toBe('cold')
         });
 
+        test('plane-starting (#847): from three minutes the pill names the action, and the shell still waits', () => {
+            const at = elapsedMs => SpineBanner.deriveSpineBanner({
+                grid     : {state: 'cold', connection: {state: 'connecting'}},
+                stream   : {state: 'cold'},
+                transport: {elapsedMs, phase: 'starting', reason: 'plane-starting', since: 1_000}
+            });
+
+            expect(at(179_999).text).toBe('Agent OS starting · 179 s');
+
+            const at3min = at(180_000);
+
+            expect(at3min.text).toBe('Agent OS not answering · 3 min');
+            expect(at3min.lead).toBe('Your Agent OS has not answered for 3 min. Start it, or connect to another; the Fleet joins by itself when it answers.');
+            expect(at3min.title).toBe(at3min.lead);
+            expect(at3min.action).toBeNull();
+            expect(at3min.kind).toBe('cold');
+            expect(at(25 * 60_000 + 59_000).text).toBe('Agent OS not answering · 25 min')
+        });
+
         test('a starting transport outranks a cold grid connection verdict even before the 15s slow window', () => {
             const preWindow = SpineBanner.deriveSpineBanner({
                 grid     : {state: 'cold', connection: {state: 'timeout', reason: 'read timed out'}},

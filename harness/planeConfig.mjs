@@ -344,7 +344,9 @@ function readToolPayload(result) {
  * The second carries the PAT and counts only when the Memory Core names itself. In that session the
  * probe then calls `list_permissions`, whose `identity` is the bearer's subject as the plane resolves
  * it — the identity the fleet child must claim for the plane to admit it. The session is closed again
- * however the probe ends.
+ * however the probe ends. A 5xx at either `initialize` is a plane that has not answered yet, never
+ * another server: a plane's ingress answers 502 for its Memory Core until that listens, so a starting
+ * plane reads as `unreachable`, the verdict a boot waits through.
  * @param {Object} options
  * @param {String} options.planeBase A normalized plane base.
  * @param {String} options.bearer
@@ -372,7 +374,7 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
         await response.text().catch(() => '');
 
         if (response.status !== 401 || !/^Bearer\b/i.test(response.headers.get('www-authenticate') ?? '')) {
-            return refuse('not-a-plane')
+            return refuse(response.status >= 500 ? 'unreachable' : 'not-a-plane')
         }
 
         response = await post(INITIALIZE, {Authorization: authorization});
@@ -383,6 +385,10 @@ export async function probePlaneCredential({planeBase, bearer, fetchFn = fetch, 
 
     if (response.status === 401 || response.status === 403) {
         return refuse('rejected')
+    }
+
+    if (response.status >= 500) {
+        return refuse('unreachable')
     }
 
     const

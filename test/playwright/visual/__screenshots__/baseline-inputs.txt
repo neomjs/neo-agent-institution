@@ -327,7 +327,7 @@ apps/agentos/util/SourceHealth.mjs
     f596b49579472a667480bad7a0f0975276efb5ec
 
 apps/agentos/util/SpineBanner.mjs
-    22c150b777bf668aa44c9f67c5ec282de3278d05
+    0b01c94ff8c90190591b3aaeb7f5ea380a62d535
 
 apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01

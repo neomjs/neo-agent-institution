@@ -106,6 +106,13 @@ const PLANE_REFUSALS = Object.freeze({
 });
 
 /**
+ * How long a stored plane may stay silent at boot before the `plane-starting` pill names what to do.
+ * The shell keeps waiting past it: a stored plane stays authority while it is silent.
+ * @type {Number}
+ */
+const PLANE_SILENT_SECONDS = 180;
+
+/**
  * @summary Picks the cold-case fallback line for SILENCE, from the topology that owns the truth.
  *
  * The generic manual-start advice is only ever right in the plain-browser flow. Inside the shell
@@ -143,6 +150,16 @@ function coldFallbackFor(transport) {
         }
 
         if (transport.reason === 'plane-starting') {
+            if (seconds >= PLANE_SILENT_SECONDS) {
+                const minutes = Math.floor(seconds / 60);
+
+                return {
+                    cause: null,
+                    lead : `Your Agent OS has not answered for ${minutes} min. Start it, or connect to another; the Fleet joins by itself when it answers.`,
+                    text : `Agent OS not answering · ${minutes} min`
+                }
+            }
+
             return {
                 cause: null,
                 lead : `Your Agent OS has not answered yet. The Fleet joins by itself when it does.${longer}`,
