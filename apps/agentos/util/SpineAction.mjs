@@ -42,6 +42,9 @@ class SpineAction extends Base {
         if (action === 'connect-plane') {
             owner.getParent()?.showPlaneSetup?.()
         } else {
+            Boolean(provider?.getData('planeOutageNote')?.recoveredAt) &&
+                provider?.setData?.({planeOutageNote: FleetAdmission.blankOutageNote()});
+
             action === 'retry-plane' &&
                 await Promise.resolve(Neo.main?.addon?.ShellPlane?.retryPlane({windowId: owner.component.windowId})).catch(() => null);
 

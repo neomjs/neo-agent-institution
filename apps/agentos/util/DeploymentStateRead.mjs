@@ -239,6 +239,8 @@ class DeploymentStateRead extends Base {
 
         let outageNote = null;
 
+        FleetAdmission.expireOutageNote(owner, observedAt, SpineBanner.OUTAGE_NOTE_TTL_MS);
+
         if (state === 'unavailable' && projection.reason !== FLEET_WIRE_RESPONSE_STATES.unsupportedMethod) {
             if (previous && ['ok', 'stale'].includes(previous.state) && previous.profileId === profileId) {
                 FleetAdmission.recordOutageStart(owner, 'system', {

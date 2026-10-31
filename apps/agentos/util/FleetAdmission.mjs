@@ -49,6 +49,22 @@ class FleetAdmission extends Base {
     }
 
     /**
+     * @summary Clears `planeOutageNote` once its 5-minute display window (`ttlMs`) has elapsed.
+     * @param {Object} owner The liveness owner.
+     * @param {Number} [now=Date.now()]
+     * @param {Number} [ttlMs=300000]
+     */
+    static expireOutageNote(owner, now = Date.now(), ttlMs = 300000) {
+        const provider    = owner?.component?.getStateProvider?.(),
+              recoveredAt = provider?.getData?.('planeOutageNote')?.recoveredAt,
+              stamp       = typeof recoveredAt === 'number' ? recoveredAt : Date.parse(recoveredAt ?? '');
+
+        if (Number.isFinite(stamp) && Number.isFinite(now) && now - stamp >= ttlMs) {
+            provider.setData({planeOutageNote: FleetAdmission.blankOutageNote()})
+        }
+    }
+
+    /**
      * @summary Opens a plane outage episode on `key` for an already-wired surface or capability slot,
      * preserving the first observed start timestamp while the episode remains open for `profileId`.
      * @param {Object} owner The liveness owner.
@@ -64,7 +80,7 @@ class FleetAdmission extends Base {
         const
             episodes = owner.planeOutageEpisodes ??= Object.create(null),
             existing = episodes[key],
-            safe     = (typeof reason === 'string' && reason.trim()) || 'plane restarted';
+            safe     = (typeof reason === 'string' && reason.trim()) || 'plane connection unavailable';
 
         if (existing && existing.profileId === profileId) {
             if (!existing.reason && safe) existing.reason = safe;
@@ -106,7 +122,7 @@ class FleetAdmission extends Base {
         }
 
         const note = {
-            reason     : episode.reason || 'plane restarted',
+            reason     : episode.reason || 'plane connection unavailable',
             recoveredAt: now,
             startedAt  : episode.startedAt
         };
@@ -137,16 +153,7 @@ class FleetAdmission extends Base {
      * @returns {{head:null,headTitle:null,missing:null,reason:null,recheck:null,remaining:null,repair:null,summary:null}}
      */
     static blankActivityGuidance() {
-        return {
-            head     : null,
-            headTitle: null,
-            missing  : null,
-            reason   : null,
-            recheck  : null,
-            remaining: null,
-            repair   : null,
-            summary  : null
-        }
+        return {head: null, headTitle: null, missing: null, reason: null, recheck: null, remaining: null, repair: null, summary: null}
     }
 
     /**
@@ -326,6 +333,7 @@ class FleetAdmission extends Base {
         store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
+        FleetAdmission.expireOutageNote(owner, now);
 
         if (wasWired) {
             FleetAdmission.recordOutageRecovery(owner, 'stream', {now, profileId})
@@ -434,6 +442,8 @@ class FleetAdmission extends Base {
             // selection made against a now-removed record
             owner.reconcileSelection()
         }
+
+        FleetAdmission.expireOutageNote(owner, owner.rosterObservedAt);
 
         if (wasWired) {
             FleetAdmission.recordOutageRecovery(owner, 'grid', {now: owner.rosterObservedAt, profileId})

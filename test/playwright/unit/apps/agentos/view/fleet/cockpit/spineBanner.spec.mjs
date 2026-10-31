@@ -808,7 +808,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(preWindow.lead).toBe('Fleet transport starting — the cockpit connects automatically')
         });
 
-        test('short plane outage note (#844 AC-1, AC-2): names a recovered outage with product-word lead, retains reason and ISO window on title/ariaLabel, offers dismiss-outage, and does not block live', () => {
+        test('short plane outage note (#844 AC-1, AC-2): names a recovered outage with product-word lead, retains reason and ISO window on title/ariaLabel, offers dismiss-outage, expires past OUTAGE_NOTE_TTL_MS, and does not block live', () => {
             const
                 startedAt   = Date.parse('2026-10-31T21:59:03.000Z'),
                 recoveredAt = Date.parse('2026-10-31T21:59:37.000Z'),
@@ -828,12 +828,12 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
 
             expect(liveWithNote).toEqual({
                 action   : 'dismiss-outage',
-                ariaLabel: 'Plane restarted 21:59–21:59 — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z',
+                ariaLabel: 'Plane outage 21:59–21:59 — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z',
                 hidden   : false,
                 kind     : 'live',
-                lead     : 'Plane restarted 21:59–21:59 — recovered',
+                lead     : 'Plane outage 21:59–21:59 — recovered',
                 text     : 'plane recovered',
-                title    : 'Plane restarted 21:59–21:59 — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z'
+                title    : 'Plane outage 21:59–21:59 — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z'
             });
 
             // Alongside `feed partial` (Row 5's H2 walk where PR lanes are unconfigured), the spine
@@ -851,9 +851,22 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(partialWithNote.kind).toBe('degraded');
             expect(partialWithNote.text).toBe('feed partial');
             expect(partialWithNote.action).toBe('recheck');
-            expect(partialWithNote.lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane restarted 21:59–21:59 — recovered');
-            expect(partialWithNote.title).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane restarted 21:59–21:59 — recovered · pr-lane: github token not configured · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z');
-            expect(partialWithNote.ariaLabel).toBe(partialWithNote.title)
+            expect(partialWithNote.lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane outage 21:59–21:59 — recovered');
+            expect(partialWithNote.title).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane outage 21:59–21:59 — recovered · pr-lane: github token not configured · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z');
+            expect(partialWithNote.ariaLabel).toBe(partialWithNote.title);
+
+            // Past OUTAGE_NOTE_TTL_MS (5 min), the note expires on both live and feed partial paths
+            const expiredOutage = {...outage, now: recoveredAt + SpineBanner.OUTAGE_NOTE_TTL_MS};
+            expect(SpineBanner.formatShortOutage(expiredOutage)).toBeNull();
+            expect(SpineBanner.deriveSpineBanner({grid: {state: 'live'}, outage: expiredOutage, stream: {state: 'live'}})).toEqual(HIDDEN_LIVE);
+            expect(SpineBanner.deriveSpineBanner({
+                grid  : {state: 'live'},
+                outage: expiredOutage,
+                stream: {
+                    guidance: {reason: 'pr-lane: github token not configured', summary: 'PR lanes unavailable · mailbox available'},
+                    state   : 'partial'
+                }
+            }).lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available')
         })
     })
 });

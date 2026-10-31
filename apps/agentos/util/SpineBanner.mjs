@@ -122,6 +122,14 @@ const PLANE_SILENT_SECONDS = 180;
 const MAX_SHORT_OUTAGE_MS = 60000;
 
 /**
+ * How long (in ms) a recovered short-outage note stays on the spine before expiring on subsequent
+ * reads or time-bounded evaluations (5 minutes = five 60 s cadence cycles), so an un-dismissed note
+ * never lingers indefinitely or across days where a time-only window (`HH:MM–HH:MM`) would read ambiguously.
+ * @type {Number}
+ */
+const OUTAGE_NOTE_TTL_MS = 300000;
+
+/**
  * @summary Parse an outage endpoint (Date, epoch ms, or ISO-8601 string) to epoch ms.
  * @param {Date|Number|String|null|undefined} value
  * @returns {Number}
@@ -215,6 +223,7 @@ function coldFallbackFor(transport) {
 class SpineBanner extends Base {
     static DAEMON_FAULT_STATES = DAEMON_FAULT_STATES
     static MAX_SHORT_OUTAGE_MS = MAX_SHORT_OUTAGE_MS
+    static OUTAGE_NOTE_TTL_MS  = OUTAGE_NOTE_TTL_MS
 
     static config = {
         /**
@@ -227,7 +236,7 @@ class SpineBanner extends Base {
     /**
      * @summary Formats a recovered plane outage note into a viewer-local time window and product-word
      * lead for the spine honesty line, keeping the retained diagnostic `reason` and ISO window on
-     * `title` / `ariaLabel`, or returns `null` when absent or malformed.
+     * `title` / `ariaLabel`, or returns `null` when absent, malformed, or expired past `OUTAGE_NOTE_TTL_MS`.
      * @param {Object|null} outage `{startedAt, recoveredAt, reason, locale?, timeZone?, now?}`
      * @returns {{lead: String, reason: String, text: String, title: String, windowText: String, windowTitle: String}|null}
      */
@@ -237,14 +246,20 @@ class SpineBanner extends Base {
         const
             startedAt   = parseOutageTime(outage.startedAt),
             recoveredAt = parseOutageTime(outage.recoveredAt),
+            now         = parseOutageTime(outage.now),
             durationMs  = recoveredAt - startedAt;
 
-        if (!Number.isFinite(startedAt) || !Number.isFinite(recoveredAt) || durationMs < 0) {
+        if (
+            !Number.isFinite(startedAt) ||
+            !Number.isFinite(recoveredAt) ||
+            durationMs < 0 ||
+            (Number.isFinite(now) && now - recoveredAt >= OUTAGE_NOTE_TTL_MS)
+        ) {
             return null
         }
 
         const
-            timeOptions = {locale: outage.locale, now: outage.now ?? recoveredAt, timeZone: outage.timeZone},
+            timeOptions = {locale: outage.locale, now: Number.isFinite(now) ? now : recoveredAt, timeZone: outage.timeZone},
             start       = ViewerTime.formatViewerTime(startedAt, timeOptions),
             end         = ViewerTime.formatViewerTime(recoveredAt, timeOptions);
 
@@ -253,8 +268,8 @@ class SpineBanner extends Base {
         const
             windowText  = `${start.text}–${end.text}`,
             windowTitle = `${start.title}–${end.title}`,
-            reason      = (typeof outage.reason === 'string' && outage.reason.trim()) || 'plane restarted',
-            lead        = `Plane restarted ${windowText} — recovered`,
+            reason      = (typeof outage.reason === 'string' && outage.reason.trim()) || 'plane outage recovered',
+            lead        = `Plane outage ${windowText} — recovered`,
             title       = `${lead} · ${reason} · ${windowTitle}`;
 
         return {lead, reason, text: 'plane recovered', title, windowText, windowTitle}

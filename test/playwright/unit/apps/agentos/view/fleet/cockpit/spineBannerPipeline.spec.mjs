@@ -22,6 +22,7 @@ import                                                                       '..
 import {makeActivityStoreHarness, makeControllerFake, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge}                                             from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 import SpineAction                                                      from '../../../../../../../../apps/agentos/util/SpineAction.mjs';
+import SpineBanner                                                      from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
 import {createFleetWireResponse}                                        from 'neo-agent-brain/fleet-contract';
 
 /**
@@ -878,7 +879,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
             expect(verdict.kind, 'does not block live').toBe('live');
             expect(verdict.action, 'note offers Dismiss action').toBe('dismiss-outage');
             expect(verdict.text).toBe('plane recovered');
-            expect(verdict.lead, 'product words only, without read-to-read gap or retained reason').toMatch(/^Plane restarted [^·()]+–[^·()]+ — recovered$/);
+            expect(verdict.lead, 'product words only, without read-to-read gap or retained reason').toMatch(/^Plane outage [^·()]+–[^·()]+ — recovered$/);
             expect(verdict.title).toContain('connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting');
             expect(verdict.title).toContain('2026-10-31T21:59:03.000Z–2026-10-31T22:00:03.150Z');
             expect(deriveTruths(provider.data).instanceState).toBe('ok');
@@ -891,7 +892,81 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                 recoveredAt: null,
                 startedAt  : null
             });
-            expect(verdictOf(provider.data).hidden).toBe(true)
+            expect(verdictOf(provider.data).hidden).toBe(true);
+
+            // On a `feed partial` spine (H2 walk), the note ends both when a subsequent cadence read
+            // lands at or after OUTAGE_NOTE_TTL_MS (5 min) without operator action AND when Recheck is clicked
+            now = tRecovered + 60_000;
+            await withBridge(async () => {
+                throw new Error('connect ECONNREFUSED 127.0.0.1:8080')
+            }, host);
+
+            const
+                tPartialRecovered = now + 60_000 + 120,
+                partialEvent      = {
+                    confidence: 'observed',
+                    eventId   : 'ev-a2a-1',
+                    occurredAt: new Date(tPartialRecovered).toISOString(),
+                    source    : 'memory-core:mailbox',
+                    summary   : 'Mailbox heartbeat',
+                    type      : 'a2a-activity'
+                };
+            now = tPartialRecovered;
+            await withBridge(async () => ({
+                capability: {
+                    reason: 'pr-lane: github token not configured',
+                    slots : {
+                        a2a      : {state: 'wired'},
+                        'pr-lane': {reason: 'github token not configured', state: 'unavailable'}
+                    },
+                    state : 'degraded'
+                },
+                counts: [],
+                events: [partialEvent]
+            }), host);
+
+            expect(provider.data.streamAdapterState).toBe('partial');
+            expect(verdictOf(provider.data).lead).toMatch(/^Activity feed partial — PR lanes unavailable · mailbox available · Plane outage [^·()]+–[^·()]+ — recovered$/);
+
+            // Automatic expiry on a subsequent cadence read at tPartialRecovered + OUTAGE_NOTE_TTL_MS
+            now = tPartialRecovered + SpineBanner.OUTAGE_NOTE_TTL_MS;
+            await withBridge(async () => ({
+                capability: {
+                    reason: 'pr-lane: github token not configured',
+                    slots : {
+                        a2a      : {state: 'wired'},
+                        'pr-lane': {reason: 'github token not configured', state: 'unavailable'}
+                    },
+                    state : 'degraded'
+                },
+                counts: [],
+                events: [partialEvent]
+            }), host);
+
+            expect(provider.data.planeOutageNote).toEqual({
+                reason     : null,
+                recoveredAt: null,
+                startedAt  : null
+            });
+            expect(verdictOf(provider.data).lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available');
+
+            // Clicking Recheck on `feed partial` also clears an active outage note immediately
+            provider.setData({
+                planeOutageNote: {
+                    reason     : 'connect ECONNREFUSED 127.0.0.1:8080',
+                    recoveredAt: now,
+                    startedAt  : now - 30_000
+                }
+            });
+            expect(verdictOf(provider.data).lead).toContain('Plane outage');
+            host.reconnectFleet = () => {};
+            await SpineAction.run(host);
+            expect(provider.data.planeOutageNote).toEqual({
+                reason     : null,
+                recoveredAt: null,
+                startedAt  : null
+            });
+            expect(verdictOf(provider.data).lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available')
         } finally {
             Date.now = originalNow
         }
