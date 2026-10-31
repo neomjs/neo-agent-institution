@@ -3,7 +3,7 @@ import {execSync}     from 'node:child_process';
 import fs             from 'node:fs';
 import os             from 'node:os';
 import path           from 'node:path';
-import {diffStamp, engineDrift, inputScopes, listingEntries, parseStamp, scopeListing, serializeStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
+import {diffStamp, engineDrift, inputScopes, listingEntries, nextStampEngine, parseStamp, scopeListing, serializeStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
 
 /**
  * The drift gate's negative coverage — born from a review falsifier: the input-only scope
@@ -46,6 +46,35 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(engineDrift({engine: 'd75cc68'}, {engine: '7aae7c3'})).toContain('captured at engine d75cc68, running 7aae7c3');
         expect(engineDrift({engine: null}, {engine: '7aae7c3'}), 'a stamp from before the revision').toContain('captured at engine unknown');
         expect(engineDrift({engine: '7aae7c3'}, {engine: '7aae7c3'})).toBeNull()
+    });
+
+    test('stamping keeps the previous engine unless a golden changed or no previous stamp exists (#852)', () => {
+        const
+            sourceA  = '100644 1111111111111111111111111111111111111111 0\tapps/agentos/util/LivenessCadence.mjs',
+            sourceB  = '100644 2222222222222222222222222222222222222222 0\tapps/agentos/util/LivenessCadence.mjs',
+            e2eSnapA = '100644 3333333333333333333333333333333333333333 0\ttest/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/card-darwin.png',
+            e2eSnapB = '100644 4444444444444444444444444444444444444444 0\ttest/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/card-darwin.png',
+            previous = {engine: '95e63df6', entries: listingEntries([goldenA, e2eSnapA, sourceA].join('\n'))};
+
+        // AC-1: a stamp in which only non-golden inputs changed keeps the previous engine line
+        expect(nextStampEngine(previous, {
+            engine : '990669e5',
+            entries: listingEntries([goldenA, e2eSnapA, sourceB].join('\n'))
+        })).toBe('95e63df6');
+
+        // AC-2: a stamp in which a golden's blob changed (or was added/removed) records the running engine
+        expect(nextStampEngine(previous, {
+            engine : '990669e5',
+            entries: listingEntries([goldenB, e2eSnapA, sourceA].join('\n'))
+        })).toBe('990669e5');
+        expect(nextStampEngine(previous, {
+            engine : '990669e5',
+            entries: listingEntries([goldenA, e2eSnapB, sourceA].join('\n'))
+        })).toBe('990669e5');
+
+        // AC-3: a first stamp (no previous file or no previous engine) records the running engine
+        expect(nextStampEngine(null, {engine: '990669e5', entries: previous.entries})).toBe('990669e5');
+        expect(nextStampEngine({engine: null, entries: previous.entries}, {engine: '990669e5', entries: previous.entries})).toBe('990669e5')
     });
 
     test('the stamp text: the engine, then one entry per file sorted by path — path, indented blob id, blank line', () => {
