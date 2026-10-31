@@ -228,13 +228,13 @@ apps/agentos/util/ConfigIntentRoundTrip.mjs
     304f0ae0f77b480f206457cbca31765b7edec1b9
 
 apps/agentos/util/DeploymentStateRead.mjs
-    d2699ce646972d0252ce188b3012ca469a87be54
+    63cb6fef87b8893caff97c514e7292d96cba7e19
 
 apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    43aa64420726bd7f47b94d9e4cee081c8d245e93
+    63697e3254ab8409b097b6cafbaaceabd78f7d14
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
@@ -330,13 +330,13 @@ apps/agentos/util/SpineAction.mjs
     279aec6770037d4d7ebb2b82e7085e9e118b8c92
 
 apps/agentos/util/SpineBanner.mjs
-    5cf342c271685d3484a3e0458fb8afac5b0ab04d
+    f78280f6d5b69d28c0a0589cc7fcb01df2212273
 
 apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    062439659a45749864e8ce475f1e0684e7f042f6
+    5bc5b27f3eb4b030cc47e16b71fe834df03039d2
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -384,7 +384,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     cbd2606ac8b32eb00f2b3c2e4138a1fb45e1a2b0
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
-    c1bc14965a740f9bb1c645e0935846a79fe42253
+    cfae1eb5b5385a584305b2b5b7950a2e040f9e6b
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     76a872a8a6a784f5f36f3ed0d4d92905e6b25d4a
@@ -393,7 +393,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    c2a824f40c10a6970a4cfbfe05ae759baf62d16b
+    f906c62688fd8113f6e17cfe879cd2e02a0f6f78
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
@@ -402,7 +402,7 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    bc1ee2571c4688c4ed2bd4777d937d40f03994e0
+    4dfc57dee74c4975a770b57e7897ae15e660a003
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     b221692b44ea6aa07a74cf17cb48d9e9eef8210c
