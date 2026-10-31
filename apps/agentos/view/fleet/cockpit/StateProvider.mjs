@@ -13,6 +13,7 @@ import ViewerWakeFeed      from '../../../store/ViewerWakeFeed.mjs';
 const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
     daemon   : {state: data.daemonState,        reason: data.daemonDegradedReason, cause: data.daemonCause},
     grid     : {state: data.gridAdapterState,   reason: data.gridDegradedReason, connection: data.gridConnection},
+    outage   : data.planeOutageNote,
     plane    : {cause: data.planeCause},
     stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection, guidance: data.activityGuidance},
     transport: data.shellTransport
@@ -123,6 +124,12 @@ class StateProvider extends Provider {
              */
             planeCause: null,
             /**
+             * Last recovered short plane outage (`<= 60 s`) between cockpit reads (`{reason, recoveredAt, startedAt}`),
+             * leaf-complete so `setData` drills each field cleanly.
+             * @member {Object} planeOutageNote={reason:null,recoveredAt:null,startedAt:null}
+             */
+            planeOutageNote: {reason: null, recoveredAt: null, startedAt: null},
+            /**
              * The presence-capability envelope riding every admitted roster snapshot — the grid's
              * chip names a degraded producer and clears on recovery; `null` claims nothing.
              * @member {Object|null} presenceCapability=null
@@ -201,8 +208,8 @@ class StateProvider extends Provider {
              * key never becomes one trackable config, so consumers bind `data.spineBanner.text`
              * etc. and every leaf is declared here). `text` is the pill's status word; `lead` the one
              * sentence shown beside it; `title` adds the retained cause, `ariaLabel` its screen-reader
-             * mirror; `action` names what the affordance does (`'connect-plane'`, `'retry-plane'`,
-             * `'recheck'`, or `null` for the reconnect).
+             * mirror; `action` names what the affordance does (`'connect-plane'`, `'dismiss-outage'`,
+             * `'retry-plane'`, `'recheck'`, or `null` for the reconnect).
              * @member {Object} spineBanner
              */
             spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', lead: '', text: '', title: ''},
@@ -237,7 +244,7 @@ class StateProvider extends Provider {
             instanceState: data => {
                 const verdict = deriveBannerVerdict(data);
 
-                return verdict.hidden ? 'ok' : (verdict.kind === 'degraded' ? 'limited' : 'off')
+                return (verdict.hidden || verdict.kind === 'live') ? 'ok' : (verdict.kind === 'degraded' ? 'limited' : 'off')
             },
             /**
              * The one banner verdict `{hidden, kind, text}`.

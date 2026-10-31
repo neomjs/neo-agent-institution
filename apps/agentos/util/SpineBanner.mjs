@@ -1,5 +1,6 @@
 import Base         from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import PlaneVerdict from './PlaneVerdict.mjs';
+import ViewerTime   from './ViewerTime.mjs';
 
 /**
  * @module apps/agentos/util/SpineBanner
@@ -114,6 +115,34 @@ const PLANE_REFUSALS = Object.freeze({
 const PLANE_SILENT_SECONDS = 180;
 
 /**
+ * Maximum duration (in ms) for a plane outage that opens and closes within one cockpit refresh
+ * cycle (`LivenessCadence.DEFAULT_INTERVALS`, 60 s). Longer outages are already named while down.
+ * @type {Number}
+ */
+const MAX_SHORT_OUTAGE_MS = 60000;
+
+/**
+ * How long (in ms) a recovered short-outage note stays on the spine before expiring on subsequent
+ * reads or time-bounded evaluations (5 minutes = five 60 s cadence cycles), so an un-dismissed note
+ * never lingers indefinitely or across days where a time-only window (`HH:MM–HH:MM`) would read ambiguously.
+ * @type {Number}
+ */
+const OUTAGE_NOTE_TTL_MS = 300000;
+
+/**
+ * @summary Parse an outage endpoint (Date, epoch ms, or ISO-8601 string) to epoch ms.
+ * @param {Date|Number|String|null|undefined} value
+ * @returns {Number}
+ * @private
+ */
+function parseOutageTime(value) {
+    if (value instanceof Date) return value.getTime();
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string' && value.trim()) return Date.parse(value);
+    return NaN
+}
+
+/**
  * @summary Picks the cold-case fallback line for SILENCE, from the topology that owns the truth.
  *
  * The generic manual-start advice is only ever right in the plain-browser flow. Inside the shell
@@ -193,6 +222,8 @@ function coldFallbackFor(transport) {
  */
 class SpineBanner extends Base {
     static DAEMON_FAULT_STATES = DAEMON_FAULT_STATES
+    static MAX_SHORT_OUTAGE_MS = MAX_SHORT_OUTAGE_MS
+    static OUTAGE_NOTE_TTL_MS  = OUTAGE_NOTE_TTL_MS
 
     static config = {
         /**
@@ -200,6 +231,48 @@ class SpineBanner extends Base {
          * @protected
          */
         className: 'AgentOS.util.SpineBanner'
+    }
+
+    /**
+     * @summary Formats a recovered plane outage note into a viewer-local time window and product-word
+     * lead for the spine honesty line, keeping the retained diagnostic `reason` and ISO window on
+     * `title` / `ariaLabel`, or returns `null` when absent, malformed, or expired past `OUTAGE_NOTE_TTL_MS`.
+     * @param {Object|null} outage `{startedAt, recoveredAt, reason, locale?, timeZone?, now?}`
+     * @returns {{lead: String, reason: String, text: String, title: String, windowText: String, windowTitle: String}|null}
+     */
+    static formatShortOutage(outage) {
+        if (!outage || typeof outage !== 'object') return null;
+
+        const
+            startedAt   = parseOutageTime(outage.startedAt),
+            recoveredAt = parseOutageTime(outage.recoveredAt),
+            now         = parseOutageTime(outage.now),
+            durationMs  = recoveredAt - startedAt;
+
+        if (
+            !Number.isFinite(startedAt) ||
+            !Number.isFinite(recoveredAt) ||
+            durationMs < 0 ||
+            (Number.isFinite(now) && now - recoveredAt >= OUTAGE_NOTE_TTL_MS)
+        ) {
+            return null
+        }
+
+        const
+            timeOptions = {locale: outage.locale, now: Number.isFinite(now) ? now : recoveredAt, timeZone: outage.timeZone},
+            start       = ViewerTime.formatViewerTime(startedAt, timeOptions),
+            end         = ViewerTime.formatViewerTime(recoveredAt, timeOptions);
+
+        if (!start || !end) return null;
+
+        const
+            windowText  = `${start.text}–${end.text}`,
+            windowTitle = `${start.title}–${end.title}`,
+            reason      = (typeof outage.reason === 'string' && outage.reason.trim()) || 'plane outage recovered',
+            lead        = `Plane outage ${windowText} — recovered`,
+            title       = `${lead} · ${reason} · ${windowTitle}`;
+
+        return {lead, reason, text: 'plane recovered', title, windowText, windowTitle}
     }
 
     /**
@@ -246,17 +319,19 @@ class SpineBanner extends Base {
      *     that has not pulled daemon truth passes nothing rather than guessing `running`.
      * @param {{cause: ?String}} [options.plane] The shell's answer, while it runs, on the PAT it launched
      *     with (`plane-credential-refused`, `plane-identity-changed`); optional.
+     * @param {Object|null} [options.outage] A recovered short plane outage (`<= 60 s`) between reads
+     *     `{startedAt, recoveredAt, reason, locale?, timeZone?, now?}`; optional.
      * @param {Object|null} [options.transport] The shell transport-boot fact (see {@link coldFallbackFor}).
      *     Optional and `null`-safe — only the cold fallback consults it, so a retained surface reason
      *     still outranks any topology guess.
      * @returns {{hidden: Boolean, kind: String, lead: String, text: String, title: String, ariaLabel: String}}
      *     `kind` is `'live'|'cold'|'degraded'` — the class hook; `hidden` is `true` only for the
-     *     fully live spine. `text` is the pill's STATUS WORD (axis word + state word). `lead` is the
+     *     fully live spine without a short-outage recovery note. `text` is the pill's STATUS WORD (axis word + state word). `lead` is the
      *     one sentence the banner SHOWS beside the pill, in product words: never a retained transport
      *     string, an endpoint or a command, and never only on hover. `title` adds the retained cause to
      *     the lead, and `ariaLabel` mirrors it for a screen reader.
      */
-    static deriveSpineBanner({daemon, grid, plane, stream, transport = null}) {
+    static deriveSpineBanner({daemon, grid, outage = null, plane, stream, transport = null}) {
         const surfaces = [grid, stream],
               states   = surfaces.map(surface => surface?.state),
               // `lead` is the one sentence the banner shows beside the pill: product words only, never a
@@ -362,9 +437,12 @@ class SpineBanner extends Base {
 
         if (stream?.state === 'partial') {
             const summary = (typeof stream.guidance?.summary === 'string' && stream.guidance.summary.trim()) || 'some sources unavailable',
-                  reason  = reasonFor([stream], 'partial') || (typeof stream.guidance?.reason === 'string' && stream.guidance.reason.trim()) || null;
+                  reason  = reasonFor([stream], 'partial') || (typeof stream.guidance?.reason === 'string' && stream.guidance.reason.trim()) || null,
+                  note    = SpineBanner.formatShortOutage(outage),
+                  lead    = note ? `Activity feed partial — ${summary} · ${note.lead}` : `Activity feed partial — ${summary}`,
+                  cause   = [reason, note?.reason, note?.windowTitle].filter(Boolean).join(' · ') || null;
 
-            return verdict('degraded', 'feed partial', `Activity feed partial — ${summary}`, reason, 'recheck')
+            return verdict('degraded', 'feed partial', lead, cause, 'recheck')
         }
 
         // The stream's own verdict: reachable here only with a LIVE grid (cold/stale grids returned
@@ -381,6 +459,20 @@ class SpineBanner extends Base {
             }
 
             return verdict('degraded', 'feed pending', 'Activity feed pending — roster is live', reason)
+        }
+
+        const note = SpineBanner.formatShortOutage(outage);
+
+        if (note) {
+            return {
+                action   : 'dismiss-outage',
+                ariaLabel: note.title,
+                hidden   : false,
+                kind     : 'live',
+                lead     : note.lead,
+                text     : note.text,
+                title    : note.title
+            }
         }
 
         return {action: null, hidden: true, kind: 'live', lead: '', text: '', title: '', ariaLabel: ''}
