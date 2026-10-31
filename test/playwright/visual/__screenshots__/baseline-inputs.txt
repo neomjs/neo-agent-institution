@@ -3,7 +3,7 @@
 # by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.
 
 engine
-    990669e5213deaf31367b6629e52c9851bf66ce9
+    95e63df6db65dcbbafc1d22817b5c895e06087ec
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -261,7 +261,7 @@ apps/agentos/util/KindRegistry.mjs
     b33024720f4b84257113f91ea0664f7be2e26081
 
 apps/agentos/util/LivenessCadence.mjs
-    e65473b99a170b2b5f225e2242f8e25f6e8568ca
+    104350c2660eb56d97840e0ca497c5c5b909e984
 
 apps/agentos/util/NameSlot.mjs
     8becd38529a5534802d079fa18aa4fcb3c41a9c4

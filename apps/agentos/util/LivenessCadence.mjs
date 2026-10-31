@@ -50,11 +50,12 @@ class LivenessCadence extends Base {
     /**
      * How often (ms) the liveness pass re-checks the launched PAT with the shell
      * ({@link AgentOS.util.PlaneCredentialCheck#recheck}). The plane caches a PAT verification for 300 s
-     * (`NEO_AUTH_PAT_CACHE_TTL_SECONDS`) on its own clock, so a 60 s re-check bounds worst-case detection
-     * after a revoke to 360 s (300 s cache + 60 s re-check) instead of stacking two 300 s intervals.
+     * (`NEO_AUTH_PAT_CACHE_TTL_SECONDS`) on its own clock, and an episode ask stamps `state.at` off the
+     * 15 s pass grid, so a 45 s re-check bounds worst-case detection after a revoke to 360 s
+     * (300 s cache + 45 s re-check + 15 s liveness pass) instead of stacking two 300 s intervals.
      * @type {Number}
      */
-    static DEFAULT_RECHECK = 60000
+    static DEFAULT_RECHECK = 45000
 
     /**
      * Each liveness read: the controller method that launches it and the controller counter of its

@@ -222,15 +222,17 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         expect(other.data.planeCause).toBe(null)
     });
 
-    test('worst-case alignment against the 300 s plane PAT cache reaches "pat refused" within the 360 s (6 min) bound (#845)', async () => {
+    test('worst-case off-grid alignment against the 300 s plane PAT cache reaches "pat refused" within the 360 s (6 min) bound (#845)', async () => {
         const
             planeCacheTtlMs = 300_000,
             recheckInterval = LivenessCadence.DEFAULT_RECHECK,
-            documentedBound = planeCacheTtlMs + recheckInterval,
+            passInterval    = LivenessCadence.DEFAULT_PASS,
+            documentedBound = planeCacheTtlMs + recheckInterval + passInterval,
             owner           = makeOwner(recheckInterval),
             originalNow     = Date.now;
 
-        expect(recheckInterval).toBe(60_000);
+        expect(recheckInterval).toBe(45_000);
+        expect(passInterval).toBe(15_000);
         expect(documentedBound).toBe(360_000);
 
         let clock          = 0,
@@ -258,15 +260,18 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
             revokedAtGitHub = true;
             const revokedAt = clock;
 
-            // Worst-case alignment: an episode/re-check asks at t = 299_999 ms, 1 ms before the 300 s plane cache expires.
+            // Off-grid episode ask at t = 299_999 ms (1 ms before the 300 s plane cache expires).
             // Even if presence stays degraded afterwards, observe() will not ask again for the open episode; recheck() must.
-            clock = planeCacheTtlMs - 1;
+            const episodeAskAt = planeCacheTtlMs - 1;
+            clock = episodeAskAt;
             await PlaneCredentialCheck.observe(owner, {presence: {state: 'degraded'}});
             expect(owner.data.planeCause, '1 ms before plane cache expiry, the cached admission still holds').toBe(null);
 
-            // Advance the fake clock on the 15 s liveness pass until "pat refused" reaches the spine
+            // Adverse liveness-pass phase: ticks at 314_998 + 15_000*n so the tick at 344_998 falls 1 ms before
+            // the 45_000 ms re-check comes due (at 344_999), forcing detection onto the next 15_000 ms pass (359_998).
+            const firstTickAfterAsk = episodeAskAt + passInterval - 1;
             let detectedAt = null;
-            for (let tick = 300_000; tick <= 600_000; tick += LivenessCadence.DEFAULT_PASS) {
+            for (let tick = firstTickAfterAsk; tick <= 600_000; tick += passInterval) {
                 clock = tick;
                 await PlaneCredentialCheck.observe(owner, {presence: {state: 'degraded'}});
                 await PlaneCredentialCheck.recheck(owner, clock);
@@ -278,7 +283,8 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
                 }
             }
 
-            expect(detectedAt).toBe(360_000);
+            expect(calls.map(call => call.at)).toEqual([299_999, 359_998]);
+            expect(detectedAt).toBe(359_998);
             expect(detectedAt - revokedAt).toBeLessThanOrEqual(documentedBound)
         } finally {
             Date.now = originalNow
