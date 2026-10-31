@@ -49,9 +49,9 @@ export const inputScopes = [
         {key: 'apps/agentos', exclude: ['apps/agentos/design']},
         {key: 'resources/scss'},
         {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs'},
-        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots'},
+        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots', golden: true},
         {key: 'test/playwright/visual/FleetCockpitVisual.spec.mjs'},
-        {key: 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'}
+        {key: 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs', golden: true}
 ];
 
 const
@@ -161,6 +161,26 @@ export function engineDrift(stamp, current) {
 }
 
 /**
+ * @summary The engine revision to write on `--stamp`: keeps the previous stamp's `engine`
+ * unless a golden file changed (was added, removed, or rewritten) or no previous stamp exists.
+ * @param {Object|null} previous `{engine, entries}` as parsed from the existing stamp file, or `null`.
+ * @param {Object}      current  `{engine, entries}`, freshly computed.
+ * @returns {String}
+ */
+export function nextStampEngine(previous, current) {
+    if (!previous?.engine) {
+        return current.engine
+    }
+
+    const
+        goldenScopes  = inputScopes.filter(scope => scope.golden).map(scope => `${scope.key}/`),
+        goldenChanged = [...new Set([...previous.entries.keys(), ...current.entries.keys()])]
+            .some(file => goldenScopes.some(prefix => file.startsWith(prefix)) && previous.entries.get(file) !== current.entries.get(file));
+
+    return goldenChanged ? current.engine : previous.engine
+}
+
+/**
  * @summary The raw staged-blob listing for one scope, exclusions applied — exported so the scope
  * CONTRACT (what is carved out of the stamp) has direct regression coverage.
  * @param {Object}   scope
@@ -197,7 +217,14 @@ const current = {
 };
 
 if (process.argv.includes('--stamp')) {
-    fs.writeFileSync(path.join(cwd, stampFile), serializeStamp(current));
+    const previous = fs.existsSync(path.join(cwd, stampFile))
+        ? parseStamp(fs.readFileSync(path.join(cwd, stampFile), 'utf8'))
+        : null;
+
+    fs.writeFileSync(path.join(cwd, stampFile), serializeStamp({
+        ...current,
+        engine: nextStampEngine(previous, current)
+    }));
 
     console.log(`visual-baselines: stamp written to ${stampFile}`);
     process.exit(0)
