@@ -196,8 +196,15 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         host.applyBrainHealth(lifecycle.brainHealth);
 
         expect(provider.data.daemonCause).toBe('plane-refused');
-        expect(verdictOf(provider.data)).toMatchObject({action: 'connect-plane', text: 'plane refused'});
-        expect(verdictOf(provider.data).title).toContain('plane identity mismatch')
+        expect(verdictOf(provider.data)).toMatchObject({action: 'retry-plane', text: 'plane refused'});
+        expect(verdictOf(provider.data).title).toContain('plane identity mismatch');
+
+        // Retry: the boot's new episode takes the refusal off the banner while it runs again
+        lifecycle.beginBrainBoot();
+        host.applyBrainHealth(lifecycle.brainHealth);
+
+        expect(provider.data.daemonCause).toBeNull();
+        expect(verdictOf(provider.data).text).not.toBe('plane refused')
     });
 
     // ⭐ The producer→controller→provider witness the predecessor lacked: the SHELL transition
@@ -344,21 +351,44 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         ])
     });
 
-    test('the banner action opens the plane card beside a running plane, and reconnects otherwise', () => {
-        const run = action => {
+    test.describe('the banner action (SpineAction, through the controller\'s handler)', () => {
+        const originalMain = globalThis.Neo.main;
+
+        /**
+         * @summary Runs the banner's action on a controller fake, with the shell answering `answer()`.
+         * @param {String|null} action The verdict's action
+         * @param {Function} [answer] The shell's `retryPlane()` answer, or a throw
+         * @returns {Promise<Array>} What ran, in order
+         */
+        const run = async (action, answer = () => ({ok: true, reason: null})) => {
             const calls = [],
                   host  = makeControllerFake(FleetCockpitController, {
-                      component     : {getStateProvider: () => ({getData: key => key === 'spineBanner' ? {action} : undefined})},
+                      component     : {getStateProvider: () => ({getData: key => key === 'spineBanner' ? {action} : undefined}), windowId: 'window-7'},
                       getParent     : () => ({showPlaneSetup: () => calls.push('showPlaneSetup')}),
                       reconnectFleet: () => calls.push('reconnectFleet')
                   });
 
-            host.onSpineAction();
+            globalThis.Neo.main = {addon: {ShellPlane: {retryPlane: async args => { calls.push(['retryPlane', args]); return answer() }}}};
+
+            await host.onSpineAction();
             return calls
         };
 
-        expect(run('connect-plane')).toEqual(['showPlaneSetup']);
-        expect(run(null), 'CONTROL: every other verdict reconnects').toEqual(['reconnectFleet'])
+        test.afterEach(() => {
+            globalThis.Neo.main = originalMain
+        });
+
+        test('Connect opens the plane card, Retry asks the shell first, and every other verdict reconnects', async () => {
+            expect(await run('connect-plane')).toEqual(['showPlaneSetup']);
+            expect(await run('retry-plane')).toEqual([['retryPlane', {windowId: 'window-7'}], 'reconnectFleet']);
+            expect(await run(null), 'CONTROL: every other verdict reconnects').toEqual(['reconnectFleet'])
+        });
+
+        test('after Retry every seam re-drives, whatever the shell answers (#849)', async () => {
+            for (const answer of [() => ({ok: false, reason: 'boot-running'}), () => { throw new Error('no shell') }]) {
+                expect(await run('retry-plane', answer)).toEqual([['retryPlane', {windowId: 'window-7'}], 'reconnectFleet'])
+            }
+        })
     });
 
     test('reconnectFleet tolerates unmounted panes — a missing reference is silence, never a throw', () => {

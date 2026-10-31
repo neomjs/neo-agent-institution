@@ -135,7 +135,7 @@ test.describe('Electron harness preload capability', () => {
         const
             {exposed, invokes} = await loadPreload(),
             request            = {method: 'listAgents', params: {}},
-            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane', 'seatRenameApply', 'seatRenamePlan', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
+            expectedShellKeys  = ['attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane', 'retryPlane', 'seatRenameApply', 'seatRenamePlan', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus', 'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe', 'shellVersion', 'verifyPlane'],
             mainSource         = await readFile(mainPath, 'utf8'),
             smokeKeys          = mainSource.match(/expectedShellKeys\s*=\s*\[([^\]]+)\]/);
 
@@ -156,11 +156,12 @@ test.describe('Electron harness preload capability', () => {
         // ask, never influence.
         await expect(exposed.value.brainHealth()).resolves.toEqual({ok: true, result: []});
 
-        // The plane broker: status and verify carry no payload, and attach forwards only the plane
+        // The plane broker: status, retry and verify carry no payload, and attach forwards only the plane
         // base — main prompts for the credential or probes the stored one, so no argument could carry it.
         await exposed.value.planeStatus();
         await exposed.value.probePlane();
         await exposed.value.attachPlane({planeBase: 'http://127.0.0.1:3102'});
+        await exposed.value.retryPlane({bearer: 'must-not-cross'});
         await exposed.value.verifyPlane();
         await exposed.value.seatRenamePlan({id: 'old-id', to: 'new-id'});
         await exposed.value.seatRenameApply({id: 'old-id', to: 'new-id', fingerprint: 'reviewed-rename'});
@@ -183,6 +184,7 @@ test.describe('Electron harness preload capability', () => {
             ['shell-plane-status'],
             ['shell-plane-probe'],
             ['shell-plane-attach', {planeBase: 'http://127.0.0.1:3102'}],
+            ['shell-plane-retry'],
             ['shell-plane-verify'],
             ['shell-seat-rename-plan', {id: 'old-id', to: 'new-id'}],
             ['shell-seat-rename-apply', {id: 'old-id', to: 'new-id', fingerprint: 'reviewed-rename'}],

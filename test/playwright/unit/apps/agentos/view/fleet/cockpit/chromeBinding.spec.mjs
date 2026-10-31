@@ -430,3 +430,40 @@ test('partial Activity guidance derives once from capability.slots onto banner, 
     }
 });
 
+test('a boot refusal binds the banner button to its way back: Retry, then Connect for a credential (#849)', async () => {
+    const
+        parent  = createShellProvider(),
+        cockpit = Neo.create(FleetCockpit, {
+            stateProvider: {
+                module: CockpitStateProvider,
+                parent,
+                stores: {
+                    fleetActivityEvents: {module: FleetActivityEvents},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
+                }
+            }
+        });
+
+    try {
+        await cockpit.refreshPromise;
+
+        const
+            provider = cockpit.getStateProvider(),
+            button   = cockpit.getReference('fleet-reconnect-button');
+
+        provider.setData({daemonCause: 'plane-refused', daemonDegradedReason: '[fleet] plane mode refused', daemonState: 'degraded', gridAdapterState: 'cold'});
+
+        expect(provider.getData('spineBanner').action).toBe('retry-plane');
+        expect(button.text).toBe('Retry');
+        expect(button.iconCls).toContain('fa-rotate-right');
+
+        provider.setData({daemonCause: 'plane-credential-refused'});
+
+        expect(button.text).toBe('Connect');
+        expect(button.iconCls).toContain('fa-plug')
+    } finally {
+        cockpit.destroy();
+        parent.destroy()
+    }
+});
+

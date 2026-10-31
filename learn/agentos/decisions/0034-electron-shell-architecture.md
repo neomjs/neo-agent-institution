@@ -223,9 +223,9 @@ adoption.
    witnesses a pass-through and is not wiring evidence.
 8. **Plane attach is a named broker** *(amended 2026-09-25, #19228 — for
    neomjs/neo-agent-institution#211; #19233 — for neomjs/neo-agent-institution#223; 2026-10-02,
-   #19362 — for neomjs/neo-agent-institution#446)*: a
+   #19362 — for neomjs/neo-agent-institution#446; 2026-10-31, neomjs/neo-agent-institution#849)*: a
    packaged shell that a Finder double-click starts has no environment, so it needs its own
-   record of the plane it attaches to, and the cockpit needs a way to create one. The preload exposes three capabilities, all answered by main-process handlers
+   record of the plane it attaches to, and the cockpit needs a way to create one. The preload exposes four capabilities, all answered by main-process handlers
    that validate the sender per §2.3.4:
    - `planeStatus()` → `ipcRenderer.invoke('shell-plane-status')`, pull-shaped like §2.3.7:
      `{packaged, configured, planeBase, attached}` — plain data, no credential bytes.
@@ -235,6 +235,12 @@ adoption.
      authenticated `initialize`, then `list_permissions` in that session for the identity the
      plane names for it — stores both, and relaunches the shell. The reply is
      `{ok, reason, relaunching}` and never carries the PAT.
+   - `retryPlane()` → `ipcRenderer.invoke('shell-plane-retry')`, no payload: after a boot settled
+     down with a plane refusal that says nothing against the stored PAT (`plane-refused`,
+     `plane-not-a-plane`, `plane-unreachable`), main runs the boot again in this process, with the
+     record it reads at boot: no credential window and no relaunch. It refuses while a boot runs,
+     after one came up, and while the shell quits. The reply is `{ok, reason}` and never carries the
+     PAT. The credential's own two refusals and `organism-beside-plane` keep Connect.
    - `verifyPlane()` → `ipcRenderer.invoke('shell-plane-verify')`, pull-shaped like §2.3.7: main
      probes the record this shell launched its fleet child with, by the exchange `attachPlane`
      uses, and answers `{cause}` — `plane-credential-refused` when the plane refuses the stored

@@ -4,6 +4,16 @@ import Toolbar                     from '../../../../../node_modules/neo.mjs/src
 import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
 
 /**
+ * The banner action button's icon and word per spine action (`SpineBanner`); no action is Reconnect.
+ * @type {Object}
+ */
+const SPINE_ACTIONS = Object.freeze({
+    'connect-plane': {iconCls: 'fa-solid fa-plug',         text: 'Connect'},
+    recheck        : {iconCls: 'fa-solid fa-rotate',       text: 'Recheck'},
+    'retry-plane'  : {iconCls: 'fa-solid fa-rotate-right', text: 'Retry'}
+});
+
+/**
  * @summary The cockpit's control bar: the spine's state block (the fleet pill, its lead, the wake
  * telltale) right-aligned before the action group (Reconnect or Connect, the start summary, the
  * recall verbs, Start fleet).
@@ -97,15 +107,16 @@ class ControlToolbar extends Toolbar {
             }]
         }, {
             // the banner's action: Reconnect re-drives every liveness seam through the existing
-            // bridge; beside a partial feed it becomes Recheck; beside a running plane it becomes
-            // Connect and opens the plane card. Its visibility and its words are the banner verdict,
-            // bound from the same formula. First of the ACTION group — contextual: it exists only
-            // while the fleet pill shows.
+            // bridge; beside a partial feed it becomes Recheck; after a boot refusal that says
+            // nothing against the stored PAT it becomes Retry and runs the boot again; for a
+            // credential, or beside a running plane, it becomes Connect and opens the plane card.
+            // Its visibility and its words are the banner verdict, bound from the same formula.
+            // First of the ACTION group — contextual: it exists only while the fleet pill shows.
             module   : Button,
             bind     : {
                 hidden : data => data.spineBanner.hidden,
-                iconCls: data => data.spineBanner.action === 'connect-plane' ? 'fa-solid fa-plug' : 'fa-solid fa-rotate',
-                text   : data => data.spineBanner.action === 'connect-plane' ? 'Connect' : data.spineBanner.action === 'recheck' ? 'Recheck' : 'Reconnect'
+                iconCls: data => SPINE_ACTIONS[data.spineBanner.action]?.iconCls ?? 'fa-solid fa-rotate',
+                text   : data => SPINE_ACTIONS[data.spineBanner.action]?.text ?? 'Reconnect'
             },
             cls      : ['fm-reconnect-button'],
             handler  : 'onSpineAction',

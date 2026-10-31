@@ -43,6 +43,7 @@ class ShellPlane extends Base {
                 'attachPlane',
                 'planeStatus',
                 'probePlane',
+                'retryPlane',
                 'seatRenameApply',
                 'seatRenamePlan',
                 'seatRootConsent',
@@ -89,6 +90,17 @@ class ShellPlane extends Base {
     probePlane() {
         return globalThis.neoShell?.probePlane
             ? globalThis.neoShell.probePlane()
+            : Promise.resolve({ok: false, reason: 'no-shell'})
+    }
+
+    /**
+     * @summary Asks the shell to run a boot the plane refused for a reason that is not the credential's
+     * again, with its stored record (no arguments cross, nothing prompts, nothing relaunches).
+     * @returns {Promise<{ok: Boolean, reason: String|null}>}
+     */
+    retryPlane() {
+        return globalThis.neoShell?.retryPlane
+            ? globalThis.neoShell.retryPlane()
             : Promise.resolve({ok: false, reason: 'no-shell'})
     }
 

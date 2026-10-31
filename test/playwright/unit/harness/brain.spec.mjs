@@ -45,6 +45,8 @@ import {
     resolveRealPath,
     resolveSmokeRoot,
     resolveUiFleetTransport,
+    RETRYABLE_BOOT_REFUSALS,
+    retryBrainBoot,
     runBrainScript,
     runtimePlaneCause,
     startBrainChild,
@@ -1821,6 +1823,65 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
 
         expect(startingCalled).toBe(0);
         expect(sleeps).toBe(0)
+    })
+});
+
+test.describe('retryBrainBoot — a refused boot runs again in process (#849)', () => {
+    /**
+     * @summary A retry over a settled boot, with a lifecycle and a boot seam that record what ran.
+     * @param {Object|null} boot The settled boot.
+     * @param {Object} [options]
+     * @param {Boolean} [options.faulted=false] The lifecycle saw an owned-child fault.
+     * @param {Boolean} [options.quitting=false]
+     * @returns {{episodes: Number, retry: Object, starts: Number}}
+     */
+    function retryOver(boot, {faulted = false, quitting = false} = {}) {
+        const
+            ran   = {episodes: 0, starts: 0},
+            retry = retryBrainBoot({
+                boot,
+                lifecycle: {beginBrainBoot: () => { ran.episodes++; return !faulted }},
+                quitting,
+                start    : () => { ran.starts++; return Promise.resolve({up: true}) }
+            });
+
+        return {...ran, retry}
+    }
+
+    const refusedAs = source => ({cause: {detail: 'http://127.0.0.1:9', source}, error: 'refused', up: false});
+
+    test('each refusal that says nothing against the stored PAT opens a new episode and boots once more', () => {
+        expect([...RETRYABLE_BOOT_REFUSALS].sort()).toEqual(['plane-not-a-plane', 'plane-refused', 'plane-unreachable']);
+
+        for (const source of RETRYABLE_BOOT_REFUSALS) {
+            const {episodes, retry, starts} = retryOver(refusedAs(source));
+
+            expect(retry.ok, source).toBe(true);
+            expect(retry.reason, source).toBeNull();
+            expect(retry.boot, source).toBeInstanceOf(Promise);
+            expect({episodes, starts}, source).toEqual({episodes: 1, starts: 1});
+            expect(bootFailureCause(Object.assign(new Error('x'), {code: source})), `${source} is a cause a boot settles with`).not.toBeNull()
+        }
+    });
+
+    test('a refusal a retry cannot fix, a boot that is up or still running, and a quitting shell start nothing', () => {
+        const cases = [
+            [refusedAs('plane-credential-refused'), {},               'not-retryable'],
+            [refusedAs('plane-identity-changed'),   {},               'not-retryable'],
+            [refusedAs('organism-beside-plane'),    {},               'not-retryable'],
+            [{cause: null, error: 'x', up: false},  {},               'not-retryable'],
+            [refusedAs('plane-refused'),            {faulted: true},  'not-retryable'],
+            [{fleetPort: 8083, up: true},           {},               'boot-up'],
+            [null,                                  {},               'boot-running'],
+            [refusedAs('plane-refused'),            {quitting: true}, 'quitting']
+        ];
+
+        for (const [boot, options, reason] of cases) {
+            const {retry, starts} = retryOver(boot, options);
+
+            expect(retry, reason).toEqual({boot: null, ok: false, reason});
+            expect(starts, reason).toBe(0)
+        }
     })
 });
 

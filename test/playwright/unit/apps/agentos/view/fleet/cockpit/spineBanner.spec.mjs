@@ -2,12 +2,13 @@ import {setup} from '../../../../../../setup.mjs';
 
 setup({appConfig: {name: 'FleetSpineBannerTest'}});
 
-import {test, expect} from '@playwright/test';
-import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import FleetAdmission from '../../../../../../../../apps/agentos/util/FleetAdmission.mjs';
-import PlaneVerdict   from '../../../../../../../../apps/agentos/util/PlaneVerdict.mjs';
-import SpineBanner    from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
+import {test, expect}                             from '@playwright/test';
+import Neo                                        from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core                                  from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import FleetAdmission                             from '../../../../../../../../apps/agentos/util/FleetAdmission.mjs';
+import PlaneVerdict                               from '../../../../../../../../apps/agentos/util/PlaneVerdict.mjs';
+import SpineBanner                                from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
+import {bootFailureCause, RETRYABLE_BOOT_REFUSALS} from '../../../../../../../../harness/brain.mjs';
 
 /**
  * The full derivation matrix for the cockpit's per-SPINE honesty pill: a cold GRID (no source has
@@ -210,7 +211,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
     test.describe('a plane that refused this shell — the refusal speaks, in the child\'s own words', () => {
         const refused = {cause: 'plane-refused', reason: '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch', state: 'degraded'};
 
-        test('it names the refusal, quotes the reason, and offers Connect to reach the card again', () => {
+        test('it names the refusal, quotes the reason, and offers Retry: the plane said nothing against the PAT', () => {
             const verdict = SpineBanner.deriveSpineBanner({
                 daemon: refused,
                 grid  : {state: 'cold', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
@@ -218,19 +219,19 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             });
 
             expect(verdict).toEqual({
-                action   : 'connect-plane',
-                ariaLabel: 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch',
+                action   : 'retry-plane',
+                ariaLabel: 'The plane refused this shell — retry, or connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch',
                 hidden   : false,
                 kind     : 'cold',
-                lead     : 'The plane refused this shell — connect it again',
+                lead     : 'The plane refused this shell — retry, or connect it again',
                 text     : 'plane refused',
-                title    : 'The plane refused this shell — connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch'
+                title    : 'The plane refused this shell — retry, or connect it again · [fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch'
             })
         });
 
         test('a refusal whose line was withheld still names itself', () => {
             expect(SpineBanner.deriveSpineBanner({daemon: {...refused, reason: null}, grid: {state: 'cold'}, stream: {state: 'cold'}}).title)
-                .toBe('The plane refused this shell — connect it again')
+                .toBe('The plane refused this shell — retry, or connect it again')
         })
     });
 
@@ -239,16 +240,16 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             cold    = {state: 'cold', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
             derive  = cause => SpineBanner.deriveSpineBanner({daemon: {cause, reason: 'http://127.0.0.1:9', state: 'degraded'}, grid: cold, stream: cold}),
             answers = [
-                ['plane-unreachable',        'plane unreachable', PlaneVerdict.sentences.unreachable],
-                ['plane-credential-refused', 'pat refused',       PlaneVerdict.sentences.rejected],
-                ['plane-not-a-plane',        'not a plane',       PlaneVerdict.sentences['not-a-plane']]
+                ['plane-unreachable',        'plane unreachable', PlaneVerdict.sentences.unreachable,      'retry-plane'],
+                ['plane-credential-refused', 'pat refused',       PlaneVerdict.sentences.rejected,         'connect-plane'],
+                ['plane-not-a-plane',        'not a plane',       PlaneVerdict.sentences['not-a-plane'],   'retry-plane']
             ];
 
-        test('each answer leads with the card\'s sentence, names the plane by address, and offers Connect', () => {
-            for (const [cause, text, sentence] of answers) {
+        test('each answer leads with the card\'s sentence, names the plane by address, and offers its way back', () => {
+            for (const [cause, text, sentence, action] of answers) {
                 const verdict = derive(cause);
 
-                expect(verdict, cause).toMatchObject({action: 'connect-plane', hidden: false, kind: 'cold', text});
+                expect(verdict, cause).toMatchObject({action, hidden: false, kind: 'cold', text});
                 expect(verdict.title.startsWith(sentence), cause).toBe(true);
                 expect(verdict.title.endsWith(' · http://127.0.0.1:9'), cause).toBe(true);
                 expect(verdict.ariaLabel).toBe(verdict.title)
@@ -266,6 +267,31 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         test('a cause that only shares a name with an object key is not one of them', () => {
             expect(derive('constructor').text).not.toBe(undefined);
             expect(derive('constructor').action).not.toBe('connect-plane')
+        })
+    });
+
+    test.describe('Retry or Connect — the way back each boot refusal allows (#849)', () => {
+        const
+            cold   = {state: 'cold', connection: {state: 'refused', reason: 'fleet: Brain is not ready'}},
+            derive = cause => SpineBanner.deriveSpineBanner({daemon: {cause, reason: 'http://127.0.0.1:9', state: 'degraded'}, grid: cold, stream: cold});
+
+        test('every refusal the shell runs again offers Retry, and its lead names both ways back', () => {
+            for (const cause of RETRYABLE_BOOT_REFUSALS) {
+                const verdict = derive(cause);
+
+                expect(verdict.action, cause).toBe('retry-plane');
+                expect(verdict.lead, cause).toMatch(/retry, or connect/i)
+            }
+        });
+
+        test('the credential\'s own two and a plane beside the shell offer Connect only (AC-2)', () => {
+            for (const cause of ['plane-credential-refused', 'plane-identity-changed', 'organism-beside-plane']) {
+                const verdict = derive(cause);
+
+                expect(bootFailureCause(Object.assign(new Error('x'), {code: cause})), `${cause} is a boot refusal`).not.toBeNull();
+                expect(verdict.action, cause).toBe('connect-plane');
+                expect(verdict.lead, cause).not.toMatch(/retry/i)
+            }
         })
     });
 

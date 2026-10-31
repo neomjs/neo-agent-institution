@@ -111,6 +111,20 @@ export function createAppLifecycle({
     }
 
     /**
+     * @summary Opens the episode of a boot run again: the refusal that ended the last boot stops being
+     * the retained cause, so the next settle records its own. The state stays `degraded` until then.
+     * @returns {Boolean} `false` after an owned-child fault, whose cause a new boot must not erase.
+     */
+    function beginBrainBoot() {
+        if (brainFaulted) {
+            return false
+        }
+
+        brainCause = null;
+        return true
+    }
+
+    /**
      * @summary Coalesces every exit path onto one owned-child teardown promise.
      * @returns {Promise<Object|null>}
      */
@@ -321,6 +335,7 @@ export function createAppLifecycle({
 
     return {
         attachCockpitWindow,
+        beginBrainBoot,
         exitTerminal,
         /**
          * @summary The shell health wire payload: current state plus the retained cause.

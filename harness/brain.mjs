@@ -604,6 +604,42 @@ export function bootFailureCause(error) {
 }
 
 /**
+ * The boot refusals a Retry answers: the plane's answers that say nothing against the stored PAT. The
+ * credential's two need a PAT and `organism-beside-plane` needs another plane, so they keep Connect.
+ * `SpineBanner` offers Retry for the same set.
+ * @type {Set<String>}
+ */
+export const RETRYABLE_BOOT_REFUSALS = new Set(['plane-not-a-plane', 'plane-refused', 'plane-unreachable']);
+
+/**
+ * @summary Runs a boot again, in this process, after one settled down with a retryable refusal: a new
+ * lifecycle episode, then the boot itself, which reads the stored record again. Nothing prompts for a
+ * PAT and nothing relaunches; the caller retains the new boot.
+ * @param {Object} options
+ * @param {Object|null} options.boot The settled boot (`{up, cause}`), or `null` while one runs.
+ * @param {Object} options.lifecycle The lifecycle owner; its `beginBrainBoot()` opens the new episode.
+ * @param {Boolean} options.quitting
+ * @param {Function} options.start `() => Promise<Object>`, the boot to run again.
+ * @returns {{boot: (Promise<Object>|null), ok: Boolean, reason: (String|null)}} `reason` is `quitting`,
+ *     `boot-running`, `boot-up` or `not-retryable` when nothing started.
+ */
+export function retryBrainBoot({boot, lifecycle, quitting, start}) {
+    let reason = null;
+
+    if (quitting) {
+        reason = 'quitting'
+    } else if (!boot) {
+        reason = 'boot-running'
+    } else if (boot.up === true) {
+        reason = 'boot-up'
+    } else if (!RETRYABLE_BOOT_REFUSALS.has(boot.cause?.source) || !lifecycle.beginBrainBoot()) {
+        reason = 'not-retryable'
+    }
+
+    return reason ? {boot: null, ok: false, reason} : {boot: start(), ok: true, reason: null}
+}
+
+/**
  * @summary Allocates a free loopback TCP port via a zero-port listen. The classic race (another
  * process binding between close and child bind) is accepted: the child's own bind failure exits
  * it early, which the readiness contract converts into a deterministic boot rejection.

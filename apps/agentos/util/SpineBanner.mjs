@@ -93,16 +93,17 @@ const DAEMON_FAULT_STATES = Object.freeze(['degraded', 'stopped']);
 /**
  * The refusals the shell tells apart by asking the plane — at boot (`harness/brain.mjs`
  * `typePlaneRefusal`) and, for the credential's own two, while it runs (`verifyPlane()`): each one's
- * pill word, and its title's lead, which is the connect card's sentence for that answer
- * ({@link AgentOS.util.PlaneVerdict}) followed by what connecting again fixes. At boot their reason is
- * the plane's address.
+ * pill word, its action, and its title's lead, which is the connect card's sentence for that answer
+ * ({@link AgentOS.util.PlaneVerdict}) followed by the way back. An answer that says nothing against the
+ * stored PAT offers Retry (the boot runs again with it, `retryPlane()`); the credential's own two need
+ * a PAT, so they offer Connect. At boot their reason is the plane's address.
  * @type {Object}
  */
 const PLANE_REFUSALS = Object.freeze({
-    'plane-credential-refused': {lead: `${PlaneVerdict.sentences.rejected} Connect again with a current one.`, text: 'pat refused'},
-    'plane-identity-changed'  : {lead: 'The plane now names that PAT as another account. Connect again to confirm it.', text: 'account changed'},
-    'plane-not-a-plane'       : {lead: `${PlaneVerdict.sentences['not-a-plane']} Connect to the plane's own address.`, text: 'not a plane'},
-    'plane-unreachable'       : {lead: `${PlaneVerdict.sentences.unreachable} Bring that plane back, or connect to another.`, text: 'plane unreachable'}
+    'plane-credential-refused': {action: 'connect-plane', lead: `${PlaneVerdict.sentences.rejected} Connect again with a current one.`, text: 'pat refused'},
+    'plane-identity-changed'  : {action: 'connect-plane', lead: 'The plane now names that PAT as another account. Connect again to confirm it.', text: 'account changed'},
+    'plane-not-a-plane'       : {action: 'retry-plane', lead: `${PlaneVerdict.sentences['not-a-plane']} Retry, or connect to the plane's own address.`, text: 'not a plane'},
+    'plane-unreachable'       : {action: 'retry-plane', lead: `${PlaneVerdict.sentences.unreachable} Bring that plane back and retry, or connect to another.`, text: 'plane unreachable'}
 });
 
 /**
@@ -271,26 +272,27 @@ class SpineBanner extends Base {
             return verdict('cold', 'plane here', 'A plane already runs on this machine — connect this shell to it', daemon.reason, 'connect-plane')
         }
 
-        // The plane refused this shell's fleet child: the reason is the child's own last line. A stored
-        // record reads as configured, so the card does not come back by itself; Connect brings it.
+        // The plane refused this shell's fleet child: the reason is the child's own last line. The plane
+        // said nothing against the stored PAT, so Retry runs the boot again with it; Connect stays on the
+        // card for another plane or another PAT.
         if (daemon?.cause === 'plane-refused') {
-            return verdict('cold', 'plane refused', 'The plane refused this shell — connect it again', daemon.reason, 'connect-plane')
+            return verdict('cold', 'plane refused', 'The plane refused this shell — retry, or connect it again', daemon.reason, 'retry-plane')
         }
 
         // A refusal the shell told apart by asking the plane speaks the card's words for that answer.
         if (Object.hasOwn(PLANE_REFUSALS, daemon?.cause ?? '')) {
-            const {lead, text} = PLANE_REFUSALS[daemon.cause];
+            const {action, lead, text} = PLANE_REFUSALS[daemon.cause];
 
-            return verdict('cold', text, lead, daemon.reason, 'connect-plane')
+            return verdict('cold', text, lead, daemon.reason, action)
         }
 
         // The same answers while the shell runs: a roster read failed, and the shell's probe named the
-        // launched PAT. A roster that was live keeps its last-known rows, so its skin is degraded; Connect
-        // is still the one action that can fix a credential.
+        // launched PAT. A roster that was live keeps its last-known rows, so its skin is degraded. The
+        // probe names only the credential's own two, whose action is Connect.
         if (Object.hasOwn(PLANE_REFUSALS, plane?.cause ?? '')) {
-            const {lead, text} = PLANE_REFUSALS[plane.cause];
+            const {action, lead, text} = PLANE_REFUSALS[plane.cause];
 
-            return verdict(grid?.state === 'cold' ? 'cold' : 'degraded', text, lead, null, 'connect-plane')
+            return verdict(grid?.state === 'cold' ? 'cold' : 'degraded', text, lead, null, action)
         }
 
         // Only a cold GRID enters the cold family: its copy asserts server facts, and a cold sibling

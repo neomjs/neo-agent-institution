@@ -5,6 +5,7 @@ import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import OperatorInbox               from '../../../util/OperatorInbox.mjs';
 import RecentTurnsRead             from '../../../util/RecentTurnsRead.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
+import SpineAction                 from '../../../util/SpineAction.mjs';
 import StageWindow                 from '../../../util/StageWindow.mjs';
 import TargetBinding               from '../../../util/TargetBinding.mjs';
 
@@ -372,18 +373,11 @@ class Controller extends FleetBatchController {
     }
 
     /**
-     * @summary The spine banner's one action. Beside a running plane there is nothing to reconnect:
-     * the shell refused its own organism on purpose, so the action opens the plane card, which lives
-     * with the viewport. Every other verdict reconnects the fleet.
+     * @summary The spine banner's one action ({@link AgentOS.util.SpineAction}).
+     * @returns {Promise<void>}
      */
     onSpineAction() {
-        const me = this;
-
-        if (me.component.getStateProvider()?.getData('spineBanner')?.action === 'connect-plane') {
-            me.getParent()?.showPlaneSetup?.()
-        } else {
-            me.reconnectFleet()
-        }
+        return SpineAction.run(this)
     }
 
     /**
