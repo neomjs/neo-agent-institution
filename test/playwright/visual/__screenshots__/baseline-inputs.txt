@@ -326,6 +326,9 @@ apps/agentos/util/SetupAsks.mjs
 apps/agentos/util/SourceHealth.mjs
     f596b49579472a667480bad7a0f0975276efb5ec
 
+apps/agentos/util/SpineAction.mjs
+    279aec6770037d4d7ebb2b82e7085e9e118b8c92
+
 apps/agentos/util/SpineBanner.mjs
     5cf342c271685d3484a3e0458fb8afac5b0ab04d
 
@@ -384,7 +387,7 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     c1bc14965a740f9bb1c645e0935846a79fe42253
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    9429a16ec5970ca6c06706349f87e7ccd69bdbc4
+    76a872a8a6a784f5f36f3ed0d4d92905e6b25d4a
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
