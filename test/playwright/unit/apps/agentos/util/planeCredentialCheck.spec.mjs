@@ -11,6 +11,8 @@ import Neo            from '../../../../../../node_modules/neo.mjs/src/Neo.mjs';
 import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 
 import PlaneCredentialCheck from '../../../../../../apps/agentos/util/PlaneCredentialCheck.mjs';
+import SpineBanner          from '../../../../../../apps/agentos/util/SpineBanner.mjs';
+import LivenessCadence      from '../../../../../../apps/agentos/util/LivenessCadence.mjs';
 
 /**
  * @summary The cockpit asks the shell about the launched PAT on a failed roster read, on a degraded presence
@@ -218,5 +220,68 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         await PlaneCredentialCheck.ask(other, 'failed-upstream');
 
         expect(other.data.planeCause).toBe(null)
+    });
+
+    test('worst-case alignment against the 300 s plane PAT cache reaches "pat refused" within the 360 s (6 min) bound (#845)', async () => {
+        const
+            planeCacheTtlMs = 300_000,
+            recheckInterval = LivenessCadence.DEFAULT_RECHECK,
+            documentedBound = planeCacheTtlMs + recheckInterval,
+            owner           = makeOwner(recheckInterval),
+            originalNow     = Date.now;
+
+        expect(recheckInterval).toBe(60_000);
+        expect(documentedBound).toBe(360_000);
+
+        let clock          = 0,
+            revokedAtGitHub = false,
+            cacheExpiresAt = planeCacheTtlMs;
+
+        Date.now = () => clock;
+        globalThis.Neo.main = {
+            addon: {
+                ShellPlane: {
+                    verifyPlane: args => {
+                        calls.push({at: clock, ...args});
+                        if (clock < cacheExpiresAt) {
+                            return Promise.resolve({cause: null})
+                        }
+                        return Promise.resolve({cause: revokedAtGitHub ? 'plane-credential-refused' : null})
+                    }
+                }
+            }
+        };
+
+        try {
+            // Revoked immediately after the plane cached a valid verification at t = 0 (expires at t = 300_000 ms)
+            clock = 1;
+            revokedAtGitHub = true;
+            const revokedAt = clock;
+
+            // Worst-case alignment: an episode/re-check asks at t = 299_999 ms, 1 ms before the 300 s plane cache expires.
+            // Even if presence stays degraded afterwards, observe() will not ask again for the open episode; recheck() must.
+            clock = planeCacheTtlMs - 1;
+            await PlaneCredentialCheck.observe(owner, {presence: {state: 'degraded'}});
+            expect(owner.data.planeCause, '1 ms before plane cache expiry, the cached admission still holds').toBe(null);
+
+            // Advance the fake clock on the 15 s liveness pass until "pat refused" reaches the spine
+            let detectedAt = null;
+            for (let tick = 300_000; tick <= 600_000; tick += LivenessCadence.DEFAULT_PASS) {
+                clock = tick;
+                await PlaneCredentialCheck.observe(owner, {presence: {state: 'degraded'}});
+                await PlaneCredentialCheck.recheck(owner, clock);
+
+                const banner = SpineBanner.deriveSpineBanner({plane: {cause: owner.data.planeCause}});
+                if (banner?.text === 'pat refused') {
+                    detectedAt = clock;
+                    break
+                }
+            }
+
+            expect(detectedAt).toBe(360_000);
+            expect(detectedAt - revokedAt).toBeLessThanOrEqual(documentedBound)
+        } finally {
+            Date.now = originalNow
+        }
     })
 });
