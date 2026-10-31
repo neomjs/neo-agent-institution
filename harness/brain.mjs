@@ -384,12 +384,6 @@ export async function fleetReadyOrPlaneRefusal({awaitReady, child, lastLine, mod
 }
 
 /**
- * Total bound for login-time recovery when a stored plane does not answer at boot (`plane-starting`).
- * @type {Number}
- */
-export const PLANE_STARTING_BOUND_MS = 180_000;
-
-/**
  * Delay after each settled plane re-probe before the next (`plane-starting`).
  * @type {Number}
  */
@@ -477,13 +471,16 @@ function abortableWait(ms, signal) {
 
 /**
  * @summary Boots the Fleet child and, when a stored plane-attach launch fails with `plane-unreachable`
- * (e.g. Docker still coming up at login), enters the `plane-starting` state, re-probes on a bounded
- * cadence (`retryMs`, one in flight at a time) up to `deadlineMs`, and spawns the Fleet child again
- * when the plane answers. Whole-Brain health observation (`watch`) attaches only after the child is
- * ready so a pre-ready plane-attach exit does not poison `settleBrainBoot(true)` as `owned-child-termination`.
+ * (e.g. Docker still coming up at login), enters the `plane-starting` state, re-probes on a cadence
+ * (`retryMs`, one in flight at a time), and spawns the Fleet child again when the plane answers. A
+ * stored plane stays authority while it is silent, so the wait has no deadline: it ends when the plane
+ * answers (accepted attaches; a refused credential, a changed identity or an answer that is not a plane
+ * ends it with that typed refusal) or on `signal`. A child the plane refuses as unreachable after an
+ * accepted probe keeps the wait going, since a plane coming up at login can restart its containers in
+ * between. Whole-Brain health observation (`watch`) attaches only after the child is ready so a
+ * pre-ready plane-attach exit does not poison `settleBrainBoot(true)` as `owned-child-termination`.
  * @param {Object} options
  * @param {Object[]|null} [options.children=null] The owner's drain list (`brainState.children`).
- * @param {Number} [options.deadlineMs=PLANE_STARTING_BOUND_MS] Total recovery bound from initial boot start.
  * @param {String} options.mode The boot plan's mode (`'plane-attach'|'attach'|'own'`).
  * @param {Function} [options.now=Date.now] Clock seam for tests.
  * @param {Function} [options.onPlaneStarting] Called when entering `plane-starting`.
@@ -498,7 +495,6 @@ function abortableWait(ms, signal) {
  */
 export async function bootFleetWithPlaneRecovery({
     children = null,
-    deadlineMs = PLANE_STARTING_BOUND_MS,
     mode,
     now = Date.now,
     onPlaneStarting = () => {},
@@ -557,10 +553,10 @@ export async function bootFleetWithPlaneRecovery({
 
         onPlaneStarting(markTransportStarting({since: startedAt}, 'plane-starting', {now}));
 
-        while (!signal?.aborted && now() - startedAt < deadlineMs) {
+        while (!signal?.aborted) {
             await sleep(retryMs, signal);
 
-            if (signal?.aborted || now() - startedAt >= deadlineMs) {
+            if (signal?.aborted) {
                 break
             }
 
@@ -573,7 +569,15 @@ export async function bootFleetWithPlaneRecovery({
             }
 
             if (answer?.verdict === 'accepted' && cause === 'plane-refused') {
-                return await runAttempt()
+                try {
+                    return await runAttempt()
+                } catch (error) {
+                    if (error?.code !== 'plane-unreachable') {
+                        throw error
+                    }
+
+                    continue
+                }
             }
 
             if (cause !== 'plane-unreachable' && cause !== 'plane-refused') {

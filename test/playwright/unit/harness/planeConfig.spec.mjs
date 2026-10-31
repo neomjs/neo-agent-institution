@@ -378,6 +378,24 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         }
     });
 
+    test('a 5xx at either initialize is a plane that has not answered yet: its ingress answers for a Memory Core still starting (#847)', async () => {
+        for (const status of [500, 502, 503, 504]) {
+            const ingress = stranger(status);
+
+            expect(await probePlaneCredential({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, fetchFn: ingress.fetchFn}), String(status))
+                .toEqual({identity: null, verdict: 'unreachable'});
+            expect(ingress.requests, `${status}: the PAT stays home until the plane challenges`).toEqual([null]);
+
+            const plane = fakePlane();
+
+            expect(await probePlaneCredential({
+                bearer   : BEARER,
+                fetchFn  : async (url, init) => init.headers?.Authorization ? answer(status, '') : plane.fetchFn(url, init),
+                planeBase: 'http://127.0.0.1:3102'
+            }), `${status} after the challenge`).toEqual({identity: null, verdict: 'unreachable'})
+        }
+    });
+
     test('a plane that refuses the PAT rejects it; an MCP server that is not the Memory Core is not a plane', async () => {
         expect(await probePlaneCredential({planeBase: 'https://plane.example', bearer: BEARER, fetchFn: fakePlane({admits: false}).fetchFn})).toEqual({identity: null, verdict: 'rejected'});
 

@@ -1872,8 +1872,12 @@ app.whenReady().then(async () => {
     brainBootPromise = brainMode
         ? (diagnosticMode ? bootSmokeBrain() : bootProductBrain())
             .catch(error => {
-                console.log('HARNESS_BRAIN_BOOT_FAILED ' + error.message);
-                return {cause: bootFailureCause(error), error: error.message, up: false}
+                const cause = bootFailureCause(error);
+
+                // A typed refusal keeps the Fleet child's first line as its message, so only the cause
+                // says which answer ended the boot.
+                console.log(`HARNESS_BRAIN_BOOT_FAILED [${cause?.source ?? 'untyped'}] ${error.message}`);
+                return {cause, error: error.message, up: false}
             })
             .then(boot => {
                 appLifecycle.settleBrainBoot(boot.up === true, boot.cause);

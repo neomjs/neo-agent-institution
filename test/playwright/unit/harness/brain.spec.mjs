@@ -38,7 +38,6 @@ import {
     fleetReadyOrPlaneRefusal,
     markTransportStarting,
     PLANE_REFUSAL_DETAIL_MAX,
-    PLANE_STARTING_BOUND_MS,
     PLANE_STARTING_RETRY_MS,
     planeProbeCause,
     planeRefusal,
@@ -1519,7 +1518,6 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
     });
 
     test('AC-1 (#735): stored plane unreachable at boot enters plane-starting, re-probes in flight one at a time, and boots Fleet when accepted', async () => {
-        expect(PLANE_STARTING_BOUND_MS).toBe(180_000);
         expect(PLANE_STARTING_RETRY_MS).toBe(5_000);
 
         let clock = 1_000;
@@ -1605,29 +1603,61 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
         expect(watched).toEqual([{label: 'fleet', pid: 5002}])
     });
 
-    test('AC-2 (#735): silence past PLANE_STARTING_BOUND_MS settles as plane-unreachable with the plane address', async () => {
-        let clock = 0;
-        const
-            now         = () => clock,
-            children    = [],
-            planeConfig = {bearer: 'pat-secret', identity: '@ada', planeBase: 'http://127.0.0.1:8080'};
+    test('#847: a stored plane silent past three minutes is still waited for, and attaches when it answers', async () => {
+        let attemptCount = 0,
+            clock        = 0;
 
-        let probes = 0;
+        const
+            planeConfig  = {bearer: 'pat-secret', identity: '@ada', planeBase: 'http://127.0.0.1:8080'},
+            // the boot's own typing probe, then 40 silent re-probes (200 s), then the plane
+            probeAnswers = [...Array(41).fill({verdict: 'unreachable'}), {verdict: 'accepted', identity: '@ada'}];
+
+        const result = await bootFleetWithPlaneRecovery({
+            mode        : 'plane-attach',
+            now         : () => clock,
+            planeConfig,
+            probe       : async () => probeAnswers.shift() ?? {verdict: 'unreachable'},
+            sleep       : async ms => {clock += ms},
+            spawnAttempt: async () => {
+                attemptCount++;
+                const child = createFakeChild({pid: 6000 + attemptCount});
+
+                return attemptCount === 1
+                    ? {
+                        awaitReady: async () => {
+                            child.exitCode = 1;
+                            queueMicrotask(() => child.emit('close', 1, null));
+                            throw new Error('fleet transport exited before readiness (code=1)')
+                        },
+                        child,
+                        lastLine: () => '[fleet] plane unreachable'
+                    }
+                    : {awaitReady: async () => {}, child}
+            }
+        });
+
+        expect(result.ok).toBe(true);
+        expect(attemptCount).toBe(2);
+        expect(clock, 'the wait outlived the 180 s it used to end at').toBe(205_000)
+    });
+
+    test('#847: quit ends a silent wait with the boot\'s plane-unreachable refusal', async () => {
+        let sleeps = 0;
+
+        const
+            children = [],
+            quit     = new AbortController();
 
         await expect(bootFleetWithPlaneRecovery({
             children,
-            mode : 'plane-attach',
-            now,
-            planeConfig,
-            probe: async () => {
-                probes++;
-                return {verdict: 'unreachable'}
-            },
-            sleep       : async ms => {
-                clock += ms
-            },
+            mode        : 'plane-attach',
+            planeConfig : {bearer: 'pat-secret', identity: '@ada', planeBase: 'http://127.0.0.1:8080'},
+            probe       : async () => ({verdict: 'unreachable'}),
+            signal      : quit.signal,
+            sleep       : async () => {++sleeps === 60 && quit.abort()},
             spawnAttempt: async () => {
-                const child = createFakeChild({pid: 6001});
+                const child = createFakeChild({pid: 6050});
+
                 return {
                     awaitReady: async () => {
                         child.exitCode = 1;
@@ -1635,18 +1665,66 @@ test.describe('transport starting fact & plane-starting recovery (#735, #739)', 
                         throw new Error('fleet transport exited before readiness (code=1)')
                     },
                     child,
-                    lastLine  : () => '[fleet] plane unreachable'
+                    lastLine: () => '[fleet] plane unreachable'
                 }
             }
-        })).rejects.toMatchObject({
-            code  : 'plane-unreachable',
-            detail: 'http://127.0.0.1:8080'
+        })).rejects.toMatchObject({code: 'plane-unreachable', detail: 'http://127.0.0.1:8080'});
+
+        expect(sleeps).toBe(60);
+        expect(children).toEqual([])
+    });
+
+    test('#847: a Fleet child the plane refuses as unreachable after an accepted probe keeps the wait going', async () => {
+        const failing = (child, line) => ({
+            awaitReady: async () => {
+                child.exitCode = 1;
+                queueMicrotask(() => child.emit('close', 1, null));
+                throw new Error('fleet transport exited before readiness (code=1)')
+            },
+            child,
+            lastLine: () => line
         });
 
-        // 1 initial typePlaneRefusal probe + (180_000 / 5_000 - 1) or 35/36 bounded retries within 180s
-        expect(probes).toBeGreaterThan(1);
-        expect(clock).toBeGreaterThanOrEqual(PLANE_STARTING_BOUND_MS);
-        expect(children).toEqual([])
+        // the plane answers, then restarts its containers before the child's own init (a login does this)
+        let attemptCount = 0;
+
+        const restarting = [
+            {verdict: 'unreachable'},              // the boot's typing probe
+            {verdict: 'accepted', identity: '@ada'}, // re-probe 1: the plane is up
+            {verdict: 'unreachable'},              // attempt 2's typing probe: it went away again
+            {verdict: 'accepted', identity: '@ada'}  // re-probe 2: back for good
+        ];
+
+        const result = await bootFleetWithPlaneRecovery({
+            mode        : 'plane-attach',
+            planeConfig : {bearer: 'pat-secret', identity: '@ada', planeBase: 'http://127.0.0.1:8080'},
+            probe       : async () => restarting.shift() ?? {verdict: 'unreachable'},
+            sleep       : async () => {},
+            spawnAttempt: async () => {
+                attemptCount++;
+                const child = createFakeChild({pid: 6200 + attemptCount});
+
+                return attemptCount < 3 ? failing(child, '[fleet] plane unreachable') : {awaitReady: async () => {}, child}
+            }
+        });
+
+        expect(result.ok).toBe(true);
+        expect(attemptCount).toBe(3);
+
+        // any other refusal of that child still ends the wait with it
+        attemptCount = 0;
+
+        const refused = [{verdict: 'unreachable'}, {verdict: 'accepted', identity: '@ada'}, {verdict: 'rejected'}];
+
+        await expect(bootFleetWithPlaneRecovery({
+            mode        : 'plane-attach',
+            planeConfig : {bearer: 'pat-secret', identity: '@ada', planeBase: 'http://127.0.0.1:8080'},
+            probe       : async () => refused.shift() ?? {verdict: 'unreachable'},
+            sleep       : async () => {},
+            spawnAttempt: async () => failing(createFakeChild({pid: 6300 + ++attemptCount}), '[fleet] plane refused the PAT')
+        })).rejects.toMatchObject({code: 'plane-credential-refused'});
+
+        expect(attemptCount).toBe(2)
     });
 
     test('AC-2 (#735): a re-probe that answers rejected, identity-changed, or not-a-plane ends the wait at once with that typed refusal', async () => {
