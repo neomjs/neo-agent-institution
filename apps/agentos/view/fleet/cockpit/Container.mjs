@@ -378,12 +378,11 @@ class FleetCockpit extends VesselContainer {
     livenessPollInterval = LivenessCadence.DEFAULT_PASS
     /**
      * How often (ms) the liveness tick asks the shell whether the plane still admits the launched PAT
-     * ({@link AgentOS.util.PlaneCredentialCheck#recheck}): the plane caches a PAT's check for 300 s by default,
-     * so asking more often finds nothing sooner. `0` disables the re-check; specs inject a short one.
-     * @member {Number} planeCredentialRecheckInterval=300000
+     * ({@link AgentOS.util.PlaneCredentialCheck#recheck}). `0` disables the re-check; specs inject a short one.
+     * @member {Number} planeCredentialRecheckInterval=LivenessCadence.DEFAULT_RECHECK
      * @protected
      */
-    planeCredentialRecheckInterval = 300_000
+    planeCredentialRecheckInterval = LivenessCadence.DEFAULT_RECHECK
     /**
      * The bounded window (ms) ONE liveness read gets before it is treated as a degrade. Boundedness
      * is the contract — a read may fail, it may never hang — the same shape and the same reason as
