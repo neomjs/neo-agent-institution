@@ -43,14 +43,22 @@ class TargetBinding extends Base {
             return false
         }
 
-        owner.lastLiveRows    = null;
-        owner.rosterWired     = false;
-        owner.rosterProfileId = null;
+        owner.lastLiveRows           = null;
+        owner.rosterWired            = false;
+        owner.rosterProfileId        = null;
+        owner.presenceWiredProfileId = null;
+        owner.a2aWiredProfileId      = null;
+        owner.planeOutageEpisodes    = null;
 
         store.clear();
 
         PlaneAdmission.retire(owner, {profileId});
-        owner.publishConnection('grid', {data: {gridAdapterState: 'cold', gridDegradedReason: null, presenceCapability: null}});
+        owner.publishConnection('grid', {data: {
+            gridAdapterState  : 'cold',
+            gridDegradedReason: null,
+            planeOutageNote   : {reason: null, recoveredAt: null, startedAt: null},
+            presenceCapability: null
+        }});
         grid && (grid.adapterState = 'cold');
 
         owner.reconcileSelection();

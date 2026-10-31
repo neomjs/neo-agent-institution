@@ -527,12 +527,15 @@ class LivenessController extends ViewerWakeController {
 
         const
             state    = provider.getData(stateKey) === 'cold' ? 'cold' : 'stale',
-            guidance = surface === 'stream' ? FleetAdmission.blankActivityGuidance() : null;
+            guidance = surface === 'stream' ? FleetAdmission.blankActivityGuidance() : null,
+            reason   = state === 'cold' ? null : this.toSafeDegradedReason(error);
+
+        FleetAdmission.recordSurfaceDegradation(this, surface, state, reason);
         this.publishConnection(surface, {error, data: {
             ...(guidance ? {activityGuidance: guidance} : {}),
             [stateKey]: state,
             // this surface's cause on this surface's field — never a shared slot a sibling clears
-            [causeKey]: state === 'cold' ? null : this.toSafeDegradedReason(error)
+            [causeKey]: reason
         }});
 
         consumer && guidance && (consumer.guidance = guidance);

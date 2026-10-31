@@ -48,7 +48,9 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     // here instead of silently reading undefined in production.
     const provData = (over = {}) => ({
         activityCounts: [], boundProfileId: null, daemonDegradedReason: null, daemonState: null,
-        gridAdapterState: 'cold', gridDegradedReason: null, presenceCapability: null,
+        gridAdapterState: 'cold', gridDegradedReason: null,
+        planeOutageNote: {reason: null, recoveredAt: null, startedAt: null},
+        presenceCapability: null,
         selectedAgentId: null, selectedAgentIdentity: null, shellTransport: null,
         streamAdapterState: 'cold', streamDegradedReason: null, ...over
     });
@@ -808,6 +810,79 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
         expect(host._brainStartingTimerId ?? null).toBeNull();
         expect(reconnected).toEqual(['reconnected'])
+    });
+
+    test('short plane outage between two reads (#844 AC-1, AC-2): fake clock + fake transport produces a spine note after recovery without blocking live or showing an action button', async () => {
+        const
+            {host, provider} = makeLivenessHost(),
+            originalNow      = Date.now,
+            t0               = Date.parse('2026-10-31T21:59:00.000Z'),
+            tCut             = Date.parse('2026-10-31T21:59:03.000Z'),
+            tRecovered       = Date.parse('2026-10-31T21:59:49.000Z');
+        let now = t0;
+
+        Date.now = () => now;
+
+        try {
+            // Read 1: initial wired activity admission at t0
+            await withBridge(async () => ({
+                capability: {
+                    slots: {
+                        a2a      : {state: 'wired'},
+                        'pr-lane': {state: 'wired'}
+                    },
+                    state: 'wired'
+                },
+                counts: [],
+                events: []
+            }), host);
+
+            expect(host.activityWired).toBe(true);
+            expect(verdictOf(provider.data).hidden).toBe(true);
+
+            // Plane cut at tCut (+3 s): transport fails during the cut
+            now = tCut;
+            await withBridge(async () => {
+                throw new Error('connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting')
+            }, host);
+
+            expect(provider.data.streamAdapterState).toBe('stale');
+            expect(verdictOf(provider.data).kind).toBe('degraded');
+
+            // Recovery at tRecovered (+46 s <= 60 s): plane answers again
+            now = tRecovered;
+            await withBridge(async () => ({
+                capability: {
+                    slots: {
+                        a2a      : {state: 'wired'},
+                        'pr-lane': {state: 'wired'}
+                    },
+                    state: 'wired'
+                },
+                counts: [],
+                events: []
+            }), host);
+
+            expect(provider.data.streamAdapterState).toBe('live');
+            expect(provider.data.planeOutageNote).toEqual({
+                reason     : 'connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting',
+                recoveredAt: tRecovered,
+                startedAt  : tCut
+            });
+
+            const verdict = verdictOf(provider.data);
+
+            expect(verdict.hidden).toBe(false);
+            expect(verdict.kind, 'does not block live').toBe('live');
+            expect(verdict.action, 'recovery stays automatic and needs no action').toBe('none');
+            expect(verdict.text).toBe('plane recovered');
+            expect(verdict.lead).toContain('Plane cut ');
+            expect(verdict.lead).toContain('(46 s) — recovered · connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting');
+            expect(verdict.title).toContain('2026-10-31T21:59:03.000Z–2026-10-31T21:59:49.000Z');
+            expect(deriveTruths(provider.data).instanceState).toBe('ok')
+        } finally {
+            Date.now = originalNow
+        }
     });
 });
 

@@ -1305,5 +1305,51 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.deploymentState.profileId).toBe('fleet-profile:v1:b');
             expect(provider.data.systemConnection).toEqual({state: null, reason: null})
         });
+
+        test('a plane cut <=60s between two deployment-state reads (#844 AC-1, AC-2) publishes planeOutageNote with restarted services and time window', async () => {
+            const
+                {host, provider} = makeSystemHost(),
+                t1               = Date.parse('2026-10-31T21:59:00.000Z'),
+                tCut             = Date.parse('2026-10-31T21:59:03.000Z'),
+                t2               = Date.parse('2026-10-31T21:59:49.000Z');
+            let call = 0;
+
+            installFleetBridge({
+                credentialIngress: 'shell',
+                profileId        : 'fleet-profile:v1:local',
+                target           : globalThis,
+                send             : () => ++call === 1
+                    ? okReply({
+                        ...picture(),
+                        generatedAt: t1,
+                        services   : [
+                            {serviceKey: 'mc-server', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000},
+                            {serviceKey: 'kb-server', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000},
+                            {serviceKey: 'fleet-server', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000},
+                            {serviceKey: 'orchestrator', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000}
+                        ]
+                    })
+                    : okReply({
+                        ...picture(),
+                        generatedAt: t2,
+                        services   : [
+                            {serviceKey: 'mc-server', status: 'available', classification: {sampleCount: 2}, startedAt: tCut},
+                            {serviceKey: 'kb-server', status: 'available', classification: {sampleCount: 2}, startedAt: tCut},
+                            {serviceKey: 'fleet-server', status: 'available', classification: {sampleCount: 2}, startedAt: tCut + 11_000},
+                            {serviceKey: 'orchestrator', status: 'available', classification: {sampleCount: 1}, startedAt: tCut + 34_000}
+                        ]
+                    })
+            });
+
+            await host.loadDeploymentState();
+            expect(provider.data.planeOutageNote).toBeUndefined();
+
+            await host.loadDeploymentState();
+            expect(provider.data.planeOutageNote).toEqual({
+                reason     : 'mc-server, kb-server, fleet-server, orchestrator restarted',
+                recoveredAt: t2,
+                startedAt  : tCut
+            })
+        });
     })
 });

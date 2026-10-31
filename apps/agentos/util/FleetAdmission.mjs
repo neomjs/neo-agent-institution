@@ -1,5 +1,6 @@
 import ActivityObserver from './ActivityObserver.mjs';
 import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import SpineBanner      from './SpineBanner.mjs';
 import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
@@ -38,6 +39,105 @@ class FleetAdmission extends Base {
          * @protected
          */
         className: 'AgentOS.util.FleetAdmission'
+    }
+
+    /**
+     * @summary Leaf-complete blank short-outage note for initial state and profile retirement.
+     * @returns {{reason:null,recoveredAt:null,startedAt:null}}
+     */
+    static blankOutageNote() {
+        return {reason: null, recoveredAt: null, startedAt: null}
+    }
+
+    /**
+     * @summary Opens a plane outage episode on `key` for an already-wired surface or capability slot,
+     * preserving the first observed start timestamp while the episode remains open for `profileId`.
+     * @param {Object} owner The liveness owner.
+     * @param {String} key `'grid'|'stream'|'presence'|'a2a'|'system'`
+     * @param {Object} [options={}]
+     * @param {Number} [options.now=Date.now()]
+     * @param {String|null} [options.profileId=null]
+     * @param {String|null} [options.reason=null]
+     */
+    static recordOutageStart(owner, key, {now = Date.now(), profileId = null, reason = null} = {}) {
+        if (!owner || !key || !Number.isFinite(now)) return;
+
+        const
+            episodes = owner.planeOutageEpisodes ??= Object.create(null),
+            existing = episodes[key],
+            safe     = (typeof reason === 'string' && reason.trim()) || 'plane restarted';
+
+        if (existing && existing.profileId === profileId) {
+            if (!existing.reason && safe) existing.reason = safe;
+            return
+        }
+
+        episodes[key] = {profileId, reason: safe, startedAt: now}
+    }
+
+    /**
+     * @summary Closes an open plane outage episode on `key` upon recovery and publishes `planeOutageNote`
+     * when the outage lasted `<= 60 s` (`SpineBanner.MAX_SHORT_OUTAGE_MS`) on the same profile without
+     * an active credential refusal (`planeCause`). Outages `> 60 s` are already named while down and
+     * do not produce a short-outage note.
+     * @param {Object} owner The liveness owner.
+     * @param {String} key `'grid'|'stream'|'presence'|'a2a'|'system'`
+     * @param {Object} [options={}]
+     * @param {Number} [options.now=Date.now()]
+     * @param {String|null} [options.profileId=null]
+     * @returns {{reason:String,recoveredAt:Number,startedAt:Number}|null}
+     */
+    static recordOutageRecovery(owner, key, {now = Date.now(), profileId = null} = {}) {
+        const
+            episodes = owner?.planeOutageEpisodes,
+            episode  = episodes?.[key];
+
+        if (!episode) return null;
+
+        delete episodes[key];
+
+        const
+            provider   = owner.component?.getStateProvider?.(),
+            durationMs = now - episode.startedAt;
+
+        if (episode.profileId !== profileId || !Number.isFinite(durationMs) || durationMs < 0) {
+            return null
+        }
+
+        if (durationMs > SpineBanner.MAX_SHORT_OUTAGE_MS) {
+            owner.lastLongPlaneOutageAt = now;
+            return null
+        }
+
+        if (provider?.getData?.('planeCause')) {
+            return null
+        }
+
+        const note = {
+            reason     : episode.reason || 'plane restarted',
+            recoveredAt: now,
+            startedAt  : episode.startedAt
+        };
+
+        provider?.setData?.({planeOutageNote: note});
+
+        return note
+    }
+
+    /**
+     * @summary Opens an outage episode when an already-wired surface degrades to `'stale'`.
+     * @param {Object} owner
+     * @param {String} surface `'grid'|'stream'`
+     * @param {String} state `'cold'|'stale'`
+     * @param {String|null} reason
+     */
+    static recordSurfaceDegradation(owner, surface, state, reason) {
+        if (state === 'stale' && (surface === 'grid' ? owner?.rosterWired : owner?.activityWired)) {
+            FleetAdmission.recordOutageStart(owner, surface, {
+                profileId: owner.bridge?.profileId ?? null,
+                reason   : reason || `${surface === 'grid' ? 'Roster' : 'Activity'} connection unavailable`
+            })
+        }
     }
 
     /**
@@ -211,25 +311,46 @@ class FleetAdmission extends Base {
      */
     static admitActivity(owner, {a2a = null, capability = null, counts = [], events, profileId = null, partial = false, reason = null, selector = null}) {
         const
-            store    = owner.resolveFleetActivityEventsStore(),
-            stream   = owner.getReference('activity-stream'),
-            state    = partial ? 'partial' : 'live',
-            answered = {counts: Array.isArray(counts) ? counts : [], events: Array.isArray(events) ? events : []},
-            admitted = selector ? ActivityObserver.admitLive(owner, {a2a, ...answered, reason}, selector) : answered,
-            guidance = FleetAdmission.deriveActivityGuidance({
+            wasWired  = Boolean(owner.activityWired) && (owner.activityProfileId === profileId || owner.activityProfileId === null),
+            a2aState  = capability?.slots?.a2a?.state ?? null,
+            now       = Date.now(),
+            sanitize  = value => owner.toSafeDegradedReason
+                ? owner.toSafeDegradedReason(value)
+                : (typeof value === 'string' && value.trim() ? value.trim() : null),
+            store     = owner.resolveFleetActivityEventsStore(),
+            stream    = owner.getReference('activity-stream'),
+            state     = partial ? 'partial' : 'live',
+            answered  = {counts: Array.isArray(counts) ? counts : [], events: Array.isArray(events) ? events : []},
+            admitted  = selector ? ActivityObserver.admitLive(owner, {a2a, ...answered, reason}, selector) : answered,
+            guidance  = FleetAdmission.deriveActivityGuidance({
                 capability,
                 events        : admitted.events,
                 intervalMs    : owner.component?.livenessCadence?.activity,
                 partial,
                 reason,
-                sanitizeReason: value => owner.toSafeDegradedReason
-                    ? owner.toSafeDegradedReason(value)
-                    : (typeof value === 'string' && value.trim() ? value.trim() : null)
+                sanitizeReason: sanitize
             });
 
         store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
+
+        if (wasWired) {
+            FleetAdmission.recordOutageRecovery(owner, 'stream', {now, profileId})
+        }
+        if (a2aState === 'wired') {
+            if (owner.a2aWiredProfileId === profileId) {
+                FleetAdmission.recordOutageRecovery(owner, 'a2a', {now, profileId})
+            }
+            owner.a2aWiredProfileId = profileId
+        } else if (a2aState === 'degraded' && owner.a2aWiredProfileId === profileId) {
+            FleetAdmission.recordOutageStart(owner, 'a2a', {
+                now,
+                profileId,
+                reason: sanitize(capability?.slots?.a2a?.reason ?? reason) || 'plane mailbox degraded'
+            })
+        }
+
         owner.publishConnection('stream', {data: {
             activityCounts      : admitted.counts,
             activityGuidance    : guidance,
@@ -298,10 +419,12 @@ class FleetAdmission extends Base {
      */
     static admitRoster(owner, {capabilities = null, profileId = null, rows}) {
         const
-            store    = owner.resolveFleetRosterStore(),
-            grid     = owner.getReference('fleet-grid'),
-            cockpit  = owner.component,
-            provider = cockpit.getStateProvider();
+            wasWired      = Boolean(owner.rosterWired) && (owner.rosterProfileId === profileId || owner.rosterProfileId === null),
+            presenceState = capabilities?.presence?.state ?? null,
+            store         = owner.resolveFleetRosterStore(),
+            grid          = owner.getReference('fleet-grid'),
+            cockpit       = owner.component,
+            provider      = cockpit.getStateProvider();
 
         owner.lastLiveRows    = rows;
         owner.rosterProfileId = profileId;
@@ -318,6 +441,22 @@ class FleetAdmission extends Base {
             // the first live snapshot replaces what the store holds wholesale — re-seat or clear a
             // selection made against a now-removed record
             owner.reconcileSelection()
+        }
+
+        if (wasWired) {
+            FleetAdmission.recordOutageRecovery(owner, 'grid', {now: owner.rosterObservedAt, profileId})
+        }
+        if (presenceState === 'wired') {
+            if (owner.presenceWiredProfileId === profileId) {
+                FleetAdmission.recordOutageRecovery(owner, 'presence', {now: owner.rosterObservedAt, profileId})
+            }
+            owner.presenceWiredProfileId = profileId
+        } else if (presenceState === 'degraded' && owner.presenceWiredProfileId === profileId) {
+            FleetAdmission.recordOutageStart(owner, 'presence', {
+                now   : owner.rosterObservedAt,
+                profileId,
+                reason: owner.toSafeDegradedReason?.(capabilities?.presence?.reason) || 'plane presence degraded'
+            })
         }
 
         owner.publishConnection('grid', {data: {

@@ -114,7 +114,7 @@ class ControlToolbar extends Toolbar {
             // First of the ACTION group — contextual: it exists only while the fleet pill shows.
             module   : Button,
             bind     : {
-                hidden : data => data.spineBanner.hidden,
+                hidden : data => data.spineBanner.hidden || data.spineBanner.action === 'none',
                 iconCls: data => SPINE_ACTIONS[data.spineBanner.action]?.iconCls ?? 'fa-solid fa-rotate',
                 text   : data => SPINE_ACTIONS[data.spineBanner.action]?.text ?? 'Reconnect'
             },

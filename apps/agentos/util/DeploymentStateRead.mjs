@@ -1,4 +1,6 @@
 import Base                         from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import FleetAdmission               from './FleetAdmission.mjs';
+import SpineBanner                  from './SpineBanner.mjs';
 import {FLEET_WIRE_RESPONSE_STATES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
@@ -32,6 +34,21 @@ const leafOf = (block, key) => {
     const value = block?.[key];
 
     return typeof value === 'string' || Number.isFinite(value) ? value : null
+};
+
+/**
+ * Parse a timestamp leaf (epoch ms or ISO string) to finite epoch ms, or `null`.
+ * @param {*} value
+ * @returns {Number|null}
+ */
+const parseTimestamp = value => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim()) {
+        const parsed = Date.parse(value);
+
+        return Number.isFinite(parsed) ? parsed : null
+    }
+    return null
 };
 
 class DeploymentStateRead extends Base {
@@ -126,6 +143,89 @@ class DeploymentStateRead extends Base {
     }
 
     /**
+     * @summary Detect a short plane cut or service restart (`<= 60 s`) between two answered
+     * deployment-state projections on the same profile. Inspects explicit service restart/start
+     * timestamps (`restartedAt`, `startedAt`, `inspect.currentRun.startedAt`) and sample-window
+     * resets (`classification.sampleCount` drop or `restartChurn.detecting` reset after a plane cut).
+     * @param {Object|null} previous Prior provider-held picture.
+     * @param {Object} projection Incoming validated projection.
+     * @param {Object} [stamp={}] `{profileId, observedAt}`
+     * @param {Number|null} [lastLongOutageAt=null] Epoch ms of a recently ended long (`> 60 s`) outage.
+     * @returns {{reason:String,recoveredAt:Number,startedAt:Number}|null}
+     */
+    static detectServiceRestartOutage(previous, projection, stamp = {}, lastLongOutageAt = null) {
+        if (
+            !previous ||
+            !['ok', 'stale'].includes(previous.state) ||
+            !['ok', 'stale'].includes(projection?.state) ||
+            previous.profileId !== (stamp.profileId ?? null)
+        ) {
+            return null
+        }
+
+        const
+            prevServices = Array.isArray(previous.services) ? previous.services : [],
+            nextServices = Array.isArray(projection.services) ? projection.services : [];
+
+        if (prevServices.length === 0 || nextServices.length === 0) return null;
+
+        const
+            prevByKey  = new Map(prevServices.filter(s => typeof s?.serviceKey === 'string').map(s => [s.serviceKey, s])),
+            prevAnchor = parseTimestamp(previous.generatedAt) ?? parseTimestamp(previous.observedAt),
+            nextAnchor = parseTimestamp(projection.generatedAt) ?? parseTimestamp(stamp.observedAt),
+            restarted  = [],
+            stamps     = [];
+
+        for (const service of nextServices) {
+            const
+                key  = service?.serviceKey,
+                prev = typeof key === 'string' ? prevByKey.get(key) : null;
+
+            if (!prev) continue;
+
+            const
+                explicitAt  = parseTimestamp(service.restartedAt ?? service.startedAt ?? service.inspect?.currentRun?.startedAt),
+                prevExplicit = parseTimestamp(prev.restartedAt ?? prev.startedAt ?? prev.inspect?.currentRun?.startedAt),
+                prevSamples = prev.classification?.sampleCount,
+                nextSamples = service.classification?.sampleCount,
+                sampleReset = Number.isFinite(prevSamples) && Number.isFinite(nextSamples) && nextSamples < prevSamples,
+                churnReset  = prev.restartChurn?.detecting === true && service.restartChurn?.detecting === false;
+
+            if (explicitAt !== null && ((prevExplicit !== null && explicitAt > prevExplicit) || (prevAnchor !== null && explicitAt > prevAnchor))) {
+                restarted.push(key);
+                stamps.push(explicitAt)
+            } else if (sampleReset || churnReset) {
+                restarted.push(key)
+            }
+        }
+
+        if (restarted.length === 0) return null;
+
+        const
+            recoveredAt = stamps.length > 0 ? Math.max(...stamps, nextAnchor ?? 0) : (nextAnchor ?? Date.now()),
+            startedAt   = stamps.length > 0
+                ? Math.min(...stamps)
+                : (Number.isFinite(prevAnchor) && recoveredAt >= prevAnchor
+                    ? Math.max(prevAnchor, recoveredAt - SpineBanner.MAX_SHORT_OUTAGE_MS)
+                    : recoveredAt),
+            durationMs  = recoveredAt - startedAt;
+
+        if (!Number.isFinite(durationMs) || durationMs < 0 || durationMs > SpineBanner.MAX_SHORT_OUTAGE_MS) {
+            return null
+        }
+
+        if (Number.isFinite(lastLongOutageAt) && Math.abs(recoveredAt - lastLongOutageAt) <= SpineBanner.MAX_SHORT_OUTAGE_MS) {
+            return null
+        }
+
+        return {
+            reason     : `${restarted.join(', ')} restarted`,
+            recoveredAt,
+            startedAt
+        }
+    }
+
+    /**
      * @summary Apply one deployment-state answer onto the provider-held picture: a validated
      * projection replaces the last-known one and clears this surface's connection observation —
      * the wire answered. Anything else is a torn answer: the last-known picture stays, the
@@ -142,7 +242,32 @@ class DeploymentStateRead extends Base {
             return
         }
 
-        owner.publishConnection('system', {data: {deploymentState: DeploymentStateRead.toPicture(projection, stamp)}})
+        const
+            provider    = owner.component?.getStateProvider?.(),
+            previous    = provider?.getData?.('deploymentState') ?? null,
+            profileId   = stamp.profileId ?? null,
+            observedAt  = Number.isFinite(stamp.observedAt) ? stamp.observedAt : Date.now(),
+            picture     = DeploymentStateRead.toPicture(projection, stamp);
+
+        let outageNote = null;
+
+        if (state === 'unavailable' && projection.reason !== FLEET_WIRE_RESPONSE_STATES.unsupportedMethod) {
+            if (previous && ['ok', 'stale'].includes(previous.state) && previous.profileId === profileId) {
+                FleetAdmission.recordOutageStart(owner, 'system', {
+                    now   : observedAt,
+                    profileId,
+                    reason: owner.toSafeDegradedReason?.(projection.reason) || 'plane deployment state unavailable'
+                })
+            }
+        } else if (state === 'ok' || state === 'stale') {
+            outageNote = FleetAdmission.recordOutageRecovery(owner, 'system', {now: observedAt, profileId})
+                ?? DeploymentStateRead.detectServiceRestartOutage(previous, projection, {observedAt, profileId}, owner.lastLongPlaneOutageAt ?? null)
+        }
+
+        owner.publishConnection('system', {data: {
+            deploymentState: picture,
+            ...(outageNote ? {planeOutageNote: outageNote} : {})
+        }})
     }
 
     /**
@@ -185,6 +310,16 @@ class DeploymentStateRead extends Base {
                 // answered by an older build: the picture's own reason, not a connection observation
                 DeploymentStateRead.apply(owner, {state: 'unavailable', reason: FLEET_WIRE_RESPONSE_STATES.unsupportedMethod}, {profileId, observedAt: Date.now()});
                 return
+            }
+
+            const previous = owner.component?.getStateProvider?.()?.getData?.('deploymentState');
+
+            if (previous && ['ok', 'stale'].includes(previous.state) && previous.profileId === profileId) {
+                FleetAdmission.recordOutageStart(owner, 'system', {
+                    now   : Date.now(),
+                    profileId,
+                    reason: owner.toSafeDegradedReason?.(error) || 'plane deployment state unavailable'
+                })
             }
 
             owner.publishConnection('system', {error})
