@@ -70,8 +70,9 @@ class PlaneCredentialCheck extends Base {
 
     /**
      * @summary The liveness tick's periodic re-check, due once per the cockpit's
-     * `planeCredentialRecheckInterval`: the one occasion that finds a PAT the plane now admits as another
-     * account. A missing or non-positive interval disables it.
+     * `planeCredentialRecheckInterval`: finds a revoked PAT once the plane's 300 s validation cache expires
+     * (even when an episode opened before expiry or every read stays wired) and a PAT the plane now admits as
+     * another account. A missing or non-positive interval disables it.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      * @param {Number} now Epoch ms of the tick.
      * @returns {Promise<void>}
