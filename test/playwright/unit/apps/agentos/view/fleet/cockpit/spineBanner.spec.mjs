@@ -808,10 +808,10 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(preWindow.lead).toBe('Fleet transport starting — the cockpit connects automatically')
         });
 
-        test('short plane outage note (#844 AC-1, AC-2): names a <=60s outage with reason and time window after recovery, needs no action, does not block live, and ignores >60s outages', () => {
+        test('short plane outage note (#844 AC-1, AC-2): names a recovered outage with product-word lead, retains reason and ISO window on title/ariaLabel, offers dismiss-outage, and does not block live', () => {
             const
                 startedAt   = Date.parse('2026-10-31T21:59:03.000Z'),
-                recoveredAt = Date.parse('2026-10-31T21:59:49.000Z'),
+                recoveredAt = Date.parse('2026-10-31T21:59:37.000Z'),
                 outage      = {
                     locale     : 'en-GB',
                     now        : recoveredAt,
@@ -827,17 +827,18 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 });
 
             expect(liveWithNote).toEqual({
-                action   : 'none',
-                ariaLabel: 'Plane cut 21:59–21:59 (46 s) — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:49.000Z',
+                action   : 'dismiss-outage',
+                ariaLabel: 'Plane restarted 21:59–21:59 — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z',
                 hidden   : false,
                 kind     : 'live',
-                lead     : 'Plane cut 21:59–21:59 (46 s) — recovered · mc-server, kb-server, fleet-server, orchestrator restarted',
+                lead     : 'Plane restarted 21:59–21:59 — recovered',
                 text     : 'plane recovered',
-                title    : 'Plane cut 21:59–21:59 (46 s) — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:49.000Z'
+                title    : 'Plane restarted 21:59–21:59 — recovered · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z'
             });
 
             // Alongside `feed partial` (Row 5's H2 walk where PR lanes are unconfigured), the spine
-            // preserves both the partial-feed summary and the plane-cut recovery note.
+            // preserves both the partial-feed summary and the product-word recovery note in `lead`,
+            // while keeping both retained reasons and the ISO window on `title`/`ariaLabel` only.
             const partialWithNote = SpineBanner.deriveSpineBanner({
                 grid  : {state: 'live'},
                 outage,
@@ -850,25 +851,9 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(partialWithNote.kind).toBe('degraded');
             expect(partialWithNote.text).toBe('feed partial');
             expect(partialWithNote.action).toBe('recheck');
-            expect(partialWithNote.lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane cut 21:59–21:59 (46 s) — recovered · mc-server, kb-server, fleet-server, orchestrator restarted');
-            expect(partialWithNote.title).toContain('2026-10-31T21:59:03.000Z–2026-10-31T21:59:49.000Z');
-
-            // Long outages (> 60 s, H1) are already named while down and do not produce a short-outage note.
-            const longOutage = SpineBanner.deriveSpineBanner({
-                grid  : {state: 'live'},
-                outage: {...outage, recoveredAt: startedAt + 61_000},
-                stream: {state: 'live'}
-            });
-
-            expect(longOutage).toEqual({
-                action   : null,
-                ariaLabel: '',
-                hidden   : true,
-                kind     : 'live',
-                lead     : '',
-                text     : '',
-                title    : ''
-            })
+            expect(partialWithNote.lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane restarted 21:59–21:59 — recovered');
+            expect(partialWithNote.title).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane restarted 21:59–21:59 — recovered · pr-lane: github token not configured · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z');
+            expect(partialWithNote.ariaLabel).toBe(partialWithNote.title)
         })
     })
 });

@@ -22,6 +22,7 @@ import DeploymentStateRead  from '../../../../../../../../apps/agentos/util/Depl
 import LivenessCadence      from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
 import ViewportController   from '../../../../../../../../apps/agentos/view/ViewportController.mjs';
 import {deriveFleetProfileId} from '../../../../../../../../apps/agentos/fleet/connectionProfiles.mjs';
+import {projectDeploymentStateForFleet} from '../../../../../../../../node_modules/neo-agent-brain/ai/services/fleet/projectDeploymentStateForFleet.mjs';
 import {
     createFleetWireResponse,
     FLEET_WIRE_RESPONSE_STATES
@@ -1306,12 +1307,19 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(provider.data.systemConnection).toEqual({state: null, reason: null})
         });
 
-        test('a plane cut <=60s between two deployment-state reads (#844 AC-1, AC-2) publishes planeOutageNote with restarted services and time window', async () => {
+        test('a plane cut <=60s between two deployment-state reads (#844 AC-1, AC-2) publishes planeOutageNote from services[].startedAt projected by projectDeploymentStateForFleet', async () => {
             const
                 {host, provider} = makeSystemHost(),
                 t1               = Date.parse('2026-10-31T21:59:00.000Z'),
                 tCut             = Date.parse('2026-10-31T21:59:03.000Z'),
-                t2               = Date.parse('2026-10-31T21:59:49.000Z');
+                tOrchestrator    = tCut + 34_000,
+                t2               = Date.parse('2026-10-31T21:59:49.000Z'),
+                row              = (serviceKey, startedAtIso, sampleCount) => ({
+                    serviceKey,
+                    status        : 'available',
+                    classification: {sampleCount},
+                    inspect       : {currentRun: {startedAt: startedAtIso}}
+                });
             let call = 0;
 
             installFleetBridge({
@@ -1319,26 +1327,24 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
                 profileId        : 'fleet-profile:v1:local',
                 target           : globalThis,
                 send             : () => ++call === 1
-                    ? okReply({
-                        ...picture(),
+                    ? okReply(projectDeploymentStateForFleet({
                         generatedAt: t1,
                         services   : [
-                            {serviceKey: 'mc-server', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000},
-                            {serviceKey: 'kb-server', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000},
-                            {serviceKey: 'fleet-server', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000},
-                            {serviceKey: 'orchestrator', status: 'available', classification: {sampleCount: 12}, startedAt: t1 - 600_000}
+                            row('mc-server',    new Date(t1 - 600_000).toISOString(), 12),
+                            row('kb-server',    new Date(t1 - 600_000).toISOString(), 12),
+                            row('fleet-server', new Date(t1 - 600_000).toISOString(), 12),
+                            row('orchestrator', new Date(t1 - 600_000).toISOString(), 12)
                         ]
-                    })
-                    : okReply({
-                        ...picture(),
+                    }, {ageMs: 1_000}))
+                    : okReply(projectDeploymentStateForFleet({
                         generatedAt: t2,
                         services   : [
-                            {serviceKey: 'mc-server', status: 'available', classification: {sampleCount: 2}, startedAt: tCut},
-                            {serviceKey: 'kb-server', status: 'available', classification: {sampleCount: 2}, startedAt: tCut},
-                            {serviceKey: 'fleet-server', status: 'available', classification: {sampleCount: 2}, startedAt: tCut + 11_000},
-                            {serviceKey: 'orchestrator', status: 'available', classification: {sampleCount: 1}, startedAt: tCut + 34_000}
+                            row('mc-server',    new Date(tCut).toISOString(),          2),
+                            row('kb-server',    new Date(tCut).toISOString(),          2),
+                            row('fleet-server', new Date(tCut + 11_000).toISOString(), 2),
+                            row('orchestrator', new Date(tOrchestrator).toISOString(), 1)
                         ]
-                    })
+                    }, {ageMs: 1_000}))
             });
 
             await host.loadDeploymentState();
@@ -1347,7 +1353,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             await host.loadDeploymentState();
             expect(provider.data.planeOutageNote).toEqual({
                 reason     : 'mc-server, kb-server, fleet-server, orchestrator restarted',
-                recoveredAt: t2,
+                recoveredAt: tOrchestrator,
                 startedAt  : tCut
             })
         });

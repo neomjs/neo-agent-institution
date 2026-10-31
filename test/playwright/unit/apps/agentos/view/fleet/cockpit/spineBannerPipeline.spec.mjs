@@ -21,6 +21,7 @@ import * as core                                                        from '..
 import                                                                       '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeActivityStoreHarness, makeControllerFake, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge}                                             from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
+import SpineAction                                                      from '../../../../../../../../apps/agentos/util/SpineAction.mjs';
 import {createFleetWireResponse}                                        from 'neo-agent-brain/fleet-contract';
 
 /**
@@ -812,16 +813,17 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         expect(reconnected).toEqual(['reconnected'])
     });
 
-    test('short plane outage between two reads (#844 AC-1, AC-2): fake clock + fake transport produces a spine note after recovery without blocking live or showing an action button', async () => {
+    test('plane outage between two reads (#844 AC-1, AC-2): real cadence spacing (t -> t + 60s + 150ms) produces a product-word spine note after recovery without blocking live, and dismiss-outage clears it', async () => {
         const
             {host, provider} = makeLivenessHost(),
             originalNow      = Date.now,
-            t0               = Date.parse('2026-10-31T21:59:00.000Z'),
+            t0               = Date.parse('2026-10-31T21:58:03.000Z'),
             tCut             = Date.parse('2026-10-31T21:59:03.000Z'),
-            tRecovered       = Date.parse('2026-10-31T21:59:49.000Z');
+            tRecovered       = tCut + 60_000 + 150;
         let now = t0;
 
         Date.now = () => now;
+        provider.getData = key => key === 'spineBanner' ? verdictOf(provider.data) : provider.data[key];
 
         try {
             // Read 1: initial wired activity admission at t0
@@ -840,7 +842,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
             expect(host.activityWired).toBe(true);
             expect(verdictOf(provider.data).hidden).toBe(true);
 
-            // Plane cut at tCut (+3 s): transport fails during the cut
+            // Plane cut at tCut: transport fails during the cut
             now = tCut;
             await withBridge(async () => {
                 throw new Error('connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting')
@@ -849,7 +851,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
             expect(provider.data.streamAdapterState).toBe('stale');
             expect(verdictOf(provider.data).kind).toBe('degraded');
 
-            // Recovery at tRecovered (+46 s <= 60 s): plane answers again
+            // Recovery at tCut + 60_000 + 150 (one 60 s cadence tick + answer latency): plane answers again
             now = tRecovered;
             await withBridge(async () => ({
                 capability: {
@@ -874,12 +876,22 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
 
             expect(verdict.hidden).toBe(false);
             expect(verdict.kind, 'does not block live').toBe('live');
-            expect(verdict.action, 'recovery stays automatic and needs no action').toBe('none');
+            expect(verdict.action, 'note offers Dismiss action').toBe('dismiss-outage');
             expect(verdict.text).toBe('plane recovered');
-            expect(verdict.lead).toContain('Plane cut ');
-            expect(verdict.lead).toContain('(46 s) — recovered · connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting');
-            expect(verdict.title).toContain('2026-10-31T21:59:03.000Z–2026-10-31T21:59:49.000Z');
-            expect(deriveTruths(provider.data).instanceState).toBe('ok')
+            expect(verdict.lead, 'product words only, without read-to-read gap or retained reason').toMatch(/^Plane restarted [^·()]+–[^·()]+ — recovered$/);
+            expect(verdict.title).toContain('connect ECONNREFUSED 127.0.0.1:8080 — mc-server restarting');
+            expect(verdict.title).toContain('2026-10-31T21:59:03.000Z–2026-10-31T22:00:03.150Z');
+            expect(deriveTruths(provider.data).instanceState).toBe('ok');
+
+            // Dismissing the note clears planeOutageNote and returns the live spine to hidden
+            await SpineAction.run(host);
+
+            expect(provider.data.planeOutageNote).toEqual({
+                reason     : null,
+                recoveredAt: null,
+                startedAt  : null
+            });
+            expect(verdictOf(provider.data).hidden).toBe(true)
         } finally {
             Date.now = originalNow
         }

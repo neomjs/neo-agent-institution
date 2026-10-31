@@ -8,9 +8,10 @@ import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
  * @type {Object}
  */
 const SPINE_ACTIONS = Object.freeze({
-    'connect-plane': {iconCls: 'fa-solid fa-plug',         text: 'Connect'},
-    recheck        : {iconCls: 'fa-solid fa-rotate',       text: 'Recheck'},
-    'retry-plane'  : {iconCls: 'fa-solid fa-rotate-right', text: 'Retry'}
+    'connect-plane' : {iconCls: 'fa-solid fa-plug',         text: 'Connect'},
+    'dismiss-outage': {iconCls: 'fa-solid fa-xmark',        text: 'Dismiss'},
+    recheck         : {iconCls: 'fa-solid fa-rotate',       text: 'Recheck'},
+    'retry-plane'   : {iconCls: 'fa-solid fa-rotate-right', text: 'Retry'}
 });
 
 /**
@@ -114,7 +115,7 @@ class ControlToolbar extends Toolbar {
             // First of the ACTION group — contextual: it exists only while the fleet pill shows.
             module   : Button,
             bind     : {
-                hidden : data => data.spineBanner.hidden || data.spineBanner.action === 'none',
+                hidden : data => data.spineBanner.hidden,
                 iconCls: data => SPINE_ACTIONS[data.spineBanner.action]?.iconCls ?? 'fa-solid fa-rotate',
                 text   : data => SPINE_ACTIONS[data.spineBanner.action]?.text ?? 'Reconnect'
             },

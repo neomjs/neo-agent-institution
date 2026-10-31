@@ -1,6 +1,5 @@
 import ActivityObserver from './ActivityObserver.mjs';
 import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
-import SpineBanner      from './SpineBanner.mjs';
 import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
@@ -77,9 +76,7 @@ class FleetAdmission extends Base {
 
     /**
      * @summary Closes an open plane outage episode on `key` upon recovery and publishes `planeOutageNote`
-     * when the outage lasted `<= 60 s` (`SpineBanner.MAX_SHORT_OUTAGE_MS`) on the same profile without
-     * an active credential refusal (`planeCause`). Outages `> 60 s` are already named while down and
-     * do not produce a short-outage note.
+     * on the same profile when no credential refusal (`planeCause`) is active.
      * @param {Object} owner The liveness owner.
      * @param {String} key `'grid'|'stream'|'presence'|'a2a'|'system'`
      * @param {Object} [options={}]
@@ -101,11 +98,6 @@ class FleetAdmission extends Base {
             durationMs = now - episode.startedAt;
 
         if (episode.profileId !== profileId || !Number.isFinite(durationMs) || durationMs < 0) {
-            return null
-        }
-
-        if (durationMs > SpineBanner.MAX_SHORT_OUTAGE_MS) {
-            owner.lastLongPlaneOutageAt = now;
             return null
         }
 

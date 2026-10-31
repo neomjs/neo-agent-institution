@@ -1,4 +1,5 @@
 import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import FleetAdmission     from './FleetAdmission.mjs';
 import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
 import PlaneAdmission     from './PlaneAdmission.mjs';
 
@@ -56,7 +57,7 @@ class TargetBinding extends Base {
         owner.publishConnection('grid', {data: {
             gridAdapterState  : 'cold',
             gridDegradedReason: null,
-            planeOutageNote   : {reason: null, recoveredAt: null, startedAt: null},
+            planeOutageNote   : FleetAdmission.blankOutageNote(),
             presenceCapability: null
         }});
         grid && (grid.adapterState = 'cold');

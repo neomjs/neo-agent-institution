@@ -225,9 +225,9 @@ class SpineBanner extends Base {
     }
 
     /**
-     * @summary Formats a recovered short plane outage (`<= 60 s`) into a viewer-local time window
-     * and reason for the spine honesty line, or returns `null` when absent, malformed, or longer
-     * than the refresh window (`MAX_SHORT_OUTAGE_MS`).
+     * @summary Formats a recovered plane outage note into a viewer-local time window and product-word
+     * lead for the spine honesty line, keeping the retained diagnostic `reason` and ISO window on
+     * `title` / `ariaLabel`, or returns `null` when absent or malformed.
      * @param {Object|null} outage `{startedAt, recoveredAt, reason, locale?, timeZone?, now?}`
      * @returns {{lead: String, reason: String, text: String, title: String, windowText: String, windowTitle: String}|null}
      */
@@ -239,7 +239,7 @@ class SpineBanner extends Base {
             recoveredAt = parseOutageTime(outage.recoveredAt),
             durationMs  = recoveredAt - startedAt;
 
-        if (!Number.isFinite(startedAt) || !Number.isFinite(recoveredAt) || durationMs < 0 || durationMs > MAX_SHORT_OUTAGE_MS) {
+        if (!Number.isFinite(startedAt) || !Number.isFinite(recoveredAt) || durationMs < 0) {
             return null
         }
 
@@ -251,12 +251,11 @@ class SpineBanner extends Base {
         if (!start || !end) return null;
 
         const
-            seconds     = Math.max(1, Math.round(durationMs / 1000)),
-            windowText  = `${start.text}–${end.text} (${seconds} s)`,
+            windowText  = `${start.text}–${end.text}`,
             windowTitle = `${start.title}–${end.title}`,
             reason      = (typeof outage.reason === 'string' && outage.reason.trim()) || 'plane restarted',
-            lead        = `Plane cut ${windowText} — recovered · ${reason}`,
-            title       = `${lead} · ${windowTitle}`;
+            lead        = `Plane restarted ${windowText} — recovered`,
+            title       = `${lead} · ${reason} · ${windowTitle}`;
 
         return {lead, reason, text: 'plane recovered', title, windowText, windowTitle}
     }
@@ -426,7 +425,7 @@ class SpineBanner extends Base {
                   reason  = reasonFor([stream], 'partial') || (typeof stream.guidance?.reason === 'string' && stream.guidance.reason.trim()) || null,
                   note    = SpineBanner.formatShortOutage(outage),
                   lead    = note ? `Activity feed partial — ${summary} · ${note.lead}` : `Activity feed partial — ${summary}`,
-                  cause   = [reason, note?.windowTitle].filter(Boolean).join(' · ') || null;
+                  cause   = [reason, note?.reason, note?.windowTitle].filter(Boolean).join(' · ') || null;
 
             return verdict('degraded', 'feed partial', lead, cause, 'recheck')
         }
@@ -451,7 +450,7 @@ class SpineBanner extends Base {
 
         if (note) {
             return {
-                action   : 'none',
+                action   : 'dismiss-outage',
                 ariaLabel: note.title,
                 hidden   : false,
                 kind     : 'live',

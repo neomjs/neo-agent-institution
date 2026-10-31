@@ -1,4 +1,5 @@
-import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import Base           from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import FleetAdmission from './FleetAdmission.mjs';
 
 /**
  * @module apps/agentos/util/SpineAction
@@ -6,6 +7,7 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * ({@link AgentOS.util.SpineBanner}) — lifted beside the cockpit's controller the way
  * `PlaneCredentialCheck` is beside the liveness owner.
  *
+ * `dismiss-outage` clears the recovered plane-outage note (`planeOutageNote`) without re-polling.
  * `connect-plane` opens the plane card, which lives with the viewport: a credential, or a plane already
  * running beside the shell, needs it. `retry-plane` asks the shell to run a boot the plane refused for a
  * reason that is not the credential's again, with its stored record (no PAT prompt, no relaunch), and
@@ -28,7 +30,14 @@ class SpineAction extends Base {
      * @returns {Promise<void>}
      */
     static async run(owner) {
-        const action = owner.component.getStateProvider()?.getData('spineBanner')?.action;
+        const
+            provider = owner.component.getStateProvider(),
+            action   = provider?.getData('spineBanner')?.action;
+
+        if (action === 'dismiss-outage') {
+            provider.setData({planeOutageNote: FleetAdmission.blankOutageNote()});
+            return
+        }
 
         if (action === 'connect-plane') {
             owner.getParent()?.showPlaneSetup?.()

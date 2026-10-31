@@ -144,16 +144,15 @@ class DeploymentStateRead extends Base {
 
     /**
      * @summary Detect a short plane cut or service restart (`<= 60 s`) between two answered
-     * deployment-state projections on the same profile. Inspects explicit service restart/start
-     * timestamps (`restartedAt`, `startedAt`, `inspect.currentRun.startedAt`) and sample-window
-     * resets (`classification.sampleCount` drop or `restartChurn.detecting` reset after a plane cut).
+     * deployment-state projections on the same profile from `services[].startedAt` alone.
+     * The note's window is bounded by the restarted services' own start times (`min(startedAt)`
+     * to `max(startedAt)`), never by `generatedAt` or a synthetic back-fill.
      * @param {Object|null} previous Prior provider-held picture.
      * @param {Object} projection Incoming validated projection.
      * @param {Object} [stamp={}] `{profileId, observedAt}`
-     * @param {Number|null} [lastLongOutageAt=null] Epoch ms of a recently ended long (`> 60 s`) outage.
      * @returns {{reason:String,recoveredAt:Number,startedAt:Number}|null}
      */
-    static detectServiceRestartOutage(previous, projection, stamp = {}, lastLongOutageAt = null) {
+    static detectServiceRestartOutage(previous, projection, stamp = {}) {
         if (
             !previous ||
             !['ok', 'stale'].includes(previous.state) ||
@@ -172,7 +171,6 @@ class DeploymentStateRead extends Base {
         const
             prevByKey  = new Map(prevServices.filter(s => typeof s?.serviceKey === 'string').map(s => [s.serviceKey, s])),
             prevAnchor = parseTimestamp(previous.generatedAt) ?? parseTimestamp(previous.observedAt),
-            nextAnchor = parseTimestamp(projection.generatedAt) ?? parseTimestamp(stamp.observedAt),
             restarted  = [],
             stamps     = [];
 
@@ -184,37 +182,27 @@ class DeploymentStateRead extends Base {
             if (!prev) continue;
 
             const
-                explicitAt  = parseTimestamp(service.restartedAt ?? service.startedAt ?? service.inspect?.currentRun?.startedAt),
-                prevExplicit = parseTimestamp(prev.restartedAt ?? prev.startedAt ?? prev.inspect?.currentRun?.startedAt),
-                prevSamples = prev.classification?.sampleCount,
-                nextSamples = service.classification?.sampleCount,
-                sampleReset = Number.isFinite(prevSamples) && Number.isFinite(nextSamples) && nextSamples < prevSamples,
-                churnReset  = prev.restartChurn?.detecting === true && service.restartChurn?.detecting === false;
+                startedAt     = parseTimestamp(service.startedAt),
+                prevStartedAt = parseTimestamp(prev.startedAt);
 
-            if (explicitAt !== null && ((prevExplicit !== null && explicitAt > prevExplicit) || (prevAnchor !== null && explicitAt > prevAnchor))) {
+            if (
+                startedAt !== null &&
+                ((prevStartedAt !== null && startedAt > prevStartedAt) ||
+                 (prevStartedAt === null && prevAnchor !== null && startedAt > prevAnchor))
+            ) {
                 restarted.push(key);
-                stamps.push(explicitAt)
-            } else if (sampleReset || churnReset) {
-                restarted.push(key)
+                stamps.push(startedAt)
             }
         }
 
         if (restarted.length === 0) return null;
 
         const
-            recoveredAt = stamps.length > 0 ? Math.max(...stamps, nextAnchor ?? 0) : (nextAnchor ?? Date.now()),
-            startedAt   = stamps.length > 0
-                ? Math.min(...stamps)
-                : (Number.isFinite(prevAnchor) && recoveredAt >= prevAnchor
-                    ? Math.max(prevAnchor, recoveredAt - SpineBanner.MAX_SHORT_OUTAGE_MS)
-                    : recoveredAt),
+            startedAt   = Math.min(...stamps),
+            recoveredAt = Math.max(...stamps),
             durationMs  = recoveredAt - startedAt;
 
         if (!Number.isFinite(durationMs) || durationMs < 0 || durationMs > SpineBanner.MAX_SHORT_OUTAGE_MS) {
-            return null
-        }
-
-        if (Number.isFinite(lastLongOutageAt) && Math.abs(recoveredAt - lastLongOutageAt) <= SpineBanner.MAX_SHORT_OUTAGE_MS) {
             return null
         }
 
@@ -261,7 +249,7 @@ class DeploymentStateRead extends Base {
             }
         } else if (state === 'ok' || state === 'stale') {
             outageNote = FleetAdmission.recordOutageRecovery(owner, 'system', {now: observedAt, profileId})
-                ?? DeploymentStateRead.detectServiceRestartOutage(previous, projection, {observedAt, profileId}, owner.lastLongPlaneOutageAt ?? null)
+                ?? DeploymentStateRead.detectServiceRestartOutage(previous, projection, {observedAt, profileId})
         }
 
         owner.publishConnection('system', {data: {
