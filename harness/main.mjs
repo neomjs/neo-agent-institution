@@ -68,6 +68,7 @@ import {
     resolveProductBrainPlan,
     resolveSmokeRoot,
     loadFleetRuntimeContracts,
+    retryBrainBoot,
     runBrainScript,
     runtimePlaneCause,
     startBrainChild,
@@ -186,6 +187,8 @@ let
     // The stored record this boot launched its fleet child with (`launchedPlaneRecord`), or `null` when
     // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs.
     launchedPlane = null,
+    // The last Brain boot once it settled (`{up, cause, …}`), or `null` while one runs: what a Retry reads.
+    settledBoot = null,
     // How this boot settled a consented move of the seats (`settleSeatRootMove`), or `null` outside a
     // packaged product boot: the outcome the shell reports, also when the Fleet could not start over it.
     seatMoveOutcome = null;
@@ -1273,6 +1276,56 @@ function logFleetStarting(ms) {
 }
 
 /**
+ * @summary Runs one Brain boot and settles it on the lifecycle owner. A failed boot resolves
+ * `{cause, error, up: false}` and never rejects; the settled boot is what a Retry reads.
+ * @returns {Promise<Object>}
+ */
+function bootBrainSettled() {
+    settledBoot = null;
+
+    return (diagnosticMode ? bootSmokeBrain() : bootProductBrain())
+        .catch(error => {
+            const cause = bootFailureCause(error);
+
+            // A typed refusal keeps the Fleet child's first line as its message, so only the cause
+            // says which answer ended the boot.
+            console.log(`HARNESS_BRAIN_BOOT_FAILED [${cause?.source ?? 'untyped'}] ${error.message}`);
+            return {cause, error: error.message, up: false}
+        })
+        .then(boot => {
+            appLifecycle.settleBrainBoot(boot.up === true, boot.cause);
+            uiTransportFact = normalizeTransportFact(boot);
+            settledBoot     = boot;
+            return boot
+        })
+}
+
+/**
+ * @summary The plane broker's Retry: a boot that settled down with a refusal that is not the
+ * credential's runs again, in this process (`retryBrainBoot`). Fleet reads join the new boot, since
+ * they read `brainBootPromise` at call time.
+ * @returns {{boot: (Promise<Object>|null), ok: Boolean, reason: (String|null)}}
+ */
+function retryBoot() {
+    const
+        after = settledBoot?.cause?.source ?? null,
+        retry = retryBrainBoot({
+            boot     : settledBoot,
+            lifecycle: appLifecycle,
+            quitting : fleetReadyAbort.signal.aborted,
+            start    : () => {
+                uiTransportFact = startTransportFact();
+                return bootBrainSettled()
+            }
+        });
+
+    console.log(`HARNESS_BRAIN_RETRY ${retry.ok ? `after [${after}]` : `refused: ${retry.reason}`}`);
+    retry.ok && (brainBootPromise = retry.boot);
+
+    return retry
+}
+
+/**
  * The UI-only transport boot: plain `npm start` self-supplies the fleet transport instead of
  * demanding a hand-carried `NEO_FLEET_BEARER` across two terminals (the first live operator run
  * proved that coordination model unusable — and `fleetCapability` gates every renderer request on
@@ -1786,7 +1839,8 @@ app.whenReady().then(async () => {
     });
 
     // The plane-attach broker: the cockpit reads whether a plane is configured, asks main to attach
-    // one, and asks whether the plane still admits the launched PAT; the PAT stays in main custody.
+    // one or to run a refused boot again, and asks whether the plane still admits the launched PAT;
+    // the PAT stays in main custody.
     const planeBroker = createPlaneBroker({
         causeOf         : runtimePlaneCause,
         dir             : app.getPath('userData'),
@@ -1796,11 +1850,13 @@ app.whenReady().then(async () => {
         packaged        : packagedMode,
         promptCredential: promptFleetCredential,
         relaunch        : () => setTimeout(() => { app.relaunch(); app.quit() }, 250),
+        retryBoot,
         safeStorage     : planeSafeStorage
     });
 
     ipcMain.handle('shell-plane-status', planeBroker.status);
     ipcMain.handle('shell-plane-attach', planeBroker.attach);
+    ipcMain.handle('shell-plane-retry', planeBroker.retry);
     ipcMain.handle('shell-plane-verify', planeBroker.verify);
 
     // The first-run setup broker: the setup card's Create door projects the recipe's live evaluation,
@@ -1870,20 +1926,7 @@ app.whenReady().then(async () => {
     }
 
     brainBootPromise = brainMode
-        ? (diagnosticMode ? bootSmokeBrain() : bootProductBrain())
-            .catch(error => {
-                const cause = bootFailureCause(error);
-
-                // A typed refusal keeps the Fleet child's first line as its message, so only the cause
-                // says which answer ended the boot.
-                console.log(`HARNESS_BRAIN_BOOT_FAILED [${cause?.source ?? 'untyped'}] ${error.message}`);
-                return {cause, error: error.message, up: false}
-            })
-            .then(boot => {
-                appLifecycle.settleBrainBoot(boot.up === true, boot.cause);
-                uiTransportFact = normalizeTransportFact(boot);
-                return boot
-            })
+        ? bootBrainSettled()
         : (diagnosticMode || !agentosRuntimeRoot
             // Plain smoke keeps its isolation contract: UI-only legs spawn nothing (a dev machine
             // may carry a live transport); the fleet leg's evidence lives in smoke:brain. A checkout
@@ -2046,7 +2089,7 @@ app.whenReady().then(async () => {
 
             const
                 expectedShellKeys = [
-                    'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane',
+                    'attachPlane', 'brainHealth', 'fleetRequest', 'planeStatus', 'probePlane', 'retryPlane',
                     'seatRenameApply', 'seatRenamePlan', 'seatRootConsent', 'seatRootPlan', 'seatRootStatus',
                     'setupAnswer', 'setupCredential', 'setupEffect', 'setupEvaluate', 'setupPresets', 'setupProbe',
                     'shellVersion', 'verifyPlane'

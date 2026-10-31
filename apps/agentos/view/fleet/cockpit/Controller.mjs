@@ -372,18 +372,37 @@ class Controller extends FleetBatchController {
     }
 
     /**
-     * @summary The spine banner's one action. Beside a running plane there is nothing to reconnect:
-     * the shell refused its own organism on purpose, so the action opens the plane card, which lives
-     * with the viewport. Every other verdict reconnects the fleet.
+     * @summary The spine banner's one action. A credential, or a plane already running beside the
+     * shell, needs the plane card, which lives with the viewport. A boot refusal that says nothing
+     * against the stored PAT runs the boot again. Every other verdict reconnects the fleet.
      */
     onSpineAction() {
-        const me = this;
+        const
+            me     = this,
+            action = me.component.getStateProvider()?.getData('spineBanner')?.action;
 
-        if (me.component.getStateProvider()?.getData('spineBanner')?.action === 'connect-plane') {
+        if (action === 'connect-plane') {
             me.getParent()?.showPlaneSetup?.()
+        } else if (action === 'retry-plane') {
+            me.retryPlane()
         } else {
             me.reconnectFleet()
         }
+    }
+
+    /**
+     * @summary The banner's Retry: the shell runs the refused boot again with its stored record, with
+     * no PAT prompt and no relaunch. Then every liveness seam re-drives: Brain health shows the boot
+     * `starting` until it settles, and the Fleet reads join the new boot. A retry the shell refuses
+     * changes nothing, so the same reads show the truth that stands.
+     * @returns {Promise<void>}
+     */
+    async retryPlane() {
+        const me = this;
+
+        await Promise.resolve(Neo.main?.addon?.ShellPlane?.retryPlane({windowId: me.component.windowId})).catch(() => null);
+
+        me.isDestroyed || me.reconnectFleet()
     }
 
     /**

@@ -15,6 +15,9 @@ contextBridge.exposeInMainWorld('neoShell', {
     fleetRequest: request => ipcRenderer.invoke('fleet-request', request),
     planeStatus : () => ipcRenderer.invoke('shell-plane-status'),
     probePlane  : () => ipcRenderer.invoke('shell-plane-probe'),
+    // Runs a boot the plane refused for a reason that is not the credential's again, with the stored
+    // record: no prompt, no relaunch (§2.3.8).
+    retryPlane  : () => ipcRenderer.invoke('shell-plane-retry'),
     // Seat durable-id transition, independent of the Fleet child's availability.
     seatRenameApply: request => ipcRenderer.invoke('shell-seat-rename-apply', request),
     seatRenamePlan : request => ipcRenderer.invoke('shell-seat-rename-plan', request),

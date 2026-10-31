@@ -869,13 +869,14 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     /**
      * The four answers a plane gives a shell it refuses, as the shell's lifecycle owner reports a typed
      * boot refusal: the cause and, as its detail, the plane's address. They are the row 5 walk's provocations.
+     * An answer that says nothing against the stored PAT offers Retry; the credential's own two, Connect.
      * @type {Object[]}
      */
     const PLANE_REFUSAL_FRAMES = [
-        {golden: 'banner-plane-unreachable.png', source: 'plane-unreachable',        word: 'plane unreachable'},
-        {golden: 'banner-pat-refused.png',       source: 'plane-credential-refused', word: 'pat refused'},
-        {golden: 'banner-account-changed.png',   source: 'plane-identity-changed',   word: 'account changed'},
-        {golden: 'banner-not-a-plane.png',       source: 'plane-not-a-plane',        word: 'not a plane'}
+        {action: 'Retry',   golden: 'banner-plane-unreachable.png', source: 'plane-unreachable',        word: 'plane unreachable'},
+        {action: 'Connect', golden: 'banner-pat-refused.png',       source: 'plane-credential-refused', word: 'pat refused'},
+        {action: 'Connect', golden: 'banner-account-changed.png',   source: 'plane-identity-changed',   word: 'account changed'},
+        {action: 'Retry',   golden: 'banner-not-a-plane.png',       source: 'plane-not-a-plane',        word: 'not a plane'}
     ];
 
     /**
@@ -885,15 +886,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
     const REFUSING_PLANE = 'https://plane.neo.test:8443';
 
     /**
-     * @summary Lands one typed boot refusal and waits for the bar to read it: the pill's word and Connect.
+     * @summary Lands one typed boot refusal and waits for the bar to read it: the pill's word and its action.
      * @param {Object} page
      * @param {String} source The refusal's cause code
      * @param {String} word The pill's status word for it
+     * @param {String} action The banner button's word for it
      */
-    const landPlaneRefusal = async (page, source, word) => {
+    const landPlaneRefusal = async (page, source, word, action) => {
         await landBrainHealth(page, {cause: {detail: REFUSING_PLANE, observedAt: 0, source}, state: 'degraded'});
         await expect(page.locator('.fm-spine-banner')).toHaveText(word);
-        await expect(page.locator('.fm-reconnect-button')).toHaveText('Connect')
+        await expect(page.locator('.fm-reconnect-button')).toHaveText(action)
     };
 
     /**
@@ -919,19 +921,20 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         }
     });
 
-    test('the four plane refusals — the pill names the state, the lead beside it says why and what Connect fixes, the title repeats it with the address; wide, light, and the mark regime (#533)', async ({page}) => {
+    test('the four plane refusals — the pill names the state, the lead beside it says why and the way back, the title repeats it with the address; wide, light, and the mark regime (#533, #849)', async ({page}) => {
         await page.setViewportSize({width: 1280, height: 800});
         await bootColdCockpit(page);
 
         const bar   = page.locator('.fm-cockpit-bar'),
               wides = {};
 
-        for (const {golden, source, word} of PLANE_REFUSAL_FRAMES) {
-            await landPlaneRefusal(page, source, word);
+        for (const {action, golden, source, word} of PLANE_REFUSAL_FRAMES) {
+            await landPlaneRefusal(page, source, word, action);
 
             const read = await readRefusal(page);
 
             expect(read.lead?.text, `${word}: the lead says why, and what connecting fixes`).toMatch(/\bconnect\b/i);
+            expect(/\bretry\b/i.test(read.lead.text), `${word}: the lead names Retry exactly when the button offers it`).toBe(action === 'Retry');
             expect(read.lead.text, `${word}: the lead carries no address and no code`).not.toMatch(/plane\.neo\.test|plane-[a-z]/);
             expect(read.lead.oneLine, `${word}: the lead is one line`).toBe(true);
             expect(read.lead.clipped, `${word}: at the design width the lead reads whole`).toBe(false);
@@ -947,7 +950,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         // just above the marks step the lead is the row's slack: it ellipsizes, while the longest pill
         // word, the wake pill and every button keep their width
         await page.setViewportSize({width: 821, height: 800});
-        await landPlaneRefusal(page, 'plane-unreachable', 'plane unreachable');
+        await landPlaneRefusal(page, 'plane-unreachable', 'plane unreachable', 'Retry');
         await expect.poll(() => readRefusal(page).then(read => read.lead?.clipped), {message: 'the lead ellipsizes first', timeout: 10000}).toBe(true);
 
         const squeezed = await readRefusal(page);
@@ -958,7 +961,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(squeezed.buttons, 'every button keeps its width').toEqual(wides['plane-unreachable'].buttons);
 
         await page.setViewportSize({width: 1280, height: 800});
-        await landPlaneRefusal(page, 'plane-credential-refused', 'pat refused');
+        await landPlaneRefusal(page, 'plane-credential-refused', 'pat refused', 'Connect');
         await switchToLightSkin(page);
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);

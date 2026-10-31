@@ -201,7 +201,8 @@ class StateProvider extends Provider {
              * key never becomes one trackable config, so consumers bind `data.spineBanner.text`
              * etc. and every leaf is declared here). `text` is the pill's status word; `lead` the one
              * sentence shown beside it; `title` adds the retained cause, `ariaLabel` its screen-reader
-             * mirror; `action` names what the affordance does (`'connect-plane'`, or `null` for the reconnect).
+             * mirror; `action` names what the affordance does (`'connect-plane'`, `'retry-plane'`,
+             * `'recheck'`, or `null` for the reconnect).
              * @member {Object} spineBanner
              */
             spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', lead: '', text: '', title: ''},

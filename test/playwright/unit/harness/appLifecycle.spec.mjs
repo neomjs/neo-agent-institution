@@ -386,6 +386,40 @@ test.describe('harness app lifecycle', () => {
             }
         });
 
+        test('a boot run again records its own refusal, not the first one (#849 AC-4)', () => {
+            const
+                first    = {detail: 'http://127.0.0.1:9', source: 'plane-not-a-plane'},
+                second   = {detail: 'http://127.0.0.1:9', source: 'plane-credential-refused'},
+                retried  = createAppLifecycle({app: createFakeApp(), teardownBrain: async () => ({})}),
+                // CONTROL: the same two settles with no new episode keep the first cause (first-cause-wins)
+                pinned   = createAppLifecycle({app: createFakeApp(), teardownBrain: async () => ({})});
+
+            retried.settleBrainBoot(false, first);
+            pinned.settleBrainBoot(false, first);
+
+            expect(retried.beginBrainBoot()).toBe(true);
+            expect(retried.brainHealth, 'while the boot runs again: no refusal, still degraded').toEqual({cause: null, state: 'degraded'});
+
+            retried.settleBrainBoot(false, second);
+            pinned.settleBrainBoot(false, second);
+
+            expect(retried.brainHealth.cause).toMatchObject(second);
+            expect(pinned.brainHealth.cause, 'CONTROL').toMatchObject(first)
+        });
+
+        test('a boot run again after an owned-child fault keeps the fault', () => {
+            const
+                child     = new EventEmitter(),
+                lifecycle = createAppLifecycle({app: createFakeApp(), teardownBrain: async () => ({})});
+
+            lifecycle.settleBrainBoot(true);
+            lifecycle.watchBrainChild(child, 'fleet');
+            child.emit('exit', 1, null);
+
+            expect(lifecycle.beginBrainBoot()).toBe(false);
+            expect(lifecycle.brainHealth.cause).toMatchObject({detail: 'fleet: exit code 1', source: 'owned-child-termination'})
+        });
+
         test('an explicit quit path never renders as impairment: stopped clears the cause', async () => {
             const
                 app       = createFakeApp(),

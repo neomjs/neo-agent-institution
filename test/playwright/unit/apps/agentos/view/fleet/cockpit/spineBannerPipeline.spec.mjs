@@ -196,8 +196,15 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         host.applyBrainHealth(lifecycle.brainHealth);
 
         expect(provider.data.daemonCause).toBe('plane-refused');
-        expect(verdictOf(provider.data)).toMatchObject({action: 'connect-plane', text: 'plane refused'});
-        expect(verdictOf(provider.data).title).toContain('plane identity mismatch')
+        expect(verdictOf(provider.data)).toMatchObject({action: 'retry-plane', text: 'plane refused'});
+        expect(verdictOf(provider.data).title).toContain('plane identity mismatch');
+
+        // Retry (#849): the boot's new episode takes the refusal off the banner while it runs again
+        lifecycle.beginBrainBoot();
+        host.applyBrainHealth(lifecycle.brainHealth);
+
+        expect(provider.data.daemonCause).toBeNull();
+        expect(verdictOf(provider.data).text).not.toBe('plane refused')
     });
 
     // ⭐ The producer→controller→provider witness the predecessor lacked: the SHELL transition
@@ -344,13 +351,14 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         ])
     });
 
-    test('the banner action opens the plane card beside a running plane, and reconnects otherwise', () => {
+    test('the banner action opens the plane card, retries a refused boot, and reconnects otherwise', () => {
         const run = action => {
             const calls = [],
                   host  = makeControllerFake(FleetCockpitController, {
                       component     : {getStateProvider: () => ({getData: key => key === 'spineBanner' ? {action} : undefined})},
                       getParent     : () => ({showPlaneSetup: () => calls.push('showPlaneSetup')}),
-                      reconnectFleet: () => calls.push('reconnectFleet')
+                      reconnectFleet: () => calls.push('reconnectFleet'),
+                      retryPlane    : () => calls.push('retryPlane')
                   });
 
             host.onSpineAction();
@@ -358,7 +366,31 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         };
 
         expect(run('connect-plane')).toEqual(['showPlaneSetup']);
+        expect(run('retry-plane')).toEqual(['retryPlane']);
         expect(run(null), 'CONTROL: every other verdict reconnects').toEqual(['reconnectFleet'])
+    });
+
+    test('Retry asks the shell to run the boot again, then re-drives every seam, whatever the shell answers (#849)', async () => {
+        const originalMain = globalThis.Neo.main;
+
+        try {
+            for (const answer of [() => ({ok: true, reason: null}), () => ({ok: false, reason: 'boot-running'}), () => { throw new Error('no shell') }]) {
+                const
+                    calls = [],
+                    host  = makeControllerFake(FleetCockpitController, {
+                        component     : {windowId: 'window-7'},
+                        reconnectFleet: () => calls.push('reconnectFleet')
+                    });
+
+                globalThis.Neo.main = {addon: {ShellPlane: {retryPlane: async args => { calls.push(['retryPlane', args]); return answer() }}}};
+
+                await host.retryPlane();
+
+                expect(calls).toEqual([['retryPlane', {windowId: 'window-7'}], 'reconnectFleet'])
+            }
+        } finally {
+            globalThis.Neo.main = originalMain
+        }
     });
 
     test('reconnectFleet tolerates unmounted panes — a missing reference is silence, never a throw', () => {

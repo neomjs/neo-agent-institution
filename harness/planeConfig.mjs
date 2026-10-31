@@ -459,9 +459,10 @@ export async function probePlaneBearerClass({planeBase, bearer, fetchFn = fetch,
 }
 
 /**
- * @summary The main-process handlers behind the preload's `planeStatus()`, `attachPlane()` and
- * `verifyPlane()`. Each refuses an untrusted sender, and no reply ever carries the credential: the PAT
- * exists only between the credential prompt or the stored record, the probe, and the encrypted write.
+ * @summary The main-process handlers behind the preload's `planeStatus()`, `attachPlane()`,
+ * `retryPlane()` and `verifyPlane()`. Each refuses an untrusted sender, and no reply ever carries the
+ * credential: the PAT exists only between the credential prompt or the stored record, the probe, and
+ * the encrypted write.
  * @param {Object} options
  * @param {Function} options.causeOf `(answer, storedIdentity) => String|null`: the runtime cause a probe
  *     answer names (`runtimePlaneCause`).
@@ -473,12 +474,14 @@ export async function probePlaneBearerClass({planeBase, bearer, fetchFn = fetch,
  * @param {Boolean} options.packaged Only a packaged boot reads the record, so only it may attach.
  * @param {Function} options.promptCredential `({event, method}) => Promise<String|null>` in main custody.
  * @param {Function} options.relaunch Restarts the shell after the reply is sent.
+ * @param {Function} options.retryBoot `() => {ok, reason}`: main runs a boot that settled down with a
+ *     refusal that is not the credential's again, in process (`retryBrainBoot`).
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Function} [options.fetchFn=fetch]
  * @param {Object} [options.fsModule=fs]
- * @returns {{status: Function, attach: Function, verify: Function}}
+ * @returns {{status: Function, attach: Function, retry: Function, verify: Function}}
  */
-export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportFact, isTrustedSender, packaged, promptCredential, relaunch, safeStorage, fetchFn = fetch, fsModule = fs}) {
+export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportFact, isTrustedSender, packaged, promptCredential, relaunch, retryBoot, safeStorage, fetchFn = fetch, fsModule = fs}) {
     const refuse = reason => ({ok: false, reason, relaunching: false});
 
     return {
@@ -549,6 +552,27 @@ export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportF
             relaunch();
 
             return {ok: true, reason: null, relaunching: true}
+        },
+
+        /**
+         * @summary Runs the boot again with the record this shell launched with, after a boot settled
+         * down with a refusal that is not the credential's: no prompt and no relaunch. Main decides
+         * whether it may, and the reply carries its verdict only.
+         * @param {Electron.IpcMainInvokeEvent} event
+         * @returns {{ok: Boolean, reason: String|null}}
+         */
+        retry(event) {
+            if (!isTrustedSender(event)) {
+                throw new Error('shell-plane-retry: untrusted sender')
+            }
+
+            if (!packaged) {
+                return {ok: false, reason: 'not-packaged'}
+            }
+
+            const {ok, reason} = retryBoot();
+
+            return {ok, reason}
         },
 
         /**

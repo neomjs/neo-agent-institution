@@ -1,7 +1,9 @@
 import {expect, test}                                                               from '@playwright/test';
+import {EventEmitter}                                                               from 'node:events';
 import fs, {existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                                                     from 'node:os';
 import path                                                                         from 'node:path';
+import {createAppLifecycle}                                                         from '../../../../harness/appLifecycle.mjs';
 import {
     createPlaneBroker,
     forgetPlaneConfig,
@@ -16,7 +18,7 @@ import {
     readPlaneConfig,
     writePlaneConfig
 } from '../../../../harness/planeConfig.mjs';
-import {runtimePlaneCause} from '../../../../harness/brain.mjs';
+import {retryBrainBoot, runtimePlaneCause} from '../../../../harness/brain.mjs';
 
 const BEARER   = 'ghp_fixtureBearerNeverReal0000000000',
       IDENTITY = '@fixture-viewer';
@@ -590,5 +592,105 @@ test.describe('harness/planeConfig — verifyPlane(), the broker asking about th
 
         await expect(verifier({host, trusted: false}).verify({})).rejects.toThrow('shell-plane-verify: untrusted sender');
         expect(host.requests).toEqual([])
+    })
+});
+
+test.describe('harness/planeConfig — retryPlane(), a refused boot run again with the stored record (#849)', () => {
+    const REFUSED = {cause: {detail: '[fleet] plane mode refused (http://127.0.0.1:3102): plane identity mismatch', source: 'plane-refused'}, error: 'refused', up: false};
+
+    /**
+     * @summary The broker over the shipped retry (`retryBrainBoot`) and lifecycle owner. Main's boot is a
+     * seam that settles each answer the way `bootBrainSettled` does: on the lifecycle, then as the
+     * settled boot a retry reads.
+     * @param {Object} [options]
+     * @param {Object[]} [options.answers] What each boot settles as, in order.
+     * @param {Boolean} [options.packaged=true]
+     * @param {Boolean} [options.trusted=true]
+     * @returns {Object}
+     */
+    function retrier({answers = [REFUSED, {fleetPort: 8083, up: true}], packaged = true, trusted = true} = {}) {
+        const
+            calls     = {boots: 0, prompts: 0, relaunches: 0, retries: 0},
+            lifecycle = createAppLifecycle({app: Object.assign(new EventEmitter(), {exit() {}, quit() {}}), teardownBrain: async () => ({})}),
+            shell     = {boot: null, settled: null},
+            start     = () => {
+                const answer = answers[calls.boots++];
+
+                shell.settled = null;
+
+                return shell.boot = Promise.resolve().then(() => {
+                    lifecycle.settleBrainBoot(answer.up === true, answer.cause ?? null);
+                    return shell.settled = answer
+                })
+            },
+            broker    = createPlaneBroker({
+                causeOf         : runtimePlaneCause,
+                dir             : tempDir(),
+                fetchFn         : async () => { throw new Error('a retry asks the plane nothing itself') },
+                getLaunchedPlane: () => ({bearer: BEARER, identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'}),
+                getTransportFact: () => null,
+                isTrustedSender : () => trusted,
+                packaged,
+                promptCredential: async () => { calls.prompts++; return BEARER },
+                relaunch        : () => { calls.relaunches++ },
+                retryBoot       : () => {
+                    calls.retries++;
+                    return retryBrainBoot({boot: shell.settled, lifecycle, quitting: false, start})
+                },
+                safeStorage     : fakeSafeStorage()
+            });
+
+        return {broker, calls, lifecycle, shell, start}
+    }
+
+    test('a boot the plane refused comes back through Retry, with no PAT prompt and no relaunch (AC-1)', async () => {
+        const {broker, calls, lifecycle, shell, start} = retrier();
+
+        await start();
+        expect(lifecycle.brainHealth).toMatchObject({cause: {source: 'plane-refused'}, state: 'degraded'});
+
+        expect(broker.retry({})).toEqual({ok: true, reason: null});
+        expect(lifecycle.brainHealth, 'the refusal leaves the banner while the boot runs again').toEqual({cause: null, state: 'degraded'});
+
+        expect(await shell.boot).toEqual({fleetPort: 8083, up: true});
+        expect(lifecycle.brainHealth).toEqual({cause: null, state: 'running'});
+        expect(calls).toEqual({boots: 2, prompts: 0, relaunches: 0, retries: 1})
+    });
+
+    test('the reply carries the verdict only, never the PAT or the boot (AC-3)', async () => {
+        const {broker, start} = retrier();
+
+        await start();
+
+        const reply = broker.retry({});
+
+        expect(Object.keys(reply).sort()).toEqual(['ok', 'reason']);
+        expect(JSON.stringify(reply)).not.toContain(BEARER)
+    });
+
+    test('a second Retry while the boot runs again starts nothing more', async () => {
+        const {broker, calls, start} = retrier({answers: [REFUSED, REFUSED]});
+
+        await start();
+
+        expect(broker.retry({})).toEqual({ok: true, reason: null});
+        expect(broker.retry({})).toEqual({ok: false, reason: 'boot-running'});
+        expect(calls.boots).toBe(2)
+    });
+
+    test('an unpackaged shell and an untrusted sender reach no boot', async () => {
+        const
+            unpackaged = retrier({packaged: false}),
+            untrusted  = retrier({trusted: false});
+
+        await unpackaged.start();
+        await untrusted.start();
+
+        expect(unpackaged.broker.retry({})).toEqual({ok: false, reason: 'not-packaged'});
+        expect(() => untrusted.broker.retry({})).toThrow('shell-plane-retry: untrusted sender');
+        expect([unpackaged.calls, untrusted.calls]).toEqual([
+            {boots: 1, prompts: 0, relaunches: 0, retries: 0},
+            {boots: 1, prompts: 0, relaunches: 0, retries: 0}
+        ])
     })
 });
