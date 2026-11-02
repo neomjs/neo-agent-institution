@@ -680,7 +680,7 @@ export function assessBrainFreshness({brainRoot, revision, allowStaleBrain = fal
     }
 
     if (behindBy && !allowStaleBrain) {
-        throw new Error(`pack: Brain ${revision.slice(0, 7)} is behind origin/dev by ${behindBy}: ${newestMissing || '(subject unavailable)'} — update the Brain source or explicitly use --allow-stale-brain`)
+        throw new Error(`pack: Brain ${revision.slice(0, 7)} is behind origin/dev by ${behindBy}: ${newestMissing || '(subject unavailable)'} [origin/dev ${observation.originDev.slice(0, 7)}] — update the Brain source. For an intentional pin, from harness/ run: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain sh -c 'node prepareAssets.mjs && node pack.mjs --allow-stale-brain && npm exec -- electron-builder --mac --publish never'. Replace the absolute Brain path; npm run dist does not forward this flag to predist.`)
     }
 
     return {
@@ -945,7 +945,8 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
 
     assertBrainCut(roots, cut, revisionOf);
     fs.writeFileSync(path.join(stageDir, 'organism-build-info.json'), JSON.stringify(buildInfo, null, 4), 'utf8');
-    console.log(`[pack] organism staged at ${stageDir} (rebuilt=${buildInfo.rebuilt})`);
+    const sourceStatus = freshness.state === 'verified' ? `${freshness.relation} at check` : `unverified (${freshness.reason})`;
+    console.log(`[pack] organism staged at ${stageDir} (rebuilt=${buildInfo.rebuilt}; Brain ${sourceStatus})`);
     return buildInfo
 }
 

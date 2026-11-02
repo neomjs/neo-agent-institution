@@ -409,6 +409,24 @@ NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run dist
 # pack.mjs stages the organism from its three owners, electron-builder emits dist-artifacts/*.zip
 ```
 
+Before removing the previous stage, pack checks the selected Brain revision against freshly fetched
+`origin/dev`. Verified missing commits refuse with their count and newest subject. A failed fetch
+or incomplete/unrelated history remains **unverified**, which the build receipt and pack/install
+summaries report as a build-time observation, not continuing runtime currency.
+
+Update the Brain source for the normal build. For a deliberate older pin, replace the absolute
+Brain path below and run this explicit sequence from `harness/`:
+
+```bash
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain sh -c 'node prepareAssets.mjs && node pack.mjs --allow-stale-brain && npm exec -- electron-builder --mac --publish never'
+```
+
+This gives `--allow-stale-brain` directly to pack and preserves the same root for asset preparation
+and packaging. `npm run dist -- --allow-stale-brain` does **not** pass it to the `predist` hook;
+npm sends those arguments to electron-builder instead. The receipt marks the intentional pin.
+These build steps do not install a generation or restart seats; installed acceptance remains the
+operator's rebuild/install/restart and observation receipt.
+
 The artifact is ONE double-clickable app (unsigned — signing/notarization is release-line,
 operator-owned; never repo tooling) wrapping the ORGANISM, assembled from three explicit owners
 and nothing else: the PRODUCT root (this checkout — the renderer's source graph derived from the

@@ -171,6 +171,11 @@ function advanceUpstream(history, count = 1) {
     return fixtureGit(history.writer, ['rev-parse', 'HEAD'])
 }
 
+/** @summary Keeps synthetic source-root stage tests offline without discovering a parent Git repository. */
+function offlineSourceAssessment({revision}) {
+    return {revision, state: 'unverified', reason: 'fixture-offline'}
+}
+
 test.describe('pack Brain source assessment', () => {
     let root, brain, history;
     test.beforeEach(async () => {
@@ -195,7 +200,13 @@ test.describe('pack Brain source assessment', () => {
 
     test('missing upstream commits refuse with their count and latest subject; intentional pins carry the observation', () => {
         const originDev = advanceUpstream(history, 3);
-        expect(() => observe(history)).toThrow(/behind origin\/dev by 3: fix: upstream repair 3 \(#857\)/);
+        let refusal;
+        try { observe(history) } catch (error) { refusal = error }
+        expect(refusal).toBeInstanceOf(Error);
+        expect(refusal.message).toContain('behind origin/dev by 3: fix: upstream repair 3 (#857)');
+        expect(refusal.message).toContain(`[origin/dev ${originDev.slice(0, 7)}]`);
+        expect(refusal.message).toContain("from harness/ run: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain sh -c 'node prepareAssets.mjs && node pack.mjs --allow-stale-brain && npm exec -- electron-builder --mac --publish never'");
+        expect(refusal.message).toContain('npm run dist does not forward this flag to predist');
         const assessment = assessBrainFreshness({brainRoot: brain, revision: history.revision, allowStaleBrain: true});
         expect(assessment).toMatchObject({revision: history.revision, originDev, state: 'verified', relation: 'behind', behindBy: 3, aheadBy: 0, override: true});
         expect(JSON.stringify(assessment)).not.toContain(root)
@@ -510,6 +521,7 @@ test.describe('harness pack stage', () => {
             expect(() => stageOrganism({
                 electronVersion : '43.1.0',
                 engineRevisionOf: () => 'a'.repeat(40),
+                freshnessOf     : offlineSourceAssessment,
                 env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
                 productRoot     : product,
                 revisionOf      : () => 'b'.repeat(40),
@@ -571,6 +583,7 @@ test.describe('harness pack stage', () => {
                 expect(() => stageOrganism({
                     electronVersion : '43.1.0',
                     engineRevisionOf: () => engine,
+                    freshnessOf     : offlineSourceAssessment,
                     env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
                     productRoot     : product,
                     revisionOf      : () => brainRevision,
@@ -687,6 +700,7 @@ test.describe('harness pack stage', () => {
                     env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
                     productRoot     : product,
                     revisionOf      : () => BRAIN_R,
+                    freshnessOf     : offlineSourceAssessment,
                     runFn           : (command, args, options) => {
                         if (command === 'npm') {
                             manifest = JSON.parse(readFileSync(path.join(options.cwd, 'package.json'), 'utf8'));
@@ -744,7 +758,7 @@ test.describe('harness pack stage', () => {
         writeFileSync(path.join(stageDir, 'sentinel'), 'still here', 'utf8');
 
         try {
-            expect(() => stageOrganism({electronVersion: '38.0.0', env: {}, productRoot: product, stageDir})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+            expect(() => stageOrganism({electronVersion: '38.0.0', env: {}, productRoot: product, stageDir, freshnessOf: offlineSourceAssessment})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
             expect(existsSync(path.join(stageDir, 'sentinel'))).toBe(true)
         } finally {
             await rm(root, {force: true, recursive: true})
