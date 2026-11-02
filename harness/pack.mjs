@@ -614,6 +614,95 @@ export function resolveCutRevisions({roots, revisionOf = readRevision, engineRev
     return cut
 }
 
+/** @summary Runs a bounded, non-interactive Git observation without publishing remote errors. */
+function readGit(args, {cwd}) {
+    return execFileSync('git', args, {
+        cwd, encoding: 'utf8', env: {...process.env, GIT_TERMINAL_PROMPT: '0'},
+        stdio: ['ignore', 'pipe', 'ignore'], timeout: 15000
+    }).trim()
+}
+
+/**
+ * @summary Assesses the selected Brain revision against a freshly fetched origin/dev. Failed fetches
+ * and incomplete history stay unverified; cached refs never certify currency. The receipt records
+ * build-time evidence only, with no checkout coordinates or remote error text.
+ * @param {Object} options
+ * @param {String} options.brainRoot Explicit Brain source root.
+ * @param {String} options.revision Revision selected by resolveCutRevisions.
+ * @param {Boolean} [options.allowStaleBrain=false] Deliberately permit verified missing commits.
+ * @param {Function} [options.gitFn=readGit] Git argv/output seam.
+ * @param {Function} [options.now=Date.now] Observation clock.
+ * @returns {Object} Revision-bound verified or unverified observation.
+ */
+export function assessBrainFreshness({brainRoot, revision, allowStaleBrain = false, gitFn = readGit, now = Date.now}) {
+    const
+        observation = {revision, checkedAt: new Date(now()).toISOString(), originDev: null},
+        git = args => gitFn(args, {cwd: brainRoot}),
+        unverified = reason => ({...observation, state: 'unverified', reason});
+
+    try {
+        git(['fetch', '--no-tags', 'origin', '+refs/heads/dev:refs/remotes/origin/dev'])
+    } catch {
+        return unverified('fetch-failed')
+    }
+
+    try {
+        observation.originDev = git(['rev-parse', '--verify', 'refs/remotes/origin/dev^{commit}']);
+        if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/u.test(observation.originDev)) return unverified('upstream-unreadable');
+        const shallow = git(['rev-parse', '--is-shallow-repository']);
+        if (shallow !== 'false') return unverified(shallow === 'true' ? 'shallow-history' : 'history-unreadable');
+        if (git(['rev-parse', '--verify', `${revision}^{commit}`]) !== revision) return unverified('revision-unreadable')
+    } catch {
+        return unverified('history-unreadable')
+    }
+
+    try {
+        if (!git(['merge-base', revision, observation.originDev])) return unverified('unrelated-history')
+    } catch (error) {
+        return unverified(error.status === 1 ? 'unrelated-history' : 'history-unreadable')
+    }
+
+    let aheadBy, behindBy, newestMissing;
+    try {
+        const counts = git(['rev-list', '--left-right', '--count', `${revision}...${observation.originDev}`]).split(/\s+/);
+        [aheadBy, behindBy] = counts.map(Number);
+        if (counts.length !== 2 || [aheadBy, behindBy].some(value => !Number.isSafeInteger(value) || value < 0)) return unverified('history-unreadable')
+    } catch {
+        return unverified('history-unreadable')
+    }
+
+    if (behindBy) {
+        try {
+            newestMissing = git(['log', '-1', '--format=%s', `${revision}..${observation.originDev}`]).replace(/[\r\n\x00-\x1f\x7f]/gu, ' ').slice(0, 240)
+        } catch {
+            // A missing subject does not erase the verified missing-commit count.
+        }
+    }
+
+    if (behindBy && !allowStaleBrain) {
+        throw new Error(`pack: Brain ${revision.slice(0, 7)} is behind origin/dev by ${behindBy}: ${newestMissing || '(subject unavailable)'} [origin/dev ${observation.originDev.slice(0, 7)}] — update the Brain source. For an intentional pin, from harness/ run: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain sh -c 'node prepareAssets.mjs && node pack.mjs --allow-stale-brain && npm exec -- electron-builder --mac --publish never'. Replace the absolute Brain path; npm run dist does not forward this flag to predist.`)
+    }
+
+    return {
+        ...observation, state: 'verified', aheadBy, behindBy,
+        relation: behindBy ? (aheadBy ? 'diverged' : 'behind') : (aheadBy ? 'ahead' : 'equal'),
+        override: behindBy > 0 && allowStaleBrain
+    }
+}
+
+/** @summary Refuses a changed source cut instead of attaching its predecessor's assessment. */
+function assertBrainCut(roots, cut, revisionOf) {
+    if (revisionOf(roots.brainRoot) !== cut.brain) {
+        throw new Error('pack: Brain source revision changed during staging — refusing a receipt for a different cut')
+    }
+}
+
+/** @summary Parses the explicit intentional-pin override; unknown pack flags fail before staging. */
+export function parsePackArgs(argv) {
+    if (argv.some(flag => flag !== '--allow-stale-brain')) throw new Error('pack: unknown argument; supported: --allow-stale-brain');
+    return {allowStaleBrain: argv.includes('--allow-stale-brain')}
+}
+
 /**
  * @summary Pins an org dependency's spec to one commit: `github:neomjs/neo#dev` becomes `github:neomjs/neo#<revision>`.
  * @param {String} spec The declared spec
@@ -776,9 +865,11 @@ function run(command, args, options = {}) {
  * @param {Function} [options.runFn=run] Runner seam for every child process the stage issues (tests).
  * @param {Function} [options.revisionOf=readRevision] Source-revision seam (tests).
  * @param {Function} [options.engineRevisionOf=readEngineRevision] Installed-Engine seam (tests).
+ * @param {Boolean} [options.allowStaleBrain=false] Permit a deliberate stale Brain pin.
+ * @param {Function} [options.freshnessOf=assessBrainFreshness] Revision-bound source assessment seam.
  * @returns {Object} build info (also written to `<stageDir>/organism-build-info.json`).
  */
-export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, runFn = run, stageDir = STAGE_DIR, revisionOf = readRevision, engineRevisionOf = readEngineRevision} = {}) {
+export function stageOrganism({electronVersion, env = process.env, productRoot = repoRoot, runFn = run, stageDir = STAGE_DIR, revisionOf = readRevision, engineRevisionOf = readEngineRevision, allowStaleBrain = false, freshnessOf = assessBrainFreshness} = {}) {
     if (!electronVersion) {
         throw new Error('pack: electronVersion is required — the staged natives MUST target the bundled runtime ABI.')
     }
@@ -790,7 +881,10 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
         brainPackageJson   = readPackageJson(roots.brainRoot),
         {brain, product}   = deriveCopySpecs(),
         // one commit of each org dependency, before any source is consumed or the stage is touched
-        cut                = resolveCutRevisions({engineRevisionOf, revisionOf, roots});
+        cut                = resolveCutRevisions({engineRevisionOf, revisionOf, roots}),
+        freshness          = freshnessOf({allowStaleBrain, brainRoot: roots.brainRoot, revision: cut.brain});
+
+    assertBrainCut(roots, cut, revisionOf);
 
     fs.rmSync(stageDir, {force: true, recursive: true});
     fs.mkdirSync(stageDir, {recursive: true});
@@ -802,6 +896,8 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     // `-f` here shipped a cockpit without one of its own styles).
     console.log('[pack] building dev themes from current SCSS');
     runFn('node', themeBuildArgv(roots.enginePackageRoot), {cwd: roots.productRoot});
+
+    assertBrainCut(roots, cut, revisionOf);
 
     const
         {copied, scanned} = stageOwners({roots, stageDir}),
@@ -817,6 +913,8 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     // the build — a catch-and-ship here is a silently-broken-artifact vector.
     runFn('npx', ['@electron/rebuild', '--module-dir', stageDir, '--version', electronVersion], {cwd: harnessDir});
 
+    assertBrainCut(roots, cut, revisionOf);
+
     const buildInfo = {
         electronVersion,
         // the receipt reads the Engine from the stage — the payload that ships, verified against the cut above
@@ -824,6 +922,7 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
         rebuilt : true,
         stagedAt: new Date().toISOString()
     };
+    buildInfo.owners.brain = {...buildInfo.owners.brain, revision: cut.brain, freshness};
 
     // Pack-time-fresh instance config: template-current by construction, so the packaged first
     // boot never needs to WRITE into the (possibly read-only, translocated) resources dir. The
@@ -844,13 +943,15 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     fs.mkdirSync(shimsDir, {recursive: true});
     fs.writeFileSync(path.join(shimsDir, 'node'), buildNodeShim(), {mode: 0o755});
 
+    assertBrainCut(roots, cut, revisionOf);
     fs.writeFileSync(path.join(stageDir, 'organism-build-info.json'), JSON.stringify(buildInfo, null, 4), 'utf8');
-    console.log(`[pack] organism staged at ${stageDir} (rebuilt=${buildInfo.rebuilt})`);
+    const sourceStatus = freshness.state === 'verified' ? `${freshness.relation} at check` : `unverified (${freshness.reason})`;
+    console.log(`[pack] organism staged at ${stageDir} (rebuilt=${buildInfo.rebuilt}; Brain ${sourceStatus})`);
     return buildInfo
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
     const electronVersion = JSON.parse(fs.readFileSync(path.join(harnessDir, 'package.json'), 'utf8')).devDependencies?.electron?.replace(/^[^0-9]*/, '');
 
-    stageOrganism({electronVersion})
+    stageOrganism({electronVersion, ...parsePackArgs(process.argv.slice(2))})
 }

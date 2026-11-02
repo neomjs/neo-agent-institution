@@ -4,6 +4,8 @@ import {mkdtemp, readFile, rm}                              from 'node:fs/promis
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                             from 'node:os';
 import {fileURLToPath}                                      from 'node:url';
+import {execFileSync}                                       from 'node:child_process';
+import {runtimeGenerationIdentity}                          from 'neo-agent-brain/runtime-generation';
 import {
     BRAIN_TREES,
     ENGINE_THEME_BUILD,
@@ -11,6 +13,7 @@ import {
     assertImportClosure,
     assertNoInstanceOverlays,
     assertStagedRevisions,
+    assessBrainFreshness,
     buildNodeShim,
     buildOrganismManifest,
     collectBarePackages,
@@ -22,6 +25,7 @@ import {
     isInstanceOverlayPath,
     materializeOverlaySlots,
     pinSpec,
+    parsePackArgs,
     resolveCutRevisions,
     resolvePackRoots,
     stageOrganism,
@@ -124,6 +128,162 @@ function writeModuleFixture(root, modules) {
         writeFileSync(target, source, 'utf8')
     }
 }
+
+/** @summary Runs Git only inside disposable repositories, without host identity or hooks. */
+function fixtureGit(root, args) {
+    return execFileSync('git', ['-c', 'core.hooksPath=/dev/null', '-c', 'commit.gpgsign=false', ...args], {
+        cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], timeout: 10000
+    }).trim()
+}
+
+/** @summary Commits fixture bytes with a local test identity rather than host configuration. */
+function commitFixture(root, subject) {
+    fixtureGit(root, ['add', '.']);
+    fixtureGit(root, ['-c', 'user.name=Pack fixture', '-c', 'user.email=pack-fixture@example.test', 'commit', '-m', subject]);
+    return fixtureGit(root, ['rev-parse', 'HEAD'])
+}
+
+/** @summary Creates one local upstream and source checkout; no network or live source is touched. */
+function attachBrainHistory(brain, root) {
+    const remote = path.join(root, 'upstream.git'), writer = path.join(root, 'upstream-writer');
+    fixtureGit(root, ['init', '--bare', remote]);
+    fixtureGit(brain, ['init', '--initial-branch=dev']);
+    writeFileSync(path.join(brain, 'source.txt'), 'initial');
+    const revision = commitFixture(brain, 'fixture: initial source (#857)');
+    fixtureGit(brain, ['remote', 'add', 'origin', remote]);
+    fixtureGit(brain, ['push', 'origin', 'HEAD:refs/heads/dev']);
+    mkdirSync(writer);
+    fixtureGit(writer, ['init']);
+    fixtureGit(writer, ['remote', 'add', 'origin', remote]);
+    fixtureGit(writer, ['fetch', 'origin', 'dev']);
+    fixtureGit(writer, ['switch', '-c', 'dev', 'FETCH_HEAD']);
+    return {brain, remote, revision, root, writer}
+}
+
+/** @summary Advances the disposable upstream, independently of the Brain checkout being assessed. */
+function advanceUpstream(history, count = 1) {
+    for (let i = 1; i <= count; i++) {
+        history.serial = (history.serial || 0) + 1;
+        writeFileSync(path.join(history.writer, 'source.txt'), `upstream ${history.serial}`);
+        commitFixture(history.writer, `fix: upstream repair ${history.serial} (#857)`)
+    }
+    fixtureGit(history.writer, ['push', 'origin', 'dev']);
+    return fixtureGit(history.writer, ['rev-parse', 'HEAD'])
+}
+
+/** @summary Keeps synthetic source-root stage tests offline without discovering a parent Git repository. */
+function offlineSourceAssessment({revision}) {
+    return {revision, state: 'unverified', reason: 'fixture-offline'}
+}
+
+test.describe('pack Brain source assessment', () => {
+    let root, brain, history;
+    test.beforeEach(async () => {
+        root = await mkdtemp(path.join(tmpdir(), 'neo-pack-freshness-'));
+        brain = path.join(root, 'brain');
+        mkdirSync(brain);
+        history = attachBrainHistory(brain, root)
+    });
+    test.afterEach(async () => { await rm(root, {force: true, recursive: true}); });
+
+    const observe = history => assessBrainFreshness({brainRoot: history.brain, revision: history.revision, now: () => 1793635200000});
+
+    test('a fresh fetch observes equal and ahead source cuts without confusing them', () => {
+        expect(observe(history)).toEqual({
+            revision: history.revision, originDev: history.revision, checkedAt: '2026-11-02T16:00:00.000Z',
+            state: 'verified', relation: 'equal', aheadBy: 0, behindBy: 0, override: false
+        });
+        writeFileSync(path.join(brain, 'local.txt'), 'local improvement');
+        history.revision = commitFixture(brain, 'feat: local improvement (#857)');
+        expect(observe(history)).toMatchObject({state: 'verified', relation: 'ahead', aheadBy: 1, behindBy: 0})
+    });
+
+    test('missing upstream commits refuse with their count and latest subject; intentional pins carry the observation', () => {
+        const originDev = advanceUpstream(history, 3);
+        let refusal;
+        try { observe(history) } catch (error) { refusal = error }
+        expect(refusal).toBeInstanceOf(Error);
+        expect(refusal.message).toContain('behind origin/dev by 3: fix: upstream repair 3 (#857)');
+        expect(refusal.message).toContain(`[origin/dev ${originDev.slice(0, 7)}]`);
+        expect(refusal.message).toContain("from harness/ run: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain sh -c 'node prepareAssets.mjs && node pack.mjs --allow-stale-brain && npm exec -- electron-builder --mac --publish never'");
+        expect(refusal.message).toContain('npm run dist does not forward this flag to predist');
+        const assessment = assessBrainFreshness({brainRoot: brain, revision: history.revision, allowStaleBrain: true});
+        expect(assessment).toMatchObject({revision: history.revision, originDev, state: 'verified', relation: 'behind', behindBy: 3, aheadBy: 0, override: true});
+        expect(JSON.stringify(assessment)).not.toContain(root)
+    });
+
+    test('divergence is missing upstream work too, even when the source has its own commits', () => {
+        advanceUpstream(history);
+        writeFileSync(path.join(brain, 'local.txt'), 'local change');
+        history.revision = commitFixture(brain, 'feat: local branch (#857)');
+        expect(() => observe(history)).toThrow(/behind origin\/dev by 1/);
+        expect(assessBrainFreshness({brainRoot: brain, revision: history.revision, allowStaleBrain: true}))
+            .toMatchObject({relation: 'diverged', behindBy: 1, aheadBy: 1, override: true})
+    });
+
+    test('a failed fetch never promotes a cached equal ref to current', async () => {
+        expect(observe(history).relation).toBe('equal');
+        await rm(history.remote, {force: true, recursive: true});
+        expect(observe(history)).toMatchObject({state: 'unverified', reason: 'fetch-failed', revision: history.revision, originDev: null})
+    });
+
+    test('an absent upstream branch, unrelated history and shallow history remain unverified', () => {
+        fixtureGit(history.remote, ['update-ref', '-d', 'refs/heads/dev']);
+        expect(observe(history)).toMatchObject({state: 'unverified', reason: 'fetch-failed'});
+        fixtureGit(history.writer, ['switch', '--orphan', 'unrelated']);
+        writeFileSync(path.join(history.writer, 'other.txt'), 'unrelated');
+        commitFixture(history.writer, 'fixture: unrelated source (#857)');
+        fixtureGit(history.writer, ['push', 'origin', 'HEAD:refs/heads/dev']);
+        expect(observe(history)).toMatchObject({state: 'unverified', reason: 'unrelated-history'});
+
+        // A depth-limited fetch supplies real shallow metadata without cloning a repository.
+        const shallow = path.join(root, 'shallow');
+        mkdirSync(shallow);
+        fixtureGit(shallow, ['init']);
+        fixtureGit(shallow, ['remote', 'add', 'origin', `file://${history.remote}`]);
+        fixtureGit(shallow, ['fetch', '--depth=1', 'origin', 'dev']);
+        const revision = fixtureGit(shallow, ['rev-parse', 'FETCH_HEAD']);
+        expect(assessBrainFreshness({brainRoot: shallow, revision})).toMatchObject({state: 'unverified', reason: 'shallow-history'})
+    });
+
+    test('unreadable Git observations are bounded reasons, never raw host or remote errors', () => {
+        for (const failure of ['rev-parse', 'merge-base', 'rev-list']) {
+            advanceUpstream(history);
+            const value = assessBrainFreshness({brainRoot: brain, revision: history.revision, gitFn(args, options) {
+                if (args[0] === failure) throw Error(`PRIVATE_REMOTE ${root}`);
+                return fixtureGit(options.cwd, args)
+            }});
+            expect(value.state).toBe('unverified');
+            expect(JSON.stringify(value)).not.toContain('PRIVATE_REMOTE');
+            expect(JSON.stringify(value)).not.toContain(root)
+        }
+    });
+
+    test('a subject lookup failure cannot erase an already verified missing-commit count', () => {
+        advanceUpstream(history);
+        expect(() => assessBrainFreshness({brainRoot: brain, revision: history.revision, gitFn(args, options) {
+            if (args[0] === 'log') throw Error('PRIVATE_REMOTE');
+            return fixtureGit(options.cwd, args)
+        }})).toThrow(/behind origin\/dev by 1: \(subject unavailable\)/)
+    });
+
+    test('the override is explicit CLI input, not an ignored or misspelled flag', () => {
+        expect(parsePackArgs([])).toEqual({allowStaleBrain: false});
+        expect(parsePackArgs(['--allow-stale-brain'])).toEqual({allowStaleBrain: true});
+        expect(() => parsePackArgs(['--allow-stale-bran'])).toThrow(/unknown argument/)
+    });
+
+    test('old and additive observation receipts have the same runtime identity', () => {
+        const receipt = {electronVersion: '43.8.1', owners: Object.fromEntries(['product', 'brain', 'engine'].map((name, index) =>
+            [name, {revision: String(index + 1).repeat(40)}]))};
+        receipt.owners.brain.revision = history.revision;
+        const verified = observe(history);
+        for (const freshness of [verified, {...verified, checkedAt: '2026-11-03T16:00:00.000Z'}, {revision: history.revision, state: 'unverified', reason: 'fetch-failed'}]) {
+            const enriched = {...receipt, owners: {...receipt.owners, brain: {...receipt.owners.brain, freshness}}};
+            expect(runtimeGenerationIdentity(enriched)).toEqual(runtimeGenerationIdentity(receipt))
+        }
+    })
+});
 
 test.describe('harness pack stage', () => {
     test('packaged main imports are closed over app.asar and parent-root contracts are forbidden', async () => {
@@ -347,7 +507,7 @@ test.describe('harness pack stage', () => {
         }
     });
 
-    test('stageOrganism\'s first child process IS the workspace theme build against the pinned Engine builder — the call site, not only the helper', async () => {
+    test('stageOrganism\'s first build command is the workspace theme build against the pinned Engine builder — the call site, not only the helper', async () => {
         const
             {brain, product, root} = await scaffoldRoots(),
             stageDir               = path.join(root, 'stage'),
@@ -361,6 +521,7 @@ test.describe('harness pack stage', () => {
             expect(() => stageOrganism({
                 electronVersion : '43.1.0',
                 engineRevisionOf: () => 'a'.repeat(40),
+                freshnessOf     : offlineSourceAssessment,
                 env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
                 productRoot     : product,
                 revisionOf      : () => 'b'.repeat(40),
@@ -422,6 +583,7 @@ test.describe('harness pack stage', () => {
                 expect(() => stageOrganism({
                     electronVersion : '43.1.0',
                     engineRevisionOf: () => engine,
+                    freshnessOf     : offlineSourceAssessment,
                     env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
                     productRoot     : product,
                     revisionOf      : () => brainRevision,
@@ -432,6 +594,94 @@ test.describe('harness pack stage', () => {
 
             expect(calls, 'nothing built or installed').toEqual([]);
             expect(existsSync(path.join(stageDir, 'sentinel'))).toBe(true)
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    test('a verified stale Brain refuses before deleting the previous stage or running a build', async () => {
+        const {brain, product, root} = await scaffoldCut(), stageDir = path.join(root, 'stage');
+        const history = attachBrainHistory(brain, root), calls = [];
+        advanceUpstream(history, 2);
+        mkdirSync(stageDir);
+        writeFileSync(path.join(stageDir, 'sentinel'), 'previous complete stage');
+        try {
+            expect(() => stageOrganism({
+                electronVersion: '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
+                engineRevisionOf: () => ENGINE_A, runFn: (...args) => calls.push(args), stageDir
+            })).toThrow(/behind origin\/dev by 2: fix: upstream repair 2/);
+            expect(calls).toEqual([]);
+            expect(readFileSync(path.join(stageDir, 'sentinel'), 'utf8')).toBe('previous complete stage')
+        } finally {
+            await rm(root, {force: true, recursive: true})
+        }
+    });
+
+    for (const arm of ['equal', 'override', 'offline']) {
+        test(`${arm}: the full stage writes the selected Brain revision and its one assessment`, async () => {
+            const {brain, product, root} = await scaffoldCut(), stageDir = path.join(root, 'stage');
+            const history = attachBrainHistory(brain, root);
+            if (arm === 'override') advanceUpstream(history, 2);
+            if (arm === 'offline') await rm(history.remote, {force: true, recursive: true});
+            try {
+                const info = stageOrganism({
+                    electronVersion: '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
+                    engineRevisionOf: () => ENGINE_A, allowStaleBrain: arm === 'override', stageDir,
+                    runFn(command, args, options) {
+                        if (command === 'npm') {
+                            const manifest = JSON.parse(readFileSync(path.join(options.cwd, 'package.json'), 'utf8'));
+                            mkdirSync(path.join(stageDir, 'node_modules'));
+                            writeFileSync(path.join(stageDir, 'node_modules', '.package-lock.json'), lockOf({brain: history.revision, engine: ENGINE_A}));
+                            for (const name of Object.keys(manifest.dependencies)) {
+                                mkdirSync(path.join(stageDir, 'node_modules', name), {recursive: true});
+                                writeFileSync(path.join(stageDir, 'node_modules', name, 'package.json'), '{}')
+                            }
+                        }
+                    }
+                });
+                expect(info.owners.brain.revision).toBe(history.revision);
+                expect(info.owners.brain.freshness).toMatchObject(arm === 'offline'
+                    ? {revision: history.revision, state: 'unverified', reason: 'fetch-failed'}
+                    : {revision: history.revision, state: 'verified', behindBy: arm === 'override' ? 2 : 0, override: arm === 'override'});
+                expect(JSON.parse(readFileSync(path.join(stageDir, 'organism-build-info.json'), 'utf8'))).toEqual(info);
+                expect(JSON.stringify(info)).not.toContain(root)
+            } finally {
+                await rm(root, {force: true, recursive: true})
+            }
+        })
+    }
+
+    test('a Brain HEAD change after assessment refuses before mutation, before copy, and before receipt publication', async () => {
+        const {brain, product, root} = await scaffoldCut(), stageDir = path.join(root, 'stage');
+        try {
+            for (const boundary of ['assessment', 'theme', 'rebuild', 'config']) {
+                let observed = BRAIN_R;
+                mkdirSync(stageDir, {recursive: true});
+                writeFileSync(path.join(stageDir, 'sentinel'), 'previous stage');
+                expect(() => stageOrganism({
+                    electronVersion: '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
+                    engineRevisionOf: () => ENGINE_A, revisionOf: () => observed, stageDir,
+                    freshnessOf({revision}) {
+                        if (boundary === 'assessment') observed = ENGINE_B;
+                        return {revision, state: 'unverified', reason: 'fetch-failed'}
+                    },
+                    runFn(command, args) {
+                        if (boundary === 'theme' && command === 'node') observed = ENGINE_B;
+                        if (command === 'npm') {
+                            const manifest = JSON.parse(readFileSync(path.join(stageDir, 'package.json'), 'utf8'));
+                            mkdirSync(path.join(stageDir, 'node_modules'));
+                            writeFileSync(path.join(stageDir, 'node_modules', '.package-lock.json'), lockOf({brain: BRAIN_R, engine: ENGINE_A}));
+                            for (const name of Object.keys(manifest.dependencies)) {
+                                mkdirSync(path.join(stageDir, 'node_modules', name), {recursive: true});
+                                writeFileSync(path.join(stageDir, 'node_modules', name, 'package.json'), '{}')
+                            }
+                        }
+                        if (boundary === 'rebuild' && command === 'npx' || boundary === 'config' && args[0] === 'ai/scripts/setup/initServerConfigs.mjs') observed = ENGINE_B
+                    }
+                })).toThrow(/Brain source revision changed/);
+                expect(existsSync(path.join(stageDir, 'organism-build-info.json'))).toBe(false);
+                if (boundary === 'assessment') expect(existsSync(path.join(stageDir, 'sentinel'))).toBe(true)
+            }
         } finally {
             await rm(root, {force: true, recursive: true})
         }
@@ -450,6 +700,7 @@ test.describe('harness pack stage', () => {
                     env             : {NEO_AGENTOS_RUNTIME_ROOT: brain},
                     productRoot     : product,
                     revisionOf      : () => BRAIN_R,
+                    freshnessOf     : offlineSourceAssessment,
                     runFn           : (command, args, options) => {
                         if (command === 'npm') {
                             manifest = JSON.parse(readFileSync(path.join(options.cwd, 'package.json'), 'utf8'));
@@ -507,7 +758,7 @@ test.describe('harness pack stage', () => {
         writeFileSync(path.join(stageDir, 'sentinel'), 'still here', 'utf8');
 
         try {
-            expect(() => stageOrganism({electronVersion: '38.0.0', env: {}, productRoot: product, stageDir})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
+            expect(() => stageOrganism({electronVersion: '38.0.0', env: {}, productRoot: product, stageDir, freshnessOf: offlineSourceAssessment})).toThrow(/NEO_AGENTOS_RUNTIME_ROOT/);
             expect(existsSync(path.join(stageDir, 'sentinel'))).toBe(true)
         } finally {
             await rm(root, {force: true, recursive: true})

@@ -224,6 +224,21 @@ test.describe('harness/install.mjs — the plan', () => {
         const build = {...OLD, owners: {...OLD.owners, engine: {name: 'neo.mjs', pin: 'github:neomjs/neo#dev', revision: '7aae7c3166b7fc35', version: '13.1.0'}}};
 
         expect(describeReceipt(build)).toContain('Engine 7aae7c3 ·')
+    });
+
+    test('describeReceipt reports historical Brain assessment and preserves unknown or mismatched evidence', () => {
+        const revision = OLD.owners.brain.revision;
+        for (const [freshness, expected] of [
+            [{revision, state: 'verified', relation: 'equal', aheadBy: 0, behindBy: 0}, 'Brain matched origin/dev at check'],
+            [{revision, state: 'verified', relation: 'ahead', aheadBy: 2, behindBy: 0}, 'Brain ahead by 2 at check'],
+            [{revision, state: 'verified', relation: 'behind', aheadBy: 0, behindBy: 3, override: true}, 'Brain behind by 3 at check, intentional pin'],
+            [{revision, state: 'verified', relation: 'diverged', aheadBy: 1, behindBy: 3, override: true}, 'Brain diverged, behind by 3 at check, intentional pin'],
+            [{revision, state: 'unverified', reason: 'fetch-failed'}, 'Brain freshness unverified: fetch-failed'],
+            [{revision: 'other', state: 'verified', aheadBy: 0, behindBy: 0}, 'Brain freshness unverified: receipt revision mismatch'],
+            [{revision, state: 'verified'}, 'Brain freshness unverified: unreadable assessment']
+        ]) {
+            expect(describeReceipt({...OLD, owners: {...OLD.owners, brain: {...OLD.owners.brain, freshness}}})).toContain(expected)
+        }
     })
 });
 

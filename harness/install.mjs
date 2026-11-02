@@ -727,9 +727,24 @@ export function describeReceipt(receipt) {
         // the Engine tracks `dev`, so its pin names a branch; a receipt from before the revision names it only there
         engine   = (owners.engine?.revision ?? owners.engine?.pin?.split('#').pop())?.slice(0, 7) ?? '?',
         product  = owners.product?.version                           ?? '?',
-        revision = owners.product?.revision?.slice(0, 7)              ?? '?';
+        revision = owners.product?.revision?.slice(0, 7)              ?? '?',
+        freshness = owners.brain?.freshness;
 
-    return `staged ${stagedAt} · Brain ${brain} · Engine ${engine} · product ${product} @ ${revision}`
+    let assessment = '';
+    if (freshness) {
+        if (freshness.revision !== owners.brain?.revision) {
+            assessment = ' · Brain freshness unverified: receipt revision mismatch'
+        } else if (freshness.state === 'verified' && Number.isSafeInteger(freshness.behindBy) && freshness.behindBy >= 0 &&
+            Number.isSafeInteger(freshness.aheadBy) && freshness.aheadBy >= 0) {
+            assessment = freshness.behindBy > 0
+                ? ` · Brain ${freshness.relation === 'diverged' ? 'diverged, ' : ''}behind by ${freshness.behindBy} at check${freshness.override ? ', intentional pin' : ''}`
+                : freshness.aheadBy > 0 ? ` · Brain ahead by ${freshness.aheadBy} at check` : ' · Brain matched origin/dev at check'
+        } else {
+            assessment = ` · Brain freshness unverified: ${freshness.reason || 'unreadable assessment'}`
+        }
+    }
+
+    return `staged ${stagedAt} · Brain ${brain} · Engine ${engine} · product ${product} @ ${revision}${assessment}`
 }
 
 /**
