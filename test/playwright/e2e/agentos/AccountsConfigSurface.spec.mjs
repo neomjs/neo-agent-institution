@@ -185,6 +185,7 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
                 listItems    = accountsView.locator('.fm-accounts-list .neo-list-item');
 
             await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
+            await expect(listItems.locator('.fm-accounts-name')).toHaveText([agentId, gitlabAgentId]);
 
             await expect(page.locator('.fm-agent-config-card')).toBeVisible();
             // the product chips only: the run-mode, launch-owner and memory-target choices are chips too
@@ -361,6 +362,7 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await appReloaded.callMethod(accountsReloaded.properties.id, 'loadAgentDefinitions');
             await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
             await expect(listItems.filter({hasText: createdAgentId})).toHaveCount(1);
+            await expect(listItems.locator('.fm-accounts-name')).toHaveText([createdAgentId, agentId, gitlabAgentId]);
             await expect(page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'})).toHaveClass(/is-disabled/);
             await listItems.filter({hasText: gitlabAgentId}).click();
             await expect(gitlabWorkflow).toHaveClass(/is-disabled/);
