@@ -252,10 +252,11 @@ if (drifted.length > 0) {
         'potentially stale. This check compares input identity only (no pixels, no CI render authority).\n\n' +
         `Drifted (${drifted.length}):\n` + drifted.slice(0, 20).map(row => `  - ${row}`).join('\n') +
         (drifted.length > 20 ? `\n  … and ${drifted.length - 20} more` : '') + '\n\n' +
-        'Recovery (on a rendering platform):\n' +
+        'Recovery (on macOS, where the goldens are captured):\n' +
         '  1. re-run the visual + e2e capture suites, with --update-snapshots when the delta is an\n' +
         '     intended design outcome (the refreshed golden diff is the review surface)\n' +
-        '  2. stage the changes, then: npm run stamp-visual-baselines'
+        '  2. stage the changes, then: npm run stamp-visual-baselines\n' +
+        'No Mac? Say so in your pull request, and a maintainer captures and stamps the goldens.'
     );
     process.exit(1)
 }
