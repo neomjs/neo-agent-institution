@@ -272,7 +272,11 @@ class Controller extends ComponentController {
             }
 
             me.registryProfileId = bridge.profileId ?? null;
+            const priorSelectedId = component.selectedAgentId;
             store.data = agents;
+            if (priorSelectedId && store.get(priorSelectedId) && !component.adding) {
+                component.selectedAgentId = priorSelectedId;
+            }
             // an empty first answer mutates nothing, so no Store event re-derives the empty line
             agents.length === 0 && component.syncDetail();
             return true

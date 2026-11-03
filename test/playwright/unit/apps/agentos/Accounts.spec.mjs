@@ -30,7 +30,7 @@ const
     viewPath       = path.join(repoRoot, 'apps/agentos/view/accounts/Panel.mjs'),
     controllerPath = path.join(repoRoot, 'apps/agentos/view/accounts/Controller.mjs');
 
-let AgentDefinition, Store;
+let AgentDefinition, AgentDefinitions, Store;
 let testInstanceStore, testFleetTenantsStore;
 
 test.beforeAll(() => {
@@ -44,11 +44,12 @@ test.afterAll(() => {
 });
 
 test.beforeAll(async () => {
-    AgentDefinition = (await import('../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
-    Store           = (await import('../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
+    AgentDefinition  = (await import('../../../../../apps/agentos/model/AgentDefinition.mjs')).default;
+    AgentDefinitions = (await import('../../../../../apps/agentos/store/AgentDefinitions.mjs')).default;
+    Store            = (await import('../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default
 });
 
-const makeAgentStore = data => Neo.create(Store, {keyProperty: 'id', model: AgentDefinition, data});
+const makeAgentStore = data => Neo.create(AgentDefinitions, {data});
 
 /**
  * @summary Create the real Accounts child tree and controller for lifecycle and event tests.
@@ -57,7 +58,7 @@ const makeAgentStore = data => Neo.create(Store, {keyProperty: 'id', model: Agen
  */
 const createAccounts = async config => {
     const stores = {
-        agentDefinitions: config.agentDefinitionsStore || {module: DataStore, model: AgentDefinition, data: []},
+        agentDefinitions: config.agentDefinitionsStore || {module: AgentDefinitions, data: []},
         fleetTenants    : config.fleetTenantsStore || {module: TestFleetTenants, data: []},
         fleetRoster     : config.fleetRosterStore || {module: DataStore, data: []},
         fleetInstances  : config.instanceStore || {module: DataStore, keyProperty: 'profileId', data: []}
@@ -826,6 +827,123 @@ test.describe('AgentOS.view.accounts.Panel — master-detail (multiple agents)',
         expect(detailOf(stub)).toEqual({card: true, form: false, empty: false, pressed: false});
 
         store.destroy()
+    });
+
+    test.describe('alphabetical ordering by displayed name (#862)', () => {
+        test('initial load renders definitions in case-insensitive A–Z order with displayed label fallback and tie-breaker', () => {
+            const store = makeAgentStore([
+                {id: 'agent-z',  displayName: 'Zoe',      harnessType: 'codex'},
+                {id: 'agent-b',  githubUsername: 'bob',   harnessType: 'codex'},
+                {id: 'Agent-A',  harnessType: 'codex'},
+                {id: 'agent-m',  displayName: 'middle',   harnessType: 'codex'},
+                {id: 'agent-c2', displayName: 'charlie',  harnessType: 'codex'},
+                {id: 'agent-c1', displayName: 'Charlie',  harnessType: 'codex'}
+            ]);
+            const stub = makeAccounts(store);
+
+            // A–Z order: Agent-A -> bob -> Charlie (id: agent-c1) -> charlie (id: agent-c2) -> middle -> Zoe
+            const orderedIds = store.items.map(item => item.id);
+            expect(orderedIds).toEqual(['Agent-A', 'agent-b', 'agent-c1', 'agent-c2', 'agent-m', 'agent-z']);
+
+            // Default selection scopes the first alphabetical agent
+            expect(stub.selectedAgentId).toBe('Agent-A');
+            expect(stub.refs['agent-config-card'].record?.id).toBe('Agent-A');
+
+            store.destroy()
+        });
+
+        test('adding a definition keeps case-insensitive A–Z order and preserves the selected agent', () => {
+            const store = makeAgentStore([
+                {id: 'agent-b', displayName: 'Bob',    harnessType: 'codex'},
+                {id: 'agent-z', displayName: 'Zoe',    harnessType: 'codex'}
+            ]);
+            const stub = makeAccounts(store);
+
+            expect(stub.selectedAgentId).toBe('agent-b');
+
+            // Select Zoe
+            stub.onAgentListSelect({records: [store.get('agent-z')]});
+            expect(stub.selectedAgentId).toBe('agent-z');
+            expect(stub.refs['agent-config-card'].record?.id).toBe('agent-z');
+
+            // Add Alpha, which sorts before Bob and Zoe
+            store.add({id: 'agent-a', displayName: 'alpha', harnessType: 'codex'});
+
+            expect(store.items.map(item => item.id)).toEqual(['agent-a', 'agent-b', 'agent-z']);
+            // Selection and card scope remain on Zoe
+            expect(stub.selectedAgentId).toBe('agent-z');
+            expect(stub.refs['agent-config-card'].record?.id).toBe('agent-z');
+
+            store.destroy()
+        });
+
+        test('changing a definition updates the order while preserving the selected agent', () => {
+            const store = makeAgentStore([
+                {id: 'agent-b', displayName: 'Bob',    harnessType: 'codex'},
+                {id: 'agent-m', displayName: 'Middle', harnessType: 'codex'},
+                {id: 'agent-z', displayName: 'Zoe',    harnessType: 'codex'}
+            ]);
+            const stub = makeAccounts(store);
+
+            // Select Middle
+            stub.onAgentListSelect({records: [store.get('agent-m')]});
+            expect(stub.selectedAgentId).toBe('agent-m');
+
+            // Rename Zoe to Aaron (moves from bottom to top)
+            const zoeRecord = store.get('agent-z');
+            zoeRecord.set({displayName: 'Aaron'});
+
+            expect(store.items.map(item => item.id)).toEqual(['agent-z', 'agent-b', 'agent-m']);
+            // Selection and card scope remain on Middle
+            expect(stub.selectedAgentId).toBe('agent-m');
+            expect(stub.refs['agent-config-card'].record?.id).toBe('agent-m');
+
+            store.destroy()
+        });
+
+        test('controller refresh preserves case-insensitive A–Z order and active selection', async () => {
+            const store = makeAgentStore([
+                {id: 'agent-x', displayName: 'Xavier', harnessType: 'codex'},
+                {id: 'agent-y', displayName: 'Yvonne', harnessType: 'codex'}
+            ]);
+            const prior = globalThis.AgentOS;
+            let view;
+            try {
+                globalThis.AgentOS = {
+                    ...prior,
+                    fleet: {
+                        registryBridge: {
+                            listAgents: async () => [
+                                {id: 'agent-w', displayName: 'walter', harnessType: 'codex'},
+                                {id: 'agent-x', displayName: 'Xavier', harnessType: 'codex'},
+                                {id: 'agent-a', displayName: 'Alice',  harnessType: 'codex'}
+                            ]
+                        }
+                    }
+                };
+
+                view = await createAccounts({agentDefinitionsStore: store});
+                await view.ready();
+
+                // Select Xavier
+                view.selectedAgentId = 'agent-x';
+                expect(view.selectedAgentId).toBe('agent-x');
+
+                // Refresh definitions from the bridge
+                const accepted = await view.loadAgentDefinitions();
+                expect(accepted).toBe(true);
+
+                // Sorted order: Alice -> walter -> Xavier
+                expect(store.items.map(item => item.id)).toEqual(['agent-a', 'agent-w', 'agent-x']);
+                // Selection of Xavier preserved across refresh
+                expect(view.selectedAgentId).toBe('agent-x');
+                expect(view.getReference('agent-config-card').record?.id).toBe('agent-x');
+            } finally {
+                globalThis.AgentOS = prior;
+                view?.destroy();
+                store.destroy()
+            }
+        });
     });
 
 });

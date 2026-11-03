@@ -4,6 +4,7 @@ import AddAgentForm          from '../fleet/instances/AddAgentForm.mjs';
 import {boundAgentOsBind}    from '../fleet/instances/MenuList.mjs';
 import Controller            from './Controller.mjs';
 import List                  from './List.mjs';
+import AgentDefinitions      from '../../store/AgentDefinitions.mjs';
 import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboard/Panel.mjs';
 
@@ -274,6 +275,10 @@ class Accounts extends DashboardPanel {
      * @protected
      */
     afterSetAgentDefinitionsStore(value, oldValue) {
+        if (value && (value.sorters?.length ?? 0) < 1) {
+            value.sorters = AgentDefinitions.sortersOf()
+        }
+
         let me        = this,
             listeners = {
                 load        : me.onAgentRosterChange,
@@ -443,9 +448,17 @@ class Accounts extends DashboardPanel {
     /**
      * @summary Any roster change (seed load, add, remove, field readback) re-derives the selection
      * and refreshes the scoped card.
+     * @param {Object} [opts]
      * @protected
      */
-    onAgentRosterChange() {
+    onAgentRosterChange(opts) {
+        let me    = this,
+            store = me.agentDefinitionsStore;
+
+        if (store?.autoSort && (store?.sorters?.length ?? 0) > 0 && opts?.record) {
+            store.doSort()
+        }
+
         this.syncSelection()
     }
 
