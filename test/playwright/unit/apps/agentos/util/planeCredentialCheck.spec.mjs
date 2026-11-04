@@ -30,7 +30,7 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         const data = {};
 
         return {
-            component  : {getStateProvider: () => ({setData: (key, value) => { data[key] = value }}), planeCredentialRecheckInterval, windowId: 7},
+            component  : {getStateProvider: () => ({getData: key => data[key], setData: (key, value) => { data[key] = value }}), planeCredentialRecheckInterval, windowId: 7},
             data,
             isDestroyed: false,
             planeCheck : null
@@ -194,6 +194,32 @@ test.describe('AgentOS.util.PlaneCredentialCheck', () => {
         await PlaneCredentialCheck.recheck(owner, 2000);
 
         expect(owner.data.planeCause).toBe(null)
+    });
+
+    test('a reconnect asks again while a cause stands, so a PAT put to use without a relaunch clears it at once (#843)', async () => {
+        const owner = makeOwner(300_000);
+
+        shellAnswers({cause: 'plane-credential-refused'});
+        await PlaneCredentialCheck.recheck(owner, 300_000);
+        expect(owner.data.planeCause).toBe('plane-credential-refused');
+
+        // the shell adopted a new PAT, and the periodic re-check is not due for another 300 s
+        shellAnswers({cause: null});
+        await PlaneCredentialCheck.recheck(owner, 300_001);
+        expect(owner.data.planeCause, 'the re-check is not due').toBe('plane-credential-refused');
+
+        await PlaneCredentialCheck.reconnect(owner);
+        expect(owner.data.planeCause).toBe(null);
+        expect(calls).toHaveLength(2)
+    });
+
+    test('a reconnect with no cause standing asks nothing', async () => {
+        const owner = makeOwner();
+
+        shellAnswers({cause: null});
+        await PlaneCredentialCheck.reconnect(owner);
+
+        expect(calls).toEqual([])
     });
 
     test('without a positive interval the re-check never asks', async () => {

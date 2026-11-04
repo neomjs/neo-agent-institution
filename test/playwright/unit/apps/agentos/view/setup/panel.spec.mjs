@@ -62,5 +62,17 @@ test.describe('AgentOS.view.setup.Panel — two doors in one card, the Create do
         expect(heard).toEqual([['firstPersistence', {decisions: 6, manualActions: 0}], ['openMemories']]);
 
         host.destroy()
+    });
+
+    test('the Connect door\'s connected reaches the card\'s owner through the card (#843)', () => {
+        const
+            heard        = [],
+            {host, card} = createCard({connected: () => heard.push('connected')});
+
+        card.getReference('connect-door').fire('connected', {});
+
+        expect(heard).toEqual(['connected']);
+
+        host.destroy()
     })
 });

@@ -344,14 +344,23 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                 component: {
                     getCatchUpPane   : () => panes['catch-up'],
                     getMemoriesPane  : () => panes.memories,
+                    // a standing credential cause is asked about again: the shell's answer clears it
+                    getStateProvider : () => ({getData: key => key === 'planeCause' ? 'plane-credential-refused' : undefined, setData() {}}),
                     getWakeRoutesPane: () => panes.wakeRoutes ?? null
                 }
-            });
+            }),
+            originalMain = globalThis.Neo.main;
 
-        host.reconnectFleet();
+        globalThis.Neo.main = {addon: {ShellPlane: {verifyPlane: () => { driven.push('planeCredential'); return {cause: null} }}}};
+
+        try {
+            host.reconnectFleet()
+        } finally {
+            globalThis.Neo.main = originalMain
+        }
 
         expect(driven.sort()).toEqual([
-            'activity', 'brainHealth', 'catchUpHistory', 'deploymentState', 'goldenPathRead', 'memoriesHistory', 'roster', 'tasks', 'viewerWake', 'wakeRoutesHistory'
+            'activity', 'brainHealth', 'catchUpHistory', 'deploymentState', 'goldenPathRead', 'memoriesHistory', 'planeCredential', 'roster', 'tasks', 'viewerWake', 'wakeRoutesHistory'
         ])
     });
 
@@ -408,6 +417,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                   component             : {
                       getCatchUpPane   : () => null,
                       getMemoriesPane  : () => null,
+                      getStateProvider : () => null,
                       getWakeRoutesPane: () => null
                   }
               });

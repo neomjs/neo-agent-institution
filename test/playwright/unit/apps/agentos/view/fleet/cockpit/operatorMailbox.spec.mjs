@@ -509,7 +509,8 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
             'ensureViewerWakeStream', 'loadActivity', 'loadBrainHealth', 'loadDeploymentState',
             'loadGoldenPath', 'loadGraphScene', 'loadRoster', 'loadTasks'
         ].map(name => [name, () => {}])), {component: {
-            ...cockpit.component, getCatchUpPane: () => null, getMemoriesPane: () => null, getWakeRoutesPane: () => null
+            // no credential cause stands, so the reconnect asks the shell nothing about the PAT
+            ...cockpit.component, getCatchUpPane: () => null, getMemoriesPane: () => null, getStateProvider: () => null, getWakeRoutesPane: () => null
         }});
 
         test('Reconnect after a switch binds B\'s identity, which reads its own first window — no second read', async () => {

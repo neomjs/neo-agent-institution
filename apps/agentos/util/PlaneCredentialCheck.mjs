@@ -10,7 +10,8 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * plane stops admitting mid-session rarely fails the roster read itself: the roster resolves and its plane
  * presence read degrades, and a PAT the plane now admits as another account fails no read at all. So the
  * shell is asked when an episode opens (a roster read that fails upstream, or an answer whose presence read
- * is degraded), when a wired read ends it, and on a periodic re-check from the liveness tick. A read that
+ * is degraded), when a wired read ends it, on a reconnect while a cause stands, and on a periodic re-check
+ * from the liveness tick. A read that
  * answers proves the transport, never the credential, so it asks rather than clears: a restored PAT clears
  * on the shell's answer, not on the next re-check.
  *
@@ -83,6 +84,18 @@ class PlaneCredentialCheck extends Base {
         if (!(interval > 0) || now - (PlaneCredentialCheck.stateOf(owner).at ?? 0) < interval) return;
 
         return PlaneCredentialCheck.query(owner, now)
+    }
+
+    /**
+     * @summary A reconnect asks again while a credential cause stands. A PAT the shell put to use without a
+     * relaunch then clears the cause on the shell's answer, not at the next periodic re-check.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
+     * @returns {Promise<void>}
+     */
+    static async reconnect(owner) {
+        if (!owner.component.getStateProvider()?.getData('planeCause')) return;
+
+        return PlaneCredentialCheck.query(owner, Date.now())
     }
 
     /**

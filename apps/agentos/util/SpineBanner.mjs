@@ -102,7 +102,7 @@ const DAEMON_FAULT_STATES = Object.freeze(['degraded', 'stopped']);
  */
 const PLANE_REFUSALS = Object.freeze({
     'plane-credential-refused': {action: 'connect-plane', lead: `${PlaneVerdict.sentences.rejected} Connect again with a current one.`, text: 'pat refused'},
-    'plane-identity-changed'  : {action: 'connect-plane', lead: 'The plane now names that PAT as another account. Connect again to confirm it.', text: 'account changed'},
+    'plane-identity-changed'  : {action: 'connect-plane', lead: 'The plane now names that PAT as another account. Connect with one of yours.', text: 'account changed'},
     'plane-not-a-plane'       : {action: 'retry-plane', lead: `${PlaneVerdict.sentences['not-a-plane']} Retry, or connect to the plane's own address.`, text: 'not a plane'},
     'plane-unreachable'       : {action: 'retry-plane', lead: `${PlaneVerdict.sentences.unreachable} Bring that plane back and retry, or connect to another.`, text: 'plane unreachable'}
 });

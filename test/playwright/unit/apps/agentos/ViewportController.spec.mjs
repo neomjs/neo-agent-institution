@@ -136,7 +136,7 @@ test.describe('AgentOS.view.ViewportController — the plane-setup card mounts o
         module   : SetupPanel,
         activeDoor,
         flex     : 'none',
-        listeners: {firstPersistence: 'onSetupFirstPersistence', openMemories: 'onSetupOpenMemories'},
+        listeners: {connected: 'onSetupConnected', firstPersistence: 'onSetupFirstPersistence', openMemories: 'onSetupOpenMemories'},
         reference: 'plane-setup'
     });
 
@@ -540,6 +540,18 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
 
         expect(source.notice).toEqual({tone: 'ok', text: 'tenant connected — tenant-7'});
         expect(calls).toEqual(['reconnectFleet'])
+    });
+
+    test('a PAT the shell put to use without a relaunch re-drives the cockpit, and the card stays with its confirmation (#843)', () => {
+        const
+            calls      = [],
+            writes     = [],
+            controller = createControllerOverRealCockpit({calls, writes});
+
+        controller.onSetupConnected();
+
+        expect(calls).toEqual(['reconnectFleet']);
+        expect(writes).toEqual([])
     });
 
     test('every method the Viewport and its controller call on the cockpit exists on the real class', () => {
