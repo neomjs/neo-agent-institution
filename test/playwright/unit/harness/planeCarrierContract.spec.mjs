@@ -6,17 +6,19 @@ import path                                        from 'node:path';
 import {resolveAgentOsRuntimeRoot, runBrainScript} from '../../../../harness/brain.mjs';
 import {
     createPlaneBroker,
+    launchedPlaneRecord,
     planeEnvFragment,
     PLANE_MCP_SERVER_NAME,
     readPlaneConfig,
     writePlaneConfig
 } from '../../../../harness/planeConfig.mjs';
+import {planeCredentialFrame}                      from '../../../../harness/planeCredentialPipe.mjs';
 
 /**
  * @summary The plane carrier, composed with a real Brain root: the class comes from a real Fleet app's
- * authenticated probe, passes through the shell's own attach, record and launch env, and ends in the
- * Brain's own config resolution and admission rule. Live arm: it needs `NEO_AGENTOS_RUNTIME_ROOT`, an
- * installed Brain checkout, as the Brain-contract job provides; the credentials are synthetic.
+ * authenticated probe, passes through the shell's own attach, record, launch env and credential frame, and
+ * ends in the Brain's own config resolution and admission rule. Live arm: it needs `NEO_AGENTOS_RUNTIME_ROOT`,
+ * an installed Brain checkout, as the Brain-contract job provides; the credentials are synthetic.
  */
 
 const
@@ -55,15 +57,17 @@ const
         "});",
         "const server = app.listen(0, '127.0.0.1', () => process.stdout.write(JSON.stringify({port: server.address().port}) + '\\n'));"
     ].join('\n'),
-    // The fleet child's question, asked of the Brain under the env the launch built: which credential
-    // the fleet surface would be given, and whether the class rule admits it. It prints labels only.
+    // The fleet child's question, asked of the Brain under the env the launch built and the frame it piped
+    // (`CARRIER_FRAME` stands in for the pipe's boot frame): which credential the fleet surface would be
+    // given, and whether the class rule admits it. It prints labels only.
     RESOLVER = [
         ...BOOTSTRAP,
         "const {resolveFleetPlaneAdmissionBearer, assertFleetPlaneAdmissionBearerClass} = await import('./ai/services/fleet/fleetServer.mjs');",
-        "const bearer = process.env.NEO_FLEET_PLANE_BEARER ?? '', label = value => !value ? 'none' : value === bearer ? 'plane-bearer' : 'other';",
+        "const planeCredential = process.env.CARRIER_FRAME ? JSON.parse(process.env.CARRIER_FRAME) : null;",
+        "const bearer = planeCredential?.bearer ?? process.env.NEO_FLEET_PLANE_BEARER ?? '', label = value => !value ? 'none' : value === bearer ? 'plane-bearer' : 'other';",
         "let assertion;",
-        "try { assertion = label(assertFleetPlaneAdmissionBearerClass()) } catch { assertion = 'refused' }",
-        "process.stdout.write(JSON.stringify({admission: label(resolveFleetPlaneAdmissionBearer()), assertion}));"
+        "try { assertion = label(assertFleetPlaneAdmissionBearerClass({planeCredential})) } catch { assertion = 'refused' }",
+        "process.stdout.write(JSON.stringify({admission: label(resolveFleetPlaneAdmissionBearer({planeCredential})), assertion}));"
     ].join('\n');
 
 /**
@@ -129,18 +133,26 @@ test.describe('harness/planeConfig — the carrier, composed with a real Brain r
     let root, brainRoot, fleet, dir;
 
     const
-        // the launch's composition: the inherited env, then the record's fragment over it
-        // every key the rule reads is set, so neither this process's env nor the Brain root's .env decides a case
-        childEnv  = (inherited, record = readPlaneConfig({dir, safeStorage})) => ({
-            NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
-            NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
-            NEO_FLEET_PLANE_BEARER               : '',
-            NEO_FLEET_PLANE_BEARER_CLASS         : '',
-            NEO_FLEET_PLANE_BEARER_FILE          : '',
-            NEO_MCP_HEALTHCHECK_TOKEN_FILE       : '',
-            ...inherited,
-            ...planeEnvFragment({env: inherited, planeConfig: record})
-        }),
+        // the launch's composition, as main builds it: the inherited env, then the record's fragment over it,
+        // and the record's bearer and class as the pipe's boot frame when the record alone supplied the launch.
+        // Every key the rule reads is set, so neither this process's env nor the Brain root's .env decides a case
+        childEnv  = (inherited, record = readPlaneConfig({dir, safeStorage})) => {
+            const
+                fragment = planeEnvFragment({env: inherited, planeConfig: record}),
+                piped    = launchedPlaneRecord(record, fragment);
+
+            return {
+                NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
+                NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+                NEO_FLEET_PLANE_BEARER               : '',
+                NEO_FLEET_PLANE_BEARER_CLASS         : '',
+                NEO_FLEET_PLANE_BEARER_FILE          : '',
+                NEO_MCP_HEALTHCHECK_TOKEN_FILE       : '',
+                ...inherited,
+                ...fragment,
+                CARRIER_FRAME: piped ? JSON.stringify(planeCredentialFrame(piped)) : ''
+            }
+        },
         fleetSays = env => runBrainScript({env, label: 'carrier contract', repoRoot: brainRoot, script: RESOLVER});
 
     test.beforeAll(async () => {

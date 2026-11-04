@@ -34,6 +34,7 @@ import net                                                                      
 import path                                                                                                                         from 'node:path';
 import {pathToFileURL}                                                                                                              from 'node:url';
 import {carriesSecret}                                                                                                              from './mainLog.mjs';
+import {PLANE_CREDENTIAL_FD}                                                                                                        from './planeCredentialPipe.mjs';
 import {acquireHostRuntimeGeneration, loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, materializeRuntimeGeneration} from './runtimeGeneration.mjs';
 
 export const ORCHESTRATOR_ENTRY       = 'ai/daemons/orchestrator/daemon.mjs';
@@ -612,18 +613,27 @@ export function bootFailureCause(error) {
 export const RETRYABLE_BOOT_REFUSALS = new Set(['plane-not-a-plane', 'plane-refused', 'plane-unreachable']);
 
 /**
+ * The boot refusals a boot run again answers once the plane card stored a PAT the plane admits for the
+ * stored identity: the retryable ones, and the credential's own two, which needed exactly that PAT.
+ * @type {Set<String>}
+ */
+export const RENEWED_CREDENTIAL_REFUSALS = new Set([...RETRYABLE_BOOT_REFUSALS, 'plane-credential-refused', 'plane-identity-changed']);
+
+/**
  * @summary Runs a boot again, in this process, after one settled down with a retryable refusal: a new
  * lifecycle episode, then the boot itself, which reads the stored record again. Nothing prompts for a
  * PAT and nothing relaunches; the caller retains the new boot.
  * @param {Object} options
  * @param {Object|null} options.boot The settled boot (`{up, cause}`), or `null` while one runs.
+ * @param {Set<String>} [options.causes=RETRYABLE_BOOT_REFUSALS] The refusals a boot may run again after;
+ *     {@link RENEWED_CREDENTIAL_REFUSALS} once a new PAT is stored.
  * @param {Object} options.lifecycle The lifecycle owner; its `beginBrainBoot()` opens the new episode.
  * @param {Boolean} options.quitting
  * @param {Function} options.start `() => Promise<Object>`, the boot to run again.
  * @returns {{boot: (Promise<Object>|null), ok: Boolean, reason: (String|null)}} `reason` is `quitting`,
  *     `boot-running`, `boot-up` or `not-retryable` when nothing started.
  */
-export function retryBrainBoot({boot, lifecycle, quitting, start}) {
+export function retryBrainBoot({boot, causes = RETRYABLE_BOOT_REFUSALS, lifecycle, quitting, start}) {
     let reason = null;
 
     if (quitting) {
@@ -632,7 +642,7 @@ export function retryBrainBoot({boot, lifecycle, quitting, start}) {
         reason = 'boot-running'
     } else if (boot.up === true) {
         reason = 'boot-up'
-    } else if (!RETRYABLE_BOOT_REFUSALS.has(boot.cause?.source) || !lifecycle.beginBrainBoot()) {
+    } else if (!causes.has(boot.cause?.source) || !lifecycle.beginBrainBoot()) {
         reason = 'not-retryable'
     }
 
@@ -1165,6 +1175,10 @@ function forwardLines(child, onLog) {
  * @param {Object}   [options.env] Env fragment merged over process.env. It can add or override an
  *     inherited variable, never remove one, so a fragment builder that must keep an inherited value away
  *     from the child has to decide it by what it exports, not by deleting.
+ * @param {Boolean}  [options.credentialPipe=false] Gives the child the plane credential pipe as its fd
+ *     `PLANE_CREDENTIAL_FD` and names that fd in its env; main's end is `child.stdio[PLANE_CREDENTIAL_FD]`
+ *     (`harness/planeCredentialPipe.mjs`). Any other child gets the variable blanked, so an inherited one
+ *     never points it at an fd it does not have.
  * @param {Function} [options.onLog] Receives trimmed child stdout/stderr lines.
  * @param {Function} [options.ownershipTokenFn=randomUUID] Per-spawn identity seam for tests.
  * @param {Function} [options.spawnFn=spawn] Injection seam for tests.
@@ -1174,6 +1188,7 @@ export function startBrainChild({
     repoRoot,
     entry,
     args = [],
+    credentialPipe = false,
     env = {},
     onLog,
     ownershipTokenFn = randomUUID,
@@ -1211,8 +1226,14 @@ export function startBrainChild({
     const child = spawnFn(runtime.bin, ['--import', OWNER_MARKER_STRIP, absoluteEntry, `--neo-harness-owner=${ownershipToken}`, ...args], {
         cwd     : absoluteRepoRoot,
         detached: true,
-        env     : {...process.env, ...env, ...runtime.env, PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`},
-        stdio   : ['ignore', 'pipe', 'pipe']
+        env     : {
+            ...process.env,
+            ...env,
+            NEO_FLEET_PLANE_CREDENTIAL_FD: credentialPipe ? String(PLANE_CREDENTIAL_FD) : '',
+            ...runtime.env,
+            PATH: `${binPaths.join(path.delimiter)}${path.delimiter}${process.env.PATH ?? ''}`
+        },
+        stdio   : credentialPipe ? ['ignore', 'pipe', 'pipe', 'pipe'] : ['ignore', 'pipe', 'pipe']
     });
 
     // The parent persists this pair only for smoke crash recovery. The absolute entry distinguishes

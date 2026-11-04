@@ -74,6 +74,46 @@ test.describe('AgentOS.view.setup.ConnectContainer — the setup card\'s connect
         host.destroy()
     });
 
+    test('a PAT the shell put to use without a relaunch says so, fires connected, and re-enables Connect (#843)', async () => {
+        stubAttachPlane({ok: true, reason: null, relaunching: false});
+
+        const
+            {host, door} = createDoor(),
+            heard        = [];
+
+        door.on('connected', () => heard.push('connected'));
+        await door.onConnectClick();
+
+        expect(door.getReference('status-line').text).toBe('Connected. The new PAT is in use, and the Fleet Manager keeps running.');
+        expect(door.getReference('connect-button').disabled).toBe(false);
+        expect(heard).toEqual(['connected']);
+        host.destroy()
+    });
+
+    test('a PAT for another account names both accounts; a Fleet that keeps its PAT says so (#843)', async () => {
+        stubAttachPlane({expectedIdentity: '@fixture-operator', identity: '@someone-else', ok: false, reason: 'another-account', relaunching: false});
+
+        const {host, door} = createDoor();
+
+        await door.onConnectClick();
+
+        expect(door.getReference('status-line').text).toBe('The plane names that PAT as @someone-else, not @fixture-operator. Nothing was stored.');
+        expect(door.getReference('connect-button').disabled).toBe(false);
+
+        stubAttachPlane({ok: false, reason: 'fleet-refused', relaunching: false});
+        await door.onConnectClick();
+
+        expect(door.getReference('status-line').text).toBe(ConnectContainer.reasonText['fleet-refused']);
+
+        stubAttachPlane({ok: false, reason: 'fleet-closed', relaunching: false});
+        await door.onConnectClick();
+
+        expect(door.getReference('status-line').text, 'a Fleet that can no longer take one names the way to use it')
+            .toBe('The running Fleet can no longer take a new PAT and keeps its current one. Nothing was stored. To use this PAT, reopen the Fleet Manager and connect it again.');
+        expect(door.getReference('connect-button').disabled).toBe(false);
+        host.destroy()
+    });
+
     test('a successful attach keeps Connect disabled while the shell relaunches', async () => {
         stubAttachPlane({ok: true, reason: null, relaunching: true});
 

@@ -68,6 +68,8 @@ import {
     resolveProductBrainPlan,
     resolveSmokeRoot,
     loadFleetRuntimeContracts,
+    RENEWED_CREDENTIAL_REFUSALS,
+    RETRYABLE_BOOT_REFUSALS,
     retryBrainBoot,
     runBrainScript,
     runtimePlaneCause,
@@ -104,6 +106,7 @@ import {
     probePlaneCredential,
     readPlaneConfig
 } from './planeConfig.mjs';
+import {PLANE_CREDENTIAL_FD, pipePlaneCredential, rotatePlaneCredential}                            from './planeCredentialPipe.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
 import {findFleetWriters, runSeatMoveStep, seatMoveBootHold, settleSeatRootMove}                    from './seatRootMove.mjs';
 import {SEAT_RENAME_CHANNELS, createSeatRenameBroker, createSeatRenameRuntime}                     from './seatRenameBroker.mjs';
@@ -184,8 +187,11 @@ let
     // The plane record's bearer once a boot has read it (the product's, or the smoke's fixture plane);
     // the log redacts it with the others.
     storedPlaneBearer = null,
+    // The bearers a rotation replaced. A replaced PAT may still be valid, so the log keeps redacting it.
+    replacedPlaneBearers = [],
     // The stored record this boot launched its fleet child with (`launchedPlaneRecord`), or `null` when
-    // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs.
+    // the plane came from elsewhere: the one record `verifyPlane()` may probe while the shell runs. A rotation
+    // the child adopted replaces its bearer, so a respawn pipes the bearer the child last held.
     launchedPlane = null,
     // The last Brain boot once it settled (`{up, cause, …}`), or `null` while one runs: what a Retry reads.
     settledBoot = null,
@@ -194,7 +200,7 @@ let
     seatMoveOutcome = null;
 
 // Every secret main holds. The main log and a plane refusal's cockpit detail both drop a line carrying one.
-const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, process.env.NEO_FLEET_PLANE_ADMISSION_BEARER, storedPlaneBearer];
+const mainSecrets = () => [fleetBearerToken, process.env.NEO_FLEET_PLANE_BEARER, process.env.NEO_FLEET_PLANE_ADMISSION_BEARER, storedPlaneBearer, ...replacedPlaneBearers];
 
 // A Finder launch has no terminal: every line main prints also lands in `main.log` in the platform's logs
 // folder, with each secret main holds redacted at the file boundary. A diagnostic run logs under its own
@@ -1228,13 +1234,14 @@ async function bootProductBrain() {
             spawnAttempt   : () => {
                 let fleetLastLine = null;
                 const
-                    spawnFleet = () => startBrainChild({
-                        entry   : FLEET_SERVER_ENTRY,
-                        args    : launcherRuntime.launchArgs,
-                        env     : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
-                        onLog   : line => {fleetLastLine = line; brainLog(line)},
-                        repoRoot: agentosRuntimeRoot
-                    }),
+                    spawnFleet = () => pipeLaunchedPlane(startBrainChild({
+                        entry         : FLEET_SERVER_ENTRY,
+                        args          : launcherRuntime.launchArgs,
+                        credentialPipe: launchedPlane !== null,
+                        env           : {...packagedEnv, ...wakeReceiverEnv(wakeReceiver), NEO_FLEET_BEARER: fleetBearerToken, NEO_FLEET_PORT: String(fleetPort)},
+                        onLog         : line => {fleetLastLine = line; brainLog(line)},
+                        repoRoot      : agentosRuntimeRoot
+                    })),
                     fleet      = spawnFleet(),
                     entry      = {
                         child  : fleet,
@@ -1263,6 +1270,63 @@ async function bootProductBrain() {
 
     console.log(`HARNESS_BRAIN_MODE ${mode}${plan.planeBase ? ` planeBase=${plan.planeBase}` : ''} fleetPort=${fleetPort} started=[${brainState.children.map(entry => entry.label).join(',') || 'none'}]`);
     return {fleetPort, mode, planeBase: plan.planeBase, up: true}
+}
+
+/**
+ * @summary Hands a fleet child that took the credential pipe the launched record's bearer as its boot frame,
+ * and keeps the pipe on the child for later rotations ({@link rotatePlaneBearer}). A child without the pipe
+ * is returned as it is.
+ * @param {import('node:child_process').ChildProcess} child
+ * @returns {import('node:child_process').ChildProcess}
+ */
+function pipeLaunchedPlane(child) {
+    if (!child.stdio?.[PLANE_CREDENTIAL_FD]) {
+        return child
+    }
+
+    const {boot, pipe} = pipePlaneCredential({child, record: launchedPlane});
+
+    child.planeCredentialPipe = pipe;
+    boot.then(answer => logPlaneCredential('boot', answer));
+
+    return child
+}
+
+/**
+ * @summary The plane broker's rotation: hands a new bearer to the registered fleet child
+ * (`rotatePlaneCredential`) and resolves with its answer, or `null` when no fleet child runs for that plane.
+ * An adopted bearer becomes the launched record's, which `verifyPlane()` probes and a respawn pipes.
+ * @param {Object} options
+ * @param {{bearer: String, bearerClass: String}} options.frame
+ * @param {String} options.planeBase
+ * @returns {Promise<Object|null>}
+ */
+async function rotatePlaneBearer({frame, planeBase}) {
+    const answer = await rotatePlaneCredential({
+        child: brainState.children.find(entry => entry.label === 'fleet')?.child ?? null,
+        frame,
+        launchedPlane,
+        planeBase
+    });
+
+    answer && logPlaneCredential('rotation', answer);
+
+    if (answer?.state === 'adopted') {
+        replacedPlaneBearers.push(storedPlaneBearer);
+        storedPlaneBearer = frame.bearer;
+        launchedPlane     = {...launchedPlane, authSource: frame.bearerClass || null, bearer: frame.bearer}
+    }
+
+    return answer
+}
+
+/**
+ * @summary Logs the fleet child's answer to a credential frame. The answer never carries a bearer.
+ * @param {String} frame `boot` or `rotation`
+ * @param {Object} answer
+ */
+function logPlaneCredential(frame, answer) {
+    console.log(`HARNESS_PLANE_CREDENTIAL ${JSON.stringify({frame, ...answer})}`)
 }
 
 /**
@@ -1304,13 +1368,17 @@ function bootBrainSettled() {
  * @summary The plane broker's Retry: a boot that settled down with a refusal that is not the
  * credential's runs again, in this process (`retryBrainBoot`). Fleet reads join the new boot, since
  * they read `brainBootPromise` at call time.
+ * @param {Object} [options]
+ * @param {Boolean} [options.renewed=false] The plane card just stored a PAT the plane admits for the stored
+ *     identity, so the credential's own refusals run again too.
  * @returns {{boot: (Promise<Object>|null), ok: Boolean, reason: (String|null)}}
  */
-function retryBoot() {
+function retryBoot({renewed = false} = {}) {
     const
         after = settledBoot?.cause?.source ?? null,
         retry = retryBrainBoot({
             boot     : settledBoot,
+            causes   : renewed ? RENEWED_CREDENTIAL_REFUSALS : RETRYABLE_BOOT_REFUSALS,
             lifecycle: appLifecycle,
             quitting : fleetReadyAbort.signal.aborted,
             start    : () => {
@@ -1319,7 +1387,7 @@ function retryBoot() {
             }
         });
 
-    console.log(`HARNESS_BRAIN_RETRY ${retry.ok ? `after [${after}]` : `refused: ${retry.reason}`}`);
+    console.log(`HARNESS_BRAIN_RETRY ${retry.ok ? `after [${after}]${renewed ? ' with a renewed PAT' : ''}` : `refused: ${retry.reason}`}`);
     retry.ok && (brainBootPromise = retry.boot);
 
     return retry
@@ -1470,17 +1538,18 @@ async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs =
 
     const
         orchestrator = plan.startOrchestrator ? startBrainChild({entry: ORCHESTRATOR_ENTRY, env: profile, onLog: brainLog, repoRoot: agentosRuntimeRoot}) : null,
-        fleet        = startBrainChild({
-            entry: FLEET_SERVER_ENTRY,
-            args : launcherRuntime.launchArgs,
-            env  : profile,
-            onLog: line => {
+        fleet        = pipeLaunchedPlane(startBrainChild({
+            entry         : FLEET_SERVER_ENTRY,
+            args          : launcherRuntime.launchArgs,
+            credentialPipe: launchedPlane !== null,
+            env           : profile,
+            onLog         : line => {
                 fleetLastLine = line;
                 planeAdmitted ||= line.includes(`bound to the containerized plane at ${plan.planeBase} `);
                 brainLog(line)
             },
             repoRoot: agentosRuntimeRoot
-        });
+        }));
 
     orchestrator && registerBrainChild({child: orchestrator, ...orchestrator.neoHarnessIdentity, label: 'orchestrator'});
     registerBrainChild({child: fleet, ...fleet.neoHarnessIdentity, label: 'fleet'});
@@ -1555,13 +1624,7 @@ async function attachSmokePlane({isolationRoot, runtimeEnv}) {
         throw new Error('the fixture plane record did not read back as an attachable plane')
     }
 
-    return {
-        NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
-        NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
-        NEO_FLEET_PLANE_BEARER_FILE          : '',
-        NEO_FLEET_WAKE_SELF_BASE             : '',
-        ...fragment
-    }
+    return {NEO_FLEET_WAKE_SELF_BASE: '', ...fragment}
 }
 
 /**
@@ -1839,8 +1902,8 @@ app.whenReady().then(async () => {
     });
 
     // The plane-attach broker: the cockpit reads whether a plane is configured, asks main to attach
-    // one or to run a refused boot again, and asks whether the plane still admits the launched PAT;
-    // the PAT stays in main custody.
+    // one, to put a new PAT to use, or to run a refused boot again, and asks whether the plane still
+    // admits the launched PAT; the PAT stays in main custody.
     const planeBroker = createPlaneBroker({
         causeOf         : runtimePlaneCause,
         dir             : app.getPath('userData'),
@@ -1851,6 +1914,7 @@ app.whenReady().then(async () => {
         promptCredential: promptFleetCredential,
         relaunch        : () => setTimeout(() => { app.relaunch(); app.quit() }, 250),
         retryBoot,
+        rotateBearer    : rotatePlaneBearer,
         safeStorage     : planeSafeStorage
     });
 

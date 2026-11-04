@@ -175,12 +175,12 @@ card/recovery witness; source fixtures are not installed acceptance.
 
 | State | Rendered |
 |---|---|
-| cold | Status `Enter your GitHub or GitLab PAT in the window that opens.` after Connect. |
-| live | `Connected. The shell restarts to attach.` |
+| cold | Status `Enter your GitHub or GitLab PAT in the window that opens. The plane checks it before anything changes.` after Connect. |
+| live | `Connected. The new PAT is in use, and the Fleet Manager keeps running.` (a running Fleet adopted it, or a refused boot ran again with it; the cockpit re-drives) · `Connected. The shell restarts to attach.` (no plane yet, or one from the environment) |
 | stale | `cannot enter`. |
 | degraded | `cannot enter` — the card reports one attempt's verdict. |
 | unreachable | `No plane answered at that address.` — **no next step** (the banner's version adds `Bring that plane back, or connect to another.`). |
-| refusals | `The plane refused that PAT. Nothing was stored.` · `That address is not a Neo plane. Nothing was stored.` · `The plane accepted that PAT but named no identity for it. Nothing was stored.` · `This Mac cannot store the PAT encrypted, so nothing was stored.` · `Use an https address, or http on this machine (127.0.0.1 or localhost).` (next step named) · `Connecting a plane needs the installed Fleet Manager; in a browser, add the plane through the instance switcher.` (next step named) · `Canceled. Nothing was stored.` · fallback `The plane could not be attached.` |
+| refusals | `The plane refused that PAT. Nothing was stored.` · `That address is not a Neo plane. Nothing was stored.` · `The plane accepted that PAT but named no identity for it. Nothing was stored.` · `The plane names that PAT as <identity>, not <expected identity>. Nothing was stored.` · `The running Fleet could not adopt that PAT and keeps its current one. Nothing was stored.` · `The running Fleet can no longer take a new PAT and keeps its current one. Nothing was stored. To use this PAT, reopen the Fleet Manager and connect it again.` (next step named) · `This Mac cannot store the PAT encrypted, so nothing was stored.` · `Use an https address, or http on this machine (127.0.0.1 or localhost).` (next step named) · `Connecting a plane needs the installed Fleet Manager; in a browser, add the plane through the instance switcher.` (next step named) · `Canceled. Nothing was stored.` · fallback `The plane could not be attached.` |
 
 ### Agent Detail status panes — `apps/agentos/view/fleet/detail/Container.mjs` (the ledger rows)
 

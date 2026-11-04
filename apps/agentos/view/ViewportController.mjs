@@ -128,6 +128,7 @@ class ViewportController extends Controller {
                 activeDoor,
                 flex      : 'none',
                 listeners : {
+                    connected       : 'onSetupConnected',
                     firstPersistence: 'onSetupFirstPersistence',
                     openMemories    : 'onSetupOpenMemories'
                 },
@@ -153,6 +154,15 @@ class ViewportController extends Controller {
         } else {
             await this.mountPlaneSetup({door, force: true})
         }
+    }
+
+    /**
+     * @summary A PAT the shell put to use without a relaunch: the cockpit re-drives every seam, and a
+     * standing credential cause is asked about again, so the spine reads the new PAT at once. The card
+     * stays up with its confirmation until the operator dismisses it.
+     */
+    onSetupConnected() {
+        this.getReference('fleet-cockpit')?.reconnectFleet()
     }
 
     /**

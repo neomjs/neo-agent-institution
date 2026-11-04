@@ -1045,6 +1045,30 @@ test.describe('harness brain lifecycle', () => {
         expect(child.neoHarnessIdentity).toEqual({entry: absoluteEntry, ownershipToken: 'spawn-token-a'})
     });
 
+    test('startBrainChild opens the credential pipe on request only, and no other child inherits a pointer to it (#843)', () => {
+        const
+            previous = process.env.NEO_FLEET_PLANE_CREDENTIAL_FD,
+            spawned  = [],
+            spawnFn  = (command, args, options) => {
+                spawned.push({fd: options.env.NEO_FLEET_PLANE_CREDENTIAL_FD, stdio: options.stdio});
+                return createFakeChild()
+            };
+
+        try {
+            process.env.NEO_FLEET_PLANE_CREDENTIAL_FD = '3';
+
+            startBrainChild({credentialPipe: true, entry: ORCHESTRATOR_ENTRY, ownershipTokenFn: () => 't', repoRoot: workDir, spawnFn});
+            startBrainChild({entry: ORCHESTRATOR_ENTRY, env: {NEO_FLEET_PLANE_CREDENTIAL_FD: '3'}, ownershipTokenFn: () => 't', repoRoot: workDir, spawnFn});
+
+            expect(spawned).toEqual([
+                {fd: '3', stdio: ['ignore', 'pipe', 'pipe', 'pipe']},
+                {fd: '', stdio: ['ignore', 'pipe', 'pipe']}
+            ])
+        } finally {
+            previous === undefined ? delete process.env.NEO_FLEET_PLANE_CREDENTIAL_FD : process.env.NEO_FLEET_PLANE_CREDENTIAL_FD = previous
+        }
+    });
+
     // The Memory Core's commander refuses an unknown option, so the entry must never see the marker,
     // while the sweep still reads it right after the entry.
     test('a real child never sees its owner marker, and ps still shows it after the entry', async () => {

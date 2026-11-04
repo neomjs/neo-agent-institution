@@ -84,8 +84,18 @@ class Panel extends BasePanel {
         }, {
             module   : ConnectContainer,
             hidden   : true,
+            listeners: {connected: 'up.onConnected'},
             reference: 'connect-door'
         }]
+    }
+
+    /**
+     * @summary Relays a PAT the Connect door put to use without a relaunch to the card's owner, which
+     * re-drives the cockpit.
+     * @param {Object} data
+     */
+    onConnected(data) {
+        this.fire('connected', data)
     }
 
     /**

@@ -223,7 +223,8 @@ adoption.
    witnesses a pass-through and is not wiring evidence.
 8. **Plane attach is a named broker** *(amended 2026-09-25, #19228 — for
    neomjs/neo-agent-institution#211; #19233 — for neomjs/neo-agent-institution#223; 2026-10-02,
-   #19362 — for neomjs/neo-agent-institution#446; 2026-10-31, neomjs/neo-agent-institution#849)*: a
+   #19362 — for neomjs/neo-agent-institution#446; 2026-10-31, neomjs/neo-agent-institution#849;
+   2026-11-04, neomjs/neo-agent-institution#843)*: a
    packaged shell that a Finder double-click starts has no environment, so it needs its own
    record of the plane it attaches to, and the cockpit needs a way to create one. The preload exposes four capabilities, all answered by main-process handlers
    that validate the sender per §2.3.4:
@@ -233,17 +234,27 @@ adoption.
      validates the base (https, or plain http on loopback only, never credentials in the URL),
      collects the PAT in the credential window (item 9), checks it against the plane — an
      authenticated `initialize`, then `list_permissions` in that session for the identity the
-     plane names for it — stores both, and relaunches the shell. The reply is
-     `{ok, reason, relaunching}` and never carries the PAT.
+     plane names for it — and puts it to use without a relaunch where it can. A running fleet child
+     that took its bearer from the credential pipe for this plane adopts the new one over that pipe,
+     and main stores the record only once the child answered `adopted`, so a refusal leaves the
+     binding and the record as they were. A running child whose pipe has closed keeps serving the
+     bearer it bound, so its PAT update is refused the same way (`fleet-closed`, which names a reopen
+     as the way to use the PAT); only a child that is gone frees the binding. A boot that settled down has no binding to keep: main
+     stores the record and runs the boot again in this process. Only a shell that can do neither (no
+     plane yet, another plane, a plane from the environment) stores both and relaunches. A PAT the plane names as
+     another account than the one this shell launched with for that plane is refused, never adopted.
+     The reply is `{ok, reason, relaunching}`, plus the two accounts' `identity` and
+     `expectedIdentity` for that refusal, and never carries the PAT.
    - `retryPlane()` → `ipcRenderer.invoke('shell-plane-retry')`, no payload: after a boot settled
      down with a plane refusal that says nothing against the stored PAT (`plane-refused`,
      `plane-not-a-plane`, `plane-unreachable`), main runs the boot again in this process, with the
      record it reads at boot: no credential window and no relaunch. It refuses while a boot runs,
      after one came up, and while the shell quits. The reply is `{ok, reason}` and never carries the
-     PAT. The credential's own two refusals and `organism-beside-plane` keep Connect.
+     PAT. The credential's own two refusals and `organism-beside-plane` keep Connect; once Connect
+     stored a PAT for the stored identity, `attachPlane` runs that boot again itself.
    - `verifyPlane()` → `ipcRenderer.invoke('shell-plane-verify')`, pull-shaped like §2.3.7: main
-     probes the record this shell launched its fleet child with, by the exchange `attachPlane`
-     uses, and answers `{cause}` — `plane-credential-refused` when the plane refuses the stored
+     probes the record this shell launched its fleet child with, or the one that child adopted since,
+     by the exchange `attachPlane` uses, and answers `{cause}` — `plane-credential-refused` when the plane refuses the stored
      PAT, `plane-identity-changed` when it admits it as another account, else `null`. The reply
      never carries the PAT, and a plane the environment supplied instead of the record is never
      probed. The cockpit asks once per failed roster-read episode, so a PAT that expires
@@ -257,19 +268,25 @@ adoption.
    row-2 connection broker of its §2.5.1 ledger: typed requests, zero credential-read capability.
    **Which PAT:** the viewer's own plane credential, under the custody and persistence of §2.5.1
    row 1 — not item 6's seat PATs, which stay Brain-side. Until #17 it reaches the plane on two
-   routes only: as the fleet child's `planeBearer`, and from main in this item's own probes
+   routes only: as the fleet child's plane bearer, and from main in this item's own probes
    (`attachPlane`, `verifyPlane`), which present it to the plane's MCP route and hand it to no
    renderer. It never reaches the plane as the fleet-surface admission mint.
    **Transitional seam:** until neomjs/neo-agent-institution#17 retires the shell's own fleet
-   child, main hands the stored record to that child as `NEO_FLEET_PLANE_BASE` +
-   `NEO_FLEET_PLANE_BEARER` in its environment — never an argument, never a log line — and a value
-   already set in the process env wins, so the stored bearer never follows a plane base set
-   elsewhere. The stored bearer brings its identity as `NEO_AGENT_IDENTITY`, over an inherited
+   child, main hands the stored record to that child: its base as `NEO_FLEET_PLANE_BASE` in the
+   child's environment, and its bearer, with the class the plane named for it, on a dedicated
+   credential pipe — an extra `stdio` fd named by `NEO_FLEET_PLANE_CREDENTIAL_FD` — never in the
+   environment, never an argument, never a log line. The pipe's first frame is the boot bearer;
+   each later frame is a rotation the child adopts only after the plane proves it for the bound
+   identity, and every frame gets one answer. Every inherited bearer home is blanked beside the
+   pipe. A value already set in the process env wins, so the stored bearer never follows a plane
+   base set elsewhere, and an env-supplied bearer reaches the child in its environment as before.
+   The stored bearer brings its identity as `NEO_AGENT_IDENTITY`, over an inherited
    value: the child claims that identity, and the plane admits the child only when the claim is the
    bearer's subject, which an identity left by whatever launched the shell is not. An env-supplied
    bearer keeps the env's identity. After #17 the same record feeds the pure-client wire.
    **Ownership boundary:** plane configuration never routes through `FleetControlBridge` /
-   `FLEET_WIRE_METHODS`; it is the shell's boot input, not a fleet verb.
+   `FLEET_WIRE_METHODS`; it is the shell's boot input, not a fleet verb. The credential pipe is
+   boot input too: it carries the plane bearer and its answers, nothing else.
 9. **The credential window is the one renderer that holds a credential** *(amended 2026-09-26,
    #19238 — for neomjs/neo-agent-institution#227)*: every credential the packaged shell
    collects — plane attach (item 8) and the credential-bearing Fleet verbs — is typed or pasted

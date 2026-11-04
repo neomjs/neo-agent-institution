@@ -710,8 +710,9 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, plane: {cause}, stream: {state: 'cold'}}).lead.startsWith(sentence), `${cause} at runtime`).toBe(true)
             }
 
+            // the shell refuses a PAT for another account, so Connect fixes this with one of the operator's own
             expect(SpineBanner.deriveSpineBanner({daemon: {cause: 'plane-identity-changed'}, grid: {state: 'cold'}, stream: {state: 'cold'}}).lead)
-                .toBe('The plane now names that PAT as another account. Connect again to confirm it.')
+                .toBe('The plane now names that PAT as another account. Connect with one of yours.')
         });
 
         test('a live spine has no lead', () => {

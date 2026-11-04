@@ -3,7 +3,9 @@ import {EventEmitter}                                                           
 import fs, {existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                                                     from 'node:os';
 import path                                                                         from 'node:path';
+import {Duplex}                                                                     from 'node:stream';
 import {createAppLifecycle}                                                         from '../../../../harness/appLifecycle.mjs';
+import {openPlaneCredentialPipe, rotatePlaneCredential}                             from '../../../../harness/planeCredentialPipe.mjs';
 import {
     createPlaneBroker,
     forgetPlaneConfig,
@@ -18,7 +20,12 @@ import {
     readPlaneConfig,
     writePlaneConfig
 } from '../../../../harness/planeConfig.mjs';
-import {retryBrainBoot, runtimePlaneCause} from '../../../../harness/brain.mjs';
+import {
+    RENEWED_CREDENTIAL_REFUSALS,
+    RETRYABLE_BOOT_REFUSALS,
+    retryBrainBoot,
+    runtimePlaneCause
+} from '../../../../harness/brain.mjs';
 
 const BEARER   = 'ghp_fixtureBearerNeverReal0000000000',
       IDENTITY = '@fixture-viewer';
@@ -264,8 +271,9 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
             NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
             NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
             NEO_FLEET_PLANE_BASE                 : 'https://plane.example',
-            NEO_FLEET_PLANE_BEARER               : BEARER,
-            NEO_FLEET_PLANE_BEARER_CLASS         : ''
+            NEO_FLEET_PLANE_BEARER               : '',
+            NEO_FLEET_PLANE_BEARER_CLASS         : '',
+            NEO_FLEET_PLANE_BEARER_FILE          : ''
         });
         expect(planeEnvFragment({planeConfig, env: {NEO_AGENT_IDENTITY: 'neo-fable-clio'}}).NEO_AGENT_IDENTITY, 'a shell another session launched')
             .toBe(IDENTITY);
@@ -278,14 +286,7 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
     test('the env fragment: a set plane base keeps the stored bearer away from it; a set bearer wins', () => {
         const planeConfig = {planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY};
 
-        expect(planeEnvFragment({planeConfig, env: {}})).toEqual({
-            NEO_AGENT_IDENTITY                   : IDENTITY,
-            NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
-            NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
-            NEO_FLEET_PLANE_BASE                 : 'https://plane.example',
-            NEO_FLEET_PLANE_BEARER               : BEARER,
-            NEO_FLEET_PLANE_BEARER_CLASS         : ''
-        });
+        expect(planeEnvFragment({planeConfig, env: {}})).toMatchObject({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}}), 'the launcher and checkout env win whole').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: ''}}), 'an explicitly empty base still wins').toEqual({});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
@@ -294,31 +295,26 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
         expect(planeEnvFragment({planeConfig: {planeBase: 'https://plane.example', bearer: null}, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}})).toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'})
     });
 
-    test('the env fragment: the bearer travels once with its recorded class, and both admission variables are emptied over ones the launch left behind', () => {
+    test('the env fragment carries no bearer: the pipe does, and every bearer home the launch left behind is blanked (#843)', () => {
         const
             planeConfig = {planeBase: 'https://plane.example', bearer: BEARER, identity: IDENTITY, authSource: 'github-pat'},
             inherited   = {
                 NEO_FLEET_PLANE_ADMISSION_BEARER     : 'inherited-fleet-credential',
                 NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '/elsewhere/fleet.token',
-                NEO_FLEET_PLANE_BEARER_CLASS         : 'github-pat'
+                NEO_FLEET_PLANE_BEARER_CLASS         : 'github-pat',
+                NEO_FLEET_PLANE_BEARER_FILE          : '/elsewhere/plane.token'
             },
             // the fleet child's env as the launch composes it: the inherited env, then the fragment
             child       = (env, record = planeConfig) => ({...env, ...planeEnvFragment({env, planeConfig: record})});
 
-        expect(child({}), 'a Finder launch').toMatchObject({NEO_FLEET_PLANE_BEARER: BEARER, NEO_FLEET_PLANE_BEARER_CLASS: 'github-pat'});
-        expect(Object.values(child({})).filter(value => value === BEARER), 'the PAT is exported once; the Brain derives the fleet-surface credential from its class').toHaveLength(1);
-        expect(child(inherited), 'an inherited admission credential cannot reach the record\'s plane').toMatchObject({
+        expect(Object.values(child({})), 'a Finder launch: the PAT is in no variable').not.toContain(BEARER);
+        expect(child(inherited), 'no inherited bearer, class or admission credential reaches the record\'s plane beside the pipe').toMatchObject({
             NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
-            NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: ''
+            NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
+            NEO_FLEET_PLANE_BEARER               : '',
+            NEO_FLEET_PLANE_BEARER_CLASS         : '',
+            NEO_FLEET_PLANE_BEARER_FILE          : ''
         });
-
-        for (const authSource of [null, undefined]) {
-            expect(child(inherited, {...planeConfig, authSource}).NEO_FLEET_PLANE_BEARER_CLASS, 'a record without a class declares none, over an inherited one')
-                .toBe('')
-        }
-
-        expect(planeEnvFragment({planeConfig: {...planeConfig, authSource: 'seat-token'}, env: {}}).NEO_FLEET_PLANE_BEARER_CLASS, 'a class is exported as the plane named it; the Brain decides what it arms')
-            .toBe('seat-token');
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BEARER: 'env-bearer'}}), 'an env bearer brings no class of the record\'s')
             .toEqual({NEO_FLEET_PLANE_BASE: 'https://plane.example'});
         expect(planeEnvFragment({planeConfig, env: {NEO_FLEET_PLANE_BASE: 'http://127.0.0.1:3102'}}), 'another plane never sees the stored bearer or its class')
@@ -449,36 +445,180 @@ test.describe('harness/planeConfig — the packaged shell\'s plane record', () =
 });
 
 test.describe('harness/planeConfig — the plane broker behind planeStatus() and attachPlane()', () => {
-    function makeBroker({packaged = true, prompt = BEARER, host = fakePlane(), trusted = true, available = true, decrypts = true, fact = null} = {}) {
+    const
+        PLANE    = 'http://127.0.0.1:3102',
+        // the record this shell launched its fleet child with, before the operator brings a new PAT
+        LAUNCHED = {authSource: 'github-pat', bearer: 'ghp_replacedBearerNeverReal000000000', identity: IDENTITY, planeBase: PLANE};
+
+    /**
+     * @param {Object} [options]
+     * @param {Object|null} [options.launched=null] The launched record (`getLaunchedPlane`).
+     * @param {Object|Function|null} [options.rotation=null] The running fleet child's answer, `null` when no
+     *     child runs for the plane, or the rotation itself.
+     * @param {Boolean} [options.reboots=false] Whether main may run a settled-down boot again.
+     */
+    function makeBroker({packaged = true, prompt = BEARER, host = fakePlane(), trusted = true, available = true, decrypts = true, fact = null, launched = null, rotation = null, reboots = false} = {}) {
         const
             dir         = tempDir(),
             keychain    = fakeSafeStorage({available}),
             safeStorage = decrypts ? keychain : {...keychain, decryptString: () => { throw new Error('decrypt failed') }},
-            calls       = {prompts: [], relaunches: 0};
+            calls       = {prompts: [], reboots: [], relaunches: 0, rotations: []};
 
         const broker = createPlaneBroker({
             dir,
             fetchFn         : host.fetchFn,
+            getLaunchedPlane: () => launched,
             getTransportFact: () => fact,
             isTrustedSender : () => trusted,
             packaged,
             promptCredential: async ({method}) => { calls.prompts.push(method); return prompt },
             relaunch        : () => { calls.relaunches++ },
+            retryBoot       : options => { calls.reboots.push(options); return {ok: reboots, reason: reboots ? null : 'boot-up'} },
+            rotateBearer    : async options => {
+                // what the store held while the child was asked: the record is written only after it answers
+                calls.rotations.push({...options, stored: readPlaneConfig({dir, safeStorage}).bearer});
+                return typeof rotation === 'function' ? rotation(options) : rotation
+            },
             safeStorage
         });
 
         return {broker, calls, dir, safeStorage}
     }
 
-    test('an attach stores the record with the plane\'s class for its bearer, relaunches, and the reply never carries the PAT', async () => {
+    /**
+     * @summary A fleet child as main's rotation reaches it: its pipe over an in-memory stream that adopts each
+     * frame, or closes before (`'before'`) or while (`'waiting'`) one waits. `exited` marks a child that is gone.
+     * @param {Object} [options]
+     * @param {String|null} [options.closes=null]
+     * @param {Boolean} [options.exited=false]
+     * @returns {{child: Object, sent: String[]}} `sent` holds the bearer of each frame that reached the child.
+     */
+    function fleetChild({closes = null, exited = false} = {}) {
+        const
+            sent   = [],
+            stream = new Duplex({
+                read() {},
+                write(chunk, encoding, callback) {
+                    sent.push(JSON.parse(String(chunk)).bearer);
+                    callback();
+                    queueMicrotask(() => stream.push(closes === 'waiting' ? null : `${JSON.stringify({identity: IDENTITY, state: 'adopted'})}\n`))
+                }
+            });
+
+        closes === 'before' && stream.push(null);
+
+        return {child: {exitCode: exited ? 1 : null, planeCredentialPipe: openPlaneCredentialPipe({stream}), signalCode: null}, sent}
+    }
+
+    /**
+     * @summary The broker over main's rotation of `fleet` (`rotatePlaneCredential`), launched for `PLANE`.
+     */
+    function brokerOver(fleet, options = {}) {
+        return makeBroker({
+            launched: LAUNCHED,
+            rotation: ({frame, planeBase}) => rotatePlaneCredential({child: fleet.child, frame, launchedPlane: LAUNCHED, planeBase}),
+            ...options
+        })
+    }
+
+    test('an attach no child can take stores the record with the plane\'s class for its bearer, relaunches, and the reply never carries the PAT', async () => {
         const {broker, calls, dir, safeStorage} = makeBroker();
-        const reply                             = await broker.attach({}, {planeBase: 'http://127.0.0.1:3102'});
+        const reply                             = await broker.attach({}, {planeBase: PLANE});
 
         expect(reply).toEqual({ok: true, reason: null, relaunching: true});
         expect(JSON.stringify(reply)).not.toContain(BEARER);
-        expect(calls).toEqual({prompts: ['plane-attach'], relaunches: 1});
-        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: 'http://127.0.0.1:3102', bearer: BEARER, identity: IDENTITY, authSource: 'github-pat'});
-        expect(broker.status({})).toEqual({attached: false, configured: true, packaged: true, planeBase: 'http://127.0.0.1:3102'})
+        expect(calls).toMatchObject({prompts: ['plane-attach'], reboots: [{renewed: true}], relaunches: 1});
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: PLANE, bearer: BEARER, identity: IDENTITY, authSource: 'github-pat'});
+        expect(broker.status({})).toEqual({attached: false, configured: true, packaged: true, planeBase: PLANE})
+    });
+
+    test('a running fleet child adopts the new PAT over its pipe: nothing relaunches, and the record is stored only after it answered (#843 AC-1, AC-2)', async () => {
+        const {broker, calls, dir, safeStorage} = makeBroker({launched: LAUNCHED, rotation: {identity: IDENTITY, state: 'adopted'}});
+        const reply                             = await broker.attach({}, {planeBase: PLANE});
+
+        expect(reply).toEqual({ok: true, reason: null, relaunching: false});
+        expect(JSON.stringify(reply), 'AC-4: the reply never carries the PAT').not.toContain(BEARER);
+        expect(calls.rotations).toEqual([{frame: {bearer: BEARER, bearerClass: 'github-pat'}, planeBase: PLANE, stored: null}]);
+        expect(calls.relaunches + calls.reboots.length, 'neither a relaunch nor a second boot').toBe(0);
+        expect(readPlaneConfig({dir, safeStorage})).toEqual({planeBase: PLANE, bearer: BEARER, identity: IDENTITY, authSource: 'github-pat'})
+    });
+
+    test('a PAT the fleet child refuses leaves the record and the binding as they were (#843 AC-3)', async () => {
+        const answers = [
+            [{reason: 'plane proof timed out', state: 'refused'}, {}],
+            [{expectedIdentity: IDENTITY, reason: 'another account', resolvedIdentity: '@someone-else', state: 'refused'}, {expectedIdentity: IDENTITY, identity: '@someone-else'}]
+        ];
+
+        for (const [rotation, accounts] of answers) {
+            const {broker, calls, dir, safeStorage} = makeBroker({launched: LAUNCHED, rotation});
+            const reply                             = await broker.attach({}, {planeBase: PLANE});
+
+            expect(reply, rotation.reason).toEqual({ok: false, reason: 'fleet-refused', relaunching: false, ...accounts});
+            expect(JSON.stringify(reply), rotation.reason).not.toContain(BEARER);
+            expect(calls.relaunches + calls.reboots.length, rotation.reason).toBe(0);
+            expect(readPlaneConfig({dir, safeStorage}).bearer, `${rotation.reason}: nothing stored`).toBeNull()
+        }
+    });
+
+    test('a running fleet child keeps its PAT once its pipe closed, before or while the frame waits: nothing is stored, booted or relaunched (#843 AC-1, AC-3)', async () => {
+        const rows = [
+            {closes: null,      reply: {ok: true, reason: null, relaunching: false},            sent: [BEARER], stored: BEARER},
+            {closes: 'before',  reply: {ok: false, reason: 'fleet-closed', relaunching: false}, sent: [],       stored: null},
+            {closes: 'waiting', reply: {ok: false, reason: 'fleet-closed', relaunching: false}, sent: [BEARER], stored: null}
+        ];
+
+        for (const {closes, reply, sent, stored} of rows) {
+            const
+                fleet                             = fleetChild({closes}),
+                {broker, calls, dir, safeStorage} = brokerOver(fleet),
+                label                             = `pipe closes ${closes ?? 'never'}`;
+
+            await expect.poll(() => fleet.child.planeCredentialPipe.isOpen(), label).toBe(closes !== 'before');
+
+            expect(await broker.attach({}, {planeBase: PLANE}), label).toEqual(reply);
+            expect(fleet.sent, `${label}: the bearers the child was sent`).toEqual(sent);
+            expect(calls.reboots.length + calls.relaunches, `${label}: neither a second boot nor a relaunch`).toBe(0);
+            expect(readPlaneConfig({dir, safeStorage}).bearer, `${label}: the stored PAT`).toBe(stored)
+        }
+    });
+
+    test('a fleet child that is gone holds no binding: the same rotation stores the PAT and runs its boot again (#843 AC-2)', async () => {
+        const
+            fleet                             = fleetChild({closes: 'before', exited: true}),
+            {broker, calls, dir, safeStorage} = brokerOver(fleet, {reboots: true});
+
+        expect(await broker.attach({}, {planeBase: PLANE})).toEqual({ok: true, reason: null, relaunching: false});
+        expect(calls).toMatchObject({reboots: [{renewed: true}], relaunches: 0});
+        expect(fleet.sent).toEqual([]);
+        expect(readPlaneConfig({dir, safeStorage}).bearer).toBe(BEARER)
+    });
+
+    test('a PAT the plane names as another account than the launched one is refused, naming both, before the fleet child is asked (#843 AC-3)', async () => {
+        const
+            host                              = fakePlane({identity: '@someone-else'}),
+            {broker, calls, dir, safeStorage} = makeBroker({host, launched: LAUNCHED, rotation: {identity: '@someone-else', state: 'adopted'}}),
+            reply                             = await broker.attach({}, {planeBase: PLANE});
+
+        expect(reply).toEqual({expectedIdentity: IDENTITY, identity: '@someone-else', ok: false, reason: 'another-account', relaunching: false});
+        expect(calls.rotations.length + calls.reboots.length + calls.relaunches).toBe(0);
+        expect(readPlaneConfig({dir, safeStorage}).bearer).toBeNull();
+        expect(host.requests.some(request => request.url.endsWith('/fleet/probe')), 'the fleet surface is not asked either').toBe(false)
+    });
+
+    test('another plane is no PAT update: a PAT for another account attaches there', async () => {
+        const {broker, dir, safeStorage} = makeBroker({host: fakePlane({identity: '@someone-else'}), launched: {...LAUNCHED, planeBase: 'https://other-plane.example'}});
+
+        expect(await broker.attach({}, {planeBase: PLANE})).toEqual({ok: true, reason: null, relaunching: true});
+        expect(readPlaneConfig({dir, safeStorage}).identity).toBe('@someone-else')
+    });
+
+    test('with no running child on the pipe, a boot that settled down runs again with the stored PAT, and nothing relaunches (#843 AC-2)', async () => {
+        const {broker, calls, dir, safeStorage} = makeBroker({launched: LAUNCHED, reboots: true});
+
+        expect(await broker.attach({}, {planeBase: PLANE})).toEqual({ok: true, reason: null, relaunching: false});
+        expect(calls).toMatchObject({reboots: [{renewed: true}], relaunches: 0});
+        expect(calls.rotations[0].stored, 'the child was asked first').toBeNull();
+        expect(readPlaneConfig({dir, safeStorage}).bearer, 'stored before the boot runs again, which reads the record').toBe(BEARER)
     });
 
     test('a plane whose fleet surface names no class still attaches, with no class recorded', async () => {
@@ -604,11 +744,12 @@ test.describe('harness/planeConfig — retryPlane(), a refused boot run again wi
      * settled boot a retry reads.
      * @param {Object} [options]
      * @param {Object[]} [options.answers] What each boot settles as, in order.
+     * @param {Object|null} [options.host=null] The plane an attach asks; a retry asks none.
      * @param {Boolean} [options.packaged=true]
      * @param {Boolean} [options.trusted=true]
      * @returns {Object}
      */
-    function retrier({answers = [REFUSED, {fleetPort: 8083, up: true}], packaged = true, trusted = true} = {}) {
+    function retrier({answers = [REFUSED, {fleetPort: 8083, up: true}], host = null, packaged = true, trusted = true} = {}) {
         const
             calls     = {boots: 0, prompts: 0, relaunches: 0, retries: 0},
             lifecycle = createAppLifecycle({app: Object.assign(new EventEmitter(), {exit() {}, quit() {}}), teardownBrain: async () => ({})}),
@@ -626,16 +767,17 @@ test.describe('harness/planeConfig — retryPlane(), a refused boot run again wi
             broker    = createPlaneBroker({
                 causeOf         : runtimePlaneCause,
                 dir             : tempDir(),
-                fetchFn         : async () => { throw new Error('a retry asks the plane nothing itself') },
+                fetchFn         : host?.fetchFn ?? (async () => { throw new Error('a retry asks the plane nothing itself') }),
                 getLaunchedPlane: () => ({bearer: BEARER, identity: IDENTITY, planeBase: 'http://127.0.0.1:3102'}),
                 getTransportFact: () => null,
                 isTrustedSender : () => trusted,
                 packaged,
                 promptCredential: async () => { calls.prompts++; return BEARER },
                 relaunch        : () => { calls.relaunches++ },
-                retryBoot       : () => {
+                // main's retryBoot: a renewed PAT answers the credential's own refusals too
+                retryBoot       : ({renewed = false} = {}) => {
                     calls.retries++;
-                    return retryBrainBoot({boot: shell.settled, lifecycle, quitting: false, start})
+                    return retryBrainBoot({boot: shell.settled, causes: renewed ? RENEWED_CREDENTIAL_REFUSALS : RETRYABLE_BOOT_REFUSALS, lifecycle, quitting: false, start})
                 },
                 safeStorage     : fakeSafeStorage()
             });
@@ -666,6 +808,20 @@ test.describe('harness/planeConfig — retryPlane(), a refused boot run again wi
 
         expect(Object.keys(reply).sort()).toEqual(['ok', 'reason']);
         expect(JSON.stringify(reply)).not.toContain(BEARER)
+    });
+
+    test('a boot refused for its PAT needs a new one: Retry starts nothing, and Connect with a current PAT runs the boot again in this process (#843 AC-2)', async () => {
+        const
+            refused                                  = {cause: {detail: 'http://127.0.0.1:3102', source: 'plane-credential-refused'}, error: 'refused', up: false},
+            {broker, calls, lifecycle, shell, start} = retrier({answers: [refused, {fleetPort: 8083, up: true}], host: fakePlane()});
+
+        await start();
+
+        expect(broker.retry({})).toEqual({ok: false, reason: 'not-retryable'});
+        expect(await broker.attach({}, {planeBase: 'http://127.0.0.1:3102'})).toEqual({ok: true, reason: null, relaunching: false});
+        expect(await shell.boot).toEqual({fleetPort: 8083, up: true});
+        expect(lifecycle.brainHealth).toEqual({cause: null, state: 'running'});
+        expect(calls).toEqual({boots: 2, prompts: 1, relaunches: 0, retries: 2})
     });
 
     test('a second Retry while the boot runs again starts nothing more', async () => {

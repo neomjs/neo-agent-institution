@@ -4,27 +4,42 @@ import TextField from '../../../../node_modules/neo.mjs/src/form/field/Text.mjs'
 
 /**
  * @summary The setup card's **Connect** door: a team member whose plane exists attaches with their
- * own PAT. Connecting hands the plane address to `attachPlane()`; Electron main then asks for the
- * PAT in its own window, checks it against the plane, stores it encrypted, and relaunches the shell.
- * No credential ever reaches this door, so every line it renders is plain `text`.
+ * own PAT, and an operator brings a new one. Connecting hands the plane address to `attachPlane()`;
+ * Electron main then asks for the PAT in its own window, checks it against the plane and puts it to
+ * use: a running Fleet adopts it with no restart, and only a shell that cannot (no plane yet, or
+ * another one) relaunches. A PAT put to use without a relaunch fires `connected`, so the card's owner
+ * re-drives the cockpit. No credential ever reaches this door, so every line it renders is plain `text`.
  * @class AgentOS.view.setup.ConnectContainer
  * @extends Neo.container.Base
  */
 class ConnectContainer extends Container {
     /**
-     * The line each refusal from `attachPlane()` renders.
+     * The line each refusal from `attachPlane()` renders. A refusal that names two accounts reads
+     * `accountsText()` instead.
      * @member {Object} reasonText
      * @static
      */
     static reasonText = {
         canceled                : 'Canceled. Nothing was stored.',
         'encryption-unavailable': 'This Mac cannot store the PAT encrypted, so nothing was stored.',
+        'fleet-closed'          : 'The running Fleet can no longer take a new PAT and keeps its current one. Nothing was stored. To use this PAT, reopen the Fleet Manager and connect it again.',
+        'fleet-refused'         : 'The running Fleet could not adopt that PAT and keeps its current one. Nothing was stored.',
         'invalid-plane-base'    : 'Use an https address, or http on this machine (127.0.0.1 or localhost).',
         'no-identity'           : 'The plane accepted that PAT but named no identity for it. Nothing was stored.',
         'no-shell'              : 'Connecting a plane needs the installed Fleet Manager; in a browser, add the plane through the instance switcher.',
         'not-a-plane'           : 'That address is not a Neo plane. Nothing was stored.',
         rejected                : 'The plane refused that PAT. Nothing was stored.',
         unreachable             : 'No plane answered at that address.'
+    }
+
+    /**
+     * @summary The line for a PAT the plane names as another account than the one this Fleet Manager
+     * runs as: the shell refuses it rather than switch accounts.
+     * @param {{identity: String, expectedIdentity: String}} reply
+     * @returns {String}
+     */
+    static accountsText({identity, expectedIdentity}) {
+        return `The plane names that PAT as ${identity}, not ${expectedIdentity}. Nothing was stored.`
     }
 
     static config = {
@@ -79,8 +94,8 @@ class ConnectContainer extends Container {
     }
 
     /**
-     * @summary Hands the plane address to the shell, then renders its verdict. On success the shell
-     * relaunches, so the button stays disabled.
+     * @summary Hands the plane address to the shell, then renders its verdict. A shell that relaunches
+     * keeps the button disabled; a PAT put to use without one fires `connected`.
      * @returns {Promise<void>}
      */
     async onConnectClick() {
@@ -90,7 +105,7 @@ class ConnectContainer extends Container {
             status = me.getReference('status-line');
 
         button.disabled = true;
-        status.text     = 'Enter your GitHub or GitLab PAT in the window that opens.';
+        status.text     = 'Enter your GitHub or GitLab PAT in the window that opens. The plane checks it before anything changes.';
 
         const reply = await Promise.resolve(Neo.main?.addon?.ShellPlane?.attachPlane({
             planeBase: me.getReference('plane-base-field').value,
@@ -99,13 +114,22 @@ class ConnectContainer extends Container {
 
         if (me.isDestroyed) return;
 
-        if (reply?.ok) {
+        if (reply?.ok && reply.relaunching) {
             status.text = 'Connected. The shell restarts to attach.';
             return
         }
 
         button.disabled = false;
-        status.text     = ConnectContainer.reasonText[reply?.reason] || 'The plane could not be attached.'
+
+        if (reply?.ok) {
+            status.text = 'Connected. The new PAT is in use, and the Fleet Manager keeps running.';
+            me.fire('connected', {});
+            return
+        }
+
+        status.text = reply?.identity && reply.expectedIdentity
+            ? ConnectContainer.accountsText(reply)
+            : ConnectContainer.reasonText[reply?.reason] || 'The plane could not be attached.'
     }
 }
 
