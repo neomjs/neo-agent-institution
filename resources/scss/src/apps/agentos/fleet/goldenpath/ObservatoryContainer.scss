@@ -118,7 +118,7 @@
         position      : absolute;
     }
 
-    /* the side panel: the view, the team, the nodes and the selected node, a column beside the surface (or the
+    /* the side panel: the view, the team, the wells, the nodes and the selected node, a column beside the surface (or the
        whole body where no canvas worker draws) on the chrome scale. The splitter's drag clamps against its
        min/max, so they are the panel's only bounds; the width itself starts here every session */
     .fm-observatory-side {
@@ -200,6 +200,7 @@
     }
 
     .fm-observatory-team.is-collapsed .fm-observatory-peer-list,
+    .fm-observatory-wells.is-collapsed .fm-observatory-well-list,
     .fm-observatory-node-list.is-collapsed,
     .fm-observatory-selected.is-collapsed > :not(.fm-observatory-section-head, .fm-observatory-selected-head) {
         display: none;
@@ -212,8 +213,10 @@
         white-space  : nowrap;
     }
 
-    /* open, the Team section is as tall as the panel leaves it, never as its peers: the list scrolls inside it */
-    .fm-observatory-team {
+    /* open, the Team and Wells sections are as tall as the panel leaves them, never as their rows: the list scrolls
+       inside */
+    .fm-observatory-team,
+    .fm-observatory-wells {
         min-height: 0;
     }
 
@@ -232,7 +235,8 @@
        row a step up with the signal at its edge, keyboard focus alone outlined in the signal */
     .fm-observatory-node-list,
     .fm-observatory-peer-list,
-    .fm-observatory-relation-list {
+    .fm-observatory-relation-list,
+    .fm-observatory-well-list {
         --list-container-list-color          : var(--fm-ink);
         --list-item-background-color         : transparent;
         --list-item-background-color-active  : var(--fm-panel-2);

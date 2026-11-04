@@ -151,6 +151,8 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(wire).toMatchObject({communities: 3, completeness: 'truncated', count: 5, currency: 'current', empty: false, snapshotId: 'snap-1'});
         expect([plain(wire.clusters), plain(wire.edges), plain(wire.seeds), plain(wire.ranks)]).toEqual([[0, 1, 0, 0, 2], [0, 2, 2, 3], [0, 1], [1, 3]]);
         expect(Object.keys(wire).filter(key => ['index', 'nodes', 'edgeTypes'].includes(key)), 'nothing per node that is not a number').toEqual([]);
+        expect([wire.wells.nodes, wire.wells.sizes].every(array => array instanceof Uint32Array), 'the wells cross as numbers, only their names as text').toBe(true);
+        expect(wire.wells.texts, 'a scene without wells names none').toEqual([]);
         expect(ObservatorySceneLayout.wire(null)).toBeNull()
     });
 
@@ -192,7 +194,7 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect([off.positions, off.clusters, off.edges]).toEqual([on.positions, on.clusters, on.edges])
     });
 
-    test('the halo\'s sector clusters ink faint and small, never in a community\'s tone; a scene without a halo inks as before', () => {
+    test('the halo\'s sector clusters ink as the faintest dust, small, never in a community\'s tone; a scene without a halo inks as before', () => {
         const
             {dark} = PALETTES,
             base   = wireScene('current'),
@@ -200,11 +202,52 @@ test.describe('AgentOS.canvas.Observatory', () => {
             flat   = Observatory.ink(haloed, -1, false);
 
         Array.from(haloed.clusters).forEach((cluster, index) => {
-            expect(rounded(colorOf(flat.colors, index)), `node ${index}`).toEqual(rounded(cluster >= 1 ? rgb(dark.line) : toneOf(dark, cluster)));
+            expect(rounded(colorOf(flat.colors, index)), `node ${index}`).toEqual(rounded(cluster >= 1 ? rgb(dark.lineSoft) : toneOf(dark, cluster)));
             expect(Math.round(flat.sizes[index] * 100) / 100).toBe(cluster >= 1 ? 3 : 5)
         });
 
-        expect(Observatory.ink({...base, haloFrom: null}, -1, false)).toEqual(Observatory.ink(base, -1, false))
+        expect(Observatory.ink({...base, haloFrom: null}, -1, false)).toEqual(Observatory.ink(base, -1, false));
+
+        // a selection's fade and a lens's are not the halo's dust: they keep the fade's own tier
+        expect(rounded(colorOf(Observatory.ink(haloed, 0, false).colors, 1)), 'a halo node outside the selection').toEqual(rounded(rgb(dark.line)))
+    });
+
+    test('a well\'s nodes take the size the wells\' own count gives them, the halo\'s the whole read\'s, so a well reads as a body of points', () => {
+        const
+            count = 1600,
+            scene = {
+                ...wireScene('current'),
+                // 400 nodes in the one well, 1,200 in the halo sector behind it
+                clusters : Uint32Array.from({length: count}, (item, index) => index < 400 ? 0 : 1),
+                count,
+                edges    : new Uint32Array(0),
+                haloFrom : 1,
+                positions: new Float32Array(count * 3),
+                ranks    : new Uint32Array(0),
+                seeds    : new Uint32Array(0)
+            },
+            {sizes} = Observatory.ink(scene);
+
+        expect(sizes[0], 'a well node: 400 in wells, the full size').toBe(5);
+        expect(sizes[400], 'a halo node: 1,600 in the read, then the dust\'s fade').toBeCloseTo(2.5 * 0.6, 6)
+    });
+
+    test('the wells are named largest first, 11 to 15 px by their share of the largest well, in the skin\'s ink over its ground; a scene without wells names none', () => {
+        const
+            scene = ObservatorySceneLayout.wire({...layoutScene('current'), wells: [{id: 'o#pr-1', label: 'First', size: 4}, {id: 'o#agent-7', label: null, size: 1}, {id: 'o#gone', label: 'Hidden', size: 1}]}),
+            dark  = Observatory.ink(scene).labels;
+
+        expect(plain(scene.wells.nodes), 'each well by its hub; a hub the scene lacks names nothing').toEqual([0, 2]);
+        expect(scene.wells.texts, 'a well without a label is named by its hub\'s id').toEqual(['First', 'o#agent-7']);
+        expect({...dark, nodes: plain(dark.nodes), sizes: plain(dark.sizes)}).toEqual({color: PALETTES.dark.ink, nodes: [0, 2], outline: PALETTES.dark.ground, sizes: [15, 13], texts: ['First', 'o#agent-7']});
+
+        Observatory.theme = 'light';
+        expect(Observatory.ink(scene).labels).toMatchObject({color: PALETTES.light.ink, outline: PALETTES.light.ground});
+
+        Observatory.setScene({scene});
+        expect(Observatory.getStats().labels, 'the engine holds both labels; no frame has drawn one yet').toEqual({count: 2, drawn: []});
+
+        expect(Observatory.ink(wireScene('current')).labels, 'a communities scene has no wells').toBeNull()
     });
 
     test('a degraded read never spends the route\'s gold; an empty or missing scene draws nothing', () => {

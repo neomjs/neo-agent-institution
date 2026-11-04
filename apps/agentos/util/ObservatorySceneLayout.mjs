@@ -919,11 +919,12 @@ class ObservatorySceneLayout extends Base {
      * @summary A scene as the canvas worker takes it: typed arrays by node index, and no node objects or ids.
      * A read of any size crosses the worker boundary as a few buffers, where 100k node objects cost a quarter
      * of a second to clone on every read. The renderer answers indices, and the App Worker resolves them
-     * against the scene it holds.
+     * against the scene it holds. Only the wells' names cross as text, one per well.
      * @param {Object|null} scene A {@link #fromGraphScene} scene
      * @returns {Object|null} `{communities, completeness, count, currency, empty, haloFrom, snapshotId}` with
      * `positions` (`x, y, z` per node), `clusters` (a cluster per node), `edges` (index pairs), `seeds`
-     * (node indices in route order) and `ranks` (one per seed)
+     * (node indices in route order), `ranks` (one per seed) and `wells`, largest first: `nodes` (each well's
+     * hub), `sizes` (its node count) and `texts` (its label, else the hub's id)
      */
     wire(scene) {
         if (!scene) {
@@ -935,7 +936,8 @@ class ObservatorySceneLayout extends Base {
             count     = nodes.length,
             positions = new Float32Array(count * 3),
             clusters  = new Uint32Array(count),
-            pairs     = new Uint32Array(edges.length * 2);
+            pairs     = new Uint32Array(edges.length * 2),
+            wells     = (scene.wells ?? []).filter(well => Object.hasOwn(scene.index, well.id));
 
         nodes.forEach(({cluster, x, y, z}, index) => {
             positions.set([x, y, z], index * 3);
@@ -956,7 +958,12 @@ class ObservatorySceneLayout extends Base {
             positions,
             ranks       : Uint32Array.from(seeds, index => nodes[index].rank),
             seeds       : Uint32Array.from(seeds),
-            snapshotId  : scene.snapshotId
+            snapshotId  : scene.snapshotId,
+            wells       : {
+                nodes: Uint32Array.from(wells, well => scene.index[well.id]),
+                sizes: Uint32Array.from(wells, well => well.size),
+                texts: wells.map(well => well.label ?? well.id)
+            }
         }
     }
 }

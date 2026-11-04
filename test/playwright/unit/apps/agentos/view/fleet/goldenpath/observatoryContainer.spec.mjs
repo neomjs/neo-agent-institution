@@ -101,8 +101,8 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — one canoni
 
         expect(lineOf(pane)).toBe('Unobserved');
         expect(pane.items.map(item => item.reference), 'the head and the body, no strip').toEqual(['observatory-head', 'observatory-body']);
-        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the view, the team, the nodes, then the selected node')
-            .toEqual(['observatory-view-section', 'observatory-team', 'observatory-nodes-head', 'observatory-nodes', 'observatory-selected']);
+        expect(pane.getReference('observatory-side').items.map(item => item.reference), 'the view, the team, the wells, the nodes, then the selected node')
+            .toEqual(['observatory-view-section', 'observatory-team', 'observatory-wells', 'observatory-nodes-head', 'observatory-nodes', 'observatory-selected']);
         expect(headOf(pane)).toEqual(['No node selected', null]);
         expect(labelClsOf(pane)).toContain('is-hint');
         expect(selectedOf(pane).getReference('selected-actions').hidden, 'no node, no action').toBe(true);
@@ -822,6 +822,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
         // each section's flex and collapse, and whether its head reads expanded for assistive technology
         sectionsOf = pane => Object.fromEntries([
             ['team',     pane.getReference('observatory-team'),  pane.getReference('observatory-peers-title')],
+            ['wells',    pane.getReference('observatory-wells'), pane.getReference('observatory-wells-title')],
             ['nodes',    pane.getReference('observatory-nodes'), pane.getReference('observatory-nodes-title')],
             ['selected', selectedOf(pane),                       selectedOf(pane).getReference('selected-section-head')]
         ].map(([name, section, head]) => [name, [section.flex, section.cls.includes('is-collapsed'), head.vdom['aria-expanded']]])),
@@ -841,10 +842,13 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
     test('Team opens first; a head opens its section and collapses the others to their heads; an unknown section changes nothing', () => {
         const pane = createPane({envelope: teamRead()});
 
-        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], wells: ['none', true, 'false'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
 
         clickHead(pane.getReference('observatory-nodes-title'));
-        expect(sectionsOf(pane)).toEqual({team: ['none', true, 'false'], nodes: [1, false, 'true'], selected: ['none', true, 'false']});
+        expect(sectionsOf(pane)).toEqual({team: ['none', true, 'false'], wells: ['none', true, 'false'], nodes: [1, false, 'true'], selected: ['none', true, 'false']});
+
+        clickHead(pane.getReference('observatory-wells-title'));
+        expect(sectionsOf(pane)).toEqual({team: ['none', true, 'false'], wells: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
 
         clickHead(selectedOf(pane).getReference('selected-section-head'));
         expect(pane.openSection).toBe('selected');
@@ -853,7 +857,7 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
         expect(pane.openSection).toBe('team');
 
         pane.openSection = 'view';
-        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
+        expect(sectionsOf(pane)).toEqual({team: [1, false, 'true'], wells: ['none', true, 'false'], nodes: ['none', true, 'false'], selected: ['none', true, 'false']});
 
         pane.destroy()
     });
@@ -862,10 +866,45 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
         const pane = createPane({envelope: teamRead()}),
               view = pane.getReference('observatory-view-section');
 
-        ['nodes', 'selected', 'team'].forEach(section => {
+        ['nodes', 'selected', 'team', 'wells'].forEach(section => {
             pane.openSection = section;
             expect(view.cls).not.toContain('is-collapsed')
         });
+
+        pane.destroy()
+    });
+
+    test('Wells lists the drawn wells largest first, each full at the cap, and its head counts them; a row turns the camera and leaves the selection', () => {
+        const
+            pane    = createPane({envelope: graphRead()}),
+            section = pane.getReference('observatory-wells'),
+            list    = pane.getReference('observatory-well-list'),
+            rows    = () => section.wellStore.items.map(({full, label, size}) => [label, size, full]),
+            flights = [],
+            lookup  = pane.getReference.bind(pane);
+
+        // the hubs of the read's density wells, the largest first and by rank on a tie
+        expect(rows()).toEqual([['Grace', 2, false], ['Dock', 2, false], ['first route item', 1, false]]);
+        expect(pane.getReference('observatory-wells-title').text).toBe('Wells · 3');
+        expect(list.createItemContent(section.wellStore.getAt(2)).map(span => span.text)).toEqual(['first route item', '1 node']);
+
+        // the unit harness has no canvas: a stand-in records the flights the rows ask for
+        pane.selectedId   = q('issue-404');
+        pane.getReference = reference => reference === 'observatory-canvas' ? {flyTo: id => flights.push(id)} : lookup(reference);
+        list.fire('itemClick', {record: section.wellStore.getAt(1)});
+
+        expect(flights).toEqual([q('concept-dock')]);
+        expect(pane.selectedId, 'only the camera moves').toBe(q('issue-404'));
+        pane.getReference = lookup;
+
+        // a strategic read's cap stops a well: its row says so
+        section.sync({...pane.scene, wellCap: 2});
+        expect(rows().map(row => row[2])).toEqual([true, true, false]);
+        expect(list.createItemContent(section.wellStore.getAt(0)).map(span => span.text)).toEqual(['Grace', '2 nodes', 'full']);
+
+        // a new read lists its own wells: a read without wells leaves the head uncounted
+        pane.geography = 'communities';
+        expect([rows(), pane.getReference('observatory-wells-title').text]).toEqual([[], 'Wells']);
 
         pane.destroy()
     });

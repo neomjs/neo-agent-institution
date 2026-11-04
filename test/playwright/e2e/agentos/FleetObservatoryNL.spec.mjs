@@ -85,6 +85,7 @@ async function openObservatory(page, neuralLink) {
     const locate = id => app.callMethod(canvas.properties.id, 'locate', [id]);
 
     return {
+        app,
         // the read's complete words, which the head keeps behind Details
         currency : pane.locator('.fm-observatory-details'),
         geography: async () => (await app.getComponent(container.properties.id, ['geography'])).geography,
@@ -427,6 +428,60 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
 
         expect(levels).toEqual(['mid', 'near', 'mid', 'far']);
         await picture('100k · far')
+    });
+
+    test('the wells are named where they lie: the largest well\'s label draws first and at most 30 draw, Wells leads with it, and a row turns the camera to its hub, keeping the snapshot and the selection', async ({page, neuralLink}) => {
+        test.setTimeout(180000);
+
+        const
+            {app, land, locate, pane, selectNode, settle, stats} = await openObservatory(page, neuralLink),
+            envelope = wholeGraphEnvelope({communities: 16, nodes: 4000, routeLength: 4}),
+            seed     = envelope.scene.route[0];
+
+        await land(envelope);
+        await expect.poll(async () => (await stats())?.counts?.nodes, {intervals: [250], timeout: 60000}).toBe(4000);
+        await settle();
+
+        // the read carries no strategic anchor, so its density wells are what the layout names
+        const
+            {stores}  = await app.listStores(),
+            wellStore = stores.find(store => store.model === 'AgentOS.model.GraphSceneWell');
+
+        expect(wellStore, 'the pane keeps the scene\'s wells in a store').toBeTruthy();
+
+        const {items} = await app.inspectStore(wellStore.id, 50);
+
+        expect(items.length, 'the read lays out density wells').toBeGreaterThan(30);
+        await expect.poll(async () => (await stats()).labels?.drawn.length ?? 0, {message: 'a frame draws the wells\' labels'}).toBeGreaterThan(0);
+
+        const {labels} = await stats();
+
+        expect(labels.count, 'every well is a label candidate').toBe(items.length);
+        expect(labels.drawn[0], 'the largest well is named first').toMatchObject({id: items[0].id, text: items[0].label});
+        expect(labels.drawn.length, 'at most 30 labels on screen').toBeLessThanOrEqual(30);
+
+        // a selection the flight must keep, made before Wells opens: a selection opens the Selected section
+        await selectNode(seed);
+        await expect.poll(async () => (await stats()).selectedId).toBe(seed);
+
+        // Wells opens from its head and leads with the largest well
+        await pane.getByRole('button', {name: /^Wells · /}).click();
+
+        const rows = pane.locator('.fm-observatory-well-list .neo-list-item');
+
+        await expect(rows.first()).toContainText(items[0].label);
+
+        // a row turns the camera to its hub: the hub lands at the canvas centre, and the snapshot and the selection stay
+        const {width, height} = await pane.locator('canvas').boundingBox();
+
+        await rows.nth(3).click();
+        await expect.poll(async () => {
+            const at = await locate(items[3].id);
+
+            return Math.hypot(at.x - width / 2, at.y - height / 2)
+        }, {message: 'the fourth well\'s hub at the centre'}).toBeLessThan(2);
+
+        expect(await stats()).toMatchObject({flying: false, selectedId: seed, snapshotId: envelope.snapshotId})
     });
 
     test('the team lens and the heat draw over the same places: a checked peer reaches the worker, the rows name each node\'s role, the Heat toggle counts what it cannot read, and no node moves', async ({page, neuralLink}) => {
