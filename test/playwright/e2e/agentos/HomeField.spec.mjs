@@ -5,17 +5,20 @@ import {test, expect} from '../../fixtures.mjs';
  * the next mount reads the motion vocabulary's collapsed `--motion-base` and the field holds one still frame. The
  * cockpit boots without a fleet server, so the roster never answers and the field draws no marks (AC-2's cold half).
  * The Home field driver reads the statistics in the App worker and throws with them when the field contradicts the
- * state it is asked to hold, or when the rects it is quiet under are not where the hero's lines stand.
+ * state it is asked to hold, or when the rects it is quiet under are not where the hero's lines stand. The late-render
+ * driver holds the App worker's vdom batches, so a reader switch whose render lands late must still move the field.
  *
  * Run: NEO_E2E_PORT=8121 npx playwright test agentos/HomeField -c test/playwright/playwright.config.e2e.mjs --workers=1
  *
  * @see apps/agentos/canvas/Home.mjs
  * @see test/playwright/e2e/agentos/homeField.driver.mjs
+ * @see test/playwright/e2e/agentos/lateRender.driver.mjs
  * @see test/playwright/visual/homeState.driver.mjs
  */
 const
     FIELD_DRIVER = '../../../../test/playwright/e2e/agentos/homeField.driver.mjs',
-    HOME_DRIVER  = '../../../../test/playwright/visual/homeState.driver.mjs';
+    HOME_DRIVER  = '../../../../test/playwright/visual/homeState.driver.mjs',
+    LATE_DRIVER  = '../../../../test/playwright/e2e/agentos/lateRender.driver.mjs';
 
 let tick = 0;
 
@@ -31,6 +34,19 @@ const load = (page, driver, query) => page.evaluate(async path => {
 
     return {error: error?.message ?? null, success}
 }, `${driver}?${query}&t=${++tick}`);
+
+/**
+ * @summary Waits until Home's field moves and is quiet under the hero's lines where they stand now, and fails with the
+ * driver's reason under the surface's name.
+ * @param {Object} page
+ * @param {String} surface
+ * @returns {Promise<void>}
+ */
+const follow = async (page, surface) => {
+    const {error, success} = await load(page, FIELD_DRIVER, 'still=false&marks=none');
+
+    expect(success, `${surface}: ${error}`).toBe(true)
+};
 
 test.describe('AgentOS Home — the field draws on the canvas worker and idles under reduced motion (#244)', () => {
     test.setTimeout(90000);
@@ -74,12 +90,7 @@ test.describe('AgentOS Home — the field is quiet under the hero\'s lines where
             boxes  = () => home.locator('.fm-home-eyebrow, .fm-home-h1, .fm-home-lede, .fm-home-plane').evaluateAll(nodes => nodes
                 .map(node => node.getBoundingClientRect())
                 .filter(rect => rect.width && rect.height)
-                .map(rect => [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(' '))),
-            follow = async surface => {
-                const {error, success} = await load(page, FIELD_DRIVER, 'still=false&marks=none');
-
-                expect(success, `${surface}: ${error}`).toBe(true)
-            };
+                .map(rect => [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(' ')));
 
         await page.setViewportSize({width: 1392, height: 850});
         await page.emulateMedia({reducedMotion: 'no-preference'});
@@ -88,13 +99,13 @@ test.describe('AgentOS Home — the field is quiet under the hero\'s lines where
 
         await page.getByRole('tab', {name: 'Home', exact: true}).click();
         await expect(home.locator('.fm-home-canvas')).toBeVisible();
-        await follow('the returning reader');
+        await follow(page, 'the returning reader');
 
         const returning = await boxes();
 
         expect((await load(page, HOME_DRIVER, 'shellPlaneConfigured=false')).success).toBe(true);
         await expect(home.locator('.fm-home-lede')).toBeVisible();
-        await follow('the first-run reader');
+        await follow(page, 'the first-run reader');
 
         const firstRun = await boxes();
 
@@ -102,6 +113,27 @@ test.describe('AgentOS Home — the field is quiet under the hero\'s lines where
 
         await page.setViewportSize({width: 1000, height: 850});
         await expect.poll(boxes, {message: 'the resize moves them'}).not.toEqual(firstRun);
-        await follow('the resized surface')
+        await follow(page, 'the resized surface')
+    });
+
+    test('a reader switch whose render lands late still moves the field', async ({page}) => {
+        const home = page.locator('.fm-home-view');
+
+        await page.setViewportSize({width: 1392, height: 850});
+        await page.emulateMedia({reducedMotion: 'no-preference'});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+        await page.getByRole('tab', {name: 'Home', exact: true}).click();
+        await expect(home.locator('.fm-home-canvas')).toBeVisible();
+        await follow(page, 'the returning reader');
+
+        // the switch's render lands 150 ms late, the way a busy machine delays it
+        expect((await load(page, LATE_DRIVER, 'delay=150')).success).toBe(true);
+        expect((await load(page, HOME_DRIVER, 'shellPlaneConfigured=false')).success).toBe(true);
+        await expect(home.locator('.fm-home-lede')).toBeVisible();
+        expect((await load(page, LATE_DRIVER, 'delay=0')).success).toBe(true);
+
+        await follow(page, 'the first-run reader, rendered late')
     })
 });

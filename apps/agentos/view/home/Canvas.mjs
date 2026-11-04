@@ -149,10 +149,11 @@ class Canvas extends SharedCanvas {
     }
 
     /**
-     * @summary Measures the quiet components one frame after the call, so a line the Home view just changed has its
-     * new box, and hands the renderer their rects relative to the canvas, each with the font size its feather is
-     * measured in. Only the latest measurement of the current graph answers. A read that fails publishes nothing, so
-     * the field keeps what it last had until the next measurement.
+     * @summary Measures the quiet components 30 ms after the call, so a burst of calls measures once, and hands the
+     * renderer their rects relative to the canvas, each with the font size its feather is measured in. A caller that
+     * changed a line calls this once that line's render has landed: the wait coalesces, it does not wait for a render.
+     * Only the latest measurement of the current graph answers. A read that fails publishes nothing, so the field
+     * keeps what it last had until the next measurement.
      * @returns {Promise<void>}
      */
     async measureQuiet() {
