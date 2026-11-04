@@ -1,6 +1,7 @@
-import crypto from 'node:crypto';
-import fs     from 'node:fs';
-import path   from 'node:path';
+import crypto                 from 'node:crypto';
+import fs                     from 'node:fs';
+import path                   from 'node:path';
+import {planeCredentialFrame} from './planeCredentialPipe.mjs';
 
 /**
  * @module harness/planeConfig
@@ -9,17 +10,18 @@ import path   from 'node:path';
  * beside it, encrypted by `safeStorage` (the OS keychain). Only main reads or writes either file: the
  * renderer and the App worker learn whether a plane is configured, never the credential.
  *
- * At boot the record becomes the env fragment the launcher used to export — `NEO_FLEET_PLANE_BASE`,
- * `NEO_FLEET_PLANE_BEARER`, and the bearer's `NEO_AGENT_IDENTITY` — and a plane variable already set in
- * the process env wins, so checkout runs and the launcher keep working unchanged. The record applies as
- * a unit: its bearer never travels to a plane base that came from somewhere else, and its identity
- * travels with its bearer, because the plane admits the fleet child only when the claimed identity is
- * the bearer's subject.
+ * At boot the record becomes the fleet child's launch: `NEO_FLEET_PLANE_BASE` and the bearer's
+ * `NEO_AGENT_IDENTITY` in its env, and the bearer on the credential pipe (`harness/planeCredentialPipe.mjs`),
+ * never in the env. A plane variable already set in the process env wins, so checkout runs and the launcher
+ * keep working unchanged. The record applies as a unit: its bearer never travels to a plane base that came
+ * from somewhere else, and its identity travels with its bearer, because the plane admits the fleet child
+ * only when the claimed identity is the bearer's subject. The pipe is also how a new PAT reaches the running
+ * child: `attach()` hands it over and stores the record once the child adopted it.
  *
  * The record also keeps the plane's verdict on the bearer's class: the `authSource` its `/fleet/probe`
- * answered at attach. It is no secret, so it sits in `plane.json`, and it travels only with its bearer. A
- * forge PAT's class lets the fleet child present that one bearer to the plane's `/fleet` surface as well
- * (`NEO_FLEET_PLANE_BEARER_CLASS`). The shell never infers the class from the bytes.
+ * answered at attach. It is no secret, so it sits in `plane.json`, and it travels only with its bearer, in
+ * the same frame. A forge PAT's class lets the fleet child present that one bearer to the plane's `/fleet`
+ * surface as well. The shell never infers the class from the bytes.
  *
  * `plane.json` names the exact encrypted bearer it was written with (`bearerSha256`, the digest of those
  * bytes). A record whose bearer file is gone or was replaced without it, by a write that failed halfway,
@@ -235,16 +237,18 @@ export function forgetPlaneConfig({dir, fsModule = fs}) {
  * no longer decrypts is no record at all unless the env supplies one: the shell boots on its own rather
  * than attaching without a credential.
  *
+ * The stored bearer itself never enters the env: the fleet child receives it, with its recorded class, on
+ * the credential pipe ({@link launchedPlaneRecord} names the record to pipe). Every inherited home of a
+ * bearer is blanked instead — the plane bearer, its file and class, and both admission variables — because a
+ * fragment can override an inherited value but never remove it, the Brain refuses a bearer declared beside
+ * the pipe, and an admission credential the launch left behind must not reach the record's plane.
+ *
  * The stored bearer brings its identity as `NEO_AGENT_IDENTITY`, over any inherited value: the fleet
  * child claims that identity and the plane admits it only as the bearer's subject, so an identity the
  * launch left behind — none from Finder, a peer's when an agent session started the app — can only be
  * refused. A stored bearer without its identity (a record from before the identity was recorded) is
  * therefore no record either: the shell boots on its own, and the plane card offers to attach again.
  * An env bearer keeps the env's identity.
- *
- * The stored bearer brings its recorded class the same way, `''` when none was recorded, with both
- * admission variables empty: the Brain derives the fleet-surface credential from a bearer whose class
- * is a forge PAT, so an admission credential the launch left behind cannot reach the record's plane.
  * @param {Object} options
  * @param {{planeBase: String|null, bearer: String|null, identity: String|null, authSource: String|null}} options.planeConfig
  * @param {Object} options.env The process env.
@@ -264,22 +268,24 @@ export function planeEnvFragment({planeConfig, env}) {
         NEO_FLEET_PLANE_ADMISSION_BEARER     : '',
         NEO_FLEET_PLANE_ADMISSION_BEARER_FILE: '',
         NEO_FLEET_PLANE_BASE                 : planeConfig.planeBase,
-        NEO_FLEET_PLANE_BEARER               : planeConfig.bearer,
-        NEO_FLEET_PLANE_BEARER_CLASS         : planeConfig.authSource ?? ''
+        NEO_FLEET_PLANE_BEARER               : '',
+        NEO_FLEET_PLANE_BEARER_CLASS         : '',
+        NEO_FLEET_PLANE_BEARER_FILE          : ''
     } : {}
 }
 
 /**
  * @summary The stored record, when it alone supplied a launch: {@link planeEnvFragment} gave the fleet child
- * the record's base and bearer. An inherited base or bearer means the child spoke to another plane or with
- * another credential, so nothing the record says describes that launch, and `null` is returned.
+ * the record's base and identity, so the record's bearer is the one to pipe to it. An inherited base or
+ * bearer means the child spoke to another plane or with another credential, so nothing the record says
+ * describes that launch, and `null` is returned.
  * @param {{planeBase: String|null, bearer: String|null, identity: String|null}|null} planeConfig
  * @param {Object} fragment What {@link planeEnvFragment} returned for the launch.
  * @returns {Object|null}
  */
 export function launchedPlaneRecord(planeConfig, fragment) {
-    return planeConfig?.bearer &&
-        fragment?.NEO_FLEET_PLANE_BEARER === planeConfig.bearer &&
+    return planeConfig?.bearer && planeConfig.identity &&
+        fragment?.NEO_AGENT_IDENTITY === planeConfig.identity &&
         fragment.NEO_FLEET_PLANE_BASE === planeConfig.planeBase ? planeConfig : null
 }
 
@@ -461,27 +467,46 @@ export async function probePlaneBearerClass({planeBase, bearer, fetchFn = fetch,
 /**
  * @summary The main-process handlers behind the preload's `planeStatus()`, `attachPlane()`,
  * `retryPlane()` and `verifyPlane()`. Each refuses an untrusted sender, and no reply ever carries the
- * credential: the PAT exists only between the credential prompt or the stored record, the probe, and
- * the encrypted write.
+ * credential: the PAT exists only between the credential prompt or the stored record, the probe, the
+ * fleet child's credential pipe, and the encrypted write.
  * @param {Object} options
  * @param {Function} options.causeOf `(answer, storedIdentity) => String|null`: the runtime cause a probe
  *     answer names (`runtimePlaneCause`).
  * @param {String} options.dir Directory holding the record (Electron `userData`).
- * @param {Function} options.getLaunchedPlane Returns the stored record this shell launched its fleet
- *     child with (`launchedPlaneRecord`), or `null` when the launch took its plane from elsewhere.
+ * @param {Function} [options.getLaunchedPlane] Returns the stored record this shell launched its fleet
+ *     child with (`launchedPlaneRecord`), or `null` when the launch took its plane from elsewhere. Without
+ *     it, no launch is the record's.
  * @param {Function} options.getTransportFact Returns the settled boot fact (`{mode, up}`) or `null`.
  * @param {Function} options.isTrustedSender `(event) => Boolean`, the §2.3.4 check.
  * @param {Boolean} options.packaged Only a packaged boot reads the record, so only it may attach.
  * @param {Function} options.promptCredential `({event, method}) => Promise<String|null>` in main custody.
  * @param {Function} options.relaunch Restarts the shell after the reply is sent.
- * @param {Function} options.retryBoot `() => {ok, reason}`: main runs a boot that settled down with a
- *     refusal that is not the credential's again, in process (`retryBrainBoot`).
+ * @param {Function} [options.retryBoot] `({renewed}) => {ok, reason}`: main runs a boot that settled down
+ *     again, in process (`retryBrainBoot`); `renewed` once a new PAT is stored, which also answers the
+ *     credential's own refusals. Without it, nothing runs again.
+ * @param {Function} [options.rotateBearer] `({planeBase, frame}) => Promise<Object|null>`: hands a new bearer
+ *     to the running fleet child over its credential pipe and resolves with the child's answer, or `null`
+ *     when no running child holds a pipe for that plane base. Without it, no child is ever rotated.
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Function} [options.fetchFn=fetch]
  * @param {Object} [options.fsModule=fs]
  * @returns {{status: Function, attach: Function, retry: Function, verify: Function}}
  */
-export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportFact, isTrustedSender, packaged, promptCredential, relaunch, retryBoot, safeStorage, fetchFn = fetch, fsModule = fs}) {
+export function createPlaneBroker({
+    causeOf,
+    dir,
+    getTransportFact,
+    isTrustedSender,
+    packaged,
+    promptCredential,
+    relaunch,
+    safeStorage,
+    fetchFn          = fetch,
+    fsModule         = fs,
+    getLaunchedPlane = () => null,
+    retryBoot        = () => ({ok: false, reason: 'no-boot'}),
+    rotateBearer     = async () => null
+}) {
     const refuse = reason => ({ok: false, reason, relaunching: false});
 
     return {
@@ -509,9 +534,17 @@ export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportF
         },
 
         /**
+         * @summary Checks a PAT with the plane, then puts it to use without a relaunch where it can. A
+         * running fleet child that took its bearer from the pipe for this plane adopts the new one over it,
+         * and the record is stored only once it did, so a refusal leaves the current binding and record
+         * untouched. A boot that settled down has no binding to keep: the record is stored and the boot runs
+         * again in this process. Only a shell that can do neither (host mode, another plane, a plane from
+         * the environment) relaunches. A PAT the plane names as another account than the one this shell launched with for
+         * that plane is refused, naming both: at this form it is most likely a wrong paste.
          * @param {Electron.IpcMainInvokeEvent} event
          * @param {{planeBase: String}} request
-         * @returns {Promise<{ok: Boolean, reason: String|null, relaunching: Boolean}>}
+         * @returns {Promise<{ok: Boolean, reason: String|null, relaunching: Boolean, identity?: String, expectedIdentity?: String}>}
+         *     `identity` and `expectedIdentity` name the two accounts of an `another-account` refusal.
          */
         async attach(event, request) {
             if (!isTrustedSender(event)) {
@@ -546,9 +579,35 @@ export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportF
                 return refuse(verdict)
             }
 
-            const authSource = await probePlaneBearerClass({planeBase, bearer, fetchFn});
+            const bound = getLaunchedPlane();
 
-            writePlaneConfig({authSource, bearer, dir, fsModule, identity, planeBase, safeStorage});
+            if (bound?.planeBase === planeBase && identity !== bound.identity) {
+                return {...refuse('another-account'), expectedIdentity: bound.identity, identity}
+            }
+
+            const
+                authSource = await probePlaneBearerClass({planeBase, bearer, fetchFn}),
+                store      = () => writePlaneConfig({authSource, bearer, dir, fsModule, identity, planeBase, safeStorage}),
+                answer     = await rotateBearer({frame: planeCredentialFrame({authSource, bearer}), planeBase});
+
+            if (answer?.state === 'adopted') {
+                store();
+                return {ok: true, reason: null, relaunching: false}
+            }
+
+            if (answer) {
+                return {
+                    ...refuse('fleet-refused'),
+                    ...(answer.resolvedIdentity && {expectedIdentity: answer.expectedIdentity, identity: answer.resolvedIdentity})
+                }
+            }
+
+            store();
+
+            if (retryBoot({renewed: true}).ok) {
+                return {ok: true, reason: null, relaunching: false}
+            }
+
             relaunch();
 
             return {ok: true, reason: null, relaunching: true}
@@ -576,9 +635,10 @@ export function createPlaneBroker({causeOf, dir, getLaunchedPlane, getTransportF
         },
 
         /**
-         * @summary Asks the plane whether it still admits the PAT this shell launched with, so a
-         * credential that expires mid-session reads as the credential it is. Only the launched record
-         * is probed: a plane or PAT the environment supplied is not this shell's to judge.
+         * @summary Asks the plane whether it still admits the PAT this shell launched with, or the one its
+         * fleet child adopted since, so a credential that expires mid-session reads as the credential it
+         * is. Only the launched record is probed: a plane or PAT the environment supplied is not this
+         * shell's to judge.
          * @param {Electron.IpcMainInvokeEvent} event
          * @returns {Promise<{cause: String|null}>}
          */

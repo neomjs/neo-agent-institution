@@ -22,6 +22,7 @@ files:
     - mainLog.mjs
     - packageSlots.mjs
     - planeConfig.mjs
+    - planeCredentialPipe.mjs
     - preload.cjs
     - rehearsal.mjs
     - runtimeGeneration.mjs
