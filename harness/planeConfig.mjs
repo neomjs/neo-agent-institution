@@ -485,8 +485,9 @@ export async function probePlaneBearerClass({planeBase, bearer, fetchFn = fetch,
  *     again, in process (`retryBrainBoot`); `renewed` once a new PAT is stored, which also answers the
  *     credential's own refusals. Without it, nothing runs again.
  * @param {Function} [options.rotateBearer] `({planeBase, frame}) => Promise<Object|null>`: hands a new bearer
- *     to the running fleet child over its credential pipe and resolves with the child's answer, or `null`
- *     when no running child holds a pipe for that plane base. Without it, no child is ever rotated.
+ *     to the running fleet child over its credential pipe and resolves with the child's answer (`closed` once
+ *     that pipe is gone and the child keeps its bearer), or `null` when no fleet child runs for that plane
+ *     base. Without it, no child is ever rotated.
  * @param {Object} options.safeStorage Electron `safeStorage`.
  * @param {Function} [options.fetchFn=fetch]
  * @param {Object} [options.fsModule=fs]
@@ -537,7 +538,8 @@ export function createPlaneBroker({
          * @summary Checks a PAT with the plane, then puts it to use without a relaunch where it can. A
          * running fleet child that took its bearer from the pipe for this plane adopts the new one over it,
          * and the record is stored only once it did, so a refusal leaves the current binding and record
-         * untouched. A boot that settled down has no binding to keep: the record is stored and the boot runs
+         * untouched. A running child whose pipe closed keeps its bearer, so its PAT update is refused as
+         * `fleet-closed`. A boot that settled down has no binding to keep: the record is stored and the boot runs
          * again in this process. Only a shell that can do neither (host mode, another plane, a plane from
          * the environment) relaunches. A PAT the plane names as another account than the one this shell launched with for
          * that plane is refused, naming both: at this form it is most likely a wrong paste.
@@ -597,7 +599,7 @@ export function createPlaneBroker({
 
             if (answer) {
                 return {
-                    ...refuse('fleet-refused'),
+                    ...refuse(answer.state === 'closed' ? 'fleet-closed' : 'fleet-refused'),
                     ...(answer.resolvedIdentity && {expectedIdentity: answer.expectedIdentity, identity: answer.resolvedIdentity})
                 }
             }

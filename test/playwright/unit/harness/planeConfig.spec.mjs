@@ -3,7 +3,9 @@ import {EventEmitter}                                                           
 import fs, {existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                                                     from 'node:os';
 import path                                                                         from 'node:path';
+import {Duplex}                                                                     from 'node:stream';
 import {createAppLifecycle}                                                         from '../../../../harness/appLifecycle.mjs';
+import {openPlaneCredentialPipe, rotatePlaneCredential}                             from '../../../../harness/planeCredentialPipe.mjs';
 import {
     createPlaneBroker,
     forgetPlaneConfig,
@@ -451,8 +453,8 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
     /**
      * @param {Object} [options]
      * @param {Object|null} [options.launched=null] The launched record (`getLaunchedPlane`).
-     * @param {Object|null} [options.rotation=null] The running fleet child's answer, or `null` when no child
-     *     holds a pipe for the plane.
+     * @param {Object|Function|null} [options.rotation=null] The running fleet child's answer, `null` when no
+     *     child runs for the plane, or the rotation itself.
      * @param {Boolean} [options.reboots=false] Whether main may run a settled-down boot again.
      */
     function makeBroker({packaged = true, prompt = BEARER, host = fakePlane(), trusted = true, available = true, decrypts = true, fact = null, launched = null, rotation = null, reboots = false} = {}) {
@@ -475,12 +477,48 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
             rotateBearer    : async options => {
                 // what the store held while the child was asked: the record is written only after it answers
                 calls.rotations.push({...options, stored: readPlaneConfig({dir, safeStorage}).bearer});
-                return rotation
+                return typeof rotation === 'function' ? rotation(options) : rotation
             },
             safeStorage
         });
 
         return {broker, calls, dir, safeStorage}
+    }
+
+    /**
+     * @summary A fleet child as main's rotation reaches it: its pipe over an in-memory stream that adopts each
+     * frame, or closes before (`'before'`) or while (`'waiting'`) one waits. `exited` marks a child that is gone.
+     * @param {Object} [options]
+     * @param {String|null} [options.closes=null]
+     * @param {Boolean} [options.exited=false]
+     * @returns {{child: Object, sent: String[]}} `sent` holds the bearer of each frame that reached the child.
+     */
+    function fleetChild({closes = null, exited = false} = {}) {
+        const
+            sent   = [],
+            stream = new Duplex({
+                read() {},
+                write(chunk, encoding, callback) {
+                    sent.push(JSON.parse(String(chunk)).bearer);
+                    callback();
+                    queueMicrotask(() => stream.push(closes === 'waiting' ? null : `${JSON.stringify({identity: IDENTITY, state: 'adopted'})}\n`))
+                }
+            });
+
+        closes === 'before' && stream.push(null);
+
+        return {child: {exitCode: exited ? 1 : null, planeCredentialPipe: openPlaneCredentialPipe({stream}), signalCode: null}, sent}
+    }
+
+    /**
+     * @summary The broker over main's rotation of `fleet` (`rotatePlaneCredential`), launched for `PLANE`.
+     */
+    function brokerOver(fleet, options = {}) {
+        return makeBroker({
+            launched: LAUNCHED,
+            rotation: ({frame, planeBase}) => rotatePlaneCredential({child: fleet.child, frame, launchedPlane: LAUNCHED, planeBase}),
+            ...options
+        })
     }
 
     test('an attach no child can take stores the record with the plane\'s class for its bearer, relaunches, and the reply never carries the PAT', async () => {
@@ -520,6 +558,39 @@ test.describe('harness/planeConfig — the plane broker behind planeStatus() and
             expect(calls.relaunches + calls.reboots.length, rotation.reason).toBe(0);
             expect(readPlaneConfig({dir, safeStorage}).bearer, `${rotation.reason}: nothing stored`).toBeNull()
         }
+    });
+
+    test('a running fleet child keeps its PAT once its pipe closed, before or while the frame waits: nothing is stored, booted or relaunched (#843 AC-1, AC-3)', async () => {
+        const rows = [
+            {closes: null,      reply: {ok: true, reason: null, relaunching: false},            sent: [BEARER], stored: BEARER},
+            {closes: 'before',  reply: {ok: false, reason: 'fleet-closed', relaunching: false}, sent: [],       stored: null},
+            {closes: 'waiting', reply: {ok: false, reason: 'fleet-closed', relaunching: false}, sent: [BEARER], stored: null}
+        ];
+
+        for (const {closes, reply, sent, stored} of rows) {
+            const
+                fleet                             = fleetChild({closes}),
+                {broker, calls, dir, safeStorage} = brokerOver(fleet),
+                label                             = `pipe closes ${closes ?? 'never'}`;
+
+            await expect.poll(() => fleet.child.planeCredentialPipe.isOpen(), label).toBe(closes !== 'before');
+
+            expect(await broker.attach({}, {planeBase: PLANE}), label).toEqual(reply);
+            expect(fleet.sent, `${label}: the bearers the child was sent`).toEqual(sent);
+            expect(calls.reboots.length + calls.relaunches, `${label}: neither a second boot nor a relaunch`).toBe(0);
+            expect(readPlaneConfig({dir, safeStorage}).bearer, `${label}: the stored PAT`).toBe(stored)
+        }
+    });
+
+    test('a fleet child that is gone holds no binding: the same rotation stores the PAT and runs its boot again (#843 AC-2)', async () => {
+        const
+            fleet                             = fleetChild({closes: 'before', exited: true}),
+            {broker, calls, dir, safeStorage} = brokerOver(fleet, {reboots: true});
+
+        expect(await broker.attach({}, {planeBase: PLANE})).toEqual({ok: true, reason: null, relaunching: false});
+        expect(calls).toMatchObject({reboots: [{renewed: true}], relaunches: 0});
+        expect(fleet.sent).toEqual([]);
+        expect(readPlaneConfig({dir, safeStorage}).bearer).toBe(BEARER)
     });
 
     test('a PAT the plane names as another account than the launched one is refused, naming both, before the fleet child is asked (#843 AC-3)', async () => {

@@ -9,7 +9,8 @@ import {
     openPlaneCredentialPipe,
     parsePlaneCredentialAnswer,
     pipePlaneCredential,
-    planeCredentialFrame
+    planeCredentialFrame,
+    rotatePlaneCredential
 } from '../../../../harness/planeCredentialPipe.mjs';
 
 const CLOSED = 'the fleet child closed its credential pipe';
@@ -74,7 +75,7 @@ test.describe('harness/planeCredentialPipe — main\'s end of the fleet child\'s
         expect(parsePlaneCredentialAnswer('{"state":"refused","reason":"no","resolvedIdentity":"@x"}'), 'one account is no pair').toEqual({reason: 'no', state: 'refused'})
     });
 
-    test('a pipe that closes answers the frames still waiting, and every later one, as refused', async () => {
+    test('a pipe that closes answers the frames still waiting, and every later one, as closed', async () => {
         const
             end     = childEnd(),
             pipe    = openPlaneCredentialPipe({stream: end.stream}),
@@ -82,13 +83,13 @@ test.describe('harness/planeCredentialPipe — main\'s end of the fleet child\'s
 
         end.stream.push(null);
 
-        expect(await waiting).toEqual({reason: CLOSED, state: 'refused'});
+        expect(await waiting).toEqual({reason: CLOSED, state: 'closed'});
         expect(pipe.isOpen()).toBe(false);
-        expect(await pipe.send({bearer: 'ghp_b', bearerClass: ''})).toEqual({reason: CLOSED, state: 'refused'});
+        expect(await pipe.send({bearer: 'ghp_b', bearerClass: ''})).toEqual({reason: CLOSED, state: 'closed'});
         expect(end.written, 'nothing is written into a closed pipe').toHaveLength(1)
     });
 
-    test('a pipe that fails answers what waits as refused, and main never throws', async () => {
+    test('a pipe that fails answers what waits as closed, and main never throws', async () => {
         const
             end     = childEnd(),
             pipe    = openPlaneCredentialPipe({stream: end.stream}),
@@ -96,11 +97,11 @@ test.describe('harness/planeCredentialPipe — main\'s end of the fleet child\'s
 
         end.stream.destroy(new Error('write EPIPE'));
 
-        expect(await waiting).toEqual({reason: 'the fleet child\'s credential pipe failed', state: 'refused'});
+        expect(await waiting).toEqual({reason: 'the fleet child\'s credential pipe failed', state: 'closed'});
         expect(pipe.isOpen()).toBe(false)
     });
 
-    test('close() ends rotations: main\'s end is ended, and later frames are refused', async () => {
+    test('close() ends rotations: main\'s end is ended, and later frames are answered as closed', async () => {
         const
             end  = childEnd(),
             pipe = openPlaneCredentialPipe({stream: end.stream});
@@ -108,7 +109,36 @@ test.describe('harness/planeCredentialPipe — main\'s end of the fleet child\'s
         pipe.close();
 
         expect(end.stream.writableEnded).toBe(true);
-        expect(await pipe.send({bearer: 'ghp_a', bearerClass: ''})).toEqual({reason: CLOSED, state: 'refused'})
+        expect(await pipe.send({bearer: 'ghp_a', bearerClass: ''})).toEqual({reason: CLOSED, state: 'closed'})
+    });
+
+    test('a rotation reaches only a running fleet child of the launched plane, and one whose pipe closed answers closed, never null (#843)', async () => {
+        const
+            frame    = {bearer: 'ghp_next', bearerClass: ''},
+            launched = {planeBase: 'https://plane.example'},
+            open     = childEnd(),
+            gone     = childEnd(),
+            running  = end => ({exitCode: null, planeCredentialPipe: openPlaneCredentialPipe({stream: end.stream}), signalCode: null}),
+            live     = running(open),
+            stale    = running(gone),
+            rotate   = (child, options = {}) => rotatePlaneCredential({child, frame, launchedPlane: launched, planeBase: launched.planeBase, ...options});
+
+        gone.stream.push(null);
+        await expect.poll(() => stale.planeCredentialPipe.isOpen()).toBe(false);
+
+        expect(await rotate(null), 'no fleet child').toBeNull();
+        expect(await rotate({...live, exitCode: 1}), 'a child that exited').toBeNull();
+        expect(await rotate({...live, signalCode: 'SIGKILL'}), 'a child a signal ended').toBeNull();
+        expect(await rotate(live, {planeBase: 'https://other.example'}), 'another plane').toBeNull();
+        expect(await rotate(live, {launchedPlane: null}), 'a plane from the environment').toBeNull();
+        expect(open.written, 'none of them sent a frame').toEqual([]);
+
+        const adopted = rotate(live);
+
+        open.answer({identity: '@fixture-viewer', state: 'adopted'});
+
+        expect(await adopted).toEqual({identity: '@fixture-viewer', state: 'adopted'});
+        expect(await rotate(stale), 'the child still runs and keeps the bearer it bound').toEqual({reason: CLOSED, state: 'closed'})
     });
 
     test.describe('a real child on fd 3', () => {
@@ -134,7 +164,7 @@ test.describe('harness/planeCredentialPipe — main\'s end of the fleet child\'s
             rmSync(workDir, {force: true, recursive: true})
         });
 
-        test('the boot frame and each rotation are answered in order, and a child that is gone refuses the rest', async () => {
+        test('the boot frame and each rotation are answered in order, and a child that is gone leaves the rest closed', async () => {
             const child = startBrainChild({credentialPipe: true, entry: 'child.mjs', ownershipTokenFn: () => 'pipe-token', repoRoot: workDir});
 
             try {
@@ -157,7 +187,7 @@ test.describe('harness/planeCredentialPipe — main\'s end of the fleet child\'s
                 await once(child, 'close');
 
                 expect(pipe.isOpen()).toBe(false);
-                expect(await pipe.send({bearer: 'good-late', bearerClass: ''})).toEqual({reason: CLOSED, state: 'refused'})
+                expect(await pipe.send({bearer: 'good-late', bearerClass: ''})).toEqual({reason: CLOSED, state: 'closed'})
             } finally {
                 await stopBrainChild(child, {graceMs: 500})
             }

@@ -237,7 +237,9 @@ adoption.
      plane names for it — and puts it to use without a relaunch where it can. A running fleet child
      that took its bearer from the credential pipe for this plane adopts the new one over that pipe,
      and main stores the record only once the child answered `adopted`, so a refusal leaves the
-     binding and the record as they were. A boot that settled down has no binding to keep: main
+     binding and the record as they were. A running child whose pipe has closed keeps serving the
+     bearer it bound, so its PAT update is refused the same way (`fleet-closed`, which names a reopen
+     as the way to use the PAT); only a child that is gone frees the binding. A boot that settled down has no binding to keep: main
      stores the record and runs the boot again in this process. Only a shell that can do neither (no
      plane yet, another plane, a plane from the environment) stores both and relaunches. A PAT the plane names as
      another account than the one this shell launched with for that plane is refused, never adopted.

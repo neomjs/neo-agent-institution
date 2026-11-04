@@ -624,7 +624,7 @@ apps/agentos/view/home/Container.mjs
     d1b9541c7e7d216eabb82f9783aff16f8d878638
 
 apps/agentos/view/setup/ConnectContainer.mjs
-    2684412c088dd4d3af6f6343e62b7cccb2433859
+    1ac25df8aff1d8370f95b60ef3e3fae0b546cfbc
 
 apps/agentos/view/setup/CreateContainer.mjs
     b8de7fdf8603d97177501db23d714c6dc4fab54c

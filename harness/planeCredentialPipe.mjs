@@ -9,8 +9,9 @@ import readline from 'node:readline';
  * code, so it keeps its own copy. Each frame is one JSON line, `{"bearer": "…", "bearerClass": "github-pat"}`.
  * The first frame is the boot bearer, each later one a rotation. The child answers every frame once, in
  * order: `{"state": "adopted", "identity": "@x"}`, or `{"state": "refused", "reason": "…"}`, which adds
- * `resolvedIdentity` and `expectedIdentity` when the bearer belongs to another account. A frame is never
- * logged, and an answer never carries one.
+ * `resolvedIdentity` and `expectedIdentity` when the bearer belongs to another account. Main answers a frame
+ * it can no longer deliver itself, as `{"state": "closed", "reason": "…"}`: the pipe closed or failed, and the
+ * child keeps the bearer it holds. A frame is never logged, and an answer never carries one.
  */
 
 /**
@@ -65,7 +66,7 @@ export function parsePlaneCredentialAnswer(line) {
 /**
  * @summary Opens main's end over the child's pipe (`child.stdio[PLANE_CREDENTIAL_FD]`). Answers are matched to
  * frames in the order they were sent. Once the pipe closes or fails, every frame still waiting, and every
- * later one, is answered as refused, so a caller never waits on a child that is gone.
+ * later one, is answered as `closed`, so a caller never waits on a pipe that is gone.
  * @param {Object} options
  * @param {import('node:stream').Duplex} options.stream
  * @returns {{close: Function, isOpen: Function, send: Function}}
@@ -83,7 +84,7 @@ export function openPlaneCredentialPipe({stream}) {
 
             open = false;
             lines.close();
-            pending.splice(0).forEach(resolve => resolve({reason, state: 'refused'}))
+            pending.splice(0).forEach(resolve => resolve({reason, state: 'closed'}))
         },
         fail = () => end('the fleet child\'s credential pipe failed');
 
@@ -112,11 +113,11 @@ export function openPlaneCredentialPipe({stream}) {
         /**
          * @summary Sends one frame and resolves with the child's answer to it.
          * @param {{bearer: String, bearerClass: String}} frame
-         * @returns {Promise<Object>} An answer as {@link parsePlaneCredentialAnswer} reads it.
+         * @returns {Promise<Object>} An answer as {@link parsePlaneCredentialAnswer} reads it, or `closed`.
          */
         send(frame) {
             if (!open) {
-                return Promise.resolve({reason: CLOSED, state: 'refused'})
+                return Promise.resolve({reason: CLOSED, state: 'closed'})
             }
 
             return new Promise(resolve => {
@@ -139,4 +140,22 @@ export function pipePlaneCredential({child, record}) {
     const pipe = openPlaneCredentialPipe({stream: child.stdio[PLANE_CREDENTIAL_FD]});
 
     return {boot: pipe.send(planeCredentialFrame(record)), pipe}
+}
+
+/**
+ * @summary Hands a rotation frame to the fleet child serving `planeBase`. It resolves `null` only when no fleet
+ * child runs for the plane this shell launched, so the caller may store the PAT and boot or relaunch. A running
+ * child whose pipe closed keeps serving the bearer it bound, so its frame is answered `closed` instead.
+ * @param {Object} options
+ * @param {import('node:child_process').ChildProcess|null} options.child The registered fleet child, which
+ *     carries its pipe as `planeCredentialPipe`.
+ * @param {{bearer: String, bearerClass: String}} options.frame
+ * @param {{planeBase: String}|null} options.launchedPlane The record this shell launched with (`launchedPlaneRecord`).
+ * @param {String} options.planeBase
+ * @returns {Promise<Object|null>}
+ */
+export async function rotatePlaneCredential({child, frame, launchedPlane, planeBase}) {
+    const running = child && child.exitCode === null && !child.signalCode;
+
+    return running && launchedPlane?.planeBase === planeBase ? child.planeCredentialPipe.send(frame) : null
 }

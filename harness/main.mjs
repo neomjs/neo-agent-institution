@@ -106,7 +106,7 @@ import {
     probePlaneCredential,
     readPlaneConfig
 } from './planeConfig.mjs';
-import {PLANE_CREDENTIAL_FD, pipePlaneCredential}                                                   from './planeCredentialPipe.mjs';
+import {PLANE_CREDENTIAL_FD, pipePlaneCredential, rotatePlaneCredential}                            from './planeCredentialPipe.mjs';
 import {settleSeatRoot, writeSeatRootRecord}                                                        from './seatRootRecord.mjs';
 import {findFleetWriters, runSeatMoveStep, seatMoveBootHold, settleSeatRootMove}                    from './seatRootMove.mjs';
 import {SEAT_RENAME_CHANNELS, createSeatRenameBroker, createSeatRenameRuntime}                     from './seatRenameBroker.mjs';
@@ -1293,27 +1293,25 @@ function pipeLaunchedPlane(child) {
 }
 
 /**
- * @summary The plane broker's rotation: hands a new bearer to the running fleet child over its credential pipe
- * and resolves with the child's answer. `null` means no running fleet child holds a pipe for that plane, and
- * the broker takes another path. An adopted bearer becomes the launched record's, which `verifyPlane()` probes
- * and a respawn pipes.
+ * @summary The plane broker's rotation: hands a new bearer to the registered fleet child
+ * (`rotatePlaneCredential`) and resolves with its answer, or `null` when no fleet child runs for that plane.
+ * An adopted bearer becomes the launched record's, which `verifyPlane()` probes and a respawn pipes.
  * @param {Object} options
  * @param {{bearer: String, bearerClass: String}} options.frame
  * @param {String} options.planeBase
  * @returns {Promise<Object|null>}
  */
 async function rotatePlaneBearer({frame, planeBase}) {
-    const pipe = brainState.children.find(entry => entry.label === 'fleet')?.child.planeCredentialPipe;
+    const answer = await rotatePlaneCredential({
+        child: brainState.children.find(entry => entry.label === 'fleet')?.child ?? null,
+        frame,
+        launchedPlane,
+        planeBase
+    });
 
-    if (!pipe?.isOpen() || launchedPlane?.planeBase !== planeBase) {
-        return null
-    }
+    answer && logPlaneCredential('rotation', answer);
 
-    const answer = await pipe.send(frame);
-
-    logPlaneCredential('rotation', answer);
-
-    if (answer.state === 'adopted') {
+    if (answer?.state === 'adopted') {
         replacedPlaneBearers.push(storedPlaneBearer);
         storedPlaneBearer = frame.bearer;
         launchedPlane     = {...launchedPlane, authSource: frame.bearerClass || null, bearer: frame.bearer}

@@ -104,6 +104,13 @@ test.describe('AgentOS.view.setup.ConnectContainer — the setup card\'s connect
         await door.onConnectClick();
 
         expect(door.getReference('status-line').text).toBe(ConnectContainer.reasonText['fleet-refused']);
+
+        stubAttachPlane({ok: false, reason: 'fleet-closed', relaunching: false});
+        await door.onConnectClick();
+
+        expect(door.getReference('status-line').text, 'a Fleet that can no longer take one names the way to use it')
+            .toBe('The running Fleet can no longer take a new PAT and keeps its current one. Nothing was stored. To use this PAT, reopen the Fleet Manager and connect it again.');
+        expect(door.getReference('connect-button').disabled).toBe(false);
         host.destroy()
     });
 

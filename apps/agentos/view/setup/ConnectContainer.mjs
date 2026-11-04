@@ -22,6 +22,7 @@ class ConnectContainer extends Container {
     static reasonText = {
         canceled                : 'Canceled. Nothing was stored.',
         'encryption-unavailable': 'This Mac cannot store the PAT encrypted, so nothing was stored.',
+        'fleet-closed'          : 'The running Fleet can no longer take a new PAT and keeps its current one. Nothing was stored. To use this PAT, reopen the Fleet Manager and connect it again.',
         'fleet-refused'         : 'The running Fleet could not adopt that PAT and keeps its current one. Nothing was stored.',
         'invalid-plane-base'    : 'Use an https address, or http on this machine (127.0.0.1 or localhost).',
         'no-identity'           : 'The plane accepted that PAT but named no identity for it. Nothing was stored.',
