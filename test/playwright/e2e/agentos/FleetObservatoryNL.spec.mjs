@@ -550,7 +550,24 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(head, 'the qualified id stays out of the head').not.toContainText('neomjs/neo#');
         await selectedHead.click();
         await expect(pane.locator('.fm-observatory-selected-facts')).toHaveText(/^open, as last ingested · authored by @tobiu · assigned to @neo-opus-vega · last activity .+ · Golden Path rank 1$/);
-        await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/101');
+        const
+            openOnGitHub = pane.getByRole('link', {name: 'Open on GitHub'}),
+            tooltip      = page.locator('.neo-tooltip'),
+            appUrl       = page.url();
+
+        await expect(openOnGitHub).toHaveAttribute('href', 'https://github.com/neomjs/neo/pull/101');
+        // the link's url arrives with the selection, after the button was built
+        await expect(openOnGitHub, 'it opens beside the app, not in place of it').toHaveAttribute('target', '_blank');
+        await openOnGitHub.hover();
+        await expect(tooltip, 'the control names where it leads').toContainText('https://github.com/neomjs/neo/pull/101');
+        await page.context().route('https://github.com/**', route => route.abort());
+
+        const [popup] = await Promise.all([page.waitForEvent('popup'), openOnGitHub.click()]);
+
+        await popup.close();
+        await expect(page, 'the app keeps its page, so its window keeps the worker').toHaveURL(appUrl);
+        await page.mouse.move(0, 0);
+        await expect(tooltip, 'and its tooltip still hides when the pointer leaves, with no reload').toBeHidden();
         await expect(pane.locator('.fm-observatory-relation-list .neo-list-header')).toHaveText([/authored\s*from\s*1/, /mentions\s*to\s*1/]);
 
         await nodesHead.click();
