@@ -553,7 +553,22 @@ class Container extends BaseContainer {
         me.getReference('plane-line').set({hidden: firstRun || state === 'ok', text: `Plane ${word}`});
 
         me.team = line?.team ?? null;
-        me.getReference('canvas')?.measureQuiet()
+        me.measureQuietOnceRendered()
+    }
+
+    /**
+     * @summary Measures the field's quiet lines once the changes {@link #applyState} made are in the DOM. One render of
+     * the lines' container over its whole subtree carries them all, the shown and hidden lines with their texts, and
+     * the field measures when that render has landed. A hidden line's own render would wait for a mount that never
+     * comes, so none is awaited. An unmounted Home skips: its canvas measures when it mounts again.
+     */
+    measureQuietOnceRendered() {
+        const me = this, lines = me.getReference('lead').parent;
+
+        if (me.mounted && me.getReference('canvas')) {
+            lines.updateDepth = -1;
+            lines.promiseUpdate().then(() => me.getReference('canvas')?.measureQuiet(), Neo.emptyFn)
+        }
     }
 
     /**
