@@ -50,10 +50,11 @@ class Observatory extends GraphScene {
         labelSizes: {max: 15, min: 11},
         /**
          * The engine's level of detail with the fitted camera one level in: it draws every node, and the
-         * centroids only once the camera is drawn back past the whole graph.
-         * @member {Object} lod={far: 1.3, near: 0.55, nearClusters: 6}
+         * centroids only once the camera is drawn back past the whole graph. `near`, the nearest communities'
+         * own edges, starts at 0.35 so it is a band of the wheel's travel down to `zoom.min`, not its last sliver.
+         * @member {Object} lod={far: 1.3, near: 0.35, nearClusters: 6}
          */
-        lod: {far: 1.3, near: 0.55, nearClusters: 6},
+        lod: {far: 1.3, near: 0.35, nearClusters: 6},
         /**
          * The fewest nodes a scene draws through the engine's level of detail. Its far level shows each community
          * as one centroid, which a large graph needs and a small read does not: below this, every node is drawn
@@ -93,7 +94,17 @@ class Observatory extends GraphScene {
          * @member {Boolean} singleton=true
          * @protected
          */
-        singleton: true
+        singleton: true,
+        /**
+         * The wheel comes 10× closer than the fit, the zoom ladder's street level (design read on
+         * neomjs/neo-agent-institution#312). A whole read draws each node at `nodeSizes.nodeMin` (0.4 px at
+         * the fitted distance), and a point grows with the inverse of its distance, so the engine's floor of half
+         * the fitted distance stopped under a pixel; at 0.1 that node is 4 px and inside the pick radius. The way
+         * out keeps the engine's range, and a flight still lands at half the fitted distance (`flight.distance`),
+         * so a well opens framed, not at a single node.
+         * @member {Object} zoom={max: 3.75, min: 0.1, speed: 0.0015}
+         */
+        zoom: {max: 3.75, min: 0.1, speed: 0.0015}
     }
 
     /**

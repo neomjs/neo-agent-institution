@@ -143,6 +143,17 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(Observatory.ink(dense, 0).sizes[0], 'the selected node takes at least the last seed\'s size').toBe(6)
     });
 
+    test('the wheel comes 10x closer than the fit: a dense read\'s floor node reaches a pickable 4 px, near is a band of the travel, and a flight still lands framed', () => {
+        const
+            floor               = Observatory.ink(ObservatorySceneLayout.wire(ObservatorySceneLayout.fromGraphScene(wholeGraphEnvelope({communities: 4, nodes: 64000, routeLength: 0})))).sizes[0],
+            {flight, lod, zoom} = Observatory;
+
+        // a point grows with the inverse of its distance, so the deepest zoom magnifies the fitted size by 1 / zoom.min
+        expect(floor / zoom.min, 'the floor node at the deepest zoom, in pixels').toBeGreaterThanOrEqual(4);
+        expect(lod.near / zoom.min, 'the near level spans a band of the wheel, not its last sliver').toBeGreaterThanOrEqual(3);
+        expect(flight.distance, 'a well\'s flight lands framed, above the near level').toBeGreaterThan(lod.near)
+    });
+
     test('the wire scene carries the layout as typed arrays by node index, and no node object or id', () => {
         const scene = layoutScene('current'), wire = ObservatorySceneLayout.wire(scene);
 
@@ -168,9 +179,12 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(Observatory.getLodLevel()).toBe('mid');
 
         Observatory.camera.dist *= 0.5;
+        expect(Observatory.getLodLevel(), 'half the fit is still every node; near is the street band below 0.35').toBe('mid');
+
+        Observatory.camera.dist *= 0.6;
         expect(Observatory.getLodLevel()).toBe('near');
 
-        Observatory.camera.dist *= 3;
+        Observatory.camera.dist *= 5;
         expect(Observatory.getLodLevel()).toBe('far')
     });
 
