@@ -10,7 +10,9 @@ import {GOLD, PALETTES, rgb} from './fmPalette.mjs';
  * Each community takes its own hue ({@link #toneOf}), the nodes shrink as the read grows, and a large scene
  * hands its communities to the engine as `clusters`: the fitted camera draws every node over the bundles, a
  * closer one adds the nearest communities' own edges, and only a camera drawn back shows one centroid per
- * community. On the dark skin the points add up, so a dense community glows. The route is an overlay: while it
+ * community. On the dark skin the points add up, so a dense community glows. Wells are named on the surface,
+ * the largest first ({@link #labelSizes}), and their nodes take the size the wells' own count gives them, so a
+ * well reads as a body of points while the halo around it stays dust, one ink tier dimmer. The route is an overlay: while it
  * is drawn, its seeds grow by rank and a gold path joins them in route order, gold only while the read is
  * current; switching it off inks the same positions again. A selection fades every node but the selected one
  * and its neighbours, except a drawn route's seeds, which only shrink. Two channels ink over any geography and move
@@ -41,11 +43,18 @@ class Observatory extends GraphScene {
          */
         communityTones: {gold: {...GOLD}, lightness: {dark: 0.62, light: 0.42}, saturation: 0.55, step: 137.508},
         /**
-         * The engine's level of detail with the fitted camera one level in: it draws every node, and the
-         * centroids only once the camera is drawn back past the whole graph.
-         * @member {Object} lod={far: 1.3, near: 0.55, nearClusters: 6}
+         * A well's label size in CSS pixels: the largest well's label takes `max`, and a smaller one shrinks with
+         * the square root of its share of that well's nodes, toward `min`.
+         * @member {Object} labelSizes={max: 15, min: 11}
          */
-        lod: {far: 1.3, near: 0.55, nearClusters: 6},
+        labelSizes: {max: 15, min: 11},
+        /**
+         * The engine's level of detail with the fitted camera one level in: it draws every node, and the
+         * centroids only once the camera is drawn back past the whole graph. `near`, the nearest communities'
+         * own edges, starts at 0.35 so it is a band of the wheel's travel down to `zoom.min`, not its last sliver.
+         * @member {Object} lod={far: 1.3, near: 0.35, nearClusters: 6}
+         */
+        lod: {far: 1.3, near: 0.35, nearClusters: 6},
         /**
          * The fewest nodes a scene draws through the engine's level of detail. Its far level shows each community
          * as one centroid, which a large graph needs and a small read does not: below this, every node is drawn
@@ -56,7 +65,8 @@ class Observatory extends GraphScene {
         /**
          * Node sizes in the engine's unit, pixels at the camera's distance: every node takes `node` in a read of up
          * to `nodeScaleFrom` nodes, and a denser read shrinks it with the square root of the excess, down to
-         * `nodeMin`, so a whole graph reads as dust that glows where it gathers. While the route is drawn a seed
+         * `nodeMin`, so a whole graph reads as dust that glows where it gathers. A well's node counts only the nodes
+         * in wells, the halo's every node of the read, so the wells stand out of the dust around them. While the route is drawn a seed
          * shrinks down the route from the first rank to the last between its two bounds, at any scale. Under a
          * selection the selected node grows by the `selected` factor, never below the last seed so it stands out
          * of the dust, and a node outside its neighbourhood shrinks by the `faded` one. Under the heat a node grows
@@ -84,7 +94,16 @@ class Observatory extends GraphScene {
          * @member {Boolean} singleton=true
          * @protected
          */
-        singleton: true
+        singleton: true,
+        /**
+         * The wheel comes 10× closer than the fit, the zoom ladder's street level. The engine draws a point at its
+         * own size at the camera's target, whatever the distance, so closing in adds room, not size: the nodes
+         * around the target spread to 10× their fitted spacing, and a pick lands on the one meant. Zooming out keeps
+         * the engine's range, and a flight still lands at half the fitted distance (`flight.distance`), so a well
+         * opens framed, not at a single node.
+         * @member {Object} zoom={max: 3.75, min: 0.1, speed: 0.0015}
+         */
+        zoom: {max: 3.75, min: 0.1, speed: 0.0015}
     }
 
     /**
@@ -205,12 +224,13 @@ class Observatory extends GraphScene {
     /**
      * @summary The engine's flat scene for a wire scene in the current theme's ink, or `null` when there is
      * nothing to draw.
-     * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, currency, communities, empty}`)
+     * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, wells, currency, communities, empty}`)
      * @param {Number}      [selectedIndex=-1] The index of the node to highlight; one the scene lacks highlights nothing
      * @param {Boolean}     [routeOverlay=true] Whether the route is drawn
      * @param {Object}      [channels] The overlays by node index: `heat` ({@link #heat}) and `lens` ({@link #lens}),
      *     each `null` while off; the ones this renderer holds by default
-     * @returns {Object|null} `{clusters, colors, edges, paths, positions, sizes}`
+     * @returns {Object|null} `{clusters, colors, edges, labels, paths, positions, sizes}`, `labels` naming the wells
+     *     largest first in the skin's ink over its ground, `null` for a scene without wells
      */
     ink(scene, selectedIndex = -1, routeOverlay = true, {heat: heatIn = this.heat, lens: lensIn = this.lens} = {}) {
         if (!scene || scene.empty) {
@@ -219,7 +239,7 @@ class Observatory extends GraphScene {
 
         const
             me        = this,
-            {clusters, count, edges, ranks, seeds} = scene,
+            {clusters, count, edges, ranks, seeds, wells} = scene,
             // a channel of another scene's nodes is not this scene's: it waits for the scene it belongs to
             heat      = heatIn?.length === count ? heatIn : null,
             lens      = lensIn?.lens?.length === count ? lensIn : null,
@@ -238,11 +258,17 @@ class Observatory extends GraphScene {
             lit       = selected < 0 ? null : new Set([selected]),
             rankOf    = routeOverlay ? new Map(Array.from(seeds, (node, position) => [node, ranks[position]])) : null,
             lastRank  = Math.max(1, ...ranks),
-            nodeSize  = Math.max(nodeSizes.nodeMin, nodeSizes.node * Math.min(1, Math.sqrt(nodeSizes.nodeScaleFrom / count))),
+            sizeOf    = nodes => Math.max(nodeSizes.nodeMin, nodeSizes.node * Math.min(1, Math.sqrt(nodeSizes.nodeScaleFrom / nodes))),
             colors    = new Float32Array(count * 3),
             sizes     = new Float32Array(count),
-            // the halo's sector clusters are dust around the wells: faint and small, never a community's tone
-            haloFrom  = scene.haloFrom ?? Infinity;
+            // the halo's sector clusters are dust around the wells: the faintest ink, small, never a community's tone
+            haloFrom  = scene.haloFrom ?? Infinity,
+            dustInk   = rgb(palette.lineSoft),
+            dustSize  = sizeOf(count),
+            // a well's nodes take the size the wells' own count gives them, so a well reads as a body of points
+            nodeSize  = sizeOf(Math.max(1, count - clusters.reduce((halo, cluster) => halo + (cluster >= haloFrom ? 1 : 0), 0))),
+            largest   = Math.max(1, ...(wells?.sizes ?? [])),
+            {labelSizes} = me;
 
         for (let pair = 0; lit && pair < edges.length; pair += 2) {
             edges[pair]     === selected && lit.add(edges[pair + 1]);
@@ -252,13 +278,14 @@ class Observatory extends GraphScene {
         for (let index = 0; index < count; index++) {
             const
                 rank = rankOf?.get(index),
-                base = rank === undefined ? nodeSize : lastRank > 1 ? nodeSizes.seedMax - (rank - 1) / (lastRank - 1) * (nodeSizes.seedMax - nodeSizes.seedMin) : nodeSizes.seedMax,
-                out  = lit !== null && !lit.has(index),
                 halo = clusters[index] >= haloFrom,
+                base = rank === undefined ? halo ? dustSize : nodeSize : lastRank > 1 ? nodeSizes.seedMax - (rank - 1) / (lastRank - 1) * (nodeSizes.seedMax - nodeSizes.seedMin) : nodeSizes.seedMax,
+                out  = lit !== null && !lit.has(index),
                 peer = lens ? lens.lens[index] : 0,
                 warm = heat ? heat[index] : 0,
                 // a lens fades what no checked peer holds, the heat lights the halo too, and without either the halo is dust
-                dim  = out || (lens ? !peer : halo && !heat),
+                dust = !out && !lens && halo && !heat,
+                dim  = out || (lens ? !peer : dust),
                 grow = !heat ? 1 : Number.isNaN(warm) ? nodeSizes.faded : nodeSizes.faded + (nodeSizes.heat - nodeSizes.faded) * warm;
 
             // the lens and the heat colour every node they speak for, a route's too, whose path and ranks still draw
@@ -268,7 +295,7 @@ class Observatory extends GraphScene {
                     colors[index * 3 + channel] = faded[channel] + (hot[channel] - faded[channel]) * warm
                 }
             } else {
-                colors.set(!out && peer ? peerInk[peer - 1] : !out && !lens && heat ? unknown : rank !== undefined ? seed : dim ? faded : tones[clusters[index]], index * 3)
+                colors.set(!out && peer ? peerInk[peer - 1] : !out && !lens && heat ? unknown : rank !== undefined ? seed : dust ? dustInk : dim ? faded : tones[clusters[index]], index * 3)
             }
 
             sizes[index] = index === selected ? Math.max(base * nodeSizes.selected, nodeSizes.seedMin) : base * (dim ? nodeSizes.faded : grow)
@@ -278,6 +305,13 @@ class Observatory extends GraphScene {
             clusters : count >= me.lodFrom ? clusters : null,
             colors,
             edges,
+            labels   : wells?.nodes.length ? {
+                color  : palette.ink,
+                nodes  : wells.nodes,
+                outline: palette.ground,
+                sizes  : Float32Array.from(wells.sizes, size => labelSizes.min + (labelSizes.max - labelSizes.min) * Math.sqrt(size / largest)),
+                texts  : wells.texts
+            } : null,
             paths    : routeOverlay && seeds.length > 1 ? [seeds] : [],
             positions: scene.positions,
             sizes

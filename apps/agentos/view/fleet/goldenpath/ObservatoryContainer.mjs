@@ -12,13 +12,15 @@ import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.
 import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
 import ObservatoryTeamContainer      from './ObservatoryTeamContainer.mjs';
 import ObservatoryViewContainer      from './ObservatoryViewContainer.mjs';
+import ObservatoryWellsContainer     from './ObservatoryWellsContainer.mjs';
 import Splitter                      from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
 import ViewerTime                    from '../../../util/ViewerTime.mjs';
 import {peerHues}                    from '../../../canvas/fmPalette.mjs';
 
 /**
  * @summary The Observatory keeper-view — the graph read in its wells, as a navigable 3D scene on the canvas
- * worker beside a side panel that reads, top to bottom, the team, the view, the nodes and the selected node.
+ * worker beside a side panel that reads, top to bottom, the view, the team, the wells, the nodes and the selected
+ * node.
  * The {@link #geography} is strategic wells by default, the Brain's strategic anchors drawing the
  * rest around them, and density wells on a read that carries no anchor; mail stays out of the scene until the
  * View section brings it in, and the nodes in no well sit in an outer halo it can hide. The head
@@ -40,6 +42,9 @@ import {peerHues}                    from '../../../canvas/fmPalette.mjs';
  *
  * A focus always has a way back: the Team head's Clear lifts the lens, the selected node's Clear drops the
  * selection, and Escape anywhere in the pane backs out one step, the selection first, then the lens.
+ *
+ * The Wells section ({@link AgentOS.view.fleet.goldenpath.ObservatoryWellsContainer}) names every well the canvas
+ * labels, the largest first, and a row turns the camera to its well: only the camera moves, and the selection stays.
  *
  * The selected node's section ({@link AgentOS.view.fleet.goldenpath.ObservatorySelectionContainer}) says what the scene
  * carries about the node and opens its source ({@link AgentOS.util.GraphNodeSource}): a work item's GitHub page,
@@ -69,10 +74,10 @@ class ObservatoryContainer extends Container {
     static geographies = ['communities', 'density', 'strategic']
     /**
      * The side panel's sections that open to its remaining height; the View section always shows.
-     * @member {String[]} sections=['nodes','selected','team']
+     * @member {String[]} sections=['nodes','selected','team','wells']
      * @static
      */
-    static sections = ['nodes', 'selected', 'team']
+    static sections = ['nodes', 'selected', 'team', 'wells']
 
     static config = {
         /**
@@ -129,8 +134,8 @@ class ObservatoryContainer extends Container {
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
          * The head (title, the read's line, the hovered node) and the body: the side panel with the View section
-         * on top, where the lens controls never move, then the team lens's peers, the node list and the selected
-         * node's section, which the canvas joins in {@link #onConstructed} where a canvas worker exists. A
+         * on top, where the lens controls never move, then the team lens's peers, the wells, the node list and the
+         * selected node's section, which the canvas joins in {@link #onConstructed} where a canvas worker exists. A
          * selection never resizes the canvas.
          * @member {Object[]} items
          */
@@ -159,6 +164,10 @@ class ObservatoryContainer extends Container {
                     module   : ObservatoryTeamContainer,
                     flex     : 'none',
                     reference: 'observatory-team'
+                }, {
+                    module   : ObservatoryWellsContainer,
+                    flex     : 'none',
+                    reference: 'observatory-wells'
                 }, {
                     module   : ObservatoryNodesHeadContainer,
                     flex     : 'none',
@@ -198,9 +207,10 @@ class ObservatoryContainer extends Container {
          */
         nodeOrder_: 'changed',
         /**
-         * The side panel's open section (`team`, `nodes` or `selected`): it takes the panel's remaining height and
-         * the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
+         * The side panel's open section (`team`, `wells`, `nodes` or `selected`): it takes the panel's remaining height
+         * and the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
          * unless the viewer is browsing `nodes`: the list stays, and the collapsed Selected head line names the node.
+         * `wells` opens only when the viewer chooses it.
          * @member {String} openSection_='team'
          * @reactive
          */
@@ -312,6 +322,8 @@ class ObservatoryContainer extends Container {
         relations.store = me.relationStore;
         nodes    .on('select', me.onNodeListSelect,     me);
         relations.on('select', me.onRelationListSelect, me);
+        // a well's row turns the camera alone: no node moves and the selection stays
+        me.getReference('observatory-wells').on({sectionHeadClick: ({section}) => me.chooseSection(section), wellSelect: ({id}) => me.getReference('observatory-canvas')?.flyTo(id)});
         me.getReference('observatory-head').on('attentionSelect', ({id}) => me.onNodeSelect({node: {id}}));
         me.getReference('observatory-team').on('lensChange', ({lensPeers}) => me.lensPeers = lensPeers);
         me.getReference('observatory-selected').on({selectionClear: me.onSelectionClear, sessionOpen: me.onSessionOpen, scope: me});
@@ -354,6 +366,7 @@ class ObservatoryContainer extends Container {
         me.updateLine();
         me.updateView();
         me.syncTeam(true);
+        me.getReference('observatory-wells').sync(me.scene);
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -559,6 +572,7 @@ class ObservatoryContainer extends Container {
         // the overlays are indexed by the new scene's nodes, so they cross with it in one batch
         me.getReference('observatory-canvas')?.set({scene, selectedId: me.selectedId, ...me.overlays});
         me.syncTeam(true);
+        me.getReference('observatory-wells')?.sync(scene);
         me.fillNodeList();
         me.syncLists();
         me.updateSelection()
@@ -872,6 +886,7 @@ class ObservatoryContainer extends Container {
         const me = this, {openSection} = me;
 
         [['team', 'observatory-team', 'observatory-peers-title'],
+         ['wells', 'observatory-wells', 'observatory-wells-title'],
          ['nodes', 'observatory-nodes', 'observatory-nodes-title'],
          ['selected', 'observatory-selected', 'selected-section-head']].forEach(([section, body, head]) => {
             const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);

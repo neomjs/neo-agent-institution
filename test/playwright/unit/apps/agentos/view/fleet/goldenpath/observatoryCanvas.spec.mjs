@@ -160,26 +160,35 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
         expect(rest).toEqual({heat, lens, routeOverlay: null, selected: 1, windowId: 'window-1'});
         expect(scene.positions).toBeInstanceOf(Float32Array);
         expect([scene.clusters, scene.edges, scene.seeds, scene.ranks].every(array => array instanceof Uint32Array)).toBe(true);
-        expect(Object.values(scene).filter(value => Array.isArray(value) || (value && typeof value === 'object' && !ArrayBuffer.isView(value))), 'no plain array or object crosses').toEqual([]);
+        const {wells, ...perNode} = scene;
+
+        expect(Object.values(perNode).filter(value => Array.isArray(value) || (value && typeof value === 'object' && !ArrayBuffer.isView(value))), 'no plain array or object crosses').toEqual([]);
+        expect([wells.nodes, wells.sizes].every(array => array instanceof Uint32Array) && wells.texts.every(text => typeof text === 'string'), 'the wells cross as numbers, only their names as text').toBe(true);
 
         canvas.afterSetSelectedId('neomjs/neo#gone', null);
         expect(calls.at(-1), 'an id the scene lacks crosses as no index').toEqual(['setSelection', {selected: -1, windowId: 'window-1'}])
     });
 
-    test('a hover names the held scene\'s node; locate asks by index; the stats name the drawn selection by its id', async () => {
-        const {canvas} = makeCanvas(async () => 1), hovers = [], asked = [];
+    test('a hover names the held scene\'s node; locate and flyTo ask by index; the stats name the drawn selection and each drawn label by its id', async () => {
+        const {canvas} = makeCanvas(async () => 1), hovers = [], asked = [], flights = [];
 
         canvas.fire = (name, {node}) => name === 'nodeHover' && hovers.push(node?.id ?? null);
 
         await canvas.onMouseMove(at(30, 30));
         expect(hovers).toEqual([nodeB.id]);
 
+        canvas.renderer.flyTo    = data => flights.push(data);
         canvas.renderer.locate   = async data => (asked.push(data), {x: 1, y: 2});
-        canvas.renderer.getStats = async () => ({counts: {nodes: 2}, selected: 1});
+        canvas.renderer.getStats = async () => ({counts: {nodes: 2}, labels: {count: 1, drawn: [{index: 1, text: 'two', x: 3, y: 4}]}, selected: 1});
 
         expect(await canvas.locate(nodeB.id)).toEqual({x: 1, y: 2});
         expect(await canvas.locate('neomjs/neo#gone'), 'an id the scene lacks is not asked about').toBeNull();
         expect(asked).toEqual([{index: 1, windowId: 'window-1'}]);
-        expect(await canvas.readStats()).toEqual({counts: {nodes: 2}, selectedId: nodeB.id})
+
+        canvas.flyTo(nodeB.id);
+        canvas.flyTo('neomjs/neo#gone');
+        expect(flights, 'an id the scene lacks flies nowhere').toEqual([{index: 1, windowId: 'window-1'}]);
+
+        expect(await canvas.readStats()).toEqual({counts: {nodes: 2}, labels: {count: 1, drawn: [{id: nodeB.id, text: 'two', x: 3, y: 4}]}, selectedId: nodeB.id})
     });
 });

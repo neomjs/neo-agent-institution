@@ -13,7 +13,8 @@ const CLICK_SLOP = 4;
  * {@link AgentOS.canvas.Observatory} renderer. It draws nothing itself: it forwards the scene, the selection
  * and the route overlay its pane derives, the heat and the team lens by the scene's node indices, the surface size
  * and the pointer (moves, buttons and the wheel, so the worker orbits and zooms), asks the renderer which node the
- * pointer rests on, and reports a click that did not orbit as a selection. All five are reactive configs: a new
+ * pointer rests on, reports a click that did not orbit as a selection, and turns the camera to a node on request
+ * ({@link #flyTo}). All five are reactive configs: a new
  * scene crosses to the worker with the other four, and any of those crosses alone, so a click or a checked peer
  * never resends a whole graph. The scene crosses in its wire form
  * ({@link AgentOS.util.ObservatorySceneLayout#wire}), typed arrays by node index. A node crosses as its index,
@@ -239,6 +240,18 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
+     * @summary Turns the camera to a node of the drawn scene: the node becomes the orbit's centre at the engine's
+     * flight distance. Only the camera moves, never a node, and the selection stays; an id the scene lacks changes
+     * nothing.
+     * @param {String} id The node's origin-qualified id
+     */
+    flyTo(id) {
+        const me = this, index = me.indexOf(id);
+
+        me.isCanvasReady && me.renderer && index >= 0 && me.renderer.flyTo({index, windowId: me.windowId})
+    }
+
+    /**
      * @summary The held scene's node at an index the renderer answered, or `null`.
      * @param {Number} index
      * @returns {Object|null} `{id, kind, label, rank, hop, cluster, x, y, z}`
@@ -313,9 +326,9 @@ class ObservatoryCanvas extends SharedCanvas {
     }
 
     /**
-     * @summary The renderer's live statistics — the camera, the surface, the counts, the frames — as
-     * the specs read them, with the selection the renderer draws named by its id; `null` before the canvas is
-     * ready.
+     * @summary The renderer's live statistics — the camera, the surface, the counts, the frames, the labels the last
+     * frame drew — as the specs read them, with the selection and each drawn label's node named by its id; `null`
+     * before the canvas is ready.
      * @returns {Promise<Object|null>}
      */
     async readStats() {
@@ -325,9 +338,13 @@ class ObservatoryCanvas extends SharedCanvas {
             return null
         }
 
-        const {selected, ...stats} = await me.renderer.getStats({windowId: me.windowId});
+        const {labels, selected, ...stats} = await me.renderer.getStats({windowId: me.windowId});
 
-        return {...stats, selectedId: me.nodeAt(selected)?.id ?? null}
+        return {
+            ...stats,
+            labels    : labels && {...labels, drawn: labels.drawn.map(({index, ...label}) => ({...label, id: me.nodeAt(index)?.id ?? null}))},
+            selectedId: me.nodeAt(selected)?.id ?? null
+        }
     }
 
     /**
