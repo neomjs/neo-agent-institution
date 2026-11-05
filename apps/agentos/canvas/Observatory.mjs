@@ -12,14 +12,16 @@ import {GOLD, PALETTES, rgb} from './fmPalette.mjs';
  * closer one adds the nearest communities' own edges, and only a camera drawn back shows one centroid per
  * community. On the dark skin the points add up, so a dense community glows. Wells are named on the surface,
  * the largest first ({@link #labelSizes}), and their nodes take the size the wells' own count gives them, so a
- * well reads as a body of points while the halo around it stays dust, one ink tier dimmer. The route is an overlay: while it
- * is drawn, its seeds grow by rank and a gold path joins them in route order, gold only while the read is
- * current; switching it off inks the same positions again. A selection fades every node but the selected one
- * and its neighbours, except a drawn route's seeds, which only shrink. Two channels ink over any geography and move
- * no node: the team lens draws each checked peer's nodes in the peer's hue and fades the rest, and the heat
- * overlay brightens and grows what drew attention in the window, fading the cold and greying the unknown. Both
- * speak for a route's seeds too, and the path, drawn in its seeds' ink, carries their colours. An empty scene
- * clears the surface, and the currency line above the canvas says why. A theme change inks the same scene again.
+ * well reads as a body of points while the halo around it stays dust, one ink tier dimmer. Up close, the near look
+ * ({@link #nearStyle}) lifts every node to a mark and names the nodes nearest the target, in the wells' ink. The
+ * route is an overlay: while it is drawn, its seeds grow by rank and a gold path joins them in route order, gold
+ * only while the read is current; switching it off inks the same positions again. A selection fades every node but
+ * the selected one and its neighbours, except a drawn route's seeds, which only shrink. Two channels ink over any
+ * geography and move no node: the team lens draws each checked peer's nodes in the peer's hue and fades the rest,
+ * and the heat overlay brightens and grows what drew attention in the window, fading the cold and greying the
+ * unknown. Both speak for a route's seeds too, and the path, drawn in its seeds' ink, carries their colours. An
+ * empty scene clears the surface, and the currency line above the canvas says why. A theme change inks the same
+ * scene again.
  *
  * No node object or id crosses: `pick` answers the engine's index and `locate` takes one, and the App Worker
  * resolves them against the scene it holds. `getStats` adds the pane's facts: its counts, currency,
@@ -63,6 +65,13 @@ class Observatory extends GraphScene {
          */
         lodFrom: 2000,
         /**
+         * The zoom ladder's street level: closer than `lod.near`, every node draws at least `floor` CSS pixels wide
+         * at the camera's target, so a dense read's dust becomes marks a pick can aim at, and the nodes nearest the
+         * target are named, each name at most `width` CSS pixels wide. Both fade in from `fade` times `lod.near`.
+         * @member {Object} nearStyle={candidates: 120, fade: 1.25, floor: 7, width: 200}
+         */
+        nearStyle: {candidates: 120, fade: 1.25, floor: 7, width: 200},
+        /**
          * Node sizes in the engine's unit, pixels at the camera's distance: every node takes `node` in a read of up
          * to `nodeScaleFrom` nodes, and a denser read shrinks it with the square root of the excess, down to
          * `nodeMin`, so a whole graph reads as dust that glows where it gathers. A well's node counts only the nodes
@@ -97,10 +106,10 @@ class Observatory extends GraphScene {
         singleton: true,
         /**
          * The wheel comes 10× closer than the fit, the zoom ladder's street level. The engine draws a point at its
-         * own size at the camera's target, whatever the distance, so closing in adds room, not size: the nodes
-         * around the target spread to 10× their fitted spacing, and a pick lands on the one meant. Zooming out keeps
-         * the engine's range, and a flight still lands at half the fitted distance (`flight.distance`), so a well
-         * opens framed, not at a single node.
+         * own size at the camera's target, whatever the distance, so closing in adds room, and only the near look's
+         * floor ({@link #nearStyle}) adds size: the nodes around the target spread to 10× their fitted spacing, and a
+         * pick lands on the one meant. Zooming out keeps the engine's range, and a flight still lands at half the
+         * fitted distance (`flight.distance`), so a well opens framed, not at a single node.
          * @member {Object} zoom={max: 3.75, min: 0.1, speed: 0.0015}
          */
         zoom: {max: 3.75, min: 0.1, speed: 0.0015}
@@ -224,13 +233,14 @@ class Observatory extends GraphScene {
     /**
      * @summary The engine's flat scene for a wire scene in the current theme's ink, or `null` when there is
      * nothing to draw.
-     * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, wells, currency, communities, empty}`)
+     * @param {Object|null} scene A wire scene (`{count, positions, clusters, edges, seeds, ranks, names, wells, currency, communities, empty}`)
      * @param {Number}      [selectedIndex=-1] The index of the node to highlight; one the scene lacks highlights nothing
      * @param {Boolean}     [routeOverlay=true] Whether the route is drawn
      * @param {Object}      [channels] The overlays by node index: `heat` ({@link #heat}) and `lens` ({@link #lens}),
      *     each `null` while off; the ones this renderer holds by default
-     * @returns {Object|null} `{clusters, colors, edges, labels, paths, positions, sizes}`, `labels` naming the wells
-     *     largest first in the skin's ink over its ground, `null` for a scene without wells
+     * @returns {Object|null} `{clusters, colors, edges, labels, names, paths, positions, sizes}`, `labels` naming the
+     *     wells largest first in the skin's ink over its ground, `null` for a scene without wells, and `names` the
+     *     nodes for the near look in the same ink, `null` for a scene without names
      */
     ink(scene, selectedIndex = -1, routeOverlay = true, {heat: heatIn = this.heat, lens: lensIn = this.lens} = {}) {
         if (!scene || scene.empty) {
@@ -312,6 +322,7 @@ class Observatory extends GraphScene {
                 sizes  : Float32Array.from(wells.sizes, size => labelSizes.min + (labelSizes.max - labelSizes.min) * Math.sqrt(size / largest)),
                 texts  : wells.texts
             } : null,
+            names    : scene.names ? {color: palette.ink, outline: palette.ground, texts: scene.names} : null,
             paths    : routeOverlay && seeds.length > 1 ? [seeds] : [],
             positions: scene.positions,
             sizes

@@ -165,10 +165,49 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect([wire.clusters, wire.edges, wire.seeds, wire.ranks].every(array => array instanceof Uint32Array)).toBe(true);
         expect(wire).toMatchObject({communities: 3, completeness: 'truncated', count: 5, currency: 'current', empty: false, snapshotId: 'snap-1'});
         expect([plain(wire.clusters), plain(wire.edges), plain(wire.seeds), plain(wire.ranks)]).toEqual([[0, 1, 0, 0, 2], [0, 2, 2, 3], [0, 1], [1, 3]]);
-        expect(Object.keys(wire).filter(key => ['index', 'nodes', 'edgeTypes'].includes(key)), 'nothing per node that is not a number').toEqual([]);
+        expect(Object.keys(wire).filter(key => ['index', 'nodes', 'edgeTypes'].includes(key)), 'no node object, id or edge type crosses').toEqual([]);
         expect([wire.wells.nodes, wire.wells.sizes].every(array => array instanceof Uint32Array), 'the wells cross as numbers, only their names as text').toBe(true);
         expect(wire.wells.texts, 'a scene without wells names none').toEqual([]);
         expect(ObservatorySceneLayout.wire(null)).toBeNull()
+    });
+
+    test('the wire names each node from its label, none where the label is missing or only the id, and ink hands the names on in the wells\' ink', () => {
+        const
+            scene = layoutScene('current'),
+            // the fourth node's label is only its id, the fifth has none
+            wire  = ObservatorySceneLayout.wire({...scene, nodes: scene.nodes.map((node, index) => index === 3 ? {...node, label: 'issue-9'} : index === 4 ? {...node, label: null} : node)});
+
+        expect(wire.names).toEqual(['First', 'Third', 'Near', '', '']);
+        expect(Observatory.ink(wire).names).toEqual({color: PALETTES.dark.ink, outline: PALETTES.dark.ground, texts: wire.names});
+
+        Observatory.theme = 'light';
+        expect(Observatory.ink(wire).names, 'the skin\'s label ink').toMatchObject({color: PALETTES.light.ink, outline: PALETTES.light.ground});
+
+        const unlabeled = ObservatorySceneLayout.wire({...scene, nodes: scene.nodes.map(node => ({...node, label: null}))});
+
+        expect(unlabeled.names, 'a read without labels names none').toBeNull();
+        expect(Observatory.ink(unlabeled).names).toBeNull();
+        expect(EMPTY.names).toBeNull()
+    });
+
+    test('at the deepest zoom the floor lifts a dense read\'s smallest node to a mark; beyond the near band it draws as inked', () => {
+        Observatory.context = createContext();
+        Observatory.updateSize({width: 400, height: 200, devicePixelRatio: 1});
+        Observatory.setScene({scene: wireScene('current'), windowId: 'window-1'});
+
+        const
+            {lod, nearStyle, nodeSizes, zoom} = Observatory,
+            // a node at the camera's target, inked at the size a dense read gives every node
+            drawn = ratio => {
+                Observatory.camera.dist = Observatory.fittedDistance * ratio;
+                return GraphScene.pointSize({depth: 1, floor: Observatory.nearFloor(), scale: 1, size: nodeSizes.nodeMin})
+            };
+
+        expect(nearStyle.floor, 'a mark a pick can aim at: 6 to 8 CSS px').toBeGreaterThanOrEqual(6);
+        expect(nearStyle.floor).toBeLessThanOrEqual(8);
+        expect(drawn(zoom.min), 'the deepest zoom').toBe(nearStyle.floor);
+        expect(drawn(lod.near * nearStyle.fade * 1.01), 'beyond the band').toBeCloseTo(nodeSizes.nodeMin, 6);
+        expect(drawn(1), 'the fitted camera').toBeCloseTo(nodeSizes.nodeMin, 6)
     });
 
     test('a large read hands its communities to the engine: the fitted camera draws every node, a closer one the near level, one drawn back the far', () => {
