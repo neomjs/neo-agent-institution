@@ -143,13 +143,17 @@ test.describe('AgentOS.canvas.Observatory', () => {
         expect(Observatory.ink(dense, 0).sizes[0], 'the selected node takes at least the last seed\'s size').toBe(6)
     });
 
-    test('the wheel comes 10x closer than the fit: a dense read\'s floor node reaches a pickable 4 px, near is a band of the travel, and a flight still lands framed', () => {
+    test('the wheel comes 10x closer than the fit: the nodes around the target spread 10x apart, near is a band of the travel, and a flight still lands framed', () => {
         const
-            floor               = Observatory.ink(ObservatorySceneLayout.wire(ObservatorySceneLayout.fromGraphScene(wholeGraphEnvelope({communities: 4, nodes: 64000, routeLength: 0})))).sizes[0],
-            {flight, lod, zoom} = Observatory;
+            {flight, fov, lod, zoom} = Observatory,
+            spread                   = dist => {
+                const M = GraphScene.orbitMatrix({dist, pitch: 0, target: [0, 0, 0], yaw: 0}, 1, fov);
 
-        // a point grows with the inverse of its distance, so the deepest zoom magnifies the fitted size by 1 / zoom.min
-        expect(floor / zoom.min, 'the floor node at the deepest zoom, in pixels').toBeGreaterThanOrEqual(4);
+                return GraphScene.project(M, 0.01, 0, 0, 400, 400)[0] - GraphScene.project(M, 0, 0, 0, 400, 400)[0]
+            };
+
+        // the engine draws a point at its own size at the camera's target, whatever the distance: closing in adds room
+        expect(spread(zoom.min) / spread(1), 'the spacing at the deepest zoom against the fit').toBeGreaterThan(9.9);
         expect(lod.near / zoom.min, 'the near level spans a band of the wheel, not its last sliver').toBeGreaterThanOrEqual(3);
         expect(flight.distance, 'a well\'s flight lands framed, above the near level').toBeGreaterThan(lod.near)
     });
