@@ -919,12 +919,15 @@ class ObservatorySceneLayout extends Base {
      * @summary A scene as the canvas worker takes it: typed arrays by node index, and no node objects or ids.
      * A read of any size crosses the worker boundary as a few buffers, where 100k node objects cost a quarter
      * of a second to clone on every read. The renderer answers indices, and the App Worker resolves them
-     * against the scene it holds. Only the wells' names cross as text, one per well.
+     * against the scene it holds. Text crosses only as names: one per well, and one per node for the engine's
+     * near look, which picks the nodes nearest the camera's target on every frame. A node whose label is only its
+     * id, as a tag concept's is, stays unnamed.
      * @param {Object|null} scene A {@link #fromGraphScene} scene
      * @returns {Object|null} `{communities, completeness, count, currency, empty, haloFrom, snapshotId}` with
      * `positions` (`x, y, z` per node), `clusters` (a cluster per node), `edges` (index pairs), `seeds`
-     * (node indices in route order), `ranks` (one per seed) and `wells`, largest first: `nodes` (each well's
-     * hub), `sizes` (its node count) and `texts` (its label, else the hub's id)
+     * (node indices in route order), `ranks` (one per seed), `names` (a label per node, `''` for none; `null`
+     * while no node has one) and `wells`, largest first: `nodes` (each well's hub), `sizes` (its node count) and
+     * `texts` (its label, else the hub's id)
      */
     wire(scene) {
         if (!scene) {
@@ -937,6 +940,8 @@ class ObservatorySceneLayout extends Base {
             positions = new Float32Array(count * 3),
             clusters  = new Uint32Array(count),
             pairs     = new Uint32Array(edges.length * 2),
+            // an id is qualified as `origin#id`, and a label equal to what follows the `#` names nothing
+            names     = nodes.map(({id, label}) => label && label !== id.slice(id.indexOf('#') + 1) ? label : ''),
             wells     = (scene.wells ?? []).filter(well => Object.hasOwn(scene.index, well.id));
 
         nodes.forEach(({cluster, x, y, z}, index) => {
@@ -955,6 +960,7 @@ class ObservatorySceneLayout extends Base {
             edges       : pairs,
             empty       : scene.empty,
             haloFrom    : scene.haloFrom ?? null,
+            names       : names.some(Boolean) ? names : null,
             positions,
             ranks       : Uint32Array.from(seeds, index => nodes[index].rank),
             seeds       : Uint32Array.from(seeds),

@@ -160,10 +160,11 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryCanvas — a click selec
         expect(rest).toEqual({heat, lens, routeOverlay: null, selected: 1, windowId: 'window-1'});
         expect(scene.positions).toBeInstanceOf(Float32Array);
         expect([scene.clusters, scene.edges, scene.seeds, scene.ranks].every(array => array instanceof Uint32Array)).toBe(true);
-        const {wells, ...perNode} = scene;
+        const {names, wells, ...perNode} = scene;
 
         expect(Object.values(perNode).filter(value => Array.isArray(value) || (value && typeof value === 'object' && !ArrayBuffer.isView(value))), 'no plain array or object crosses').toEqual([]);
         expect([wells.nodes, wells.sizes].every(array => array instanceof Uint32Array) && wells.texts.every(text => typeof text === 'string'), 'the wells cross as numbers, only their names as text').toBe(true);
+        expect(names, 'the nodes\' names cross as text, one per node').toEqual(['one', 'two']);
 
         canvas.afterSetSelectedId('neomjs/neo#gone', null);
         expect(calls.at(-1), 'an id the scene lacks crosses as no index').toEqual(['setSelection', {selected: -1, windowId: 'window-1'}])

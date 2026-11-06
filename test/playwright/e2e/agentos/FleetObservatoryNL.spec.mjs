@@ -484,6 +484,75 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         expect(await stats()).toMatchObject({flying: false, selectedId: seed, snapshotId: envelope.snapshotId})
     });
 
+    test('at the deepest zoom on a well, the nodes nearest the target are named where they lie, each once, beside the wells\' labels and over the floor', async ({page, neuralLink}) => {
+        test.setTimeout(180000);
+
+        const
+            {app, land, locate, pane, settle, stats} = await openObservatory(page, neuralLink),
+            envelope = wholeGraphEnvelope({communities: 16, nodes: 4000, routeLength: 4}),
+            labelOf  = new Map(envelope.scene.nodes.map(node => [node.id, node.label]));
+
+        await land(envelope);
+        await expect.poll(async () => (await stats())?.counts?.nodes, {intervals: [250], timeout: 60000}).toBe(4000);
+        await settle();
+
+        const fitted = await stats();
+
+        expect(fitted.near, 'the fitted camera shows none of the near look').toEqual({floor: 0, share: 0});
+        expect(fitted.names, 'and has drawn no name').toBeNull();
+
+        const
+            {stores} = await app.listStores(),
+            {items}  = await app.inspectStore(stores.find(store => store.model === 'AgentOS.model.GraphSceneWell').id, 50),
+            wellIds  = new Set(items.map(item => item.id));
+
+        // to the largest well, then the wheel in until it stops: the deepest zoom
+        await pane.getByRole('button', {name: /^Wells · /}).click();
+        await pane.locator('.fm-observatory-well-list .neo-list-item').first().click();
+        await expect.poll(async () => (await stats()).flying).toBe(false);
+
+        const rect = await pane.locator('canvas').boundingBox();
+
+        await page.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2);
+
+        let dist = (await stats()).camera.dist;
+
+        for (let turn = 0; turn < 20; turn++) {
+            await page.mouse.wheel(0, -600);
+            await page.waitForTimeout(80);
+
+            const next = (await stats()).camera.dist;
+
+            if (next === dist) break;
+            dist = next
+        }
+
+        await expect.poll(async () => {
+            const {names, near} = await stats();
+
+            return near.share === 1 && names?.resident > 0
+        }, {message: 'the deepest zoom brings the near look'}).toBe(true);
+
+        const
+            near  = await stats(),
+            ratio = await page.evaluate(() => devicePixelRatio),
+            named = near.labels.drawn.filter(({id}) => !wellIds.has(id));
+
+        expect(near.camera.dist, 'the wheel stopped at the deepest zoom').toBe(dist);
+        expect(near.near.floor, 'the 7 px floor, in drawing-buffer pixels').toBe(7 * ratio);
+        expect(named.length, 'the frame names nodes beside the wells\' labels').toBeGreaterThan(0);
+        expect(named.every(({id, text}) => text === labelOf.get(id)), 'each by its own label').toBe(true);
+        expect(new Set(near.labels.drawn.map(({id}) => id)).size, 'no node is named twice').toBe(near.labels.drawn.length);
+        expect(near.labels.drawn.length, 'within what a frame draws').toBeLessThanOrEqual(30);
+
+        // each name names the point where its node lies, and the engine lifts the label clear above it
+        for (const {id, x, y} of named) {
+            const at = await locate(id);
+
+            expect(Math.hypot(at.x - x, at.y - y), `${id} sits at its node`).toBeLessThan(1)
+        }
+    });
+
     test('the team lens and the heat draw over the same places: a checked peer reaches the worker, the rows name each node\'s role, the Heat toggle counts what it cannot read, and no node moves', async ({page, neuralLink}) => {
         const
             {currency, land, locate, pane, selection, settle, stats} = await openObservatory(page, neuralLink),
