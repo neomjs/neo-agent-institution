@@ -263,7 +263,11 @@ class Controller extends ComponentController {
                 return false
             }
 
+            const priorSelectedId = component.selectedAgentId;
             store.data = agents;
+            if (priorSelectedId && store.get(priorSelectedId) && !component.adding) {
+                component.selectedAgentId = priorSelectedId;
+            }
             return true
         } catch {
             return false
