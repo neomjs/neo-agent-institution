@@ -99,6 +99,9 @@ class Viewport extends BaseViewport {
                 gridAdapterState  : 'cold',
                 gridConnection    : {state: null, reason: null},
                 gridDegradedReason: null,
+                // the Fleet's start gate from the last roster answer: `{state, reason}` while it refuses
+                // every Start (`'booting'` or `'refused'`), both leaves null once Start may run
+                fleetStartGate: {state: null, reason: null},
                 // the open-work read's own state, written by the cockpit's read owner with each answer
                 // and bound by the fleet head's awaiting-merge button; leaf-complete by construction,
                 // every leaf null until the first answer lands

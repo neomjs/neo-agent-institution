@@ -160,6 +160,12 @@ class LivenessController extends ViewerWakeController {
      */
     rosterProfileId = null
     /**
+     * The Fleet's start gate from the last admitted roster: `{state, reason}` while it refuses every Start, else null.
+     * @member {Object|null} fleetStartGate=null
+     * @protected
+     */
+    fleetStartGate = null
+    /**
      * Read-fence for the ACTIVITY surface.
      * @member {Number} streamReadGeneration=0
      * @protected
@@ -382,7 +388,7 @@ class LivenessController extends ViewerWakeController {
             me.gridReadInFlight++;
             read = Promise.resolve().then(() => bridge.fleetRoster());
 
-            const {capabilities, rows} = await me.boundedRead(
+            const {capabilities, rows, startGate} = await me.boundedRead(
                 read,
                 () => { me.gridReadInFlight-- }
             ) ?? {};
@@ -401,7 +407,7 @@ class LivenessController extends ViewerWakeController {
 
             // an EMPTY answer is authoritative: nothing is seeded that it could erase, the registry
             // has no agents, and the roster's own empty state says so
-            me.admitRoster({capabilities, profileId, rows: mapped})
+            me.admitRoster({capabilities, profileId, rows: mapped, startGate})
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
                 me.degradeWiredSurface('grid', error, grid);
@@ -450,7 +456,7 @@ class LivenessController extends ViewerWakeController {
      * test's landing share; the rule lives in `AgentOS.util.FleetAdmission` (this file holds its size
      * bar). {@link #loadRoster} calls it after its generation fence and validation; the tests' landing
      * calls it directly.
-     * @param {Object} answer `{rows, capabilities, profileId}`
+     * @param {Object} answer `{rows, capabilities, profileId, startGate}`
      * @protected
      */
     admitRoster(answer) {
@@ -810,7 +816,7 @@ class LivenessController extends ViewerWakeController {
         const {launch, dueAt} = LivenessCadence.plan(me.livenessSchedule, {
             cap      : cockpit.maxReadsInFlight,
             inFlight : key => me[LivenessCadence.READS[key].inFlight],
-            intervals: cockpit.livenessCadence,
+            intervals: LivenessCadence.intervalsFor(cockpit.livenessCadence, {pass: cockpit.livenessPollInterval, startGate: me.fleetStartGate}),
             now
         });
 

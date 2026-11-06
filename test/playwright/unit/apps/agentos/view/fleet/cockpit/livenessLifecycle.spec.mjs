@@ -20,6 +20,7 @@ import {makeActivityStoreHarness, makeProviderFake} from './cockpitFakes.mjs';
 import {installFleetBridge} from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 import DeploymentStateRead  from '../../../../../../../../apps/agentos/util/DeploymentStateRead.mjs';
 import LivenessCadence      from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
+import SpineBanner          from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
 import ViewportController   from '../../../../../../../../apps/agentos/view/ViewportController.mjs';
 import {deriveFleetProfileId} from '../../../../../../../../apps/agentos/fleet/connectionProfiles.mjs';
 import {projectDeploymentStateForFleet} from '../../../../../../../../node_modules/neo-agent-brain/ai/services/fleet/projectDeploymentStateForFleet.mjs';
@@ -194,6 +195,38 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(store.get('recovered')).toBeTruthy();
             expect(store.get('resident')).toBeFalsy();
             expect(provider.data.streamConnection).toEqual({state: 'failed-upstream', reason: 'activity source unavailable'})
+        });
+
+        test('a relaunch while the Fleet boots names the boot phase, re-reads on the next pass and clears once Start opens, never timed out (#841)', async () => {
+            const {host, provider} = makeRosterHost();
+            const reason = 'the Fleet is verifying its runtime: Start opens when it finishes';
+            const banner = () => SpineBanner.deriveSpineBanner({
+                daemon: {}, plane: {}, stream: {state: 'live'},
+                grid  : {state: provider.data.gridAdapterState, connection: provider.data.gridConnection, startGate: provider.data.fleetStartGate}
+            });
+            let booting = true;
+
+            installWire(() => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {
+                result: {rows: [{id: 'seat', displayName: 'Seat'}], startGate: booting ? {state: 'booting', reason} : null}
+            }));
+            host.livenessSchedule = LivenessCadence.create(Date.now(), LivenessCadence.DEFAULT_INTERVALS);
+
+            // the window's first roster read answers while the Fleet still verifies its runtime
+            await host.loadRoster();
+
+            expect(provider.data.gridAdapterState).toBe('live');
+            expect(provider.data.fleetStartGate).toEqual({state: 'booting', reason});
+            expect(banner()).toMatchObject({hidden: false, text: 'fleet starting'});
+            expect(banner().title).not.toContain('timed out');
+            // the next pass re-reads: a gate that opens in seconds never waits out a full roster interval
+            expect(host.livenessSchedule.roster).toBeLessThanOrEqual(Date.now());
+
+            booting = false;
+            await host.loadRoster();
+
+            expect(provider.data.fleetStartGate).toEqual({state: null, reason: null});
+            expect(host.fleetStartGate).toBeNull();
+            expect(banner().hidden).toBe(true)
         });
 
         test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers ends the episode with one more ask, leaving the cause to the shell', async () => {

@@ -50,11 +50,13 @@ class TargetBinding extends Base {
         owner.presenceWiredProfileId = null;
         owner.a2aWiredProfileId      = null;
         owner.planeOutageEpisodes    = null;
+        owner.fleetStartGate         = null;
 
         store.clear();
 
         PlaneAdmission.retire(owner, {profileId});
         owner.publishConnection('grid', {data: {
+            fleetStartGate    : {state: null, reason: null},
             gridAdapterState  : 'cold',
             gridDegradedReason: null,
             planeOutageNote   : FleetAdmission.blankOutageNote(),
