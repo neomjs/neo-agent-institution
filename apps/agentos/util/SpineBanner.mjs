@@ -310,9 +310,10 @@ class SpineBanner extends Base {
     /**
      * @summary Derives the spine banner from the owner-held surface truths.
      * @param {Object} options
-     * @param {{state: String, reason: ?String, connection: ?Object}} options.grid The roster surface:
-     *     `'cold'|'stale'|'partial'|'live'`, its retained cause and its read owner's optional connection
-     *     observation `{state, reason}`. Both reasons are sanitized before publication.
+     * @param {{state: String, reason: ?String, connection: ?Object, startGate: ?Object}} options.grid The roster surface:
+     *     `'cold'|'stale'|'partial'|'live'`, its retained cause, its read owner's optional connection
+     *     observation `{state, reason}` and the Fleet's optional start gate `{state, reason}`, set while the
+     *     Fleet refuses every Start. All three reasons are sanitized before publication.
      * @param {{state: String, reason: ?String}} options.stream The activity surface, same shape.
      * @param {{state: String, reason: ?String}} [options.daemon] Brain daemon health:
      *     `'running'|'degraded'|'stopped'`, with the diagnosis pointer as its reason. Optional — a caller
@@ -433,6 +434,17 @@ class SpineBanner extends Base {
             if (connection) return connection;
 
             return verdict('degraded', 'fleet degraded', 'Fleet feed degraded — showing last-known data', reason)
+        }
+
+        // The roster answered, but the Fleet refuses every Start: while it verifies its runtime or
+        // recovers (`booting`), or after a check failed (`refused`). The gate's reason is the lifecycle's
+        // own sentence, so it is the line, and a relaunch that is still booting reads as its phase.
+        const gate     = grid?.startGate,
+              gateWord = gate?.state === 'booting' ? 'fleet starting' : gate?.state === 'refused' ? 'start refused' : null,
+              gateLead = gateWord && typeof gate.reason === 'string' ? gate.reason.trim() : '';
+
+        if (gateLead) {
+            return verdict('degraded', gateWord, gateLead.charAt(0).toUpperCase() + gateLead.slice(1))
         }
 
         if (stream?.state === 'partial') {

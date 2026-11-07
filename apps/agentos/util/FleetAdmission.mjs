@@ -1,5 +1,6 @@
 import ActivityObserver from './ActivityObserver.mjs';
 import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
+import LivenessCadence  from './LivenessCadence.mjs';
 import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
@@ -416,10 +417,12 @@ class FleetAdmission extends Base {
      * @param {Object[]} answer.rows Record-shaped rows
      * @param {Object|null} [answer.capabilities=null] The assembler's capabilities envelope
      * @param {String|null} [answer.profileId=null] The profile the answer belongs to
+     * @param {Object|null} [answer.startGate=null] The Fleet's start gate `{state, reason}` ({@link #startGateOf})
      */
-    static admitRoster(owner, {capabilities = null, profileId = null, rows}) {
+    static admitRoster(owner, {capabilities = null, profileId = null, rows, startGate = null}) {
         const
-            wasWired      = Boolean(owner.rosterWired) && (owner.rosterProfileId === profileId || owner.rosterProfileId === null),
+            gate          = FleetAdmission.startGateOf(owner, startGate),
+            wasWired      =Boolean(owner.rosterWired) && (owner.rosterProfileId === profileId || owner.rosterProfileId === null),
             presenceState = capabilities?.presence?.state ?? null,
             store         = owner.resolveFleetRosterStore(),
             grid          = owner.getReference('fleet-grid'),
@@ -431,6 +434,11 @@ class FleetAdmission extends Base {
         // the detail panes that read the roster row (the repository pane) observe at this admission:
         // stamped BEFORE the reconcile, so a re-seat it causes carries the clock in the same write
         owner.rosterObservedAt = Date.now();
+        owner.fleetStartGate   = gate.state ? gate : null;
+        // a booting gate re-reads on the next pass, not after a full roster interval, so its line clears
+        // and Start opens within one pass of the Fleet finishing (LivenessCadence#intervalsFor keeps it there)
+        gate.state === 'booting' && owner.livenessSchedule &&
+            (owner.livenessSchedule = LivenessCadence.expedite(owner.livenessSchedule, 'roster', owner.rosterObservedAt));
 
         if (owner.rosterWired) {
             owner.reconcileRoster(store, rows)
@@ -462,6 +470,7 @@ class FleetAdmission extends Base {
         }
 
         owner.publishConnection('grid', {data: {
+            fleetStartGate    : gate,
             gridAdapterState  : 'live',
             gridDegradedReason: null,
             // the presence-capability envelope rides every admitted snapshot; absent or
@@ -491,6 +500,19 @@ class FleetAdmission extends Base {
         // owner's own truth
         provider?.getData('goldenPathEnvelope.capability.state') === 'unavailable' && owner.loadGoldenPath();
         provider?.getData('graphSceneEnvelope.capability.state') === 'unavailable' && owner.loadGraphScene()
+    }
+
+    /**
+     * @summary The roster's start gate as the cockpit renders it: a booting or refused gate with its
+     * reason made safe, else the open gate. Leaf-complete either way, like every provider truth.
+     * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner, whose sanitizer the reason passes.
+     * @param {Object|null} startGate The roster DTO's `{state, reason}`.
+     * @returns {{state: ?String, reason: ?String}}
+     */
+    static startGateOf(owner, startGate) {
+        const reason = ['booting', 'refused'].includes(startGate?.state) ? owner.toSafeDegradedReason?.(startGate.reason) : null;
+
+        return reason ? {state: startGate.state, reason} : {state: null, reason: null}
     }
 }
 

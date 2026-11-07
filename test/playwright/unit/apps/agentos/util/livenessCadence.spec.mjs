@@ -110,5 +110,29 @@ test.describe('AgentOS.util.LivenessCadence', () => {
         // A roster read comes due one interval after the last and launches on the first pass after
         // that: a popup that closes just after a launch sees the next one at most interval + pass later.
         expect(intervals.roster + LivenessCadence.DEFAULT_PASS).toBeLessThanOrEqual(ROSTER_CROSSING_WINDOW_MS)
+    });
+
+    test('expedite brings one read forward and never postpones it; a booting start gate puts the roster on every pass', () => {
+        const
+            pass    = LivenessCadence.DEFAULT_PASS,
+            booting = {state: 'booting', reason: 'the Fleet is verifying its runtime: Start opens when it finishes'},
+            dueAt   = LivenessCadence.create(0, intervals),
+            early   = LivenessCadence.expedite(dueAt, 'roster', 4000);
+
+        expect(early).toEqual({...dueAt, roster: 4000});
+        expect(early).not.toBe(dueAt);
+        expect(LivenessCadence.expedite(early, 'roster', 90000).roster).toBe(4000);
+
+        expect(LivenessCadence.intervalsFor(intervals, {pass, startGate: booting})).toEqual({...intervals, roster: pass});
+        expect(LivenessCadence.intervalsFor(intervals, {pass, startGate: {state: 'refused', reason: 'x'}})).toBe(intervals);
+        expect(LivenessCadence.intervalsFor(intervals, {pass, startGate: null})).toBe(intervals);
+
+        // the gate answered at 4 s: the pass at 15 s re-reads the roster, and the next read is a pass out
+        const first = LivenessCadence.plan(early, {
+            cap: 2, inFlight: idle, intervals: LivenessCadence.intervalsFor(intervals, {pass, startGate: booting}), now: pass
+        });
+
+        expect(first.launch).toContain('roster');
+        expect(first.dueAt.roster).toBe(2 * pass)
     })
 });

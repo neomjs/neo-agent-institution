@@ -65,6 +65,40 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'stale'}, stream: {state: 'partial'}}).text).toBe('fleet degraded');
     });
 
+    test('a live roster whose Fleet start gate holds names it, booting as its phase and refused as its refusal, below cold, daemon faults and stale', () => {
+        const
+            live    = {state: 'live'},
+            booting = {state: 'booting', reason: 'the Fleet is verifying its runtime: Start opens when it finishes'},
+            refused = {state: 'refused', reason: 'the runtime check failed: see the Fleet log'},
+            derive  = (grid, extra = {}) => SpineBanner.deriveSpineBanner({daemon: {}, plane: {}, stream: live, grid, ...extra});
+
+        expect(derive({...live, startGate: booting})).toMatchObject({
+            hidden: false, kind: 'degraded', text: 'fleet starting', title: 'The Fleet is verifying its runtime: Start opens when it finishes'
+        });
+        expect(derive({...live, startGate: refused})).toMatchObject({
+            kind: 'degraded', text: 'start refused', title: 'The runtime check failed: see the Fleet log'
+        });
+
+        // the open gate claims nothing
+        expect(derive({...live, startGate: {state: null, reason: null}}).hidden).toBe(true);
+        expect(derive({...live, startGate: null}).hidden).toBe(true);
+
+        expect(derive({state: 'cold', reason: 'fleet source unavailable', startGate: booting}).text).toBe('fleet offline');
+        expect(derive({state: 'stale', reason: 'read failed', startGate: booting}).text).toBe('fleet degraded');
+        expect(derive({...live, startGate: booting}, {daemon: {state: 'stopped', reason: 'daemon died'}}).text).toBe('agent os stopped')
+    });
+
+    test('FleetAdmission.startGateOf admits a booting or refused gate with a safe reason, and anything else as the open gate', () => {
+        const owner = {toSafeDegradedReason: reason => typeof reason === 'string' && reason.trim() ? reason.replace(/secret/g, '[redacted]') : null};
+
+        expect(FleetAdmission.startGateOf(owner, {state: 'booting', reason: 'verifying secret'})).toEqual({state: 'booting', reason: 'verifying [redacted]'});
+        expect(FleetAdmission.startGateOf(owner, {state: 'refused', reason: 'check failed'})).toEqual({state: 'refused', reason: 'check failed'});
+
+        [null, undefined, {}, {state: 'open', reason: 'x'}, {state: 'booting'}, {state: 'booting', reason: '  '}].forEach(gate => {
+            expect(FleetAdmission.startGateOf(owner, gate)).toEqual({state: null, reason: null})
+        })
+    });
+
     test('FleetAdmission.deriveActivityGuidance covers reserved keys, 32-char unknown labels, malformed slots, producer.coverage, sanitized reasons, and intervalMs cadence', () => {
         // (a) reserved keys (__proto__, constructor) in slots -> generic summary and head
         const protoSlots = Object.defineProperty({}, '__proto__', {

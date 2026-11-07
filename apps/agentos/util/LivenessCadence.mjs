@@ -118,6 +118,31 @@ class LivenessCadence extends Base {
 
         return {launch, dueAt: next}
     }
+
+    /**
+     * @summary Bring one read's next due time forward to `at`, never later than it already was.
+     * @param {Object<String, Number>} dueAt The current schedule.
+     * @param {String} key A read key, as in {@link #READS}.
+     * @param {Number} at Epoch ms.
+     * @returns {Object<String, Number>} The next schedule.
+     */
+    static expedite(dueAt, key, at) {
+        return {...dueAt, [key]: Math.min(dueAt[key], at)}
+    }
+
+    /**
+     * @summary The intervals for one pass. While the Fleet's start gate is booting, the roster comes due
+     * on every pass, so the gate's line clears and Start opens within one pass of the Fleet finishing;
+     * an open or refused gate keeps the ordinary cadence.
+     * @param {Object<String, Number>} intervals Per-read intervals, keyed like {@link #READS}.
+     * @param {Object} options
+     * @param {Number} options.pass The cadence owner's pass interval (ms).
+     * @param {Object|null} options.startGate The last admitted roster's `{state, reason}`, or null.
+     * @returns {Object<String, Number>}
+     */
+    static intervalsFor(intervals, {pass, startGate}) {
+        return startGate?.state === 'booting' ? {...intervals, roster: Math.min(intervals.roster, pass)} : intervals
+    }
 }
 
 export default Neo.setupClass(LivenessCadence);
