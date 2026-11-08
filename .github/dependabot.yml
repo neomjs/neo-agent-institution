@@ -7,6 +7,9 @@
 # GROUPED, because ungrouped daily updates open a PR per dependency and the queue stops being read.
 # `github-actions` is here because nothing else updates the pinned action versions.
 #
+# EVERY DAY, by cron: `interval: daily` runs Monday to Friday, and our own packages also ship on weekends.
+# The hour is the one `daily` ran at, so the organization's Dependabot runs stay staggered.
+#
 # NOT FULL COVERAGE, deliberately recorded: `neo-agent-brain` and `neo.mjs` are `github:` refs
 # pinned to commits, and Dependabot's npm ecosystem cannot bump that form. Both stay manual moves; a
 # reader who mistakes this file for complete coverage stops checking them by hand.
@@ -16,7 +19,8 @@ updates:
   - package-ecosystem: npm
     directory: "/"
     schedule:
-      interval: daily
+      interval: cron
+      cronjob: "30 13 * * *"
     # Our own Skills releases skip Dependabot's three-day default hold, so agents never read
     # superseded rules; every other update keeps it, made explicit.
     cooldown:
@@ -37,7 +41,8 @@ updates:
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: daily
+      interval: cron
+      cronjob: "30 13 * * *"
     groups:
       actions:
         patterns: ["*"]
