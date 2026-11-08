@@ -71,7 +71,7 @@
     },
     "devDependencies": {
         "@fortawesome/fontawesome-free": "^7.3.0",
-        "@playwright/test": "^1.64.1",
+        "@playwright/test": "^1.65.0",
         "acorn": "^8.19.0",
         "astring": "^1.9.0",
         "autoprefixer": "^10.6.2",
