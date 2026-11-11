@@ -65,8 +65,12 @@ a style-owning input (`resources/scss`, `apps/agentos`) or a capture spec, run t
 local `neo-agent-brain` checkout:
 
 ```bash
-NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots=all
 ```
+
+`=all` matters: the default mode rewrites only the goldens that fail, and a change inside the comparator's tolerance
+passes, so its golden would stay green and stale. A refresh also rewrites a few goldens by a handful of pixels of
+rendering noise; read every changed golden before you stage it.
 
 Stage the refreshed goldens with your change, then run `npm run stamp-visual-baselines` and commit the stamp. Without a
 Mac or local `neo-agent-brain` checkout, say so in your pull request and keep *Allow edits by maintainers* on: a

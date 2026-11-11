@@ -20,7 +20,7 @@ import {discoverCaptureSpecs} from './checkVisualBaselines.mjs';
  * rejects the test runner's unauthenticated socket or cross-serves a foreign checkout.
  *
  * Verify:  NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens
- * Refresh: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots
+ * Refresh: NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots=all
  */
 
 const

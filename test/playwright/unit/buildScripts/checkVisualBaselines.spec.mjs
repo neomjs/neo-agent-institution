@@ -57,8 +57,8 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         const entries = listingEntries(goldenA);
 
         expect(diffStamp({engine: 'd75cc68', entries}, {engine: '7aae7c3', entries})).toEqual([]);
-        expect(engineDrift({engine: 'd75cc68'}, {engine: '7aae7c3'})).toContain('captured at engine d75cc68, running 7aae7c3');
-        expect(engineDrift({engine: null}, {engine: '7aae7c3'}), 'a stamp from before the revision').toContain('captured at engine unknown');
+        expect(engineDrift({engine: 'd75cc68'}, {engine: '7aae7c3'})).toContain('last verified at engine d75cc68, running 7aae7c3');
+        expect(engineDrift({engine: null}, {engine: '7aae7c3'}), 'a stamp from before the revision').toContain('last verified at engine unknown');
         expect(engineDrift({engine: '7aae7c3'}, {engine: '7aae7c3'})).toBeNull()
     });
 
@@ -270,6 +270,14 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(formatMissingStampMessage()).toContain('npm run test-goldens');
         expect(formatDriftRecoveryMessage(['resources/scss/theme-neo-dark/apps/agentos/Viewport.scss (changed)']))
             .toContain('npm run test-goldens')
+    });
+
+    test('every capture instruction asks for the mode that rewrites all goldens: the default leaves a change inside the tolerance behind', () => {
+        const mode = '--update-snapshots=all';
+
+        expect(stampHeader.join('\n')).toContain(mode);
+        expect(formatMissingStampMessage()).toContain(mode);
+        expect(formatDriftRecoveryMessage(['apps/agentos/view/Viewport.mjs (changed)'])).toContain(mode)
     });
 
 });

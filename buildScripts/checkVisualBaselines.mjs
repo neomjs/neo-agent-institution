@@ -17,7 +17,7 @@ import {installedRevision, readInstalledLock} from './resolveOrgDev.mjs';
  * never compares pixels; it compares INPUT IDENTITY. `--stamp` records the staged blob id of every
  * style-owning input file (`resources/scss`, `apps/agentos`, and every screenshot-asserting spec
  * under `test/playwright` with its golden set, derived from source) plus the engine revision they were
- * captured against; the default check recomputes them and fails
+ * last verified against; the default check recomputes them and fails
  * when any input file moved past the stamp — the signal that the goldens were left behind and must be
  * re-captured on a rendering platform. The Engine tracks `dev`, so it moves on its own schedule: a moved
  * engine is named, never failed, so a red local capture run can be traced to it.
@@ -33,10 +33,13 @@ import {installedRevision, readInstalledLock} from './resolveOrgDev.mjs';
  * baseline commit ships, so in CI — where the checkout IS the committed state — it is exact, with no
  * mtime or filesystem noise.
  *
- * Capture: npm run test-goldens -- --update-snapshots  (requires Darwin + NEO_AGENTOS_RUNTIME_ROOT)
- * Stamp:   npm run stamp-visual-baselines              (run together with `--update-snapshots` captures,
- *                                                       after staging the capture's input + golden changes)
- * Check:   npm run check-visual-baselines              (CI + local; exits 1 on drift with the recovery steps)
+ * Capture: npm run test-goldens -- --update-snapshots=all  (requires Darwin + NEO_AGENTOS_RUNTIME_ROOT)
+ * Stamp:   npm run stamp-visual-baselines                  (after staging the capture's input + golden changes)
+ * Check:   npm run check-visual-baselines                  (CI + local; exits 1 on drift with the recovery steps)
+ *
+ * The capture mode is `=all` on purpose. Playwright's default mode rewrites only the goldens that fail, and the
+ * comparator passes a change that stays inside its tolerance: a shifted tone, a control added to one row of a
+ * full-cockpit capture. Such a golden stays green and stale until an unrelated capture rewrites it.
  */
 
 const
@@ -135,9 +138,11 @@ const stampFile = 'test/playwright/visual/__screenshots__/baseline-inputs.txt';
  */
 export const stampHeader = [
     '# Input-identity stamp for the Darwin visual baselines (buildScripts/checkVisualBaselines.mjs).',
-    '# Capture on macOS with `npm run test-goldens -- --update-snapshots` (requires NEO_AGENTOS_RUNTIME_ROOT),',
+    '# Capture on macOS with `npm run test-goldens -- --update-snapshots=all` (requires NEO_AGENTOS_RUNTIME_ROOT),',
     '# stage the changes, then write with `npm run stamp-visual-baselines`; on a merge conflict, re-stamp',
-    '# instead of resolving by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.'
+    '# instead of resolving by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.',
+    '# `engine` is the revision of the last stamp that changed a golden: the set was verified at it, and a single',
+    '# golden may have been captured at an earlier one.'
 ];
 
 const
@@ -169,7 +174,7 @@ export function listingEntries(listing) {
  * @summary The stamp file's text: the header, the engine entry, then one entry per input file sorted
  * by path. An entry is its key, its value on an indented line, and a blank line.
  * @param {Object}              stamp
- * @param {String}              stamp.engine  The engine revision the goldens were captured against.
+ * @param {String}              stamp.engine  The engine revision the goldens were last verified against.
  * @param {Map<String, String>} stamp.entries Path → blob id.
  * @returns {String}
  */
@@ -226,16 +231,17 @@ export function diffStamp(stamp, current) {
 }
 
 /**
- * @summary The engine notice: the revision the goldens were captured against, when the running engine differs.
+ * @summary The engine notice: the revision the goldens were last verified against, when the running engine differs.
  * Never a failure — the Engine tracks `dev` and moves without any Institution change. It names the one input a
- * red local capture run may owe to someone else.
+ * red local capture run may owe to someone else. "Verified", not "captured": a stamp keeps one revision for the
+ * whole set, while a capture rewrites only the goldens that changed (see {@link nextStampEngine}).
  * @param {Object} stamp   `{engine}` as parsed from the stamp file.
  * @param {Object} current `{engine}`, freshly read.
  * @returns {String|null} `null` when the engines match.
  */
 export function engineDrift(stamp, current) {
     return stamp.engine === current.engine ? null :
-        `visual-baselines: goldens captured at engine ${stamp.engine ?? 'unknown'}, running ${current.engine} — ` +
+        `visual-baselines: goldens last verified at engine ${stamp.engine ?? 'unknown'}, running ${current.engine} — ` +
         'a capture run that fails on surfaces you did not touch may be the engine\'s change, not yours.'
 }
 
@@ -288,7 +294,7 @@ function engineRevision() {
 export function formatMissingStampMessage() {
     return (
         'visual-baselines: no input stamp found — the goldens carry no freshness identity.\n' +
-        'Capture (Darwin): NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots, then:\n' +
+        'Capture (Darwin): NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots=all, then:\n' +
         '  npm run stamp-visual-baselines  (stage the changes first — the stamp reads the index)'
     )
 }
@@ -307,8 +313,9 @@ export function formatDriftRecoveryMessage(drifted) {
         (drifted.length > 20 ? `\n  … and ${drifted.length - 20} more` : '') + '\n\n' +
         'Recovery (on macOS, where the goldens are captured):\n' +
         '  1. run `npm run test-goldens` (requires NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain),\n' +
-        '     appending `-- --update-snapshots` when the delta is an intended design outcome\n' +
-        '     (the refreshed golden diff is the review surface)\n' +
+        '     appending `-- --update-snapshots=all` when the delta is an intended design outcome\n' +
+        '     (the refreshed golden diff is the review surface; `=all` also rewrites a golden that\n' +
+        '     changed inside the comparator\'s tolerance, which the default mode leaves stale)\n' +
         '  2. stage the changes, then: npm run stamp-visual-baselines\n' +
         'No Mac? Say so in your pull request, and a maintainer captures and stamps the goldens.'
     )
