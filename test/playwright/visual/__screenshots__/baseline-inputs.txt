@@ -123,7 +123,7 @@ apps/agentos/model/SessionSummary.mjs
     edaf3c4a61750535f3902f4db2c86e1b91e6a538
 
 apps/agentos/model/SessionTurn.mjs
-    fe47cbf0610931e60c7a36b2725a6692fe8b781b
+    0e3c68ad0de83087d747fa6019cb4937e2950e00
 
 apps/agentos/model/SetupStep.mjs
     145811043dd61f26ce1645f27be57556a97388db
@@ -555,10 +555,10 @@ apps/agentos/view/fleet/mailbox/RowModel.mjs
     72154b75cbff2787ec289fc85fd61ac3e0182c9c
 
 apps/agentos/view/fleet/memories/Container.mjs
-    8aa20a8cc0bfe46c649ec31b6861a2dd5f3fd82a
+    ff050d9f8cb5da162db1d8e098db7da4eaadf1d9
 
 apps/agentos/view/fleet/memories/ReaderComponent.mjs
-    312f3814432e1e2f3baa16819bd2b82893522895
+    589e680d1b7efaffc17e25c9339945318c2cdba4
 
 apps/agentos/view/fleet/memories/ReadingController.mjs
     2c7b7d5b00e24fac96fa9c74f32e6f9b6e3a2ed0

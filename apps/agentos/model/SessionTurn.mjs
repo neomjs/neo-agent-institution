@@ -38,10 +38,9 @@ class SessionTurn extends Model {
             type: 'String'
         }, {
             /**
-             * The tweet-size per-turn summary — the turn's TITLE line once the wire carries it
-             * (producer-side exposure: neomjs/neo-agent-brain#210; the merged memories sketch's
-             * measured law). Until then the field arrives null and the row falls back to the
-             * bounded response head — forward-compatible, never a phantom.
+             * The tweet-size per-turn summary — the turn's TITLE line when the wire carries it.
+             * When absent (`null`), the row falls back to the bounded response head —
+             * forward-compatible, never a phantom.
              * @field
              */
             name        : 'miniSummary',
@@ -54,7 +53,13 @@ class SessionTurn extends Model {
             convert     : value => typeof value === 'string' ? value : null,
             defaultValue: null
         }, {
-            name        : 'thought',
+            /**
+             * The turn's authored decision context from `get_session_memories`, falling back to
+             * legacy `thought` via `mapping` when `decisionContext` is absent on the wire.
+             * @field
+             */
+            name        : 'decisionContext',
+            mapping     : 'thought',
             type        : 'String',
             convert     : value => typeof value === 'string' ? value : null,
             defaultValue: null

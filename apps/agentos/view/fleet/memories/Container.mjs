@@ -37,7 +37,7 @@ import ViewerTime            from '../../../util/ViewerTime.mjs';
  *
  * **Reading is a selection**: the registers keep their clamped previews for scanning, and
  * the {@link AgentOS.view.fleet.memories.ReaderComponent} beside them renders the selected record
- * whole — a summary's full text, a turn's prompt, thought and response. Selecting collapses the
+ * whole — a summary's full text, a turn's prompt, decision context and response. Selecting collapses the
  * open register to its rail so the text gets the width; ↑/↓ move the selection, Escape closes the
  * reading, and *show all* reads every loaded record of the register in list order. Records arrive
  * whole on the wire, so reading fetches nothing. The pane renders the zones; its
@@ -194,13 +194,13 @@ class MemoriesPane extends Container {
                 ntype: 'component',
                 cls  : ['fm-memories-provenance', 'is-authored'],
                 text : 'authored records',
-                vdom : {title: 'the agent\'s own prompt · thought · response'}
+                vdom : {title: 'the agent\'s own prompt · decision context · response'}
             }, {
                 ntype    : 'component',
                 cls      : ['fm-memories-drill-legend'],
                 flex     : '1 0 100%',
                 reference: 'memories-drill-legend',
-                text     : 'authored records: the agent\'s own prompt · thought · response. derived: a summary made from them.'
+                text     : 'authored records: the agent\'s own prompt · decision context · response. derived: a summary made from them.'
             }]
         }, {
             // the list beside its reading surface: the rail/reading split is the engine's Splitter

@@ -497,8 +497,8 @@ test.describe('MemoriesPane — session drill-in (open session is part of the dr
 
         expect(authored).toBeTruthy();
         expect(authored.text).toBe('authored records');
-        expect(authored.vdom.title).toBe('the agent\'s own prompt · thought · response');
-        expect(legend.text).toBe('authored records: the agent\'s own prompt · thought · response. derived: a summary made from them.');
+        expect(authored.vdom.title).toBe('the agent\'s own prompt · decision context · response');
+        expect(legend.text).toBe('authored records: the agent\'s own prompt · decision context · response. derived: a summary made from them.');
         expect(legend.flex).toBe('1 0 100%');
         expect(drillHead.items.indexOf(legend)).toBeGreaterThan(drillHead.items.indexOf(pane.getReference('memories-drill-title')));
         expect(drillHead.hidden).toBe(true);
