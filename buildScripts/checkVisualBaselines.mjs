@@ -15,8 +15,9 @@ import {installedRevision, readInstalledLock} from './resolveOrgDev.mjs';
  *
  * This script closes the blind spot WITHOUT granting Ubuntu pixel authority. It never renders and
  * never compares pixels; it compares INPUT IDENTITY. `--stamp` records the staged blob id of every
- * style-owning input file (`resources/scss`, `apps/agentos`, the two capture specs and their golden
- * sets) plus the engine revision they were captured against; the default check recomputes them and fails
+ * style-owning input file (`resources/scss`, `apps/agentos`, and every screenshot-asserting spec
+ * under `test/playwright` with its golden set, derived from source) plus the engine revision they were
+ * captured against; the default check recomputes them and fails
  * when any input file moved past the stamp — the signal that the goldens were left behind and must be
  * re-captured on a rendering platform. The Engine tracks `dev`, so it moves on its own schedule: a moved
  * engine is named, never failed, so a red local capture run can be traced to it.
@@ -32,36 +33,114 @@ import {installedRevision, readInstalledLock} from './resolveOrgDev.mjs';
  * baseline commit ships, so in CI — where the checkout IS the committed state — it is exact, with no
  * mtime or filesystem noise.
  *
- * Stamp:  npm run stamp-visual-baselines   (run together with `--update-snapshots` captures,
- *                                           after staging the capture's input + golden changes)
- * Check:  npm run check-visual-baselines   (CI + local; exits 1 on drift with the recovery steps)
+ * Capture: npm run test-goldens -- --update-snapshots  (requires Darwin + NEO_AGENTOS_RUNTIME_ROOT)
+ * Stamp:   npm run stamp-visual-baselines              (run together with `--update-snapshots` captures,
+ *                                                       after staging the capture's input + golden changes)
+ * Check:   npm run check-visual-baselines              (CI + local; exits 1 on drift with the recovery steps)
  */
+
+const
+    cwd                   = process.cwd(),
+    ignoredDiscoveryDirs  = new Set(['unit', 'test-results', '__screenshots__']),
+    screenshotCallPattern = /\btoHaveScreenshot\b/,
+    neuralLinkPattern     = /\bneuralLink\b/;
+
+/**
+ * @summary Discovers every Playwright spec under `test/playwright` whose source asserts a screenshot,
+ * paired with its golden directory and whether it requests the `neuralLink` whitebox fixture.
+ *
+ * Visual-tier specs (`test/playwright/visual/**`) store baselines under
+ * `test/playwright/visual/__screenshots__/<specFileName>` per `playwright.config.visual.mjs`'s
+ * `snapshotPathTemplate`; all other tiers use Playwright's default `<specPath>-snapshots` folder.
+ * Pure filesystem read (no `git` probe, no `process.exit`), deterministic by sorted path.
+ * @param {String} [repoRoot=cwd] Repository root containing `test/playwright`.
+ * @returns {Array<{spec: String, goldenDir: String, usesNeuralLink: Boolean}>}
+ */
+export function discoverCaptureSpecs(repoRoot = cwd) {
+    const
+        playwrightRoot = path.join(repoRoot, 'test', 'playwright'),
+        discovered     = [];
+
+    if (!fs.existsSync(playwrightRoot)) {
+        return discovered
+    }
+
+    const walk = dir => {
+        for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+            if (entry.isDirectory()) {
+                if (!ignoredDiscoveryDirs.has(entry.name) && !entry.name.endsWith('-snapshots')) {
+                    walk(path.join(dir, entry.name))
+                }
+            } else if (entry.isFile() && entry.name.endsWith('.spec.mjs')) {
+                const
+                    absPath = path.join(dir, entry.name),
+                    source  = fs.readFileSync(absPath, 'utf8');
+
+                if (screenshotCallPattern.test(source)) {
+                    const
+                        spec      = path.relative(repoRoot, absPath).split(path.sep).join('/'),
+                        goldenDir = spec.startsWith('test/playwright/visual/')
+                            ? `test/playwright/visual/__screenshots__/${path.posix.basename(spec)}`
+                            : `${spec}-snapshots`;
+
+                    discovered.push({
+                        spec,
+                        goldenDir,
+                        usesNeuralLink: neuralLinkPattern.test(source)
+                    })
+                }
+            }
+        }
+    };
+
+    walk(playwrightRoot);
+
+    return discovered.sort((a, b) => a.spec.localeCompare(b.spec))
+}
+
+/**
+ * @summary Builds the complete stamp scope list for `repoRoot`: the style-owning product trees plus
+ * every discovered screenshot-asserting spec and its golden directory.
+ * @param {String} [repoRoot=cwd] Repository root containing `test/playwright`.
+ * @returns {Array<{key: String, exclude?: String[], golden?: Boolean}>}
+ */
+export function buildInputScopes(repoRoot = cwd) {
+    return [
+        {key: 'apps/agentos', exclude: ['apps/agentos/design']},
+        {key: 'resources/scss'},
+        ...discoverCaptureSpecs(repoRoot).flatMap(({spec, goldenDir}) => [
+            {key: spec},
+            {key: goldenDir, golden: true}
+        ])
+    ]
+}
 
 /**
  * The input-scope CONTRACT: the paths whose files the stamp covers; `exclude` carves non-style
  * content out via git pathspec magic. `apps/agentos/design` holds SPEC documents (design contracts
- * and direction mocks) — they specify surfaces, they do not style them. The golden sets are scopes
- * too, so a removed or rewritten golden is drift instead of vanishing silently.
+ * and direction mocks) — they specify surfaces, they do not style them. Every spec that asserts a
+ * screenshot and its golden folder join automatically from source, so a removed, rewritten, or newly
+ * added golden is drift instead of vanishing silently.
  * Exported for the scope-contract regression witness.
  * @type {Object[]}
  */
-export const inputScopes = [
-        {key: 'apps/agentos', exclude: ['apps/agentos/design']},
-        {key: 'resources/scss'},
-        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs'},
-        {key: 'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots', golden: true},
-        {key: 'test/playwright/visual/FleetCockpitVisual.spec.mjs'},
-        {key: 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs', golden: true}
+export const inputScopes = buildInputScopes(cwd);
+
+const stampFile = 'test/playwright/visual/__screenshots__/baseline-inputs.txt';
+
+/**
+ * Header lines written at the top of `baseline-inputs.txt`. Names `npm run test-goldens` so anyone
+ * opening the stamp file sees the single capture command alongside `npm run stamp-visual-baselines`.
+ * @type {String[]}
+ */
+export const stampHeader = [
+    '# Input-identity stamp for the Darwin visual baselines (buildScripts/checkVisualBaselines.mjs).',
+    '# Capture on macOS with `npm run test-goldens -- --update-snapshots` (requires NEO_AGENTOS_RUNTIME_ROOT),',
+    '# stage the changes, then write with `npm run stamp-visual-baselines`; on a merge conflict, re-stamp',
+    '# instead of resolving by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.'
 ];
 
 const
-    cwd         = process.cwd(),
-    stampFile   = 'test/playwright/visual/__screenshots__/baseline-inputs.txt',
-    stampHeader = [
-        '# Input-identity stamp for the Darwin visual baselines (buildScripts/checkVisualBaselines.mjs).',
-        '# Written by `npm run stamp-visual-baselines`; on a merge conflict, re-stamp instead of resolving',
-        '# by hand. One entry per style-owning input file: its path, its staged blob id, a blank line.'
-    ],
     // a fixed last line, so the final entry's blank line is never the end of the file
     stampFooter = '# end of stamp',
     engineKey   = 'engine';
@@ -202,6 +281,39 @@ function engineRevision() {
     return installedRevision(readInstalledLock(cwd), 'neo.mjs') ?? 'unknown'
 }
 
+/**
+ * @summary Formats the actionable error message when `baseline-inputs.txt` is missing.
+ * @returns {String}
+ */
+export function formatMissingStampMessage() {
+    return (
+        'visual-baselines: no input stamp found — the goldens carry no freshness identity.\n' +
+        'Capture (Darwin): NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots, then:\n' +
+        '  npm run stamp-visual-baselines  (stage the changes first — the stamp reads the index)'
+    )
+}
+
+/**
+ * @summary Formats the actionable drift failure message naming the drifted entries and the single
+ * `npm run test-goldens` capture command.
+ * @param {String[]} drifted Human-readable drifted rows from {@link diffStamp}.
+ * @returns {String}
+ */
+export function formatDriftRecoveryMessage(drifted) {
+    return (
+        'visual-baselines: style-owning inputs moved past the golden stamp — the Darwin baselines are\n' +
+        'potentially stale. This check compares input identity only (no pixels, no CI render authority).\n\n' +
+        `Drifted (${drifted.length}):\n` + drifted.slice(0, 20).map(row => `  - ${row}`).join('\n') +
+        (drifted.length > 20 ? `\n  … and ${drifted.length - 20} more` : '') + '\n\n' +
+        'Recovery (on macOS, where the goldens are captured):\n' +
+        '  1. run `npm run test-goldens` (requires NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain),\n' +
+        '     appending `-- --update-snapshots` when the delta is an intended design outcome\n' +
+        '     (the refreshed golden diff is the review surface)\n' +
+        '  2. stage the changes, then: npm run stamp-visual-baselines\n' +
+        'No Mac? Say so in your pull request, and a maintainer captures and stamps the goldens.'
+    )
+}
+
 // Import-safe by construction: the pure halves above are unit-testable, and the git-touching main
 // flow runs ONLY when this file is the entry script — an importing spec must never probe the index
 // or exit the process.
@@ -231,11 +343,7 @@ if (process.argv.includes('--stamp')) {
 }
 
 if (!fs.existsSync(path.join(cwd, stampFile))) {
-    console.error(
-        'visual-baselines: no input stamp found — the goldens carry no freshness identity.\n' +
-        'Capture (Darwin): the visual + e2e capture suites with --update-snapshots, then:\n' +
-        '  npm run stamp-visual-baselines  (stage the changes first — the stamp reads the index)'
-    );
+    console.error(formatMissingStampMessage());
     process.exit(1)
 }
 
@@ -247,17 +355,7 @@ const
 engineNote && console.log(engineNote);
 
 if (drifted.length > 0) {
-    console.error(
-        'visual-baselines: style-owning inputs moved past the golden stamp — the Darwin baselines are\n' +
-        'potentially stale. This check compares input identity only (no pixels, no CI render authority).\n\n' +
-        `Drifted (${drifted.length}):\n` + drifted.slice(0, 20).map(row => `  - ${row}`).join('\n') +
-        (drifted.length > 20 ? `\n  … and ${drifted.length - 20} more` : '') + '\n\n' +
-        'Recovery (on macOS, where the goldens are captured):\n' +
-        '  1. re-run the visual + e2e capture suites, with --update-snapshots when the delta is an\n' +
-        '     intended design outcome (the refreshed golden diff is the review surface)\n' +
-        '  2. stage the changes, then: npm run stamp-visual-baselines\n' +
-        'No Mac? Say so in your pull request, and a maintainer captures and stamps the goldens.'
-    );
+    console.error(formatDriftRecoveryMessage(drifted));
     process.exit(1)
 }
 

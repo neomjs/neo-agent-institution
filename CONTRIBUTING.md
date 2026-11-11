@@ -59,11 +59,18 @@ npx playwright install chrome   # only if you do not already have Google Chrome
 npm run test-e2e                # application E2E — uses your system Google Chrome
 ```
 
-The visual and e2e goldens are captured on macOS, so `check-visual-baselines` fails a change to a style-owning input
-(`resources/scss`, `apps/agentos`) until they are captured again. On a Mac, run both suites with `-- --update-snapshots`,
-stage the refreshed goldens with your change, then run `npm run stamp-visual-baselines` and commit the stamp. Without a
-Mac, say so in your pull request and keep *Allow edits by maintainers* on: a maintainer captures and stamps them on your
-branch.
+The visual and e2e goldens are captured on macOS across `test-visual`, `test-e2e`, and `test-e2e:nl`, and every spec
+that asserts a screenshot plus its golden directory is covered by `npm run check-visual-baselines`. When a change touches
+a style-owning input (`resources/scss`, `apps/agentos`) or a capture spec, run the single capture command on a Mac with a
+local `neo-agent-brain` checkout:
+
+```bash
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain npm run test-goldens -- --update-snapshots
+```
+
+Stage the refreshed goldens with your change, then run `npm run stamp-visual-baselines` and commit the stamp. Without a
+Mac or local `neo-agent-brain` checkout, say so in your pull request and keep *Allow edits by maintainers* on: a
+maintainer captures and stamps them on your branch.
 
 `test-e2e` is pinned to `channel: 'chrome'` locally, so it launches the Google Chrome installed on your machine rather
 than Playwright's Chromium — `npx playwright install` alone does not provide it. When a local `neo-agent-brain` checkout
