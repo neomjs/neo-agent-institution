@@ -201,7 +201,7 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         pane.destroy()
     });
 
-    test('a selected turn reads as prompt, thought and response, whole, with a copy action each, and its meta carries the authoring identity from the record or the drill target', () => {
+    test('a selected turn reads as prompt, decision context and response, whole, with a copy action each, and its meta carries the authoring identity from the record or the drill target', () => {
         const {pane, reader, summaryGrid, turnGrid} = readyPane(),
               turnWithoutIdentity                   = {...TURN, id: 't2', agentIdentity: undefined},
               turnWithOwnIdentity                   = {...TURN, id: 't1', agentIdentity: '@neo-fable-clio'};
@@ -216,9 +216,9 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         click(turnGrid, 0);
 
         expect(nodesWith(reader.vdom, 'fm-memories-read-meta')[0].text).toMatch(/^.+ · @neo-fable-clio · 7 tool calls$/);
-        expect(nodesWith(reader.vdom, 'fm-memories-read-label').map(node => node.text)).toEqual(['Prompt', 'Thought', 'Response']);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-label').map(node => node.text)).toEqual(['Prompt', 'Decision Context', 'Response']);
         expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual([TURN.prompt, TURN.thought, TURN.response]);
-        expect(nodesWith(reader.vdom, 'fm-memories-read-copy').map(node => node['aria-label'])).toEqual(['Copy the prompt', 'Copy the thought', 'Copy the response']);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy').map(node => node['aria-label'])).toEqual(['Copy the prompt', 'Copy the decision context', 'Copy the response']);
         expect(turnGrid.rail).toBe(true);
         expect(summaryGrid.rail).toBe(false);
 
@@ -290,7 +290,7 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
         pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's3-session', page: {offset: 0}, turns: [{...TURN, id: 't9', sessionId: 's3-session', thought: null}], total: 1};
         click(turnGrid, 0);
 
-        expect(texts(reader.vdom)).toContain('The plane returned no thought for this turn · turn t9');
+        expect(texts(reader.vdom)).toContain('The plane returned no decision context for this turn · turn t9');
         expect(nodesWith(reader.vdom, 'fm-memories-read-copy')).toHaveLength(2)
     });
 
@@ -429,6 +429,103 @@ test.describe('MemoriesPane — reading a memory whole (#506)', () => {
             await expect(pending).rejects.toBe(Neo.isDestroyed)
         } finally {
             Object.assign(domAccess, originals)
+        }
+    });
+
+    test('dual-key turn wire contract (#908): post-brain#1582 decisionContext and legacy thought both render under Decision Context across single-turn and show-all', () => {
+        const
+            {pane, reader, turnGrid} = readyPane(),
+            postCutTurn              = {id: 't-dc', sessionId: 's1-session', timestamp: '2026-08-02T20:00:00.000Z', prompt: 'Prompt dc', decisionContext: 'Decision context dc', response: 'Response dc', agentIdentity: '@neo-fable-clio', amountToolCalls: 2},
+            legacyTurn               = {id: 't-legacy', sessionId: 's1-session', timestamp: '2026-08-02T19:50:00.000Z', prompt: 'Prompt legacy', thought: 'Legacy thought prose', response: 'Response legacy', agentIdentity: '@neo-opus-grace', amountToolCalls: 1};
+
+        pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+        pane.drillSnapshot = {capability: {state: 'wired'}, sessionId: 's1-session', page: {offset: 0}, turns: [postCutTurn, legacyTurn], total: 2};
+
+        // single-turn selection: post-cut row with `decisionContext` only
+        click(turnGrid, 0);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual(['Prompt dc', 'Decision context dc', 'Response dc']);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-label').map(node => node.text)).toEqual(['Prompt', 'Decision Context', 'Response']);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy').map(node => node['aria-label'])).toEqual(['Copy the prompt', 'Copy the decision context', 'Copy the response']);
+        expect(pane.turnStore.get('t-dc').decisionContext).toBe('Decision context dc');
+        expect(pane.turnStore.get('t-legacy').decisionContext).toBe('Legacy thought prose');
+
+        // single-turn selection: pre-cut row with legacy `thought` only (no `decisionContext` key)
+        click(turnGrid, 1);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual(['Prompt legacy', 'Legacy thought prose', 'Response legacy']);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy').map(node => node['aria-label'])).toEqual(['Copy the prompt', 'Copy the decision context', 'Copy the response']);
+
+        // *show all*: both modeled records render their middle block in store order
+        pane.controller.onShowAllClick();
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual([
+            'Prompt dc', 'Decision context dc', 'Response dc',
+            'Prompt legacy', 'Legacy thought prose', 'Response legacy'
+        ]);
+
+        pane.destroy()
+    });
+
+    test('decisionContext guard (#908): non-string or empty decisionContext names its own absence without falling through to a stale thought key, while a raw unmodeled legacy bag still reads and copies', async () => {
+        const
+            {pane, reader, turnGrid} = readyPane(),
+            domAccess                = Neo.ns('Neo.main.DomAccess', true),
+            originals                = {selectNode: domAccess.selectNode, execCommand: domAccess.execCommand, focus: domAccess.focus};
+
+        pane.openSession({sessionId: 's1-session', title: 'Title s1'});
+        pane.drillSnapshot = {
+            capability: {state: 'wired'},
+            sessionId : 's1-session',
+            page      : {offset: 0},
+            turns     : [
+                {id: 't-bad', sessionId: 's1-session', timestamp: '2026-08-02T20:00:00.000Z', prompt: 'Prompt bad', decisionContext: {bad: 1}, thought: 'stale', response: 'Response bad', agentIdentity: '@neo-fable-clio', amountToolCalls: 1},
+                {id: 't-empty', sessionId: 's1-session', timestamp: '2026-08-02T19:55:00.000Z', prompt: 'Prompt empty', decisionContext: '', thought: 'stale', response: 'Response empty', agentIdentity: '@neo-fable-clio', amountToolCalls: 1}
+            ],
+            total: 2
+        };
+
+        expect(pane.turnStore.get('t-bad').decisionContext).toBe(null);
+
+        click(turnGrid, 0);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text')[1]).toMatchObject({
+            cls : ['fm-memories-read-text', 'is-missing'],
+            text: 'The plane returned no decision context for this turn · turn t-bad'
+        });
+        expect(texts(reader.vdom)).not.toContain('stale');
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy')).toHaveLength(2);
+
+        click(turnGrid, 1);
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text')[1]).toMatchObject({
+            cls : ['fm-memories-read-text', 'is-missing'],
+            text: 'The plane returned no decision context for this turn · turn t-empty'
+        });
+        expect(texts(reader.vdom)).not.toContain('stale');
+        expect(nodesWith(reader.vdom, 'fm-memories-read-copy')).toHaveLength(2);
+
+        // raw unmodeled `reading.record` bag carrying only `{thought: 'raw legacy'}` directly on ReaderComponent
+        const rawLegacy = {id: 't-raw', timestamp: '2026-08-02T19:40:00.000Z', prompt: 'Raw prompt', thought: 'raw legacy', response: 'Raw response', agentIdentity: '@neo-opus-grace', amountToolCalls: 1};
+
+        reader.set({
+            store  : null,
+            reading: {backText: 'Turns', kind: 'turn', record: rawLegacy, target: '@neo-opus-grace', emptyText: ''}
+        });
+
+        expect(reader.turnFieldValue(rawLegacy, 'decisionContext')).toBe('raw legacy');
+        expect(reader.turnFieldValue({id: 't-raw-bad', decisionContext: {bad: 1}, thought: 'stale'}, 'decisionContext')).toBe(null);
+        expect(reader.turnFieldValue({id: 't-raw-empty', decisionContext: '', thought: 'stale'}, 'decisionContext')).toBe('');
+        expect(nodesWith(reader.vdom, 'fm-memories-read-text').map(node => node.text)).toEqual(['Raw prompt', 'raw legacy', 'Raw response']);
+
+        let copiedText = null;
+        domAccess.selectNode  = async () => { copiedText = reader.vdom.cn.at(-1).text; return true };
+        domAccess.execCommand = async () => true;
+        domAccess.focus       = async () => true;
+
+        try {
+            await reader.onCopyClick({path: [{cls: ['fm-memories-read-copy'], data: {recordId: 't-raw', field: 'decisionContext'}}]});
+            expect(copiedText).toBe('raw legacy');
+            expect(reader.copiedKey).toBe('t-raw:decisionContext');
+            expect(nodesWith(reader.vdom, 'fm-memories-read-copy').find(node => node.data.field === 'decisionContext').text).toBe('Copied')
+        } finally {
+            Object.assign(domAccess, originals);
+            pane.destroy()
         }
     });
 });

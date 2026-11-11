@@ -104,17 +104,17 @@ function sessionMemoriesResult(params = {}) {
         turns     : [
             {
                 id: 'turn-2', sessionId, timestamp: '2026-08-02T20:40:00.000Z', agentIdentity: '@neo-opus-ada', amountToolCalls: 14,
-                miniSummary: 'Wake transport verified end to end',
-                prompt     : 'Verify the wake transport between plane and host.',
-                thought    : 'Ran the integrity probe twice.',
-                response   : 'The wake transport holds: both probes returned signed receipts, and the host replayed them in order.'
+                miniSummary    : 'Wake transport verified end to end',
+                prompt         : 'Verify the wake transport between plane and host.',
+                decisionContext: 'Ran the integrity probe twice.',
+                response       : 'The wake transport holds: both probes returned signed receipts, and the host replayed them in order.'
             },
             {
                 id: 'turn-1', sessionId, timestamp: '2026-08-02T19:10:00.000Z', agentIdentity: null, amountToolCalls: 3,
-                miniSummary: null,
-                prompt     : 'Read the integrity contract.',
-                thought    : null,
-                response   : 'The contract names two receipts per wake; the second one is the host\'s.'
+                miniSummary    : null,
+                prompt         : 'Read the integrity contract.',
+                decisionContext: null,
+                response       : 'The contract names two receipts per wake; the second one is the host\'s.'
             }
         ],
         count: 2,
@@ -483,8 +483,8 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane.locator('.fm-memories-turn-cell')).toHaveCount(2, {timeout: 10000});
             await expect(pane.locator('.fm-memories-turn').nth(0)).toContainText('Wake transport verified end to end');
             await expect(pane.locator('.fm-memories-turn').nth(1)).not.toContainText('Response unavailable');
-            await expect(pane.locator('.fm-memories-drill-head .fm-memories-provenance.is-authored')).toHaveAttribute('title', "the agent's own prompt · thought · response");
-            await expect(pane.locator('.fm-memories-drill-legend')).toHaveText("authored records: the agent's own prompt · thought · response. derived: a summary made from them.");
+            await expect(pane.locator('.fm-memories-drill-head .fm-memories-provenance.is-authored')).toHaveAttribute('title', "the agent's own prompt · decision context · response");
+            await expect(pane.locator('.fm-memories-drill-legend')).toHaveText("authored records: the agent's own prompt · decision context · response. derived: a summary made from them.");
             expect((await pane.locator('.fm-memories-drill-legend').boundingBox()).y).toBeGreaterThanOrEqual((await pane.locator('.fm-memories-drill-title').boundingBox()).y + (await pane.locator('.fm-memories-drill-title').boundingBox()).height);
             await expect(pane.locator('.fm-memories-turn').nth(1).locator('.fm-memories-turn-meta')).toContainText('@neo-opus-ada · 3 tool calls');
             await page.evaluate(() => document.fonts.ready);
@@ -492,7 +492,7 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await assertBareRegister('turns', '.fm-memories-turn-grid');
 
             // a click selects the turn into the reader: its row is marked, the card carries the
-            // mark, no cell paints a band — and the reader holds the whole record, a missing thought named
+            // mark, no cell paints a band — and the reader holds the whole record, a missing decision context named
             await assertSingleSampleRailTransition(
                 app,
                 pane.locator('.fm-memories-turn-grid .neo-grid-cell').nth(1),
@@ -502,10 +502,10 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             const reader = pane.locator('.fm-memories-reader');
 
             await expect(reader.locator('.fm-memories-read-meta')).toContainText('@neo-opus-ada · 3 tool calls');
-            await expect(reader.locator('.fm-memories-read-label')).toHaveText(['Prompt', 'Thought', 'Response']);
+            await expect(reader.locator('.fm-memories-read-label')).toHaveText(['Prompt', 'Decision Context', 'Response']);
             await expect(reader.locator('.fm-memories-read-text')).toHaveText([
                 'Read the integrity contract.',
-                'The plane returned no thought for this turn · turn turn-1',
+                'The plane returned no decision context for this turn · turn turn-1',
                 'The contract names two receipts per wake; the second one is the host\'s.'
             ]);
             (await chromeOf('.fm-memories-turn-grid .neo-grid-cell')).forEach((cell, index) => {
@@ -632,7 +632,9 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await page.keyboard.press('Escape');   // leaves show all; the followed record stays read
             await expect(reader.locator('.fm-memories-read')).toHaveCount(1);
 
-            await page.setViewportSize({width: 700, height: 1000});
+            // 700 px enters the <= 720 px narrow container regime; 1400 px height (matching the
+            // register capture above) keeps the south strip taller than one 104 px TurnGrid row
+            await page.setViewportSize({width: 700, height: 1400});
             await expect(pane.locator('.fm-memories-list'), 'narrow and reading: the rail yields').toBeHidden();
             await reader.locator('.fm-memories-read-back').click();
             await expect(pane.locator('.fm-memories-list'), 'the breadcrumb returns to the list').toBeVisible();

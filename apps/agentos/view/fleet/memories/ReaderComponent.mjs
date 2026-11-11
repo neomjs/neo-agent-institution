@@ -5,7 +5,7 @@ import ViewerTime from '../../../util/ViewerTime.mjs';
  * The turn record's three authored fields, in reading order, with their block labels.
  * @type {Array<[String, String]>}
  */
-const TURN_FIELDS = [['prompt', 'Prompt'], ['thought', 'Thought'], ['response', 'Response']];
+const TURN_FIELDS = [['prompt', 'Prompt'], ['decisionContext', 'Decision Context'], ['response', 'Response']];
 
 /**
  * The Memories view's reading surface: the selected session summary or turn record, whole.
@@ -15,7 +15,7 @@ const TURN_FIELDS = [['prompt', 'Prompt'], ['thought', 'Thought'], ['response', 
  * all* — its Model records in Store order, re-rendered on the Store's loads and changes, so the
  * document and the rail read one collection — and the nothing-selected sentence otherwise. The wire already
  * carries each record whole — `get_all_summaries` the summary document, `get_session_memories` the
- * turn's prompt, thought and response — so nothing is fetched here and nothing is cut: the list
+ * turn's prompt, decision context and response — so nothing is fetched here and nothing is cut: the list
  * registers keep their clamped previews, and this pane is where the whole lives. A field the plane
  * did not return as a string is NAMED with the record's id, never rendered as an empty block.
  *
@@ -215,7 +215,25 @@ class ReaderComponent extends Component {
     }
 
     /**
-     * @summary One turn record: the meta line, then prompt, thought and response as three blocks,
+     * @summary Read a turn prose field from a modeled {@link AgentOS.model.SessionTurn} or a raw
+     * wire bag: `decisionContext` falls back to legacy `thought` only when `decisionContext` is
+     * `undefined`, so a non-string `decisionContext` still names its own absence.
+     * @param {Object|null} record
+     * @param {String}      field
+     * @returns {String|null}
+     */
+    turnFieldValue(record, field) {
+        if (!record) return null;
+
+        const value = field === 'decisionContext' && record.decisionContext === undefined
+            ? record.thought
+            : record[field];
+
+        return typeof value === 'string' ? value : null
+    }
+
+    /**
+     * @summary One turn record: the meta line, then prompt, decision context and response as three blocks,
      * each with its copy action.
      * @param {Object} record
      * @returns {Object}
@@ -240,7 +258,8 @@ class ReaderComponent extends Component {
                 ...(iso ? {title: iso} : {})
             }, ...TURN_FIELDS.map(([field, label]) => {
                 const
-                    value  = record[field],
+                    noun   = label.toLowerCase(),
+                    value  = me.turnFieldValue(record, field),
                     whole  = typeof value === 'string' && value.trim().length > 0,
                     copied = me.copiedKey === `${record.id}:${field}`;
 
@@ -254,10 +273,10 @@ class ReaderComponent extends Component {
                             cls         : ['fm-memories-read-copy'],
                             id          : me.partId(record.id, `copy-${field}`),
                             data        : {field, recordId: record.id},
-                            'aria-label': `Copy the ${field}`,
+                            'aria-label': `Copy the ${noun}`,
                             text        : copied ? 'Copied' : 'Copy'
                         }].filter(Boolean)
-                    }, me.textNode(value, me.partId(record.id, field), `The plane returned no ${field} for this turn · turn ${record.id}`)]
+                    }, me.textNode(value, me.partId(record.id, field), `The plane returned no ${noun} for this turn · turn ${record.id}`)]
                 }
             })]
         }
@@ -310,7 +329,9 @@ class ReaderComponent extends Component {
             me         = this,
             button     = me.buttonData(data, 'fm-memories-read-copy'),
             record     = me.recordById(button?.recordId),
-            value      = record?.[button?.field],
+            value      = TURN_FIELDS.some(([f]) => f === button?.field)
+                ? me.turnFieldValue(record, button.field)
+                : record?.[button?.field],
             {windowId} = me,
             source     = me.vdom.cn.at(-1);
 

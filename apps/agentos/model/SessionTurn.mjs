@@ -54,7 +54,13 @@ class SessionTurn extends Model {
             convert     : value => typeof value === 'string' ? value : null,
             defaultValue: null
         }, {
-            name        : 'thought',
+            /**
+             * The turn's authored decision context (`get_session_memories` post-`neomjs/neo-agent-brain#1582`),
+             * falling back to legacy `thought` via `mapping` on a pre-cut plane so deploy order does not matter.
+             * @field
+             */
+            name        : 'decisionContext',
+            mapping     : 'thought',
             type        : 'String',
             convert     : value => typeof value === 'string' ? value : null,
             defaultValue: null
