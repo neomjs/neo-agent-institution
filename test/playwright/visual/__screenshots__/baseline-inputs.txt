@@ -123,7 +123,7 @@ apps/agentos/model/SessionSummary.mjs
     edaf3c4a61750535f3902f4db2c86e1b91e6a538
 
 apps/agentos/model/SessionTurn.mjs
-    045c8e6dafadeafaf3a5d313a9830dcc0e5baf46
+    0e3c68ad0de83087d747fa6019cb4937e2950e00
 
 apps/agentos/model/SetupStep.mjs
     145811043dd61f26ce1645f27be57556a97388db
