@@ -330,6 +330,31 @@ test.describe('harness pack stage', () => {
         expect(mainSource).toMatch(/env\s+: \{\.\.\.packagedEnv, \.\.\.wakeReceiverEnv\(wakeReceiver\), NEO_FLEET_BEARER: fleetBearerToken/)
     });
 
+    test('only the installed product boot switches on open-work wakes for its Fleet', async () => {
+        const
+            mainSource = await readFile(fileURLToPath(new URL('../../../../harness/main.mjs', import.meta.url)), 'utf8'),
+            bodyOf     = name => {
+                const start = mainSource.indexOf(`async function ${name}(`);
+                expect(start, `${name} is declared`).toBeGreaterThan(-1);
+                const ends = [mainSource.indexOf('\nfunction ', start), mainSource.indexOf('\nasync function ', start)].filter(index => index > -1);
+                return mainSource.slice(start, Math.min(...ends))
+            },
+            product    = bodyOf('bootProductBrain'),
+            from       = product.indexOf('const packagedEnv = packagedMode'),
+            packaged   = product.slice(from, product.indexOf(': {};', from));
+
+        // The packaged fragment declares it, so an unpackaged run of the same boot keeps the leaf's default
+        expect(from, 'bootProductBrain builds its packaged env').toBeGreaterThan(-1);
+        expect(packaged).toContain('NEO_HARNESS_ELECTRON_BIN');
+        expect(packaged).toMatch(/NEO_FLEET_OPEN_WORK_WAKES\s*: 'true'/);
+
+        for (const name of ['bootSmokeBrain', 'bootUiFleetTransport']) {
+            const body = bodyOf(name);
+            expect(body, `${name} spawns a Fleet`).toContain('NEO_FLEET_PORT');
+            expect(body, `${name} leaves open-work wakes off`).not.toContain('NEO_FLEET_OPEN_WORK_WAKES')
+        }
+    });
+
     test('source-relative traversal rejects nested and normalized harness-root escapes', async () => {
         const root = await mkdtemp(path.join(tmpdir(), 'neo-pack-main-escape-'));
 

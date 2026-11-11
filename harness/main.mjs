@@ -1152,8 +1152,10 @@ async function bootProductBrain() {
         ? {
             ...buildPackagedBrainEnv({agentsRoot: seatRoot.record?.root, backupRoot: path.join(app.getPath('userData'), 'backups'), dataRoot}),
             ...planeFragment,
-            ELECTRON_RUN_AS_NODE    : '1',
-            NEO_HARNESS_ELECTRON_BIN: launcherRuntime.executable
+            ELECTRON_RUN_AS_NODE     : '1',
+            // The installed product's Fleet wakes a seat when its own work changes holder
+            NEO_FLEET_OPEN_WORK_WAKES: 'true',
+            NEO_HARNESS_ELECTRON_BIN : launcherRuntime.executable
         }
         : {};
 
