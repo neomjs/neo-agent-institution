@@ -1,5 +1,6 @@
 import {spawnSync}            from 'node:child_process';
 import fs                     from 'node:fs';
+import {createRequire}        from 'node:module';
 import path                   from 'node:path';
 import {fileURLToPath}        from 'node:url';
 import {resolveFreePortSync}  from '../node_modules/neo.mjs/test/playwright/resolveFreePort.mjs';
@@ -102,6 +103,32 @@ export function planGoldenRuns(repoRoot = cwd, extraArgs = []) {
         }))
 }
 
+/**
+ * @summary Resolves the Playwright CLI of the `@playwright/test` package that the specs import.
+ *
+ * `node_modules/.bin/playwright` is ambiguous: `@playwright/test` and a transitive `playwright` both publish
+ * that binary, and whichever links last wins. A CLI of another version than the one a spec imports refuses
+ * every `test.describe()` before collection, so the runner binds the test package's own entry point.
+ * @param {String} [repoRoot=cwd] Repository root whose `@playwright/test` loads the specs.
+ * @returns {String} Absolute path of that package's CLI.
+ */
+export function resolvePlaywrightCli(repoRoot = cwd) {
+    return createRequire(path.join(repoRoot, 'package.json')).resolve('@playwright/test/cli')
+}
+
+/**
+ * @summary Launches one planned run with the specs' own Playwright CLI.
+ * @param {Object}       run                         One entry of {@link planGoldenRuns}.
+ * @param {Object}       [options]
+ * @param {String}       [options.repoRoot=cwd]      Repository root the run executes in.
+ * @param {Object}       [options.env=process.env]   Environment of the Playwright process.
+ * @param {String|Array} [options.stdio='inherit']   `stdio` of the Playwright process.
+ * @returns {Object} The `spawnSync` result.
+ */
+export function launchGoldenRun(run, {repoRoot = cwd, env = process.env, stdio = 'inherit'} = {}) {
+    return spawnSync(process.execPath, [resolvePlaywrightCli(repoRoot), ...run.args], {cwd: repoRoot, env, stdio})
+}
+
 const isEntryScript = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 
 if (isEntryScript) {
@@ -114,7 +141,6 @@ if (isEntryScript) {
 
     const
         runs          = planGoldenRuns(cwd, process.argv.slice(2)),
-        playwrightBin = path.join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'playwright.cmd' : 'playwright'),
         failedBuckets = [];
 
     for (const run of runs) {
@@ -128,11 +154,7 @@ if (isEntryScript) {
 
         console.log(`\ntest-goldens [${run.label}]: ${run.specs.length} spec(s) via ${run.config}`);
 
-        const result = spawnSync(playwrightBin, run.args, {
-            cwd,
-            env  : runEnv,
-            stdio: 'inherit'
-        });
+        const result = launchGoldenRun(run, {env: runEnv});
 
         if (result.status !== 0) {
             failedBuckets.push(run.label)
