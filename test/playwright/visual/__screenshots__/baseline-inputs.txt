@@ -558,7 +558,7 @@ apps/agentos/view/fleet/memories/Container.mjs
     ff050d9f8cb5da162db1d8e098db7da4eaadf1d9
 
 apps/agentos/view/fleet/memories/ReaderComponent.mjs
-    735b6c659953afb28bd5880f1a76222467e79c8f
+    589e680d1b7efaffc17e25c9339945318c2cdba4
 
 apps/agentos/view/fleet/memories/ReadingController.mjs
     2c7b7d5b00e24fac96fa9c74f32e6f9b6e3a2ed0

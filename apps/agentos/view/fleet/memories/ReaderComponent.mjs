@@ -215,24 +215,6 @@ class ReaderComponent extends Component {
     }
 
     /**
-     * @summary Read a turn prose field from a modeled {@link AgentOS.model.SessionTurn} or a raw
-     * wire bag: `decisionContext` falls back to legacy `thought` only when `decisionContext` is
-     * `undefined`, so a non-string `decisionContext` still names its own absence.
-     * @param {Object|null} record
-     * @param {String}      field
-     * @returns {String|null}
-     */
-    turnFieldValue(record, field) {
-        if (!record) return null;
-
-        const value = field === 'decisionContext' && record.decisionContext === undefined
-            ? record.thought
-            : record[field];
-
-        return typeof value === 'string' ? value : null
-    }
-
-    /**
      * @summary One turn record: the meta line, then prompt, decision context and response as three blocks,
      * each with its copy action.
      * @param {Object} record
@@ -259,7 +241,7 @@ class ReaderComponent extends Component {
             }, ...TURN_FIELDS.map(([field, label]) => {
                 const
                     noun   = label.toLowerCase(),
-                    value  = me.turnFieldValue(record, field),
+                    value  = record[field],
                     whole  = typeof value === 'string' && value.trim().length > 0,
                     copied = me.copiedKey === `${record.id}:${field}`;
 
@@ -329,9 +311,7 @@ class ReaderComponent extends Component {
             me         = this,
             button     = me.buttonData(data, 'fm-memories-read-copy'),
             record     = me.recordById(button?.recordId),
-            value      = TURN_FIELDS.some(([f]) => f === button?.field)
-                ? me.turnFieldValue(record, button.field)
-                : record?.[button?.field],
+            value      = record?.[button?.field],
             {windowId} = me,
             source     = me.vdom.cn.at(-1);
 
