@@ -45,6 +45,7 @@ function makeCanvas(pick = async () => 0) {
         selections = [];
 
     Object.entries({
+        canvasId     : 'canvas-1',
         canvasRect   : {left: 0, top: 0},
         fire         : (name, {node}) => name === 'nodeSelect' && selections.push(node?.id ?? null),
         hoveredId    : null,
