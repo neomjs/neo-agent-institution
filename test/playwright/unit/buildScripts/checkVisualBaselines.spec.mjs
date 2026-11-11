@@ -3,7 +3,21 @@ import {execSync}     from 'node:child_process';
 import fs             from 'node:fs';
 import os             from 'node:os';
 import path           from 'node:path';
-import {diffStamp, engineDrift, inputScopes, listingEntries, nextStampEngine, parseStamp, scopeListing, serializeStamp} from '../../../../buildScripts/checkVisualBaselines.mjs';
+import {
+    buildInputScopes,
+    diffStamp,
+    discoverCaptureSpecs,
+    engineDrift,
+    formatDriftRecoveryMessage,
+    formatMissingStampMessage,
+    inputScopes,
+    listingEntries,
+    nextStampEngine,
+    parseStamp,
+    scopeListing,
+    serializeStamp,
+    stampHeader
+} from '../../../../buildScripts/checkVisualBaselines.mjs';
 
 /**
  * The drift gate's negative coverage — born from a review falsifier: the input-only scope
@@ -43,8 +57,8 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         const entries = listingEntries(goldenA);
 
         expect(diffStamp({engine: 'd75cc68', entries}, {engine: '7aae7c3', entries})).toEqual([]);
-        expect(engineDrift({engine: 'd75cc68'}, {engine: '7aae7c3'})).toContain('captured at engine d75cc68, running 7aae7c3');
-        expect(engineDrift({engine: null}, {engine: '7aae7c3'}), 'a stamp from before the revision').toContain('captured at engine unknown');
+        expect(engineDrift({engine: 'd75cc68'}, {engine: '7aae7c3'})).toContain('last verified at engine d75cc68, running 7aae7c3');
+        expect(engineDrift({engine: null}, {engine: '7aae7c3'}), 'a stamp from before the revision').toContain('last verified at engine unknown');
         expect(engineDrift({engine: '7aae7c3'}, {engine: '7aae7c3'})).toBeNull()
     });
 
@@ -200,6 +214,70 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
 
         expect(diffStamp({engine: 'e1', entries: listingEntries(filtered)}, {engine: 'e1', entries: listingEntries(withStyleChange)}))
             .toEqual(['apps/agentos/view/fleet/cockpit/Container.mjs (changed)'])
+    });
+
+    test('source-derived golden scopes (#911): every screenshot-asserting spec and its golden folder join without a hand list', () => {
+        const
+            discovered   = discoverCaptureSpecs(process.cwd()),
+            expectedLive = [
+                ['test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs',        'test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots'],
+                ['test/playwright/e2e/agentos/FleetCockpitBarCompositionNL.spec.mjs',      'test/playwright/e2e/agentos/FleetCockpitBarCompositionNL.spec.mjs-snapshots'],
+                ['test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs',      'test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs-snapshots'],
+                ['test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs',                 'test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots'],
+                ['test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs',                   'test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots'],
+                ['test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs',                 'test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots'],
+                ['test/playwright/visual/FleetCockpitVisual.spec.mjs',                     'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs'],
+                ['test/playwright/visual/SystemViewVisual.spec.mjs',                       'test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs']
+            ];
+
+        expect(discovered.map(({spec, goldenDir}) => [spec, goldenDir])).toEqual(expectedLive);
+
+        for (const [spec, goldenDir] of expectedLive) {
+            expect(inputScopes).toContainEqual({key: spec});
+            expect(inputScopes).toContainEqual({key: goldenDir, golden: true})
+        }
+
+        // Hermetic witness: a new capture spec joins buildInputScopes automatically with no list edit
+        const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'capture-scope-discovery-'));
+
+        try {
+            const write = (relPath, content) => {
+                const abs = path.join(repo, relPath);
+                fs.mkdirSync(path.dirname(abs), {recursive: true});
+                fs.writeFileSync(abs, content)
+            };
+
+            write('test/playwright/visual/NewSurfaceVisual.spec.mjs', `await expect(pane).toHaveScreenshot('surface.png');\n`);
+            write('test/playwright/e2e/agentos/NewJourneyNL.spec.mjs', `test('nl', async ({page, neuralLink}) => { await expect(page).toHaveScreenshot('journey.png'); });\n`);
+            write('test/playwright/e2e/agentos/PlainInteraction.spec.mjs', `test('plain', async ({page}) => { await expect(page.locator('.x')).toBeVisible(); });\n`);
+            write('test/playwright/unit/buildScripts/Meta.spec.mjs', `// unit specs never render screenshots even if mentioning toHaveScreenshot\n`);
+
+            expect(buildInputScopes(repo)).toEqual([
+                {key: 'apps/agentos', exclude: ['apps/agentos/design']},
+                {key: 'resources/scss'},
+                {key: 'test/playwright/e2e/agentos/NewJourneyNL.spec.mjs'},
+                {key: 'test/playwright/e2e/agentos/NewJourneyNL.spec.mjs-snapshots', golden: true},
+                {key: 'test/playwright/visual/NewSurfaceVisual.spec.mjs'},
+                {key: 'test/playwright/visual/__screenshots__/NewSurfaceVisual.spec.mjs', golden: true}
+            ])
+        } finally {
+            fs.rmSync(repo, {force: true, recursive: true})
+        }
+    });
+
+    test('stamp header and drift recovery guidance name npm run test-goldens (#911)', () => {
+        expect(stampHeader.join('\n')).toContain('npm run test-goldens');
+        expect(formatMissingStampMessage()).toContain('npm run test-goldens');
+        expect(formatDriftRecoveryMessage(['resources/scss/theme-neo-dark/apps/agentos/Viewport.scss (changed)']))
+            .toContain('npm run test-goldens')
+    });
+
+    test('every capture instruction asks for the mode that rewrites all goldens: the default leaves a change inside the tolerance behind', () => {
+        const mode = '--update-snapshots=all';
+
+        expect(stampHeader.join('\n')).toContain(mode);
+        expect(formatMissingStampMessage()).toContain(mode);
+        expect(formatDriftRecoveryMessage(['apps/agentos/view/Viewport.mjs (changed)'])).toContain(mode)
     });
 
 });
