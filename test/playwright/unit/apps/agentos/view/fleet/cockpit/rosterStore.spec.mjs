@@ -36,7 +36,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         lane      : {source: 'memory-core:mailbox', state: 'not-wired', confidence: 'none', reason: null}
     });
 
-    // the presence envelope an answer without one admits: leaf-complete, every leaf null (#917)
+    // the presence envelope an answer without one admits: leaf-complete, every leaf null
     const blankPresence = {capturedAt: null, confidence: null, reason: null, source: null, state: null};
 
     // scope the mock to the `fleet` subkey ONLY: `globalThis.AgentOS` is the app's Neo NAMESPACE

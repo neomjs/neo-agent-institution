@@ -45,7 +45,7 @@ export const makeActivityStoreHarness = () => {
  * REAL config defaults — the load guards read `streamAdapterState`/`gridAdapterState`, so a fake
  * missing the 'cold' default would let a pre-wired throw claim last-known data that never existed.
  * It assigns objects whole, where the real provider drills them into leaf paths: an arm about how a
- * fact LANDS runs on the real provider (#917).
+ * fact LANDS runs on the real provider.
  */
 export const makeProviderFake = (data = {}) => ({
     data: {

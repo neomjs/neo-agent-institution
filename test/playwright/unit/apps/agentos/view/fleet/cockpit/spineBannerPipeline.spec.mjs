@@ -987,7 +987,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
     });
 
     /**
-     * #917 — the seam on the REAL provider. `setData` drills an object into leaf paths and stops the bubble
+     * The seam on the REAL provider. `setData` drills an object into leaf paths and stops the bubble
      * at a parent whose value is not an object; the provider fake assigns whole objects, so the suite above
      * stayed green while the cockpit dropped every transport fact.
      */
@@ -1032,7 +1032,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                     text: 'Agent OS starting · 3 s'
                 });
 
-                // from 180 s, #847's silence line, and still never the roster read's own timeout
+                // from 180 s, the silence line, and still never the roster read's own timeout
                 host.applyBrainHealth({state: 'degraded', transport: {elapsedMs: 181_000, phase: 'starting', reason: 'plane-starting', since: 1_000}});
 
                 expect(provider.getData('spineBanner')).toMatchObject({
