@@ -110,7 +110,7 @@ export function projectPublicCredentialIntent(method, params) {
  * @param {Object} options
  * @param {Function} options.isTrustedSender Validates a real Electron IPC event.
  * @param {String} options.reason Names the boot shape that has no transport.
- * @returns {{request: Function}}
+ * @returns {{probe: Function, read: Function, request: Function}} `read`, main's own call, rejects with the reason.
  */
 export function createAbsentFleetCapability({isTrustedSender, reason}) {
     if (typeof isTrustedSender !== 'function' || typeof reason !== 'string' || !reason) {
@@ -123,6 +123,7 @@ export function createAbsentFleetCapability({isTrustedSender, reason}) {
 
     return {
         probe  : refuse,
+        read   : async () => { throw new Error(reason) },
         request: refuse
     }
 }
@@ -148,7 +149,7 @@ export function createAbsentFleetCapability({isTrustedSender, reason}) {
  * @param {Function} [options.fetchImpl=globalThis.fetch] Injectable transport for unit tests.
  * @param {Function|null} [options.onAdmitted=null] Non-secret post-success receipt hook. Receives
  * only `{method}` and cannot alter the response.
- * @returns {{request: Function}}
+ * @returns {{probe: Function, read: Function, request: Function}}
  */
 export function createFleetCapability({
     bearerToken,
@@ -309,6 +310,22 @@ export function createFleetCapability({
             }
 
             return {ok: true, result: envelope.result}
+        },
+
+        /**
+         * @summary Main's own Fleet call, for a reader that lives in main (the operator notifier). No IPC
+         * sender exists to trust here; the method must be on the wire allowlist and never a credential verb,
+         * and the reply passes the same secret census as a renderer's.
+         * @param {String} method
+         * @param {*} [params]
+         * @returns {Promise<Object>} The wire envelope.
+         */
+        async read(method, params) {
+            if (!wireMethodSet.has(method) || credentialMethodSet.has(method)) {
+                return reject(`fleet: '${method}' is not a main read`)
+            }
+
+            return send(method, params)
         },
 
         async request(event, request) {

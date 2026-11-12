@@ -16,7 +16,7 @@
 //
 //   §2.1.5   one retained cockpit + tray; explicit quit owns exact-once Brain teardown
 
-import {app, BrowserWindow, ipcMain, Menu, nativeImage, protocol, safeStorage, session, shell, Tray} from 'electron';
+import {app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, protocol, safeStorage, session, shell, Tray} from 'electron';
 import crypto                                                                                        from 'node:crypto';
 import {createReadStream, readFileSync, rmSync}                                                      from 'node:fs';
 import {fileURLToPath, pathToFileURL}                                                                from 'node:url';
@@ -31,6 +31,7 @@ import {loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, loadRunt
 import {retireRuntimeGenerations, startRuntimeMaintenance}                                               from './runtimeMaintenance.mjs';
 import {createCredentialPrompt}                                                                          from './credentialPrompt.mjs';
 import {createAbsentFleetCapability, createFleetCapability}                                              from './fleetCapability.mjs';
+import {createOperatorNotifier, OPERATOR_NOTICE_ROUTE}                                                   from './operatorNotifications.mjs';
 import {
     APP_HOST,
     CONTENT_SECURITY_POLICY,
@@ -1035,6 +1036,34 @@ function recordSmokeRunState(isolationRoot) {
             pgid: child.pid
         }))
     })
+}
+
+/**
+ * @summary Starts the operator notifier. A merge or a question that waits for the operator raises one OS
+ * notification; its click shows the retained cockpit on the Fleet view, home of the merge queue and the Mailbox.
+ * Its reads resolve the Brain at call time, so a boot still in flight (or retried later) only delays the first
+ * read that answers, which baselines.
+ * @param {BrowserWindow} cockpit The retained cockpit window.
+ */
+function startOperatorNotifier(cockpit) {
+    const notifier = createOperatorNotifier({
+        isFocused: () => BrowserWindow.getFocusedWindow() !== null,
+        log      : line => console.log('HARNESS_OPERATOR_NOTICES ' + line),
+        read     : (method, params) => fleetCapability.read(method, params),
+        show     : ({title, body}) => {
+            const notice = new Notification({title, body});
+
+            notice.on('click', () => {
+                appLifecycle.openCockpit() && cockpit.webContents.executeJavaScript(
+                    `location.hash = ${JSON.stringify(OPERATOR_NOTICE_ROUTE)}`
+                ).catch(() => {})
+            });
+            notice.show()
+        }
+    });
+
+    notifier.start();
+    app.on('will-quit', () => notifier.stop())
 }
 
 const appLifecycle = createAppLifecycle({
@@ -2046,6 +2075,11 @@ app.whenReady().then(async () => {
             console.log('HARNESS_TRAY_INIT_FAILED ' + error.message);
             appLifecycle.setBrainState('degraded')
         }
+    }
+
+    // The operator's waiting merges and questions reach them through the OS while the cockpit is hidden.
+    if (!smokeMode && !diagnosticMode && fleetRuntimeContracts && Notification.isSupported()) {
+        startOperatorNotifier(win1)
     }
 
     if (lifecycleWitnessMode) {

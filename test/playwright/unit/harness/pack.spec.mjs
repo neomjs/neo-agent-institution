@@ -309,6 +309,7 @@ test.describe('harness pack stage', () => {
             'fleetCapability.mjs',
             'main.mjs',
             'mainLog.mjs',
+            'operatorNotifications.mjs',
             'packageSlots.mjs',
             'planeConfig.mjs',
             'planeCredentialPipe.mjs',
