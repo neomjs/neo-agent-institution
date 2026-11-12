@@ -27,6 +27,18 @@ export const OPERATOR_NOTICE_ROUTE = '/fleet';
 export const OPERATOR_NOTICE_INTERVAL_MS = 60_000;
 
 /**
+ * @summary How many seen keys each kind keeps: the oldest unseen ones go first, so a long-running FM stays bounded.
+ * @type {Number}
+ */
+export const OPERATOR_NOTICE_SEEN_CAP = 500;
+
+/**
+ * @summary How many shown notifications stay referenced while they wait in the OS's notification list.
+ * @type {Number}
+ */
+export const OPERATOR_NOTICE_RETAINED = 20;
+
+/**
  * @summary A notifier's state before its first read: nothing seen, nothing waited.
  * @returns {{merges: ?Set<String>, questions: ?Set<String>, away: Boolean, waited: {merges: Number, questions: Number}}}
  */
@@ -46,16 +58,47 @@ function counted(count, noun) {
 }
 
 /**
+ * @summary The keys a kind has seen after one read: every earlier key kept, this read's moved to the newest end,
+ * and the oldest dropped past {@link OPERATOR_NOTICE_SEEN_CAP}.
+ * @param {?Set<String>} seen
+ * @param {String[]} keys
+ * @returns {Set<String>}
+ * @private
+ */
+function remember(seen, keys) {
+    const next = new Set(seen);
+
+    keys.forEach(key => {
+        next.delete(key);
+        next.add(key)
+    });
+
+    while (next.size > OPERATOR_NOTICE_SEEN_CAP) next.delete(next.values().next().value);
+
+    return next
+}
+
+/**
+ * @summary A merge row's key: a new head is new work, the same head again is not.
+ * @param {Object} row
+ * @returns {String}
+ * @private
+ */
+function mergeKey(row) {
+    return `${row.repo}#${row.number}@${row.head ?? ''}`
+}
+
+/**
  * @summary One read of the operator's waiting work, judged against what the notifier has seen.
  *
- * Each kind keeps the keys of its current rows, so a pull request that leaves the queue and comes back (a new
- * head that turned green again) raises again. A kind whose read failed (`null`) keeps its last keys and raises
- * nothing: a failed read is no evidence that work arrived or left. A question raises only at priority `high`; every
- * question's key is kept, so a later read of the same question stays quiet.
+ * Each kind keeps every key it has seen: a merge row by repository, number and head, a question by its message.
+ * So a row that drops out of one read and returns at the same head stays quiet, while a pull request that turned
+ * merge-ready again at a new head raises again. A kind whose read failed (`null`) keeps its keys and raises
+ * nothing: a failed read is no evidence that work arrived or left. A question raises only at priority `high`.
  * @param {Object} state The previous state ({@link blankNoticeState} first).
  * @param {Object} read
  * @param {?String} read.mode The operator's presence mode: `away` holds notices; `present` or unknown (`null`) raises them.
- * @param {?Object[]} read.merges `awaitingMerge` rows `{repo, number, title}`, or `null` when the read failed.
+ * @param {?Object[]} read.merges `awaitingMerge` rows `{repo, number, head, title}`, or `null` when the read failed.
  * @param {?Object[]} read.questions `fleetOwnQuestions` rows `{messageId, subject, from, priority}`, or `null`.
  * @param {Boolean} [read.focused=false] Whether an FM window has focus.
  * @returns {{state: Object, notices: Object[]}} `notices`: `{kind: 'merge'|'question'|'summary', title, body}`.
@@ -67,22 +110,18 @@ export function planOperatorNotices(state, {mode, merges, questions, focused = f
         arrived = [];
 
     if (Array.isArray(merges)) {
-        const keys = new Set(merges.map(row => `${row.repo}#${row.number}`));
-
         state.merges && merges.forEach(row => {
-            state.merges.has(`${row.repo}#${row.number}`) || arrived.push({
+            state.merges.has(mergeKey(row)) || arrived.push({
                 kind : 'merge',
                 title: 'Ready to merge',
                 body : `${row.repo} #${row.number}${row.title ? ` · ${row.title}` : ''}`
             })
         });
 
-        next.merges = keys
+        next.merges = remember(state.merges, merges.map(mergeKey))
     }
 
     if (Array.isArray(questions)) {
-        const keys = new Set(questions.map(row => row.messageId).filter(Boolean));
-
         state.questions && questions.forEach(row => {
             row.messageId && !state.questions.has(row.messageId) && row.priority === 'high' && arrived.push({
                 kind : 'question',
@@ -91,7 +130,7 @@ export function planOperatorNotices(state, {mode, merges, questions, focused = f
             })
         });
 
-        next.questions = keys
+        next.questions = remember(state.questions, questions.map(row => row.messageId).filter(Boolean))
     }
 
     if (away) {
@@ -120,14 +159,27 @@ export function planOperatorNotices(state, {mode, merges, questions, focused = f
 }
 
 /**
- * @summary The rows of one Fleet answer, or `null` when it did not answer `ok`.
+ * @summary What one Fleet answer said: the wire's refusal, else its result's own state (an `ok` envelope may carry
+ * an `unavailable` result, e.g. open work before the producer's first poll).
  * @param {Object|null} envelope A Fleet wire envelope `{state, result}`.
+ * @returns {String}
+ * @private
+ */
+function answerOf(envelope) {
+    return envelope?.state === 'ok' ? envelope.result?.state ?? 'ok' : envelope?.state ?? 'none'
+}
+
+/**
+ * @summary The rows of one Fleet answer, or `null` when it is no evidence: a refused wire, or a result whose own
+ * state the cockpit would not show as rows either.
+ * @param {Object|null} envelope A Fleet wire envelope `{state, result}`.
+ * @param {String[]} states The result states that carry rows.
  * @param {Function} pick Reads the rows from the result.
  * @returns {?Object[]}
  * @private
  */
-function rowsOf(envelope, pick) {
-    if (envelope?.state !== 'ok') return null;
+function rowsOf(envelope, states, pick) {
+    if (envelope?.state !== 'ok' || !states.includes(envelope.result?.state)) return null;
 
     const rows = pick(envelope.result);
 
@@ -172,15 +224,15 @@ export function createOperatorNotifier({read, show, isFocused, intervalMs = OPER
 
             const plan = planOperatorNotices(state, {
                 focused  : isFocused(),
-                merges   : rowsOf(openWork, result => result?.awaitingMerge),
+                merges   : rowsOf(openWork, ['ok', 'stale'], result => result.awaitingMerge),
                 mode     : roster?.state === 'ok' ? roster.result?.operatorPresence?.mode ?? null : null,
-                questions: rowsOf(questions, result => result?.rows)
+                questions: rowsOf(questions, ['ok'], result => result.rows)
             });
 
             state = plan.state;
             plan.notices.forEach(notice => show(notice));
 
-            const answered = [roster, openWork, questions].map(envelope => envelope?.state ?? 'none').join(' ');
+            const answered = [roster, openWork, questions].map(answerOf).join(' ');
 
             answered !== health && log(`operator notices: roster, open work, questions answer ${answered}`);
             health = answered;
@@ -208,6 +260,53 @@ export function createOperatorNotifier({read, show, isFocused, intervalMs = OPER
         tick,
         get state() {
             return state
+        }
+    }
+}
+
+/**
+ * @summary Shows notices as OS notifications and keeps each referenced until it is clicked or closed: one that
+ * nothing references can be collected while it waits in the OS's list, its click handler with it.
+ *
+ * A click shows the cockpit and, when there is one to show, points it at {@link OPERATOR_NOTICE_ROUTE}. Past
+ * {@link OPERATOR_NOTICE_RETAINED} the oldest is let go, for an OS that never reports a close.
+ * @param {Object} options
+ * @param {Function} options.Notification Electron's notification class.
+ * @param {Function} options.openCockpit `() => Boolean`: shows the cockpit window; falsy when there is none.
+ * @param {Function} options.navigate `(route) => void`: points the shown cockpit at a route.
+ * @returns {{show: Function, clear: Function, readonly retained: Number}}
+ */
+export function createNoticePresenter({Notification, openCockpit, navigate}) {
+    const live = new Set();
+
+    return {
+        /**
+         * @summary Raises one notice.
+         * @param {{title: String, body: String}} notice
+         */
+        show({title, body}) {
+            const
+                notification = new Notification({title, body}),
+                release      = () => live.delete(notification);
+
+            notification.on('click', () => {
+                release();
+                openCockpit() && navigate(OPERATOR_NOTICE_ROUTE)
+            });
+            notification.on('close', release);
+
+            live.add(notification);
+
+            while (live.size > OPERATOR_NOTICE_RETAINED) live.delete(live.values().next().value);
+
+            notification.show()
+        },
+        /** @summary Lets every shown notification go, at quit. */
+        clear() {
+            live.clear()
+        },
+        get retained() {
+            return live.size
         }
     }
 }

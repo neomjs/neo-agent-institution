@@ -31,7 +31,7 @@ import {loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, loadRunt
 import {retireRuntimeGenerations, startRuntimeMaintenance}                                               from './runtimeMaintenance.mjs';
 import {createCredentialPrompt}                                                                          from './credentialPrompt.mjs';
 import {createAbsentFleetCapability, createFleetCapability}                                              from './fleetCapability.mjs';
-import {createOperatorNotifier, OPERATOR_NOTICE_ROUTE}                                                   from './operatorNotifications.mjs';
+import {createNoticePresenter, createOperatorNotifier}                                                   from './operatorNotifications.mjs';
 import {
     APP_HOST,
     CONTENT_SECURITY_POLICY,
@@ -1046,24 +1046,24 @@ function recordSmokeRunState(isolationRoot) {
  * @param {BrowserWindow} cockpit The retained cockpit window.
  */
 function startOperatorNotifier(cockpit) {
-    const notifier = createOperatorNotifier({
-        isFocused: () => BrowserWindow.getFocusedWindow() !== null,
-        log      : line => console.log('HARNESS_OPERATOR_NOTICES ' + line),
-        read     : (method, params) => fleetCapability.read(method, params),
-        show     : ({title, body}) => {
-            const notice = new Notification({title, body});
-
-            notice.on('click', () => {
-                appLifecycle.openCockpit() && cockpit.webContents.executeJavaScript(
-                    `location.hash = ${JSON.stringify(OPERATOR_NOTICE_ROUTE)}`
-                ).catch(() => {})
-            });
-            notice.show()
-        }
-    });
+    const
+        presenter = createNoticePresenter({
+            Notification,
+            navigate   : route => cockpit.webContents.executeJavaScript(`location.hash = ${JSON.stringify(route)}`).catch(() => {}),
+            openCockpit: () => appLifecycle.openCockpit()
+        }),
+        notifier  = createOperatorNotifier({
+            isFocused: () => BrowserWindow.getFocusedWindow() !== null,
+            log      : line => console.log('HARNESS_OPERATOR_NOTICES ' + line),
+            read     : (method, params) => fleetCapability.read(method, params),
+            show     : notice => presenter.show(notice)
+        });
 
     notifier.start();
-    app.on('will-quit', () => notifier.stop())
+    app.on('will-quit', () => {
+        notifier.stop();
+        presenter.clear()
+    })
 }
 
 const appLifecycle = createAppLifecycle({
