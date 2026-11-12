@@ -264,6 +264,8 @@ class Controller extends ComponentController {
             }
 
             store.data = agents;
+            // an empty first answer mutates nothing, so no Store event re-derives the empty line
+            agents.length === 0 && component.syncDetail();
             return true
         } catch {
             return false
