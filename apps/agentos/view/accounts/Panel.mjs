@@ -348,10 +348,22 @@ class Accounts extends DashboardPanel {
         }
     }
 
-    /** @summary Forward the bound profile change to both setup surfaces. @protected */
+    /**
+     * @summary Forward the bound profile change to both setup surfaces; another profile's registry rows retire.
+     * @param {String|null} value
+     * @protected
+     */
     afterSetBoundProfileId(value) {
-        this.getReference('agent-config-card')?.set({boundProfileId: value});
-        this.getReference('add-agent-form')?.set({boundProfileId: value})
+        const me = this;
+
+        me.getReference('agent-config-card')?.set({boundProfileId: value});
+        me.getReference('add-agent-form')?.set({boundProfileId: value});
+
+        if (me.isConstructed && me.controller.retireRegistry(value)) {
+            me.agentConfigSaveStatuses.clear();
+            me.agentReposSaveStatuses.clear();
+            me.syncSelection()
+        }
     }
 
     /** @summary Forward the instance roster change to both setup surfaces. @protected */

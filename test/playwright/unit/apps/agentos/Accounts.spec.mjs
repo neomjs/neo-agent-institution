@@ -1904,3 +1904,98 @@ test.describe('AgentOS.view.accounts.Panel — the registry reads recover when t
         expect(empty.text).toBe('No agents yet. Add the first one with the form.')
     }, []));
 });
+
+test.describe('AgentOS.view.accounts.Panel — a profile switch retires the registry rows (#930)', () => {
+    const
+        settle      = () => new Promise(resolve => setTimeout(resolve, 0)),
+        unreachable = () => Object.assign(new Error('fleet: request transport failed'), {fleetConnectionState: 'unreachable'});
+
+    /**
+     * @summary A registry bridge bound to one profile, as `installFleetBridge` publishes it.
+     * @param {String} profileId
+     * @param {Object} answers `{agents, tenants}` it lists, or `null` for an instance that does not answer.
+     * @returns {Object}
+     */
+    const bridgeOf = (profileId, answers) => ({
+        profileId,
+        listAgents : async () => { if (!answers) throw unreachable(); return answers.agents },
+        listTenants: async () => { if (!answers) throw unreachable(); return answers.tenants }
+    });
+
+    const instanceA = {
+        agents : [{id: 'ada', githubUsername: 'ada', harnessType: 'claude-desktop'}, {id: 'vega', githubUsername: 'vega', harnessType: 'claude-desktop'}],
+        tenants: [{id: 'plane-a', endpoint: 'http://127.0.0.1:3102', status: 'connected'}]
+    };
+
+    /**
+     * @summary Accounts bound to profile `fleet-a`, built over `bridge`; `switchTo()` does what
+     * `ViewportController#switchToProfile` does for this view: publish the new bridge, re-mirror its profile.
+     * @param {Object} bridge The bridge the panel is built over.
+     * @param {Function} run
+     * @returns {Promise<void>}
+     */
+    const withProfileA = async (bridge, run) => {
+        const
+            prior       = globalThis.AgentOS,
+            definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition}),
+            tenantStore = Neo.create(TestFleetTenants, {data: []});
+        let view;
+
+        const switchTo = async next => {
+            globalThis.AgentOS.fleet.registryBridge = next;
+            view.stateProvider.setData({boundProfileId: next.profileId});
+            await settle()
+        };
+
+        try {
+            globalThis.AgentOS = {...prior, fleet: {registryBridge: bridge}};
+            view = await createAccounts({agentDefinitionsStore: definitions, fleetTenantsStore: tenantStore, boundProfileId: 'fleet-a'});
+            await settle();
+            await run({view, definitions, tenantStore, switchTo})
+        } finally {
+            globalThis.AgentOS = prior;
+            view?.destroy(); definitions.destroy(); tenantStore.destroy()
+        }
+    };
+
+    test('a switch to an instance that does not answer retires the previous instance\'s agents, tenants and save statuses', async () => withProfileA(bridgeOf('fleet-a', instanceA), async ({view, definitions, tenantStore, switchTo}) => {
+        expect(definitions.items.map(record => record.id), 'profile A\'s answer landed').toEqual(['ada', 'vega']);
+        expect(tenantStore.get('plane-a')).not.toBeNull();
+        view.setAgentConfigSaveStatus('ada', 'pending', 'Saving…');
+
+        await switchTo(bridgeOf('fleet-b', null));
+
+        expect(definitions.count).toBe(0);
+        expect(definitions.isLoaded, 'profile B has not answered').toBe(false);
+        expect(tenantStore.count).toBe(0);
+        expect(view.agentConfigSaveStatuses.size).toBe(0);
+        expect(view.selectedAgentId).toBeNull();
+        expect(view.getReference('accounts-empty').text).toContain('The Fleet has not answered yet')
+    }));
+
+    test('an answer the previous instance\'s bridge returns after the switch never lands', async () => {
+        let resolveLate;
+        const late = {...bridgeOf('fleet-a', instanceA), listAgents: () => new Promise(resolve => {resolveLate = resolve})};
+
+        await withProfileA(late, async ({definitions, switchTo}) => {
+            expect(definitions.isLoaded, 'profile A\'s read is still in flight').toBe(false);
+
+            await switchTo(bridgeOf('fleet-b', null));
+            resolveLate(instanceA.agents);
+            await settle();
+
+            expect(definitions.count).toBe(0);
+            expect(definitions.isLoaded).toBe(false)
+        })
+    });
+
+    test('a switch to an instance that answers lists its agents once its roster goes live', async () => withProfileA(bridgeOf('fleet-a', instanceA), async ({view, definitions, switchTo}) => {
+        await switchTo(bridgeOf('fleet-b', {agents: [{id: 'grace', githubUsername: 'grace', harnessType: 'claude-desktop'}], tenants: []}));
+
+        view.stateProvider.setData({gridAdapterState: 'live'});
+        await settle();
+
+        expect(definitions.items.map(record => record.id)).toEqual(['grace']);
+        expect(view.selectedAgentId).toBe('grace')
+    }));
+});

@@ -5,9 +5,10 @@ import Store                from '../../../node_modules/neo.mjs/src/data/Store.m
  * @class AgentOS.store.AgentDefinitions
  * @extends Neo.data.Store
  *
- * @summary Redacted Fleet Manager agent definition list — the shared fleet roster. It starts empty:
- * only the Brain's registry readback fills it, so an empty store means no agent is defined yet, and
- * the Accounts view says so.
+ * @summary Redacted Fleet Manager agent definition list — the shared fleet roster. It starts empty and
+ * unloaded: only the Brain's registry readback fills it. Empty and loaded means no agent is defined yet;
+ * unloaded means the registry has not answered (before the first read lands, or after a profile switch
+ * retired another profile's rows), and the Accounts view says which.
  *
  * **Not a singleton**: the sharing scope is the `state.Provider` that hosts it — the Viewport-level
  * provider `stores` block, the shared ancestor of every consumer ("if used inside a state provider,
