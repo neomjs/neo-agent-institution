@@ -3,6 +3,8 @@
  * collaborators plus the tests' sample roster — one module the concern-named specs import by name, so
  * each carries only the seams it drives. The fakes' own JSDoc travels with them.
  */
+import BrainHealthRead from '../../../../../../../../apps/agentos/util/BrainHealthRead.mjs';
+
 export {sampleRoster as seedRows} from '../../../../../../fixture/fleetSample.mjs';
 
 // A usable three-source collection: the runtime axis is WIRED. The eligibility partition fails a
@@ -42,12 +44,14 @@ export const makeActivityStoreHarness = () => {
  * The provider fake mirrors `state.Provider`'s write surface (both `setData` forms) and seeds the
  * REAL config defaults — the load guards read `streamAdapterState`/`gridAdapterState`, so a fake
  * missing the 'cold' default would let a pre-wired throw claim last-known data that never existed.
+ * It assigns objects whole, where the real provider drills them into leaf paths: an arm about how a
+ * fact LANDS runs on the real provider (#917).
  */
 export const makeProviderFake = (data = {}) => ({
     data: {
         activityGuidance    : {head: null, headTitle: null, missing: null, reason: null, recheck: null, remaining: null, repair: null, summary: null},
         daemonDegradedReason: null, daemonState: null,
-        gridAdapterState: 'cold', gridDegradedReason: null, shellTransport: null,
+        gridAdapterState: 'cold', gridDegradedReason: null, shellTransport: BrainHealthRead.blankTransport(),
         streamAdapterState: 'cold', streamDegradedReason: null, ...data
     },
     getData(key) { return this.data[key] },

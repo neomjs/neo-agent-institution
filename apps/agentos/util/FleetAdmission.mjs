@@ -475,9 +475,9 @@ class FleetAdmission extends Base {
             gridAdapterState  : 'live',
             gridDegradedReason: null,
             operatorPresence  : FleetAdmission.operatorPresenceOf(operatorPresence),
-            // the presence-capability envelope rides every admitted snapshot; absent or
-            // malformed envelopes plumb null — the chip claims nothing
-            presenceCapability: capabilities?.presence ?? null
+            // the presence-capability envelope rides every admitted snapshot; an absent or
+            // malformed one plumbs every leaf null — the chip claims nothing
+            presenceCapability: FleetAdmission.presenceCapabilityOf(capabilities?.presence)
         }});
         grid && (grid.adapterState = 'live');
 
@@ -520,6 +520,25 @@ class FleetAdmission extends Base {
             mode   : known ? record.mode : null,
             since  : known && typeof record.since === 'string' ? record.since : null,
             until  : known && typeof record.until === 'string' ? record.until : null
+        }
+    }
+
+    /**
+     * @summary The roster's presence-capability envelope in its full key set, every leaf `null` when the
+     * answer carries none (or a malformed one): the grid's chip then claims nothing. Leaf-complete like
+     * {@link #operatorPresenceOf}, and written whole, so no key of the previous envelope survives.
+     * @param {Object|null} presence The assembler DTO's `capabilities.presence`
+     * @returns {{capturedAt: ?String, confidence: ?String, reason: ?String, source: ?String, state: ?String}}
+     */
+    static presenceCapabilityOf(presence) {
+        const envelope = Neo.isObject(presence) ? presence : {};
+
+        return {
+            capturedAt: envelope.capturedAt ?? null,
+            confidence: envelope.confidence ?? null,
+            reason    : envelope.reason     ?? null,
+            source    : envelope.source     ?? null,
+            state     : envelope.state      ?? null
         }
     }
 

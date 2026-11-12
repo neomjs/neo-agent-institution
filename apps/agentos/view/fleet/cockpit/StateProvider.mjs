@@ -1,4 +1,6 @@
+import BrainHealthRead     from '../../../util/BrainHealthRead.mjs';
 import FleetActivityEvents from '../../../store/FleetActivityEvents.mjs';
+import FleetAdmission      from '../../../util/FleetAdmission.mjs';
 import Provider            from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import SpineBanner         from '../../../util/SpineBanner.mjs';
 import TelltaleDeriver     from '../../../util/ViewerWakeTelltale.mjs';
@@ -16,7 +18,8 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
     outage   : data.planeOutageNote,
     plane    : {cause: data.planeCause},
     stream   : {state: data.streamAdapterState, reason: data.streamDegradedReason, connection: data.streamConnection, guidance: data.activityGuidance},
-    transport: data.shellTransport
+    // a blank fact (no phase) is no shell story
+    transport: data.shellTransport.phase ? data.shellTransport : null
 });
 
 /**
@@ -131,10 +134,11 @@ class StateProvider extends Provider {
             planeOutageNote: {reason: null, recoveredAt: null, startedAt: null},
             /**
              * The presence-capability envelope riding every admitted roster snapshot — the grid's
-             * chip names a degraded producer and clears on recovery; `null` claims nothing.
-             * @member {Object|null} presenceCapability=null
+             * chip names a degraded producer and clears on recovery; all-`null` leaves claim nothing.
+             * Leaf-complete, written whole by {@link AgentOS.util.FleetAdmission#presenceCapabilityOf}.
+             * @member {Object} presenceCapability
              */
-            presenceCapability: null,
+            presenceCapability: FleetAdmission.presenceCapabilityOf(null),
             /**
              * The cockpit's ONE selection truth: the durable registry key for record-keyed
              * consumers, the canonical `@github` mailbox identity for identity-keyed ones.
@@ -148,12 +152,13 @@ class StateProvider extends Provider {
              */
             selectedAgentIdentity: null,
             /**
-             * The shell's transport-boot fact for the banner's cold-case guidance, or `null`
+             * The shell's transport-boot fact for the banner's cold-case guidance; all-`null` leaves
              * where no shell fact exists (the plain browser, or an unreachable shell — which has
-             * no standing to keep asserting one).
-             * @member {Object|null} shellTransport=null
+             * no standing to keep asserting one). Leaf-complete, written whole by
+             * {@link AgentOS.util.BrainHealthRead#transportOf}, so no key of the previous fact survives.
+             * @member {Object} shellTransport
              */
-            shellTransport: null,
+            shellTransport: BrainHealthRead.blankTransport(),
             /**
              * The ACTIVITY surface's adapter state: cold, live, partial (usable events with a failed
              * sibling source), or stale retained data after a read failure.
