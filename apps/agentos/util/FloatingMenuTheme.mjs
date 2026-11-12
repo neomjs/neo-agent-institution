@@ -6,8 +6,8 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * A floating menu is logically parented to its button but DOM-parented to `document.body`, so
  * component.Base suppresses the "inherited" theme class while DOM inheritance comes from the body's own
  * skin. The menu therefore takes the button's resolved theme as its config plus a concrete class, at every
- * open, so a later viewport skin switch reaches it too. The instance switcher and the fleet head's
- * awaiting-merge button share this one seam.
+ * open, so a later viewport skin switch reaches it too. The instance switcher, the fleet head's
+ * awaiting-merge button and the product bar's Nightshift toggle share this one seam.
  * @class AgentOS.util.FloatingMenuTheme
  * @extends Neo.core.Base
  */

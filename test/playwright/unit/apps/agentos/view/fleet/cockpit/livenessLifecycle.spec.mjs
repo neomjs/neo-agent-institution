@@ -229,6 +229,51 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             expect(banner().hidden).toBe(true)
         });
 
+        test('the roster carries the operator\'s presence to the product bar: unknown until answered, kept through a failed read, retired with its endpoint (#929)', async () => {
+            const {host, provider} = makeRosterHost();
+            const
+                bearerToken = 'A'.repeat(43),
+                since       = '2026-11-12T06:02:00.000Z',
+                until       = '2026-11-12T14:02:00.000Z',
+                blank       = {expired: false, mode: null, since: null, until: null},
+                away        = {expired: false, mode: 'away', since, until},
+                answering   = result => async () => ({json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {
+                    result: {rows: [{id: 'seat', displayName: 'Seat'}], ...result}
+                })}),
+                refusing    = async () => { throw new Error('connection refused') },
+                wire        = (url, fetchImpl) => ViewportController.prototype.wireFleetBridge.call({}, {url, bearerToken, fetchImpl});
+
+            wire('http://127.0.0.1:8095/fleet', answering({operatorPresence: {mode: 'away', since, until, setBy: 'AGENT:@tobiu'}}));
+            await host.loadRoster();
+
+            expect(provider.data.operatorPresence).toEqual(away);
+
+            // the presence read did not answer, and a Fleet older than the record omits it: both unknown, never present
+            wire('http://127.0.0.1:8095/fleet', answering({operatorPresence: null}));
+            await host.loadRoster();
+            expect(provider.data.operatorPresence).toEqual(blank);
+
+            wire('http://127.0.0.1:8095/fleet', answering({}));
+            await host.loadRoster();
+            expect(provider.data.operatorPresence).toEqual(blank);
+
+            // a failed read keeps the last record, like the roster's own rows
+            wire('http://127.0.0.1:8095/fleet', answering({operatorPresence: {mode: 'away', since, until}}));
+            await host.loadRoster();
+            wire('http://127.0.0.1:8095/fleet', refusing);
+            await host.loadRoster();
+
+            expect(provider.data.gridAdapterState).toBe('stale');
+            expect(provider.data.operatorPresence).toEqual(away);
+
+            // another endpoint's operator is not this one's: the switch retires the record before B is read
+            wire('http://127.0.0.1:8096/fleet', refusing);
+            await host.loadRoster();
+
+            expect(provider.data.gridAdapterState).toBe('cold');
+            expect(provider.data.operatorPresence).toEqual(blank)
+        });
+
         test('a roster read that fails upstream asks the shell about the launched PAT once, and a read that answers ends the episode with one more ask, leaving the cause to the shell', async () => {
             const
                 {host, provider} = makeRosterHost({state: 'live'}),

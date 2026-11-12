@@ -388,7 +388,7 @@ class LivenessController extends ViewerWakeController {
             me.gridReadInFlight++;
             read = Promise.resolve().then(() => bridge.fleetRoster());
 
-            const {capabilities, rows, startGate} = await me.boundedRead(
+            const {capabilities, operatorPresence, rows, startGate} = await me.boundedRead(
                 read,
                 () => { me.gridReadInFlight-- }
             ) ?? {};
@@ -407,7 +407,7 @@ class LivenessController extends ViewerWakeController {
 
             // an EMPTY answer is authoritative: nothing is seeded that it could erase, the registry
             // has no agents, and the roster's own empty state says so
-            me.admitRoster({capabilities, profileId, rows: mapped, startGate})
+            me.admitRoster({capabilities, operatorPresence, profileId, rows: mapped, startGate})
         } catch (error) {
             if (generation === me.gridReadGeneration && !me.isDestroyed) {
                 me.degradeWiredSurface('grid', error, grid);
@@ -456,7 +456,7 @@ class LivenessController extends ViewerWakeController {
      * test's landing share; the rule lives in `AgentOS.util.FleetAdmission` (this file holds its size
      * bar). {@link #loadRoster} calls it after its generation fence and validation; the tests' landing
      * calls it directly.
-     * @param {Object} answer `{rows, capabilities, profileId, startGate}`
+     * @param {Object} answer `{rows, capabilities, operatorPresence, profileId, startGate}`
      * @protected
      */
     admitRoster(answer) {

@@ -59,6 +59,7 @@ class TargetBinding extends Base {
             fleetStartGate    : {state: null, reason: null},
             gridAdapterState  : 'cold',
             gridDegradedReason: null,
+            operatorPresence  : FleetAdmission.operatorPresenceOf(null),
             planeOutageNote   : FleetAdmission.blankOutageNote(),
             presenceCapability: null
         }});

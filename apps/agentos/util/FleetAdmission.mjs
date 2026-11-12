@@ -418,8 +418,9 @@ class FleetAdmission extends Base {
      * @param {Object|null} [answer.capabilities=null] The assembler's capabilities envelope
      * @param {String|null} [answer.profileId=null] The profile the answer belongs to
      * @param {Object|null} [answer.startGate=null] The Fleet's start gate `{state, reason}` ({@link #startGateOf})
+     * @param {Object|null} [answer.operatorPresence=null] The plane's operator presence record ({@link #operatorPresenceOf})
      */
-    static admitRoster(owner, {capabilities = null, profileId = null, rows, startGate = null}) {
+    static admitRoster(owner, {capabilities = null, operatorPresence = null, profileId = null, rows, startGate = null}) {
         const
             gate          = FleetAdmission.startGateOf(owner, startGate),
             wasWired      =Boolean(owner.rosterWired) && (owner.rosterProfileId === profileId || owner.rosterProfileId === null),
@@ -473,6 +474,7 @@ class FleetAdmission extends Base {
             fleetStartGate    : gate,
             gridAdapterState  : 'live',
             gridDegradedReason: null,
+            operatorPresence  : FleetAdmission.operatorPresenceOf(operatorPresence),
             // the presence-capability envelope rides every admitted snapshot; absent or
             // malformed envelopes plumb null — the chip claims nothing
             presenceCapability: capabilities?.presence ?? null
@@ -500,6 +502,25 @@ class FleetAdmission extends Base {
         // owner's own truth
         provider?.getData('goldenPathEnvelope.capability.state') === 'unavailable' && owner.loadGoldenPath();
         provider?.getData('graphSceneEnvelope.capability.state') === 'unavailable' && owner.loadGraphScene()
+    }
+
+    /**
+     * @summary The plane's operator presence as the product bar renders it, from the roster DTO or the
+     * `setOperatorPresence` answer. A `null` record (the presence read did not answer, or the Fleet predates
+     * it) and a mode outside `present | away` read `mode: null`: unknown, never present. Leaf-complete
+     * either way, like every provider truth.
+     * @param {Object|null} record `{mode, since, until, setBy, expired?}`
+     * @returns {{expired: Boolean, mode: ?String, since: ?String, until: ?String}}
+     */
+    static operatorPresenceOf(record) {
+        const known = ['present', 'away'].includes(record?.mode);
+
+        return {
+            expired: known && record.expired === true,
+            mode   : known ? record.mode : null,
+            since  : known && typeof record.since === 'string' ? record.since : null,
+            until  : known && typeof record.until === 'string' ? record.until : null
+        }
     }
 
     /**

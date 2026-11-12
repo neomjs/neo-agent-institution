@@ -11,6 +11,7 @@ import Neo                    from '../../../../../node_modules/neo.mjs/src/Neo.
 import * as core              from '../../../../../node_modules/neo.mjs/src/core/_export.mjs';
 import AgentDefinitions       from '../../../../../apps/agentos/store/AgentDefinitions.mjs';
 import CockpitStateProvider   from '../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs';
+import FleetAdmission         from '../../../../../apps/agentos/util/FleetAdmission.mjs';
 import FleetCockpit           from '../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import FleetRoster            from '../../../../../apps/agentos/store/FleetRoster.mjs';
 import FleetTenants           from '../../../../../apps/agentos/store/FleetTenants.mjs';
@@ -692,6 +693,101 @@ test.describe('AgentOS.view.Viewport — accepted-definition composition boundar
             expect(globalThis.AgentOS.fleet.registryBridge.profileId).toBe('fleet-profile:v1:explicit')
         } finally {
             globalThis.AgentOS = original
+        }
+    })
+});
+
+test.describe('AgentOS.view.ViewportController — the Nightshift toggle writes the plane\'s record (#929)', () => {
+    const
+        since  = '2026-11-12T06:02:00.000Z',
+        until  = '2026-11-12T14:02:00.000Z',
+        record = {mode: 'away', since, until, setBy: 'AGENT:@tobiu'};
+
+    /**
+     * @summary A controller over recording stand-ins: the provider's writes, the cockpit's re-read and the
+     * toggle's refusal, with the bridge installed on the global slot the controller reads.
+     * @param {Object|null} registryBridge
+     * @returns {{calls: String[], controller: AgentOS.view.ViewportController, toggle: Object, writes: Object[]}}
+     */
+    function makeController(registryBridge) {
+        const
+            calls  = [],
+            writes = [],
+            toggle = {writeError: null},
+            refs   = {'fleet-cockpit': {loadRoster: () => calls.push('loadRoster')}, 'nightshift-button': toggle};
+
+        globalThis.AgentOS = {fleet: {registryBridge}};
+
+        return {
+            calls,
+            toggle,
+            writes,
+            controller: Object.assign(Object.create(ViewportController.prototype), {
+                component   : {stateProvider: {setData: data => writes.push(data)}},
+                getReference: reference => refs[reference] ?? null
+            })
+        }
+    }
+
+    let original;
+
+    test.beforeEach(() => {
+        original = globalThis.AgentOS
+    });
+
+    test.afterEach(() => {
+        globalThis.AgentOS = original
+    });
+
+    test('the product bar seats the toggle left of the theme switch, bound to the provider record, its intent routed here', () => {
+        const
+            bar    = Viewport.config.items.find(item => item.ntype === 'toolbar'),
+            index  = bar.items.findIndex(item => item.reference === 'nightshift-button'),
+            toggle = bar.items[index];
+
+        expect(bar.items[index + 1].reference, 'the theme switch closes the bar').toBe('theme-switch-button');
+        expect(toggle.bind.operatorPresence({operatorPresence: 'the leaf'})).toBe('the leaf');
+        expect(toggle.listeners).toEqual({nightshiftchange: 'onNightshiftChange'});
+        expect(typeof ViewportController.prototype.onNightshiftChange).toBe('function');
+
+        // the declared leaf is the blank the roster admission and a target retirement write
+        expect(Viewport.config.stateProvider.data.operatorPresence).toEqual(FleetAdmission.operatorPresenceOf(null))
+    });
+
+    test('a write lands: one verb call, the answered record shown at once, then the roster re-read', async () => {
+        const requests = [];
+        const {calls, controller, toggle, writes} = makeController({
+            setOperatorPresence: async params => { requests.push(params); return {operatorPresence: record, changed: true, notice: {messageId: 'm'}} }
+        });
+
+        expect(await controller.onNightshiftChange({mode: 'away', until})).toBe(true);
+
+        expect(requests).toEqual([{mode: 'away', until}]);
+        expect(writes).toEqual([{operatorPresence: {expired: false, mode: 'away', since, until}}]);
+        expect(calls, 'the re-read fences any answer read before the click').toEqual(['loadRoster']);
+        expect(toggle.writeError).toBeNull();
+
+        // switching off carries no `until`
+        await controller.onNightshiftChange({mode: 'present'});
+
+        expect(requests[1]).toEqual({mode: 'present'})
+    });
+
+    test('a write that does not land leaves the record as it was and names why on the toggle', async () => {
+        const cases = [
+            [null,                                                                                        'this Fleet does not offer it yet'],
+            [{setOperatorPresence: async () => { throw Object.assign(new Error('Authorization: Bearer secret'), {fleetWireState: 'refused'}) }}, 'the Fleet refused it'],
+            [{setOperatorPresence: async () => ({status: 'not-wired', reason: 'fleet: operator presence writer not wired'})}, 'the Fleet has no plane writer for it'],
+            [{setOperatorPresence: async () => ({changed: true})},                                       'the Fleet answered without the record']
+        ];
+
+        for (const [bridge, refusal] of cases) {
+            const {calls, controller, toggle, writes} = makeController(bridge);
+
+            expect(await controller.onNightshiftChange({mode: 'away'})).toBe(false);
+            expect(toggle.writeError).toBe(refusal);
+            expect(writes, refusal).toEqual([]);
+            expect(calls, refusal).toEqual([])
         }
     })
 });

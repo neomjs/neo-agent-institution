@@ -1,5 +1,7 @@
 import Controller                                      from '../../../node_modules/neo.mjs/src/controller/Component.mjs';
+import FleetAdmission                                  from '../util/FleetAdmission.mjs';
 import InstanceManager                                 from './fleet/instances/ManagerContainer.mjs';
+import {nightshiftRefusal}                             from './NightshiftButton.mjs';
 import SetupPanel                                      from './setup/Panel.mjs';
 import {createFleetProfile, deriveFleetProfileId}      from '../fleet/connectionProfiles.mjs';
 import {
@@ -579,6 +581,53 @@ class ViewportController extends Controller {
         } else {
             source.notice = {tone: 'refused', text: result?.reason ?? 'tenant connection rejected'}
         }
+    }
+
+    /**
+     * @summary The Nightshift toggle's intent → the fleet's `setOperatorPresence` verb, which writes the
+     * plane's record and tells the peers once. The toggle shows the record the verb answers at once; the
+     * roster read that follows is the read owner's generation fence, so an answer read before the click
+     * cannot land after it. A Fleet or plane that cannot take the change leaves the record as it was, and
+     * the toggle names why.
+     * @param {Object} data
+     * @param {'present'|'away'} data.mode
+     * @param {String} [data.until] ISO time an `away` ends by itself.
+     * @returns {Promise<Boolean>} Whether the plane took the change.
+     */
+    async onNightshiftChange({mode, until}) {
+        const
+            me     = this,
+            bridge = globalThis.AgentOS?.fleet?.registryBridge;
+
+        let refusal = null, result = null;
+
+        if (typeof bridge?.setOperatorPresence !== 'function') {
+            refusal = 'this Fleet does not offer it yet'
+        } else {
+            try {
+                result = await bridge.setOperatorPresence(until ? {mode, until} : {mode})
+            } catch (error) {
+                refusal = nightshiftRefusal(error)
+            }
+        }
+
+        if (me.isDestroyed) return false;
+
+        if (!refusal && !result?.operatorPresence) {
+            refusal = result?.status === 'not-wired' ? 'the Fleet has no plane writer for it' : 'the Fleet answered without the record'
+        }
+
+        if (refusal) {
+            const button = me.getReference('nightshift-button');
+
+            button && (button.writeError = refusal);
+            return false
+        }
+
+        me.component.stateProvider.setData({operatorPresence: FleetAdmission.operatorPresenceOf(result.operatorPresence)});
+        me.getReference('fleet-cockpit')?.loadRoster();
+
+        return true
     }
 
     /**
