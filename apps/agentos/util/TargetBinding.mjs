@@ -61,7 +61,7 @@ class TargetBinding extends Base {
             gridDegradedReason: null,
             operatorPresence  : FleetAdmission.operatorPresenceOf(null),
             planeOutageNote   : FleetAdmission.blankOutageNote(),
-            presenceCapability: null
+            presenceCapability: FleetAdmission.presenceCapabilityOf(null)
         }});
         grid && (grid.adapterState = 'cold');
 

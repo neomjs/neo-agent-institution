@@ -20,6 +20,8 @@ import * as core                                                        from '..
 // the one place that imports the instance manager — real Store/Record paths resolve Neo.get here
 import                                                                       '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import {makeActivityStoreHarness, makeControllerFake, makeProviderFake} from './cockpitFakes.mjs';
+import BrainHealthRead                                                  from '../../../../../../../../apps/agentos/util/BrainHealthRead.mjs';
+import FleetAdmission                                                   from '../../../../../../../../apps/agentos/util/FleetAdmission.mjs';
 import {installFleetBridge}                                             from '../../../../../../../../apps/agentos/fleet/installFleetBridge.mjs';
 import SpineAction                                                      from '../../../../../../../../apps/agentos/util/SpineAction.mjs';
 import SpineBanner                                                      from '../../../../../../../../apps/agentos/util/SpineBanner.mjs';
@@ -52,8 +54,8 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         activityCounts: [], boundProfileId: null, daemonDegradedReason: null, daemonState: null,
         gridAdapterState: 'cold', gridDegradedReason: null,
         planeOutageNote: {reason: null, recoveredAt: null, startedAt: null},
-        presenceCapability: null,
-        selectedAgentId: null, selectedAgentIdentity: null, shellTransport: null,
+        presenceCapability: FleetAdmission.presenceCapabilityOf(null),
+        selectedAgentId: null, selectedAgentIdentity: null, shellTransport: BrainHealthRead.blankTransport(),
         streamAdapterState: 'cold', streamDegradedReason: null, ...over
     });
 
@@ -438,7 +440,9 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         host.applyBrainHealth({state: null, transport: {phase: 'starting'}});
 
         expect(provider.data.daemonState).toBeNull();
-        expect(provider.data.shellTransport).toEqual({phase: 'starting'});
+        expect(provider.data.shellTransport).toEqual({
+            elapsedMs: null, error: null, fleetPort: null, mode: null, phase: 'starting', reason: null, since: null, up: null
+        });
         expect(verdictOf(provider.data).title).toContain('Fleet transport starting');
 
         // the boot settles foreign — the SAME wire moves the copy to the named case
@@ -450,7 +454,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         // an UNCHANGED fact keeps the provider truth deep-equal — the engine provider\'s equality
         // gate is what turns "no data change" into "no repaint"; the input-side invariant is ours
         host.applyBrainHealth({state: null, transport: {...fact}});
-        expect(provider.data.shellTransport).toEqual(fact)
+        expect(provider.data.shellTransport).toEqual({elapsedMs: null, error: null, since: null, ...fact})
     });
 
     /**
@@ -980,6 +984,80 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
         } finally {
             Date.now = originalNow
         }
+    });
+
+    /**
+     * The seam on the REAL provider. `setData` drills an object into leaf paths and stops the bubble
+     * at a parent whose value is not an object; the provider fake assigns whole objects, so the suite above
+     * stayed green while the cockpit dropped every transport fact.
+     */
+    test.describe('the REAL cockpit provider keeps the shell transport fact whole (#917)', () => {
+        let createShellProvider;
+
+        test.beforeAll(async () => {
+            ({createShellProvider} = await import('./shellProvider.mjs'))
+        });
+
+        // the 2026-11-11 walk: the plane is down at launch, and the roster read already timed out
+        const withRealDaemonHost = fn => {
+            const
+                shell    = createShellProvider(),
+                provider = Neo.create(CockpitStateProvider, {parent: shell}),
+                host     = makeControllerFake(FleetCockpitController, {
+                    component      : {getStateProvider: () => provider},
+                    livenessTimerId: 1,
+                    loadBrainHealth: () => {},
+                    reconnectFleet : () => {}
+                });
+
+            provider.setData({gridConnection: {state: 'timeout', reason: 'Roster read timed out'}});
+
+            try {
+                fn(host, provider)
+            } finally {
+                BrainHealthRead.stop(host);
+                provider.destroy();
+                shell.destroy()
+            }
+        };
+
+        test('a plane-starting fact reaches data.shellTransport, and the spine names Agent OS over the roster timeout', () => {
+            withRealDaemonHost((host, provider) => {
+                host.applyBrainHealth({state: 'degraded', transport: {elapsedMs: 3_000, phase: 'starting', reason: 'plane-starting', since: 1_000}});
+
+                expect(provider.getData('shellTransport')).toMatchObject({elapsedMs: 3_000, phase: 'starting', reason: 'plane-starting', since: 1_000});
+                expect(provider.getData('spineBanner')).toMatchObject({
+                    kind: 'cold',
+                    lead: 'Your Agent OS has not answered yet. The Fleet joins by itself when it does.',
+                    text: 'Agent OS starting · 3 s'
+                });
+
+                // from 180 s, the silence line, and still never the roster read's own timeout
+                host.applyBrainHealth({state: 'degraded', transport: {elapsedMs: 181_000, phase: 'starting', reason: 'plane-starting', since: 1_000}});
+
+                expect(provider.getData('spineBanner')).toMatchObject({
+                    lead: 'Your Agent OS has not answered for 3 min. Start it, or connect to another; the Fleet joins by itself when it answers.',
+                    text: 'Agent OS not answering · 3 min'
+                })
+            })
+        });
+
+        test('each fact lands whole: a settled fact keeps no key of the starting one, and a failed pull clears it', () => {
+            withRealDaemonHost((host, provider) => {
+                host.applyBrainHealth({state: 'degraded', transport: {elapsedMs: 3_000, phase: 'starting', reason: 'plane-starting', since: 1_000}});
+                host.applyBrainHealth({state: 'running', transport: {error: null, fleetPort: 8083, mode: 'plane-attach', phase: 'settled', reason: null, up: true}});
+
+                expect(provider.getData('shellTransport')).toEqual({
+                    elapsedMs: null, error: null, fleetPort: 8083, mode: 'plane-attach', phase: 'settled', reason: null, since: null, up: true
+                });
+
+                // a failed pull drops the fact: without a shell story, the roster read speaks for itself again
+                host.applyBrainHealth(null);
+
+                expect(provider.getData('shellTransport.phase')).toBeNull();
+                expect(provider.getData('spineBanner.text')).toBe('fleet timed out')
+            })
+        })
     });
 });
 

@@ -36,6 +36,9 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         lane      : {source: 'memory-core:mailbox', state: 'not-wired', confidence: 'none', reason: null}
     });
 
+    // the presence envelope an answer without one admits: leaf-complete, every leaf null
+    const blankPresence = {capturedAt: null, confidence: null, reason: null, reasonCode: null, source: null, state: null};
+
     // scope the mock to the `fleet` subkey ONLY: `globalThis.AgentOS` is the app's Neo NAMESPACE
     // root — replacing or deleting it wipes every `AgentOS.*` class registration for all later
     // spec files in the shared worker (order-dependent cross-file bleed).
@@ -63,9 +66,8 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     // the controller drives; the slim view fake carries only what loadRoster READS from its
     // component: the resident-pane accessors (unmaterialized → null, the same silence contract
     // as getReference) and the provider seat
-    const makeRosterHost = (grid, {rosterWired = false} = {}) => {
-        const provider = makeProviderFake(),
-              view     = {
+    const makeRosterHost = (grid, {provider = makeProviderFake(), rosterWired = false} = {}) => {
+        const view     = {
                   detailRecord          : null,
                   getCatchUpPane        : () => null,
                   getMemoriesPane       : () => null,
@@ -187,15 +189,65 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             rows        : [{id: 'a1', displayName: 'A1'}]
         })});
 
-        expect(provider.data.presenceCapability).toEqual(degraded);
+        expect(provider.data.presenceCapability).toEqual({...degraded, reasonCode: null});
 
-        // a recovered producer (or an assembler omitting the envelope) plumbs null — the chip
-        // must claim nothing on the next poll
+        // a recovered producer (or an assembler omitting the envelope) plumbs every leaf null — the
+        // chip must claim nothing on the next poll
         const {provider: recovered} = await routeLoadRoster({fleetRoster: async () => ({
             rows: [{id: 'a1', displayName: 'A1'}]
         })});
 
-        expect(recovered.data.presenceCapability).toBeNull()
+        expect(recovered.data.presenceCapability).toEqual(blankPresence)
+    });
+
+    test('#917: the presence envelope reaches the REAL cockpit provider whole with its typed code, and every leaf clears on an answer without it and on retirement', async () => {
+        // the provider fake assigns whole objects; the real provider drills them into leaf paths, so this arm runs on it
+        const
+            {createShellProvider} = await import('./shellProvider.mjs'),
+            CockpitStateProvider  = (await import('../../../../../../../../apps/agentos/view/fleet/cockpit/StateProvider.mjs')).default,
+            shell                 = createShellProvider(),
+            provider              = Neo.create(CockpitStateProvider, {parent: shell}),
+            host                  = makeRosterHost(makeGrid(), {provider}),
+            rows                  = [{id: 'a1', displayName: 'A1'}],
+            answering             = (profileId, capabilities) => ({profileId, selected: true, fleetRoster: async () => ({capabilities, rows})}),
+            // the producer's refused presence read: a typed code beside the readable reason
+            refusedRead           = {
+                capturedAt: '2026-08-10T21:45:00.000Z',
+                confidence: 'none',
+                reason    : 'plane who_is_online read failed',
+                reasonCode: 'viewer-binding-unavailable',
+                source    : 'fleet:presenceState',
+                state     : 'degraded'
+            };
+
+        try {
+            (globalThis.AgentOS ??= {}).fleet = {registryBridge: answering('a', {presence: refusedRead})};
+            await host.controller.loadRoster();
+
+            expect(provider.getData('presenceCapability')).toEqual(refusedRead);
+
+            // an answer without the envelope clears every leaf, the code included
+            globalThis.AgentOS.fleet = {registryBridge: answering('a', undefined)};
+            await host.controller.loadRoster();
+
+            expect(provider.getData('presenceCapability')).toEqual(blankPresence);
+
+            // so does the retirement a switch to a refusing profile performs
+            globalThis.AgentOS.fleet = {registryBridge: answering('a', {presence: refusedRead})};
+            await host.controller.loadRoster();
+            expect(provider.getData('presenceCapability.reasonCode')).toBe('viewer-binding-unavailable');
+
+            globalThis.AgentOS.fleet = {registryBridge: {profileId: 'b', selected: true, fleetRoster: async () => {
+                throw Object.assign(new Error('connection refused'), {fleetConnectionState: 'refused'})
+            }}};
+            await host.controller.loadRoster();
+
+            expect(host.controller.rosterWired).toBe(false);
+            expect(provider.getData('presenceCapability')).toEqual(blankPresence)
+        } finally {
+            provider.destroy();
+            shell.destroy()
+        }
     });
 
     test('a resolved EMPTY first snapshot is authoritative — nothing is seeded that it could erase', async () => {
@@ -1100,7 +1152,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             expect(host.grid.store.cleared).toBe(1);
             expect(host.grid.store.added).toHaveLength(2);
             expect(host.controller.rosterProfileId).toBe('a');
-            expect(host.provider.data.presenceCapability).toEqual({state: 'wired'});
+            expect(host.provider.data.presenceCapability).toEqual({...blankPresence, state: 'wired'});
 
             return host
         };
@@ -1115,7 +1167,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             expect(host.controller.rosterProfileId).toBeNull();
             expect(host.provider.data.gridAdapterState).toBe('cold');
             expect(host.provider.data.gridDegradedReason).toBeNull();
-            expect(host.provider.data.presenceCapability).toBeNull();
+            expect(host.provider.data.presenceCapability).toEqual(blankPresence);
             expect(host.grid.adapterState).toBe('cold')
         };
 

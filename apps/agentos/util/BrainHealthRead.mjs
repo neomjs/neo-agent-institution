@@ -28,6 +28,35 @@ class BrainHealthRead extends Base {
     }
 
     /**
+     * @summary The shell transport fact's full key set, every leaf `null`: the provider's declaration and the
+     * "no fact" value. `setData` drills an object into leaf paths, and a key declared `null` stops the leaf
+     * bubble on its first real answer, so the key set is declared and written in full ({@link #transportOf}).
+     * @returns {{elapsedMs: null, error: null, fleetPort: null, mode: null, phase: null, reason: null, since: null, up: null}}
+     */
+    static blankTransport() {
+        return {elapsedMs: null, error: null, fleetPort: null, mode: null, phase: null, reason: null, since: null, up: null}
+    }
+
+    /**
+     * @summary The answer's transport fact in its full key set: every key the previous fact held is
+     * overwritten, so none survives into the next one. No fact (a plain browser, a failed pull) is the blank.
+     * @param {Object|null} response The lifecycle owner's `{state, cause, transport?}` payload.
+     * @returns {Object} A `starting` fact (`phase`, `reason`, `since`, `elapsedMs`) or a `settled` one
+     *     (`phase`, `mode`, `up`, `fleetPort`, `reason`, `error`), the other keys `null`.
+     */
+    static transportOf(response) {
+        const
+            fact      = response?.transport,
+            transport = BrainHealthRead.blankTransport();
+
+        if (Neo.isObject(fact)) {
+            Object.keys(transport).forEach(key => {transport[key] = fact[key] ?? null})
+        }
+
+        return transport
+    }
+
+    /**
      * @summary Stop any starting-phase poll timer on the liveness owner.
      * @param {AgentOS.view.fleet.cockpit.LivenessController} owner The liveness owner.
      */
@@ -53,13 +82,13 @@ class BrainHealthRead extends Base {
         const
             provider  = owner.component.getStateProvider(),
             state     = brainHealthStates.includes(response?.state) ? response.state : null,
-            transport = Neo.isObject(response?.transport) ? response.transport : null;
+            transport = BrainHealthRead.transportOf(response);
 
         if (owner.isDestroyed || !provider) return;
 
         provider.setData('shellTransport', transport);
 
-        if (transport?.phase === 'starting') {
+        if (transport.phase === 'starting') {
             owner._brainWasStarting = true;
 
             if (owner._brainStartingTimerId == null && !owner.livenessHidden && (owner.livenessTimerId !== null || typeof Neo.Main?.brainHealth === 'function')) {
@@ -77,7 +106,7 @@ class BrainHealthRead extends Base {
 
             BrainHealthRead.stop(owner);
 
-            if (wasStarting && (transport?.up === true || state === 'running')) {
+            if (wasStarting && (transport.up === true || state === 'running')) {
                 owner.reconnectFleet?.()
             }
         }
