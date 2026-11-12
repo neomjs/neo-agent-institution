@@ -34,6 +34,14 @@ class ViewportController extends Controller {
     }
 
     /**
+     * Counts the Nightshift toggle's writes and the target switches: only the latest write's answer may
+     * land, so a slower earlier answer, or one from a target the cockpit has left, changes nothing.
+     * @member {Number} nightshiftWriteGeneration=0
+     * @protected
+     */
+    nightshiftWriteGeneration = 0
+
+    /**
      * @summary Applies the persisted harness theme before the viewport settles, hydrates the
      * configured-instances roster (or, in the packaged shell, mirrors the shell's own binding), and
      * asks the shell whether it still needs a plane.
@@ -347,7 +355,10 @@ class ViewportController extends Controller {
             return false
         }
 
-        provider.setData({instanceState: 'starting'});
+        // the presence, the toggle's last refusal and any write in flight belong to the plane left behind
+        provider.setData({instanceState: 'starting', operatorPresence: FleetAdmission.operatorPresenceOf(null)});
+        me.nightshiftWriteGeneration++;
+        me.getReference('nightshift-button')?.set({writeError: null});
 
         me.syncBoundInstance();
         me.pushTearOutTitles();
@@ -588,16 +599,18 @@ class ViewportController extends Controller {
      * plane's record and tells the peers once. The toggle shows the record the verb answers at once; the
      * roster read that follows is the read owner's generation fence, so an answer read before the click
      * cannot land after it. A Fleet or plane that cannot take the change leaves the record as it was, and
-     * the toggle names why.
+     * the toggle names why. An answer that a later click, or a switch to another target, has overtaken
+     * lands nowhere ({@link #nightshiftWriteGeneration}, and the bridge it was sent through).
      * @param {Object} data
      * @param {'present'|'away'} data.mode
      * @param {String} [data.until] ISO time an `away` ends by itself.
-     * @returns {Promise<Boolean>} Whether the plane took the change.
+     * @returns {Promise<Boolean>} Whether the plane took the change and its answer landed.
      */
     async onNightshiftChange({mode, until}) {
         const
-            me     = this,
-            bridge = globalThis.AgentOS?.fleet?.registryBridge;
+            me         = this,
+            bridge     = globalThis.AgentOS?.fleet?.registryBridge,
+            generation = ++me.nightshiftWriteGeneration;
 
         let refusal = null, result = null;
 
@@ -611,7 +624,9 @@ class ViewportController extends Controller {
             }
         }
 
-        if (me.isDestroyed) return false;
+        if (me.isDestroyed || generation !== me.nightshiftWriteGeneration || bridge !== globalThis.AgentOS?.fleet?.registryBridge) {
+            return false
+        }
 
         if (!refusal && !result?.operatorPresence) {
             refusal = result?.status === 'not-wired' ? 'the Fleet has no plane writer for it' : 'the Fleet answered without the record'

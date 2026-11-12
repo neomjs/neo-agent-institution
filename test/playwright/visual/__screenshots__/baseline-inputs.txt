@@ -363,7 +363,7 @@ apps/agentos/view/Viewport.mjs
     a90fade562a991159f9707d97446eb69c5c5e54e
 
 apps/agentos/view/ViewportController.mjs
-    a1599ea97837532e4267d90c4a7bb6950c621891
+    5053111229a86840993da9f93a5b1991765e91ce
 
 apps/agentos/view/accounts/Controller.mjs
     f00734c27f7827fe0ed98cc4c222295bb67084a0
