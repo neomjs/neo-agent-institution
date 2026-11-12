@@ -6,7 +6,7 @@
 # golden may have been captured at an earlier one.
 
 engine
-    5012129e70fe7649ef0ee7a3bc161ef454a2acd8
+    41e5632698be771e8255859f7cb7cac6086894e7
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -243,7 +243,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    b26e0ee028ce10c558773a8c94de2f65b68a76a3
+    86f0f35c89f0f3517e4ce29f80e49b24c5f024ef
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
@@ -252,7 +252,7 @@ apps/agentos/util/FleetStartPlan.mjs
     35fe190e3be78f479f0da2a560421b3d3da5a5e6
 
 apps/agentos/util/FloatingMenuTheme.mjs
-    84b03b77166b024f051b7aeb611873323c0e5cfb
+    56ca718195dd69938a4485eb32b503fefe523f7f
 
 apps/agentos/util/GoldenPathEnvelope.mjs
     b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
@@ -345,7 +345,7 @@ apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    8dcfab424e2e79a9b4d813807363859fabf39684
+    65234604574f9d84cda690460faf5da3cf444fbe
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -356,11 +356,14 @@ apps/agentos/util/ViewerTime.mjs
 apps/agentos/util/ViewerWakeTelltale.mjs
     31bff815feed1bf14ee4b9608168118f4621834a
 
+apps/agentos/view/NightshiftButton.mjs
+    bf4efe1fbf237b925e49a555162e29d5b6e46f61
+
 apps/agentos/view/Viewport.mjs
-    c57f9e3ed5100d14443c9e31038467dfcdc55ed3
+    a90fade562a991159f9707d97446eb69c5c5e54e
 
 apps/agentos/view/ViewportController.mjs
-    a7c1a5b434fdf3a24abf3da231610666e436f0c8
+    5053111229a86840993da9f93a5b1991765e91ce
 
 apps/agentos/view/accounts/Controller.mjs
     f00734c27f7827fe0ed98cc4c222295bb67084a0
@@ -402,7 +405,7 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    254c0711e2a3c2ac9004ddc6097f1de6c4aa1e23
+    fa5a2b0ce81b168540ac914b1f3bba006f20fa8f
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
     c8cb352785ae483806eb80b25adbf88e03a5f7ce
@@ -668,8 +671,11 @@ apps/agentos/view/system/SeatRootContainer.mjs
 apps/agentos/view/system/SeatRootController.mjs
     11d0ce4be716d394c51f275b56112e2c4aa19fac
 
+resources/scss/src/apps/agentos/NightshiftButton.scss
+    323cbfd4a54217691769fbee3edced0e77202c7a
+
 resources/scss/src/apps/agentos/Viewport.scss
-    97e5b1359e8dd279907b78047cb10165d13d6397
+    e657e0c50666b785bcf2b9e31558d376f10ccd3a
 
 resources/scss/src/apps/agentos/accounts/List.scss
     94fa05801c3e3642c6586cb2c9072418bfa8081c
@@ -987,22 +993,22 @@ test/playwright/visual/SystemViewVisual.spec.mjs
     a4ff9bcf49ccb1e4fac425d421d5fdea8412f089
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
-    99ef364a7aad1091dc18074345e561d3bf59d7a3
+    0f9d1fcce910f8b3e34763bb39e466f5830b2881
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1280x800.png
-    1ebce8444141c8c994f1b851d366ca75a25c802b
+    11770961a47aa6a44f90012f71b1afbf3b66b8a2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1000x640.png
-    62e34ca78c1db2805505e6040855e70dcd3419c1
+    764ffc561c459849193718a227d8c5609cd6a17b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1280x800.png
-    5fc1f8b8c7685f8ceb02067d9c27e3459248a03d
+    88c024af42a7b0fd06cbcd8fcd7f046c741d6774
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-gitlab-1000x640.png
-    ce74edc742b537debc8ae74e808ec6c9efd98362
+    949109e345f3c2046b2f72edef4c8dc46ed90fa8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-gitlab-1280x800.png
-    b927cfe197fd89861a70c3284fa60b6133887cfe
+    b576595aec7ff4a26dc32f7e73a81009437f7c32
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
     25b04db0242139eb0ee7401e7824d1d69211827f
@@ -1053,13 +1059,13 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty
     770b7234ede2a7b2f6746cd58717912f4064ad0b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-intermediate-720.png
-    e5b3c5e79a15f9fd6ad9939f3ef829db9f5aebb4
+    638055bf84c2f0a6c209530348c55e6ce3325db2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    437c5fed000c548afc4691dad6599df49a1e736b
+    4fcb998128f17ae51ab36948f0212ff765d5b954
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    5cfda4ddfb43e6093d31a87fe7691b9c96777163
+    a35ae03539a0241fd8a3684f1ee9f130de725a68
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-light.png
     775282b2c8e2dcbfba41c0fd4a7c95df6a1acd99
