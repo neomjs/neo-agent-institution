@@ -89,7 +89,7 @@ class FleetGrid extends Container {
         adapterState_: 'live',
         /**
          * The roster's presence-CAPABILITY envelope (the assembler DTO's `capabilities.presence`:
-         * `{source, state, confidence, capturedAt, reason}`), plumbed by the cockpit's roster
+         * `{source, state, confidence, capturedAt, reason, reasonCode}`), plumbed by the cockpit's roster
          * load. Owns the header chip that NAMES an axis degradation: when the producer answered
          * `degraded`, every card's band correctly vanishes (absence of signal, never a verdict) —
          * but unnamed absence reads as "no one is online" to a human, the live operator falsifier.

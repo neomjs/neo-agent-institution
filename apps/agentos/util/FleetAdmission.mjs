@@ -526,9 +526,10 @@ class FleetAdmission extends Base {
     /**
      * @summary The roster's presence-capability envelope in its full key set, every leaf `null` when the
      * answer carries none (or a malformed one): the grid's chip then claims nothing. Leaf-complete like
-     * {@link #operatorPresenceOf}, and written whole, so no key of the previous envelope survives.
+     * {@link #operatorPresenceOf}, and written whole, so no key of the previous envelope survives. The
+     * producer adds `reasonCode` (a typed refusal such as `viewer-binding-unavailable`) only to a refused read.
      * @param {Object|null} presence The assembler DTO's `capabilities.presence`
-     * @returns {{capturedAt: ?String, confidence: ?String, reason: ?String, source: ?String, state: ?String}}
+     * @returns {{capturedAt: ?String, confidence: ?String, reason: ?String, reasonCode: ?String, source: ?String, state: ?String}}
      */
     static presenceCapabilityOf(presence) {
         const envelope = Neo.isObject(presence) ? presence : {};
@@ -537,6 +538,7 @@ class FleetAdmission extends Base {
             capturedAt: envelope.capturedAt ?? null,
             confidence: envelope.confidence ?? null,
             reason    : envelope.reason     ?? null,
+            reasonCode: envelope.reasonCode ?? null,
             source    : envelope.source     ?? null,
             state     : envelope.state      ?? null
         }

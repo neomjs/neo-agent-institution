@@ -37,7 +37,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
     });
 
     // the presence envelope an answer without one admits: leaf-complete, every leaf null
-    const blankPresence = {capturedAt: null, confidence: null, reason: null, source: null, state: null};
+    const blankPresence = {capturedAt: null, confidence: null, reason: null, reasonCode: null, source: null, state: null};
 
     // scope the mock to the `fleet` subkey ONLY: `globalThis.AgentOS` is the app's Neo NAMESPACE
     // root — replacing or deleting it wipes every `AgentOS.*` class registration for all later
@@ -189,7 +189,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             rows        : [{id: 'a1', displayName: 'A1'}]
         })});
 
-        expect(provider.data.presenceCapability).toEqual(degraded);
+        expect(provider.data.presenceCapability).toEqual({...degraded, reasonCode: null});
 
         // a recovered producer (or an assembler omitting the envelope) plumbs every leaf null — the
         // chip must claim nothing on the next poll
@@ -200,7 +200,7 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
         expect(recovered.data.presenceCapability).toEqual(blankPresence)
     });
 
-    test('#917: the presence envelope reaches the REAL cockpit provider whole, and an answer without one leaves every leaf null', async () => {
+    test('#917: the presence envelope reaches the REAL cockpit provider whole with its typed code, and every leaf clears on an answer without it and on retirement', async () => {
         // the provider fake assigns whole objects; the real provider drills them into leaf paths, so this arm runs on it
         const
             {createShellProvider} = await import('./shellProvider.mjs'),
@@ -208,23 +208,41 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             shell                 = createShellProvider(),
             provider              = Neo.create(CockpitStateProvider, {parent: shell}),
             host                  = makeRosterHost(makeGrid(), {provider}),
-            degraded              = {
+            rows                  = [{id: 'a1', displayName: 'A1'}],
+            answering             = (profileId, capabilities) => ({profileId, selected: true, fleetRoster: async () => ({capabilities, rows})}),
+            // the producer's refused presence read: a typed code beside the readable reason
+            refusedRead           = {
                 capturedAt: '2026-08-10T21:45:00.000Z',
                 confidence: 'none',
                 reason    : 'plane who_is_online read failed',
+                reasonCode: 'viewer-binding-unavailable',
                 source    : 'fleet:presenceState',
                 state     : 'degraded'
             };
 
         try {
-            (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetRoster: async () => ({capabilities: {presence: degraded}, rows: [{id: 'a1', displayName: 'A1'}]})}};
+            (globalThis.AgentOS ??= {}).fleet = {registryBridge: answering('a', {presence: refusedRead})};
             await host.controller.loadRoster();
 
-            expect(provider.getData('presenceCapability')).toEqual(degraded);
+            expect(provider.getData('presenceCapability')).toEqual(refusedRead);
 
-            globalThis.AgentOS.fleet.registryBridge.fleetRoster = async () => ({rows: [{id: 'a1', displayName: 'A1'}]});
+            // an answer without the envelope clears every leaf, the code included
+            globalThis.AgentOS.fleet = {registryBridge: answering('a', undefined)};
             await host.controller.loadRoster();
 
+            expect(provider.getData('presenceCapability')).toEqual(blankPresence);
+
+            // so does the retirement a switch to a refusing profile performs
+            globalThis.AgentOS.fleet = {registryBridge: answering('a', {presence: refusedRead})};
+            await host.controller.loadRoster();
+            expect(provider.getData('presenceCapability.reasonCode')).toBe('viewer-binding-unavailable');
+
+            globalThis.AgentOS.fleet = {registryBridge: {profileId: 'b', selected: true, fleetRoster: async () => {
+                throw Object.assign(new Error('connection refused'), {fleetConnectionState: 'refused'})
+            }}};
+            await host.controller.loadRoster();
+
+            expect(host.controller.rosterWired).toBe(false);
             expect(provider.getData('presenceCapability')).toEqual(blankPresence)
         } finally {
             provider.destroy();
