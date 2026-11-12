@@ -334,8 +334,8 @@ test('partial Activity guidance derives once from capability.slots onto banner, 
         });
         expect(parent.getData('instanceState')).toBe('limited');
         expect(banner.text).toBe('feed partial');
-        expect(lead.text).toBe('Activity feed partial — PR lanes unavailable · mailbox available');
-        expect(banner.vdom.title).toBe('Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT');
+        expect(lead.text).toBe('PR lanes unavailable');
+        expect(banner.vdom.title).toBe('PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT');
         expect(button.hidden).toBe(false);
         expect(button.text).toBe('Recheck');
         expect(stateCell.text).toBe('partial — PR lanes unavailable');
@@ -368,7 +368,7 @@ test('partial Activity guidance derives once from capability.slots onto banner, 
         await cockpit.getController().loadActivity();
 
         expect(parent.data.activityGuidance.summary).toBe('PR lanes partial · mailbox available');
-        expect(lead.text).toBe('Activity feed partial — PR lanes partial · mailbox available');
+        expect(lead.text).toBe('PR lanes partial');
         expect(stateCell.text).toBe('partial — PR lanes partial');
 
         // 3. Recovery to wired clears partial guidance and hides the banner/button

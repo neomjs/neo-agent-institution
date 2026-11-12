@@ -448,11 +448,14 @@ class SpineBanner extends Base {
         }
 
         if (stream?.state === 'partial') {
-            const summary = (typeof stream.guidance?.summary === 'string' && stream.guidance.summary.trim()) || 'some sources unavailable',
-                  reason  = reasonFor([stream], 'partial') || (typeof stream.guidance?.reason === 'string' && stream.guidance.reason.trim()) || null,
-                  note    = SpineBanner.formatShortOutage(outage),
-                  lead    = note ? `Activity feed partial — ${summary} · ${note.lead}` : `Activity feed partial — ${summary}`,
-                  cause   = [reason, note?.reason, note?.windowTitle].filter(Boolean).join(' · ') || null;
+            const missing   = (typeof stream.guidance?.missing === 'string' && stream.guidance.missing.trim()) ||
+                              (typeof stream.guidance?.summary === 'string' && stream.guidance.summary.trim()) ||
+                              'some sources unavailable',
+                  remaining = (typeof stream.guidance?.remaining === 'string' && stream.guidance.remaining.trim()) || null,
+                  reason    = reasonFor([stream], 'partial') || (typeof stream.guidance?.reason === 'string' && stream.guidance.reason.trim()) || null,
+                  note      = SpineBanner.formatShortOutage(outage),
+                  lead      = missing,
+                  cause     = [remaining, note?.lead, reason, note?.reason, note?.windowTitle].filter(Boolean).join(' · ') || null;
 
             return verdict('degraded', 'feed partial', lead, cause, 'recheck')
         }
