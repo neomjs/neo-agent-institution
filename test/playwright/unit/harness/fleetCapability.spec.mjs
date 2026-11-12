@@ -52,6 +52,7 @@ test.describe('harness Fleet capability', () => {
         await expect(capability.request({trusted: false}, request)).rejects.toThrow('fleet: untrusted shell sender');
         await expect(capability.probe({trusted: true})).rejects.toThrow(reason);
         await expect(capability.probe({trusted: false})).rejects.toThrow('fleet: untrusted shell sender');
+        await expect(capability.read('fleetRoster')).rejects.toThrow(reason);
 
         expect(() => createAbsentFleetCapability({isTrustedSender: null, reason})).toThrow(TypeError);
         expect(() => createAbsentFleetCapability({isTrustedSender: () => true, reason: ''})).toThrow(TypeError)
@@ -86,6 +87,35 @@ test.describe('harness Fleet capability', () => {
             result: [],
             state : FLEET_WIRE_RESPONSE_STATES.ok
         })
+    });
+
+    test('main\'s own read sends an allowlisted verb with the bearer and refuses credential or unknown verbs before the network', async () => {
+        const
+            fetched    = [],
+            capability = createCapability({
+                credentialProvider: async () => { throw new Error('a main read never prompts') },
+                fetchImpl         : async (url, init) => {
+                    fetched.push({url, authorization: init.headers.Authorization, method: JSON.parse(init.body).method});
+                    return {json: async () => createFleetWireResponse(FLEET_WIRE_RESPONSE_STATES.ok, {result: {rows: []}})}
+                },
+                getBrain          : async () => ({fleetPort: 8083, up: true}),
+                isTrustedSender   : () => { throw new Error('a main read has no IPC sender to judge') }
+            });
+
+        await expect(capability.read('fleetOwnQuestions', {offset: 0})).resolves.toMatchObject({
+            result: {rows: []},
+            state : FLEET_WIRE_RESPONSE_STATES.ok
+        });
+        expect(fetched).toEqual([{url: 'http://127.0.0.1:8083/fleet', authorization: `Bearer ${bearerToken}`, method: 'fleetOwnQuestions'}]);
+
+        for (const method of [FLEET_CREDENTIAL_METHODS[0], 'ghostVerb']) {
+            await expect(capability.read(method)).resolves.toMatchObject({
+                error: `fleet: '${method}' is not a main read`,
+                state: FLEET_WIRE_RESPONSE_STATES.refused
+            })
+        }
+
+        expect(fetched, 'refused before the network').toHaveLength(1)
     });
 
     test('checks sender trust before inspecting the request or touching credential, readiness, and network seams', async () => {
