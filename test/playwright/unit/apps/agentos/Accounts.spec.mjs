@@ -68,9 +68,10 @@ const createAccounts = async config => {
         stateProvider: {
             module: StateProvider,
             data  : {
-                boundProfileId: config.boundProfileId ?? null,
-                shellCustody  : config.shellCustody === true,
-                shellPlaneBase: config.shellPlaneBase ?? null
+                boundProfileId  : config.boundProfileId ?? null,
+                gridAdapterState: config.gridAdapterState ?? 'cold',
+                shellCustody    : config.shellCustody === true,
+                shellPlaneBase  : config.shellPlaneBase ?? null
             },
             stores
         }
@@ -1807,4 +1808,99 @@ test.describe('AgentOS.view.AgentConfigCard — live same-record propagation + c
             store.destroy()
         }
     });
+});
+
+test.describe('AgentOS.view.accounts.Panel — the registry reads recover when the Fleet answers (#925)', () => {
+    const
+        agents  = [
+            {id: 'ada',  githubUsername: 'ada',  harnessType: 'claude-desktop'},
+            {id: 'vega', githubUsername: 'vega', harnessType: 'claude-desktop'}
+        ],
+        tenants = [{id: 'plane-a', endpoint: 'http://127.0.0.1:3102', status: 'connected'}],
+        // each read is a chain of microtasks: one macrotask lets every queued reply land
+        settle  = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    /**
+     * @summary Build Accounts the way the shell does at boot: before its Fleet serves. Each registry
+     * read is refused until `fleet.answers` flips, and every call is counted.
+     * @param {Function} run
+     * @param {Object[]} [listed=agents] What the registry lists once it answers.
+     * @returns {Promise<void>}
+     */
+    const withBootOutage = async (run, listed = agents) => {
+        const
+            prior       = globalThis.AgentOS,
+            calls       = {listAgents: 0, listTenants: 0},
+            fleet       = {answers: false},
+            reply       = (method, rows) => async () => {
+                calls[method]++;
+                if (!fleet.answers) throw Object.assign(new Error('fleet: request transport failed'), {fleetConnectionState: 'unreachable'});
+                return rows
+            },
+            // like AgentOS.store.AgentDefinitions: no inline data, so nothing has landed until a read does
+            definitions = Neo.create(Store, {keyProperty: 'id', model: AgentDefinition}),
+            tenantStore = Neo.create(TestFleetTenants, {data: []});
+        let view;
+
+        try {
+            globalThis.AgentOS = {...prior, fleet: {registryBridge: {
+                listAgents : reply('listAgents', listed),
+                listTenants: reply('listTenants', tenants)
+            }}};
+            view = await createAccounts({agentDefinitionsStore: definitions, fleetTenantsStore: tenantStore});
+            await settle();
+            await run({view, definitions, tenantStore, calls, fleet})
+        } finally {
+            globalThis.AgentOS = prior;
+            view?.destroy(); definitions.destroy(); tenantStore.destroy()
+        }
+    };
+
+    test('a panel built before the Fleet serves lists the agents and tenants once the roster goes live', async () => withBootOutage(async ({view, definitions, tenantStore, calls, fleet}) => {
+        expect(calls.listAgents, 'the construct-time read ran into the outage').toBeGreaterThan(0);
+        expect(definitions.count).toBe(0);
+
+        fleet.answers = true;
+        view.stateProvider.setData({gridAdapterState: 'live'});
+        await settle();
+
+        expect(definitions.items.map(record => record.id)).toEqual(['ada', 'vega']);
+        expect(tenantStore.get('plane-a')?.status).toBe('connected');
+        expect(view.selectedAgentId).toBe('ada');
+        expect(view.getReference('accounts-empty').hidden).toBe(true)
+    }));
+
+    test('only a change to live reads again: a repeated live reads nothing, stale back to live reads both', async () => withBootOutage(async ({view, calls, fleet}) => {
+        fleet.answers = true;
+        view.stateProvider.setData({gridAdapterState: 'live'});
+        await settle();
+
+        const afterLive = {...calls};
+
+        view.stateProvider.setData({gridAdapterState: 'live'});
+        await settle();
+        view.stateProvider.setData({gridAdapterState: 'stale'});
+        await settle();
+        expect(calls).toEqual(afterLive);
+
+        view.stateProvider.setData({gridAdapterState: 'live'});
+        await settle();
+        expect(calls).toEqual({listAgents: afterLive.listAgents + 1, listTenants: afterLive.listTenants + 1})
+    }));
+
+    test('the empty line says "No agents yet" only once the registry has answered', async () => withBootOutage(async ({view, definitions, fleet}) => {
+        const empty = view.getReference('accounts-empty');
+
+        expect(empty.hidden).toBe(false);
+        expect(empty.text).not.toContain('No agents yet');
+
+        fleet.answers = true;
+        view.stateProvider.setData({gridAdapterState: 'live'});
+        await settle();
+
+        expect(definitions.isLoaded).toBe(true);
+        expect(definitions.count).toBe(0);
+        expect(empty.hidden).toBe(false);
+        expect(empty.text).toBe('No agents yet. Add the first one with the form.')
+    }, []));
 });

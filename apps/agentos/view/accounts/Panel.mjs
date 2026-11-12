@@ -7,6 +7,10 @@ import List                  from './List.mjs';
 import Button                from '../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import DashboardPanel        from '../../../../node_modules/neo.mjs/src/dashboard/Panel.mjs';
 
+const
+    EMPTY_LINE      = 'No agents yet. Add the first one with the form.',
+    UNANSWERED_LINE = 'The Fleet has not answered yet. Its agents appear here when it does.';
+
 /**
  * @class AgentOS.view.accounts.Panel
  * @extends Neo.dashboard.Panel
@@ -65,6 +69,13 @@ class Accounts extends DashboardPanel {
          */
         fleetTenantsStore_: null,
         /**
+         * The roster read's adapter state (`cold`, then `live` or `stale`); each turn to `live`
+         * re-reads the registry.
+         * @member {String} gridAdapterState_='cold'
+         * @reactive
+         */
+        gridAdapterState_: 'cold',
+        /**
          * The bound Agent OS facts (`boundProfileId`, `instanceStore`, `shellCustody`,
          * `shellPlaneBase`) follow the root provider and pass on to the mounted card and form,
          * which name the destination from them. This Panel only forwards them.
@@ -98,6 +109,7 @@ class Accounts extends DashboardPanel {
             agentDefinitionsStore: 'stores.agentDefinitions',
             fleetRosterStore     : 'stores.fleetRoster',
             fleetTenantsStore    : 'stores.fleetTenants',
+            gridAdapterState     : data => data.gridAdapterState,
             instanceStore        : 'stores.fleetInstances'
         },
         /**
@@ -163,8 +175,7 @@ class Accounts extends DashboardPanel {
                 ntype    : 'component',
                 cls      : ['fm-accounts-empty'],
                 flex     : 'none',
-                reference: 'accounts-empty',
-                text     : 'No agents yet. Add the first one with the form.'
+                reference: 'accounts-empty'
             }, {
                 module   : List,
                 bind     : {store: 'stores.agentDefinitions'},
@@ -321,6 +332,22 @@ class Accounts extends DashboardPanel {
         value && this.isConstructed && void this.controller.loadFleetTenants()
     }
 
+    /**
+     * Triggered after the gridAdapterState config got changed. The shell builds this panel before its
+     * Fleet serves, and a failed read has no retry: the roster turning `live` re-runs both reads.
+     * @param {String} value
+     * @param {String} oldValue
+     * @protected
+     */
+    afterSetGridAdapterState(value, oldValue) {
+        const me = this;
+
+        if (value === 'live' && me.isConstructed) {
+            void me.controller.loadAgentDefinitions();
+            void me.controller.loadFleetTenants()
+        }
+    }
+
     /** @summary Forward the bound profile change to both setup surfaces. @protected */
     afterSetBoundProfileId(value) {
         this.getReference('agent-config-card')?.set({boundProfileId: value});
@@ -445,12 +472,13 @@ class Accounts extends DashboardPanel {
     /**
      * @summary Show the card or the form in the detail, the empty state under an empty list, and
      * the add action as pressed while the form is up. The form shows while adding, and whenever no
-     * definition is selected.
+     * definition is selected. Until a read lands, the empty state says the Fleet has not answered.
      * @protected
      */
     syncDetail() {
         const
             me       = this,
+            store    = me.agentDefinitionsStore,
             showForm = me.adding || !me.selectedAgentId,
             card     = me.getReference('agent-config-card'),
             repos    = me.getReference('agent-repos-card'),
@@ -461,7 +489,10 @@ class Accounts extends DashboardPanel {
         if (card)  card.hidden  = showForm;
         if (repos) repos.hidden = showForm;
         if (form)  form.hidden  = !showForm;
-        if (empty) empty.hidden = (me.agentDefinitionsStore?.count ?? 0) > 0;
+        if (empty) {
+            empty.hidden = (store?.count ?? 0) > 0;
+            empty.text   = store?.isLoaded ? EMPTY_LINE : UNANSWERED_LINE
+        }
         if (add)   add.pressed  = showForm
     }
 
