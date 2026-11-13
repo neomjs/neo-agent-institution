@@ -207,6 +207,31 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
     });
 
+    test('a halt never abandons a removal in flight: a successor cannot take custody until it finishes', async () => {
+        const controller = new AbortController();
+        let resume, entered;
+        const paused    = new Promise(resolve => { resume = resolve });
+        const inRemoval = new Promise(resolve => { entered = resolve });
+        const pending   = retireRuntimeGenerations({...options(), signal: controller.signal, deadlineMs: 50}, {transactionFn,
+            inspectProcesses: emptyCensus, removeTree: async target => { entered(target); await paused; return removeOwnedRuntimeTree(target) }});
+        const target    = await inRemoval;
+        controller.abort();
+        await new Promise(resolve => setTimeout(resolve, 100)); // past the deadline as well
+        // a successor reaches neither lease, so it cannot retain or replace the tree under the removal
+        expect(transactionFn).toThrow(/held/);
+        expect(() => references.holdRuntimeGenerationReferences({directory})).toThrow(/held/);
+        expect((await retireRuntimeGenerations(options(), {transactionFn, inspectProcesses: emptyCensus})).state).toBe('deferred');
+        expect(await fs.stat(target)).toBeTruthy();
+        resume();
+        const result = await pending;
+        expect(result.generations.find(row => row.id === unused.value.id)).toMatchObject({state: 'removed'});
+        await expect(fs.stat(target)).rejects.toMatchObject({code: 'ENOENT'});
+        expect(await verifier.readRuntimeGeneration({directory: current.value.directory})).toEqual(current.value);
+        expect(await verifier.readRuntimeGeneration({directory: rollback.value.directory})).toEqual(rollback.value);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
     test('a concurrent reference owner defers maintenance without creating retirement state', async () => {
         const held = references.holdRuntimeGenerationReferences({directory});
         try {

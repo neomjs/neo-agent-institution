@@ -74,10 +74,11 @@ function readRemovalReceipt(target, verifier) {
  * Expensive payload verification is skipped for positively retained generations. A removal requires
  * the current trusted verifier plus a fresh complete census and current package/journal evidence.
  *
- * The pass holds both leases only until its deadline or its owner's abort: either one ends the pending
- * step, the `finally` releases both leases, and the result names the step and generation it stopped in.
- * A step left running after that is a read, or the removal of a tree already renamed to `.retiring-*`,
- * which the next pass finishes from its receipt.
+ * The pass holds both leases only until its deadline or its owner's abort. Either one ends a pending
+ * read (payload verify, census), the `finally` releases both leases, and the result names the step and
+ * generation it stopped in. A removal is never abandoned: it deletes by path, so a successor holding the
+ * leases could see its tree retained or replaced. It finishes under both leases, and a halt takes effect
+ * at the next step.
  * @param {Object} options Explicit host generation, trusted Brain contracts and custody directory.
  * @param {Number} [options.deadlineMs=RUNTIME_MAINTENANCE_DEADLINE_MS] Longest time the pass holds the leases.
  * @param {AbortSignal} [options.signal] The owner's teardown; aborting ends the pass at its pending step.
@@ -154,7 +155,8 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         const current = ownedDirectory(target);
         if (current.dev !== stat.dev || current.ino !== stat.ino || current.birthtimeNs !== stat.birthtimeNs) throw Error('runtime-removal-inode-changed');
         assertCurrent();
-        await bounded('remove', pin.id, removeTree(target));
+        phase = {step: 'remove', id: pin.id};
+        await removeTree(target);
         assertCurrent();
         fs.unlinkSync(target + '.json');
         flushDirectory(directory);
