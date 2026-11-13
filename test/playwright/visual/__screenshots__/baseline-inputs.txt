@@ -144,7 +144,7 @@ apps/agentos/resources/data/interventions.json
     ceb0e8bb7374eb06441532d163b0ddb4e96e000a
 
 apps/agentos/store/AgentDefinitions.mjs
-    ad36428314f1e61a4809903e67db339f9e779546
+    18ff9f95962b20f6eddf2681bb0ba44158e3421f
 
 apps/agentos/store/AgentMailbox.mjs
     40e36d5fdcf6f78a8da8b9e2f84f67ac768a8070
@@ -366,7 +366,7 @@ apps/agentos/view/ViewportController.mjs
     5ea03e6412c9017ad3ba0d59bdbbe0d5c21a70d3
 
 apps/agentos/view/accounts/Controller.mjs
-    f00734c27f7827fe0ed98cc4c222295bb67084a0
+    05c14bcda560d8f32b9495556ff99f8f3e4842bc
 
 apps/agentos/view/accounts/List.mjs
     ec8f3ed16cb692813a9ae5d7068d6542e8954b61

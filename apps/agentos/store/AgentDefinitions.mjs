@@ -27,7 +27,25 @@ class AgentDefinitions extends Store {
          * @member {Neo.data.Model} model=AgentDefinitionModel
          * @reactive
          */
-        model: AgentDefinitionModel
+        model: AgentDefinitionModel,
+        /**
+         * Alphabetical order A–Z by the name the list renders (`displayName || githubUsername || id`),
+         * case-insensitive, with `id` as the tie-breaker. `reapplyOnRecordChange` lets the Store re-sort
+         * itself after an accepted definition edit, so no view re-sorts it.
+         * @member {Object[]} sorters
+         */
+        sorters: [{
+            direction            : 'ASC',
+            property             : 'displayName',
+            reapplyOnRecordChange: true,
+            sortBy(a, b) {
+                const
+                    nameA = (a?.displayName || a?.githubUsername || a?.id || '').toLowerCase(),
+                    nameB = (b?.displayName || b?.githubUsername || b?.id || '').toLowerCase();
+
+                return nameA.localeCompare(nameB) || String(a?.id ?? '').localeCompare(String(b?.id ?? ''))
+            }
+        }]
     }
 }
 

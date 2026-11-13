@@ -185,6 +185,7 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
                 listItems    = accountsView.locator('.fm-accounts-list .neo-list-item');
 
             await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
+            await expect(listItems.locator('.fm-accounts-name')).toHaveText([agentId, gitlabAgentId]);
 
             await expect(page.locator('.fm-agent-config-card')).toBeVisible();
             // the product chips only: the run-mode, launch-owner and memory-target choices are chips too
@@ -361,6 +362,7 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             await appReloaded.callMethod(accountsReloaded.properties.id, 'loadAgentDefinitions');
             await expect(listItems.filter({hasText: agentId})).toHaveCount(1);
             await expect(listItems.filter({hasText: createdAgentId})).toHaveCount(1);
+            await expect(listItems.locator('.fm-accounts-name')).toHaveText([createdAgentId, agentId, gitlabAgentId]);
             await expect(page.locator('.fm-config-toggle').filter({hasText: 'Memory Core'})).toHaveClass(/is-disabled/);
             await listItems.filter({hasText: gitlabAgentId}).click();
             await expect(gitlabWorkflow).toHaveClass(/is-disabled/);
@@ -370,6 +372,69 @@ test.describe('AgentOS Accounts — agent-scoped configuration surface', () => {
             // the shared form offers one chip per catalog product, never one per harness type
             await addAction.click();
             await expect(form.locator('.fm-add-harness-row:not(.fm-add-runs-as-row) .fm-chip')).toHaveCount(listHarnessProducts().length)
+        } finally {
+            server && await new Promise(resolve => server.close(resolve));
+            FleetRegistryService.dataDir = priorDataDir;
+            fs.rmSync(tmpDir, {recursive: true, force: true})
+        }
+    });
+
+    /**
+     * @summary The list orders the labels it renders case-insensitively A–Z, never by id, and a selected
+     * non-first account keeps its selection and configuration card when a registry refresh moves its row.
+     */
+    test('the list orders rendered labels A–Z and keeps the selection through a refresh that moves it', async ({page, neuralLink}) => {
+        await page.setViewportSize({width: 1400, height: 900});
+        const
+            priorDataDir = FleetRegistryService.dataDir,
+            tmpDir       = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-order-e2e-')),
+            // ids sort aa < bb < cc while the rendered labels sort the other way, and only a
+            // case-insensitive comparison puts 'alpha-order' before 'Zed-order'
+            define       = (id, githubUsername) => FleetRegistryService.defineAgent({
+                id, githubUsername, harnessType: 'codex', credential: `ghp_e2e_${id}_stays_brain_side`
+            });
+
+        FleetRegistryService.dataDir = tmpDir;
+        define('aa-order-seat', 'Zed-order');
+        define('bb-order-seat', 'alpha-order');
+
+        let server;
+
+        try {
+            const options = authenticatedFleetOptions();
+
+            server = await startFleetBridgeServer(options);
+            const fleetUrl = `http://127.0.0.1:${server.address().port}/fleet`;
+
+            await page.goto(`/apps/agentos/index.html?${new URLSearchParams({fleetUrl})}`);
+            await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+            await wireAuthenticatedFleetBridge({app: await neuralLink.connectToApp('AgentOS'), fleetUrl, bearerToken: options.bearerToken});
+
+            await page.locator('.agent-shell').getByText('Accounts', {exact: true}).click();
+            await expect(page.locator('.agent-panel-accounts')).toBeVisible({timeout: 30000});
+
+            const
+                app        = await neuralLink.connectToApp('AgentOS'),
+                [accounts] = await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['id']),
+                items      = page.locator('.agent-panel-accounts .fm-accounts-list .neo-list-item'),
+                card       = page.locator('.fm-agent-config-card'),
+                selectedId = async () => (await app.queryComponent({className: 'AgentOS.view.accounts.Panel'}, ['selectedAgentId']))[0].properties.selectedAgentId;
+
+            await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+            await expect(items.locator('.fm-accounts-name')).toHaveText(['alpha-order', 'Zed-order']);
+
+            // select the second row, then let the registry gain an account that sorts between the two
+            await items.filter({hasText: 'Zed-order'}).click();
+            await expect.poll(selectedId).toBe('aa-order-seat');
+            await expect(card).toContainText(/aa-order-seat|Zed-order/);
+
+            define('cc-order-seat', 'Middle-order');
+            await app.callMethod(accounts.properties.id, 'loadAgentDefinitions');
+
+            await expect(items.locator('.fm-accounts-name')).toHaveText(['alpha-order', 'Middle-order', 'Zed-order']);
+            await expect(items.filter({hasText: 'Zed-order'})).toHaveClass(/neo-selected/);
+            expect(await selectedId()).toBe('aa-order-seat');
+            await expect(card).toContainText(/aa-order-seat|Zed-order/)
         } finally {
             server && await new Promise(resolve => server.close(resolve));
             FleetRegistryService.dataDir = priorDataDir;
