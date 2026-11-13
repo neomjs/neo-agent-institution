@@ -131,14 +131,19 @@ test.describe('harness rehearsal', () => {
             expect(new URL(repo.cloneUrl).hostname).toBe('example.invalid')
         });
 
-        expect(rehearsalFleetEnv({codex: {binary: '/c/Codex', cli: '/c/codex'}, graphPath: '/r/graph.sqlite', nlPort: 4321, signingKey: 'PEM', standIn: '/r/stand-in.mjs'})).toEqual({
-            NEO_AGENT_IDENTITY          : REHEARSAL_VIEWER,
-            NEO_FLEET_CLAUDE_DESKTOP_BIN: '/r/stand-in.mjs',
-            NEO_FLEET_CODEX_BIN         : '/c/codex',
-            NEO_FLEET_CODEX_DESKTOP_BIN : '/c/Codex',
-            NEO_FLEET_SIGNING_KEY       : 'PEM',
-            NEO_MEMORY_DB_PATH_TEST     : '/r/graph.sqlite',
-            NEO_NL_PORT                 : '4321'
+        const env = rehearsalFleetEnv({codex: {binary: '/c/Codex', cli: '/c/codex'}, graphPath: '/r/graph.sqlite', nlPort: 4321, signingKey: 'PEM', standIn: '/r/stand-in.mjs', storeRoot: '/r/harnesses'});
+
+        expect(env).toEqual({
+            NEO_AGENT_IDENTITY                          : REHEARSAL_VIEWER,
+            NEO_FLEET_CLAUDE_DESKTOP_BIN                : '/r/stand-in.mjs',
+            NEO_FLEET_CODEX_BIN                         : '/c/codex',
+            NEO_FLEET_CODEX_DESKTOP_BIN                 : '/c/Codex',
+            NEO_FLEET_HARNESS_GENERATIONS_CLAUDE_DESKTOP: 'false',
+            NEO_FLEET_HARNESS_GENERATIONS_CODEX_DESKTOP : 'false',
+            NEO_FLEET_HARNESS_GENERATIONS_ROOT          : '/r/harnesses',
+            NEO_FLEET_SIGNING_KEY                       : 'PEM',
+            NEO_MEMORY_DB_PATH_TEST                     : '/r/graph.sqlite',
+            NEO_NL_PORT                                 : '4321'
         })
     });
 
