@@ -13,6 +13,15 @@ import {holdPackageTransaction, inspectPackageProtection}                       
 const RETIRING  = '.retiring-';
 const idPattern = /^[a-f0-9]{64}$/, transactionPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
+/**
+ * @summary How long one pass may hold the package and reference leases. Every seat Start and every
+ * install waits on them, so a pass that never settles must still release them. A real pass verifies
+ * a generation in about 6 s and its census takes at most 30 s (three 10 s probes); 2 minutes is
+ * roughly ten real passes.
+ */
+export const RUNTIME_MAINTENANCE_DEADLINE_MS = 120000;
+const HALTS = new Set(['pass-deadline', 'pass-aborted']);
+
 /** @summary Requires an owner-controlled canonical directory without repairing its custody. */
 function ownedDirectory(directory) {
     const stat = fs.lstatSync(directory, {bigint: true});
@@ -64,16 +73,39 @@ function readRemovalReceipt(target, verifier) {
  * @summary Performs one guarded maintenance pass; every uncertain observation retains its generation.
  * Expensive payload verification is skipped for positively retained generations. A removal requires
  * the current trusted verifier plus a fresh complete census and current package/journal evidence.
+ *
+ * The pass holds both leases only until its deadline or its owner's abort. Either one ends a pending
+ * read (payload verify, census), the `finally` releases both leases, and the result names the step and
+ * generation it stopped in. A removal is never abandoned: it deletes by path, so a successor holding the
+ * leases could see its tree retained or replaced. It finishes under both leases, and a halt takes effect
+ * at the next step.
  * @param {Object} options Explicit host generation, trusted Brain contracts and custody directory.
- * @param {Object} [dependencies] Isolated transaction, census and interruption seams for fixtures.
+ * @param {Number} [options.deadlineMs=RUNTIME_MAINTENANCE_DEADLINE_MS] Longest time the pass holds the leases.
+ * @param {AbortSignal} [options.signal] The owner's teardown; aborting ends the pass at its pending step.
+ * @param {Object} [dependencies] Isolated transaction, census, interruption and clock seams for fixtures.
  * @returns {Promise<Object>} Per-generation removal/retention facts; never readiness or seat migration.
+ * A halted pass returns `{state: 'deferred', reason: 'pass-deadline' | 'pass-aborted', phase: {step, id}}`.
  */
-export async function retireRuntimeGenerations({directory, currentGeneration, journalDirectory, verifier, references, journal, leases}, {
+export async function retireRuntimeGenerations({directory, currentGeneration, journalDirectory, verifier, references, journal, leases,
+    deadlineMs = RUNTIME_MAINTENANCE_DEADLINE_MS, signal}, {
     transactionFn = () => holdPackageTransaction({acquireLease: leases.holdFileLease}),
-    inspectProcesses = inspectRuntimeGenerationProcesses, removeTree = removeOwnedRuntimeTree, renameTree = fs.renameSync
+    inspectProcesses = inspectRuntimeGenerationProcesses, removeTree = removeOwnedRuntimeTree, renameTree = fs.renameSync,
+    setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout
 } = {}) {
     const generations = [];
-    let packageGuard, referenceGuard;
+    let packageGuard, referenceGuard, timer, halt, phase = {step: 'acquire', id: null};
+    const halted = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
+    const onAbort = () => halt('pass-aborted');
+    halted.catch(() => {});
+    /** @summary Records where the pass is, then lets its deadline or its owner's abort end a step that never settles. */
+    function bounded(step, id, promise) {
+        phase = {step, id};
+        return Promise.race([promise, halted]);
+    }
+    /** @summary Lets a halt leave a per-generation catch, so the pass stops instead of trying the next generation. */
+    function rethrowHalt(error) {
+        if (HALTS.has(error.code)) throw error;
+    }
     /** @summary Revalidates both exclusion owners in the acquisition order. */
     function assertCurrent() {
         packageGuard.assertCurrent();
@@ -115,7 +147,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         if (String(stat.dev) !== record.dev || String(stat.ino) !== record.ino || String(stat.birthtimeNs) !== record.birth) throw Error('runtime-removal-inode-changed');
         const preliminary = preliminarilyRetained(pin);
         if (preliminary.length) return {id: pin.id, directory: target, state: 'retained', reasons: preliminary};
-        const census = await inspectProcesses({directories: [target]});
+        const census = await bounded('census', pin.id, inspectProcesses({directories: [target]}));
         // The receipt retains the original pin; only this inode's physical path moved.
         const decision = classify(pin, {...census, processes: census.processes?.map(row => ({...row,
             directories: row.directories?.map(directory => directory === target ? pin.directory : directory)}))});
@@ -123,6 +155,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         const current = ownedDirectory(target);
         if (current.dev !== stat.dev || current.ino !== stat.ino || current.birthtimeNs !== stat.birthtimeNs) throw Error('runtime-removal-inode-changed');
         assertCurrent();
+        phase = {step: 'remove', id: pin.id};
         await removeTree(target);
         assertCurrent();
         fs.unlinkSync(target + '.json');
@@ -130,6 +163,10 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         return {id: pin.id, directory: target, state: 'removed', reasons: []};
     }
     try {
+        if (signal?.aborted) throw Object.assign(Error('pass-aborted'), {code: 'pass-aborted'});
+        signal?.addEventListener('abort', onAbort, {once: true});
+        timer = setTimeoutFn(() => halt('pass-deadline'), deadlineMs);
+        timer?.unref?.();
         if (path.dirname(verifier.runtimeGenerationPin(currentGeneration).directory) !== directory) throw Error('runtime-maintenance-host-binding-invalid');
         packageGuard = transactionFn();
         referenceGuard = references.holdRuntimeGenerationReferences({directory});
@@ -141,7 +178,10 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
             try {
                 if (!transactionPattern.test(name.slice(RETIRING.length))) throw Error('runtime-removal-name-unknown');
                 generations.push(await finishRemoval(target));
-            } catch (error) { generations.push({directory: target, state: 'retained', reasons: [{code: error.code || error.message}]}) }
+            } catch (error) {
+                rethrowHalt(error);
+                generations.push({directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
+            }
         }
         for (const id of fs.readdirSync(directory).filter(name => idPattern.test(name))) {
             const target = path.join(directory, id);
@@ -154,9 +194,9 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                     generations.push({id, directory: target, state: 'retained', reasons: preliminary});
                     continue;
                 }
-                const generation = await verifier.readRuntimeGeneration({directory: target});
+                const generation = await bounded('verify', id, verifier.readRuntimeGeneration({directory: target}));
                 const original   = ownedDirectory(target);
-                const census     = await inspectProcesses({directories: [target]});
+                const census     = await bounded('census', id, inspectProcesses({directories: [target]}));
                 const decision   = classify(generation, census);
                 if (!decision.eligible) {
                     generations.push({id, directory: target, state: 'retained', reasons: decision.reasons});
@@ -179,12 +219,17 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                 renameTree(target, destination);
                 flushDirectory(directory);
                 generations.push(await finishRemoval(destination));
-            } catch (error) { generations.push({id, directory: target, state: 'retained', reasons: [{code: error.code || error.message}]}) }
+            } catch (error) {
+                rethrowHalt(error);
+                generations.push({id, directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
+            }
         }
         return {state: 'observed', generations};
     } catch (error) {
-        return {state: 'deferred', reason: error.code || error.message, generations};
+        return {state: 'deferred', reason: error.code || error.message, ...(HALTS.has(error.code) ? {phase} : {}), generations};
     } finally {
+        clearTimeoutFn(timer);
+        signal?.removeEventListener('abort', onAbort);
         const failures = [];
         for (const guard of [referenceGuard, packageGuard]) {
             if (!guard) continue;
@@ -196,20 +241,31 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
 
 /**
  * @summary Runs non-overlapping maintenance on a host cadence and joins the final pass during teardown.
- * @param {Function} run One bounded asynchronous maintenance pass.
+ * Each pass receives `{signal}`. Teardown aborts it and waits at most `closeTimeoutMs`, so an FM quit
+ * never hangs behind a pass, even one that ignores its signal.
+ * @param {Function} run One bounded asynchronous maintenance pass, called with `{signal}`.
  * @param {Object} [options] Clock and report seams; no new operator configuration.
- * @returns {{close: Function}} Closing prevents another pass and waits for the one already running.
+ * @returns {{close: Function}} Closing prevents another pass, aborts the running one and joins it within the bound.
  */
-export function startRuntimeMaintenance(run, {intervalMs = 60000, onResult = () => {}, onError = () => {},
-    setIntervalFn = setInterval, clearIntervalFn = clearInterval} = {}) {
-    let pending = null, closed = false;
+export function startRuntimeMaintenance(run, {intervalMs = 60000, closeTimeoutMs = 5000, onResult = () => {}, onError = () => {},
+    setIntervalFn = setInterval, clearIntervalFn = clearInterval, setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout} = {}) {
+    let pending = null, closed = false, controller = null;
     /** @summary Coalesces cadence overlap without losing the in-flight teardown join. */
     function tick() {
         if (closed || pending) return;
-        pending = Promise.resolve().then(run).then(onResult).catch(onError).finally(() => { pending = null });
+        controller = new AbortController();
+        const {signal} = controller;
+        pending = Promise.resolve().then(() => run({signal})).then(onResult).catch(onError).finally(() => { pending = null; controller = null });
     }
     const timer = setIntervalFn(tick, intervalMs);
     timer.unref?.();
     tick();
-    return {async close() { closed = true; clearIntervalFn(timer); await pending }};
+    return {async close() {
+        closed = true;
+        clearIntervalFn(timer);
+        controller?.abort();
+        let bound;
+        await Promise.race([pending, new Promise(resolve => { bound = setTimeoutFn(resolve, closeTimeoutMs) })]);
+        clearTimeoutFn(bound);
+    }};
 }
