@@ -131,5 +131,49 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
 
         await expect(controller.openMemoriesSession({})).resolves.toEqual({opened: false, sessionId: null});
         expect(opened, 'no session, no drill').toHaveLength(1)
+    });
+
+    /**
+     * @summary A cockpit controller whose fleet head holds the given awaiting-merge button; its dock has no
+     * strip to switch.
+     * @param {Object} button
+     * @returns {AgentOS.view.fleet.cockpit.Controller}
+     */
+    const mergeDoorHost = button => {
+        const grid = {getReference: ref => ref === 'awaiting-merge' ? button : null};
+
+        return Object.assign(Object.create(FleetCockpitController.prototype), {
+            component   : {dockModel: {nodes: {}}, down: () => null, timeout: () => Promise.resolve()},
+            getReference: ref => ref === 'fleet-grid' ? grid : null
+        })
+    };
+
+    test('Home\'s merge count opens the list only once the shell has mounted the fleet head again (#948)', async () => {
+        let mount;
+        const
+            calls  = [],
+            button = {
+                hidden        : false,
+                mounted       : false,
+                mountedPromise: new Promise(resolve => {mount = resolve}),
+                openMenu      : async () => {calls.push(button.mounted ? 'open on screen' : 'open off screen'); return true}
+            },
+            opening = mergeDoorHost(button).openMergeQueue();
+
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(calls, 'nothing opens while the view is off screen').toEqual([]);
+
+        button.mounted = true;
+        mount(button);
+
+        await expect(opening).resolves.toEqual({opened: true});
+        expect(calls).toEqual(['open on screen'])
+    });
+
+    test('a hidden merge button is never mounted, so the door answers at once instead of waiting for it (#948)', async () => {
+        const button = {hidden: true, mounted: false, mountedPromise: new Promise(() => {}), openMenu: async () => false};
+
+        await expect(mergeDoorHost(button).openMergeQueue()).resolves.toEqual({opened: false});
+        await expect(mergeDoorHost(null).openMergeQueue()).resolves.toEqual({opened: false})
     })
 });

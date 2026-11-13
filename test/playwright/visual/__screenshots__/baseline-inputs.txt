@@ -408,7 +408,7 @@ apps/agentos/view/fleet/cockpit/LivenessController.mjs
     fa5a2b0ce81b168540ac914b1f3bba006f20fa8f
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    c8cb352785ae483806eb80b25adbf88e03a5f7ce
+    4e573f38061ee06f306499a129e01f11c03c91c5
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501

@@ -324,6 +324,10 @@ class ReadingSurfacesController extends LivenessController {
     /**
      * @summary Open the fleet head's merge queue for a view outside the cockpit (Home's merge count): the
      * roster's tab comes forward and its awaiting-merge button opens its list, when there is one.
+     *
+     * The caller moves the route first, and the shell keeps no DOM for an inactive view, so the list opens
+     * only once the button is mounted again. A hidden button has no list and is never mounted, so it answers
+     * at once.
      * @returns {Promise<{opened: Boolean}>}
      */
     async openMergeQueue() {
@@ -333,7 +337,13 @@ class ReadingSurfacesController extends LivenessController {
 
         const button = me.getReference('fleet-grid')?.getReference('awaiting-merge');
 
-        return {opened: button ? await button.openMenu() : false}
+        if (!button || button.hidden) {
+            return {opened: false}
+        }
+
+        await button.mountedPromise;
+
+        return {opened: await button.openMenu()}
     }
 
     /**
