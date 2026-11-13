@@ -189,24 +189,29 @@ export function rehearsalSeats() {
  * @summary What the rehearsal adds to the smoke's Fleet profile: the stand-in as each desktop family's harness
  * binary, the Bridge port and signing key the run owns, and the rehearsal's viewer. Under `UNIT_TEST_MODE` a
  * checkout's graph lives in memory per process, so `NEO_MEMORY_DB_PATH_TEST` names the file the viewer is seeded
- * into; a packaged profile's graph is that file already.
+ * into; a packaged profile's graph is that file already. A stand-in never passes vendor admission, so every
+ * rehearsed family is opted out of harness generations, and the store an admission would write lies inside the
+ * run: the Fleet child inherits the host's `HOME`, whose store is the operator's.
  * @param {Object} options
  * @param {Object} options.codex      `{binary, cli}` from the journey's `writeCodexStandInBundle`.
  * @param {String} options.graphPath  The run's graph file.
  * @param {Number} options.nlPort     The run's Bridge port.
  * @param {String} options.signingKey The run's Ed25519 signing key, PKCS8 PEM.
  * @param {String} options.standIn    The launcher from the journey's `writeStandInLauncher`.
+ * @param {String} options.storeRoot  The run's harness-generation store.
  * @returns {Object} env fragment
  */
-export function rehearsalFleetEnv({codex, graphPath, nlPort, signingKey, standIn}) {
+export function rehearsalFleetEnv({codex, graphPath, nlPort, signingKey, standIn, storeRoot}) {
     return {
-        NEO_AGENT_IDENTITY          : REHEARSAL_VIEWER,
-        NEO_FLEET_CLAUDE_DESKTOP_BIN: standIn,
-        NEO_FLEET_CODEX_BIN         : codex.cli,
-        NEO_FLEET_CODEX_DESKTOP_BIN : codex.binary,
-        NEO_FLEET_SIGNING_KEY       : signingKey,
-        NEO_MEMORY_DB_PATH_TEST     : graphPath,
-        NEO_NL_PORT                 : String(nlPort)
+        NEO_AGENT_IDENTITY                : REHEARSAL_VIEWER,
+        NEO_FLEET_CLAUDE_DESKTOP_BIN      : standIn,
+        NEO_FLEET_CODEX_BIN               : codex.cli,
+        NEO_FLEET_CODEX_DESKTOP_BIN       : codex.binary,
+        ...Object.fromEntries(REHEARSAL_FAMILIES.map(family => [`NEO_FLEET_HARNESS_GENERATIONS_${family.replaceAll('-', '_').toUpperCase()}`, 'false'])),
+        NEO_FLEET_HARNESS_GENERATIONS_ROOT: storeRoot,
+        NEO_FLEET_SIGNING_KEY             : signingKey,
+        NEO_MEMORY_DB_PATH_TEST           : graphPath,
+        NEO_NL_PORT                       : String(nlPort)
     }
 }
 

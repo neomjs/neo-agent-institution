@@ -1780,7 +1780,8 @@ async function runRehearsalArm() {
                 graphPath : path.join(smokeRoot, 'sqlite', 'memory-core-graph.sqlite'),
                 nlPort,
                 signingKey: privateKey.export({format: 'pem', type: 'pkcs8'}),
-                standIn   : journeyModule.writeStandInLauncher({directory: path.join(rehearsalDir, 'bin'), runtime: standInRuntime.runtime})
+                standIn   : journeyModule.writeStandInLauncher({directory: path.join(rehearsalDir, 'bin'), runtime: standInRuntime.runtime}),
+                storeRoot : path.join(rehearsalDir, 'harnesses')
             });
 
         // A failed boot settles as a verdict, the way the smoke's own boot does, so teardown never rethrows it.
