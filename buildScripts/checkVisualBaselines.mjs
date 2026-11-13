@@ -186,7 +186,8 @@ export function serializeStamp({engine, entries}) {
 
 /**
  * @summary The inverse of {@link serializeStamp}: an indented line is the value of the key above it;
- * comment and blank lines carry no data.
+ * comment and blank lines carry no data. Lines split on /\r?\n/, so a CRLF checkout (Git for Windows
+ * with core.autocrlf) parses exactly like an LF one — a trailing \r must never become part of a key (#949).
  * @param {String} text
  * @returns {{engine: String|null, entries: Map<String, String>}}
  */
@@ -194,7 +195,7 @@ export function parseStamp(text) {
     const entries = new Map();
     let key = null;
 
-    for (const line of text.split('\n')) {
+    for (const line of text.split(/\r?\n/)) {
         if (line.startsWith(' ')) {
             entries.set(key, line.trim())
         } else if (line && !line.startsWith('#')) {
