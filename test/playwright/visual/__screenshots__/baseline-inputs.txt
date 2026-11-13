@@ -363,7 +363,7 @@ apps/agentos/view/Viewport.mjs
     a90fade562a991159f9707d97446eb69c5c5e54e
 
 apps/agentos/view/ViewportController.mjs
-    5053111229a86840993da9f93a5b1991765e91ce
+    5ea03e6412c9017ad3ba0d59bdbbe0d5c21a70d3
 
 apps/agentos/view/accounts/Controller.mjs
     f00734c27f7827fe0ed98cc4c222295bb67084a0
@@ -408,7 +408,7 @@ apps/agentos/view/fleet/cockpit/LivenessController.mjs
     fa5a2b0ce81b168540ac914b1f3bba006f20fa8f
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    c8cb352785ae483806eb80b25adbf88e03a5f7ce
+    9433212eec361522a25fae0ec9c1f9a93607809a
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501

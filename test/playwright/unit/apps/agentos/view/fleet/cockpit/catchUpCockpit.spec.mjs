@@ -131,5 +131,110 @@ test.describe('FleetCockpit — catch-up owner routing', () => {
 
         await expect(controller.openMemoriesSession({})).resolves.toEqual({opened: false, sessionId: null});
         expect(opened, 'no session, no drill').toHaveLength(1)
+    });
+
+    /**
+     * @summary A cockpit controller whose fleet head holds the given awaiting-merge button; its dock has no
+     * strip to switch.
+     * @param {Object} button
+     * @returns {AgentOS.view.fleet.cockpit.Controller}
+     */
+    const mergeDoorHost = button => {
+        const grid = {getReference: ref => ref === 'awaiting-merge' ? button : null};
+
+        return Object.assign(Object.create(FleetCockpitController.prototype), {
+            component   : {dockModel: {nodes: {}}, down: () => null, timeout: () => Promise.resolve()},
+            getReference: ref => ref === 'fleet-grid' ? grid : null
+        })
+    };
+
+    /**
+     * @summary An awaiting-merge button the test mounts and hides by hand. Like the engine's, its mount
+     * promise outlives an unmount, so a later `mount()` still resolves a wait that started earlier.
+     * @param {Object}  [options]
+     * @param {Boolean} [options.hidden=false]
+     * @returns {Object}
+     */
+    const mergeButton = ({hidden = false} = {}) => {
+        let resolveMount;
+        const
+            listeners = new Set(),
+            button    = {
+                calls         : [],
+                hidden,
+                mounted       : false,
+                mountedPromise: new Promise(resolve => {resolveMount = resolve}),
+                on            : (name, fn) => name === 'hiddenChange' && listeners.add(fn),
+                un            : (name, fn) => listeners.delete(fn),
+                openMenu      : async () => {button.calls.push(button.mounted ? 'open on screen' : 'open off screen'); return true},
+                listenerCount : () => listeners.size,
+                mount() {
+                    button.mounted = true;
+                    resolveMount(button)
+                },
+                hide() {
+                    button.hidden = true;
+                    listeners.forEach(fn => fn({oldValue: false, value: true}))
+                }
+            };
+
+        return button
+    };
+
+    const settle = () => new Promise(resolve => setTimeout(resolve, 20));
+
+    test('Home\'s merge count opens the list only once the shell has mounted the fleet head again (#948)', async () => {
+        const
+            button  = mergeButton(),
+            opening = mergeDoorHost(button).openMergeQueue({signal: new AbortController().signal});
+
+        await settle();
+        expect(button.calls, 'nothing opens while the view is off screen').toEqual([]);
+
+        button.mount();
+
+        await expect(opening).resolves.toEqual({opened: true});
+        expect(button.calls).toEqual(['open on screen']);
+        expect(button.listenerCount(), 'the door lets go of the button').toBe(0)
+    });
+
+    test('leaving Fleet before the button mounts ends the request, and a later visit opens nothing (#948)', async () => {
+        const
+            button  = mergeButton(),
+            visit   = new AbortController(),
+            opening = mergeDoorHost(button).openMergeQueue({signal: visit.signal});
+
+        await settle();
+        visit.abort();
+
+        await expect(opening, 'the request answers when its visit ends').resolves.toEqual({opened: false});
+        expect(button.listenerCount(), 'the door lets go of the button').toBe(0);
+
+        // an ordinary later visit mounts the button, resolving the engine promise the request had awaited
+        button.mount();
+        await settle();
+
+        expect(button.calls, 'the later visit opens and focuses nothing').toEqual([])
+    });
+
+    test('a merge button that hides before it mounts ends the request (#948)', async () => {
+        const
+            button  = mergeButton(),
+            opening = mergeDoorHost(button).openMergeQueue({signal: new AbortController().signal});
+
+        await settle();
+        button.hide();
+
+        await expect(opening).resolves.toEqual({opened: false});
+
+        button.mount();
+        await settle();
+
+        expect(button.calls).toEqual([])
+    });
+
+    test('a hidden merge button is never mounted, so the door answers at once instead of waiting for it (#948)', async () => {
+        await expect(mergeDoorHost(mergeButton({hidden: true})).openMergeQueue()).resolves.toEqual({opened: false});
+        await expect(mergeDoorHost(null).openMergeQueue()).resolves.toEqual({opened: false})
     })
 });
