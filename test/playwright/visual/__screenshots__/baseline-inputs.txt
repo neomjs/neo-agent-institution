@@ -6,7 +6,7 @@
 # golden may have been captured at an earlier one.
 
 engine
-    41e5632698be771e8255859f7cb7cac6086894e7
+    781af05fa474cc9fbddf1813f9b1ed3e091d2fbd
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -339,7 +339,7 @@ apps/agentos/util/SpineAction.mjs
     ff9fc70ac251297a94fb6cf2d8c7cbdd47112647
 
 apps/agentos/util/SpineBanner.mjs
-    a31261593409e53076e83f343e83051dc4f38d3b
+    551dadc866c4b3cf3788e3b0fc85b90f0c14d112
 
 apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01

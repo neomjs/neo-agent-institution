@@ -908,7 +908,6 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(partialWithNote.title).toContain('mailbox available');
             expect(partialWithNote.title).toContain('Plane outage');
 
-            // Issue #927 acceptance criteria:
             // With PR lanes partial and the mailbox wired, after a recovered plane outage,
             // the lead reads `PR lanes partial`, and the title carries `mailbox available` and the outage window.
             const prLanesPartialWithOutage = SpineBanner.deriveSpineBanner({
