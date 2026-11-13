@@ -33,6 +33,13 @@ class Controller extends ComponentController {
     fleetTenantsLoadGeneration = 0
 
     /**
+     * The profile whose bridge answered the rows both registry Stores hold; `null` until a read lands.
+     * @member {String|null} registryProfileId=null
+     * @private
+     */
+    registryProfileId = null
+
+    /**
      * @summary Bind child intents after construction and hydrate the provider-bound Stores.
      * Initial binding setters can run before the controller and children are ready.
      */
@@ -236,8 +243,8 @@ class Controller extends ComponentController {
 
     /**
      * @summary Hydrate the provider's definitions from the canonical public roster. Failed,
-     * superseded, replaced-Store or post-destroy reads preserve the prior projection. An accepted
-     * write from any owner invalidates an older read through the shared write generation.
+     * superseded, replaced-Store, replaced-bridge or post-destroy reads preserve the prior projection.
+     * An accepted write from any owner invalidates an older read through the shared write generation.
      * @returns {Promise<Boolean>} Whether this read replaced the Store's rows.
      */
     async loadAgentDefinitions() {
@@ -259,10 +266,12 @@ class Controller extends ComponentController {
 
             if (!Array.isArray(agents) || me.isDestroyed || component.isDestroying || component.isDestroyed ||
                 generation !== me.agentDefinitionsLoadGeneration || store !== component.agentDefinitionsStore ||
+                bridge !== globalThis.AgentOS?.fleet?.registryBridge ||
                 ConfigIntentRoundTrip.getDefinitionsWriteGeneration(store) !== writeGeneration) {
                 return false
             }
 
+            me.registryProfileId = bridge.profileId ?? null;
             store.data = agents;
             // an empty first answer mutates nothing, so no Store event re-derives the empty line
             agents.length === 0 && component.syncDetail();
@@ -274,7 +283,8 @@ class Controller extends ComponentController {
 
     /**
      * @summary Hydrate public tenant choices on the same provider Store. Curated fields keep
-     * credentials out of Body state; invalid, stale and post-destroy responses retain prior rows.
+     * credentials out of Body state; invalid, stale, replaced-bridge and post-destroy responses
+     * retain prior rows.
      * @returns {Promise<Boolean>} Whether this read replaced the Store's rows.
      */
     async loadFleetTenants() {
@@ -298,10 +308,12 @@ class Controller extends ComponentController {
                 typeof tenant.endpoint !== 'string' || !tenant.endpoint ||
                 typeof tenant.status !== 'string' || !tenant.status
             ) || me.isDestroyed || component.isDestroying || component.isDestroyed ||
-                generation !== me.fleetTenantsLoadGeneration || store !== component.fleetTenantsStore) {
+                generation !== me.fleetTenantsLoadGeneration || store !== component.fleetTenantsStore ||
+                bridge !== globalThis.AgentOS?.fleet?.registryBridge) {
                 return false
             }
 
+            me.registryProfileId = bridge.profileId ?? null;
             store.data = tenants.map(tenant => ({
                 id             : tenant.id,
                 endpoint       : tenant.endpoint,
@@ -314,6 +326,33 @@ class Controller extends ComponentController {
         } catch {
             return false
         }
+    }
+
+    /**
+     * @summary Retire the registry rows another profile answered ({@link AgentOS.util.TargetBinding}'s
+     * rule): both Stores empty, the definitions Store unanswered until the bound profile's read lands.
+     * @param {String|null} profileId The profile now bound.
+     * @returns {Boolean} Whether rows were retired.
+     */
+    retireRegistry(profileId) {
+        const
+            me          = this,
+            {component} = me,
+            definitions = component.agentDefinitionsStore;
+
+        if (me.registryProfileId === null || me.registryProfileId === (profileId ?? null)) {
+            return false
+        }
+
+        me.registryProfileId = null;
+
+        if (definitions) {
+            definitions.isLoaded = false;
+            definitions.clear()
+        }
+
+        component.fleetTenantsStore?.clear();
+        return true
     }
 
     /**

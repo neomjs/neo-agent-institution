@@ -12,6 +12,7 @@ import GoldenPathEnvelope  from '../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope  from '../util/GraphSceneEnvelope.mjs';
 import HomeView            from './home/Container.mjs';
 import InstanceSwitcher    from './fleet/instances/SwitcherButton.mjs';
+import NightshiftButton    from './NightshiftButton.mjs';
 import ObservatoryPane     from './fleet/goldenpath/ObservatoryContainer.mjs';
 import StateProvider       from '../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import SystemView          from './system/Container.mjs';
@@ -109,6 +110,9 @@ class Viewport extends BaseViewport {
                 // the operator line's questions axis, projected by the same read owner from the same
                 // answer: its source's state and reason, leaf-complete like `openWork`
                 questions: {count: null, reason: null, state: null},
+                // the plane's operator presence record, written by the roster's read owner with each answer
+                // and by the Nightshift toggle's own write; `mode: null` is unknown, never present
+                operatorPresence: {expired: false, mode: null, since: null, until: null},
                 // the connected instance's deployment-state picture — the System keeper-view's plane
                 // truth, written by the cockpit's read owner through setData's closest-owner walk and
                 // declared HERE so a sibling keeper-view can bind it; leaf-complete by construction
@@ -167,9 +171,10 @@ class Viewport extends BaseViewport {
             }
         },
         /**
-         * Top chrome (logo · title · instance switcher · theme switch) over the left-rail
-         * keeper-view nav. The switcher sits in the LEFT cluster directly after the title — scope
-         * reads left-to-right: product → instance → everything below is instance-relative.
+         * Top chrome (logo · title · instance switcher · Nightshift toggle · theme switch) over the
+         * left-rail keeper-view nav. The switcher sits in the LEFT cluster directly after the title —
+         * scope reads left-to-right: product → instance → everything below is instance-relative. The
+         * operator's own controls close the bar on the right.
          * @member {Object[]} items
          */
         items: [{
@@ -219,6 +224,11 @@ class Viewport extends BaseViewport {
                     }
                 }
             }, '->', {
+                module   : NightshiftButton,
+                reference: 'nightshift-button',
+                bind     : {operatorPresence: data => data.operatorPresence},
+                listeners: {nightshiftchange: 'onNightshiftChange'}
+            }, {
                 ntype    : 'button',
                 cls      : ['agent-button', 'agent-theme-button'],
                 handler  : 'onSwitchTheme',

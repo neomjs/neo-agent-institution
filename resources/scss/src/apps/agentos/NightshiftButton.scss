@@ -1,0 +1,26 @@
+/* AgentOS.view.NightshiftButton — the span menu that turns Nightshift on. The toggle's own skin sits with
+   the agent-button family in Viewport.scss; this floating list is a document.body child, skinned here on
+   the --fm-* layer like the instance switcher's and the merge queue's menus. */
+.fm-nightshift-menu.neo-menu-list {
+    --menu-list-background-color              : var(--fm-panel-2);
+    --menu-list-border-color                  : var(--fm-line);
+    --menu-list-item-background-color         : transparent;
+    --menu-list-item-background-color-hover   : var(--fm-panel);
+    --menu-list-item-background-color-selected: var(--fm-panel);
+    --menu-list-item-color                    : var(--fm-ink);
+    --menu-list-item-height                   : auto;
+    --menu-list-item-line-height              : normal;
+    --menu-list-item-outline-focus            : 1px solid var(--fm-signal);
+    --menu-list-item-padding                  : var(--fm-space-2);
+
+    border-radius: 6px;
+    box-shadow   : var(--fm-shadow-overlay);
+    font         : var(--fm-text-body);
+    min-width    : 180px;
+    padding      : var(--fm-space-1);
+
+    .neo-list-item {
+        border-radius: 4px;
+        white-space  : nowrap;
+    }
+}

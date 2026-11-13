@@ -1,14 +1,15 @@
 /* The harness shell — everything scoped under the viewport root (its cls) for isolation:
    top chrome, the left-rail keeper-view nav, the agent-button hierarchy, and the Home/Chat surfaces.
-   The instance and awaiting-merge menus are framework-floating document.body children, so they join
-   this scope to inherit the SAME structural FM role/spacing/motion tokens without duplicating their
-   definitions. Their feature sheets consume only the relevant vars; the shell selectors below remain
-   descendant-bound.
+   The instance, awaiting-merge and Nightshift menus are framework-floating document.body children, so
+   they join this scope to inherit the SAME structural FM role/spacing/motion tokens without duplicating
+   their definitions. Their feature sheets consume only the relevant vars; the shell selectors below
+   remain descendant-bound.
    §04 rhythm record (#17265): the 2px tab indicator (the tab-family block) is a recorded exception —
    an indicator's own measure, not spacing. */
 .agent-os-viewport.neo-viewport,
 .fm-instance-menu,
-.fm-awaiting-merge-menu {
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
     /* Direct paint does NOT live in this comma group: it carries structural FM tokens to the
        floating instance menu too, so every direct declaration here would be emitted for the menu
        root as well. The ground paint + container-surface rule live in the viewport-only
@@ -397,6 +398,49 @@
             border-color: var(--fm-signal);
             background   : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-panel-2));
             color        : var(--fm-signal);
+        }
+    }
+
+    /* The Nightshift toggle, the bar's one worded control: it widens past the band's square
+       scale, and its word speaks the shell's verb scale (the chrome role, like every ghost verb). On
+       takes the submit voice, and its title says on or off, so the state never rests on hue.
+       Unknown dims the ink; a refused change dashes the plate until the next record or click. Below
+       the vessel band only the glyph stays. */
+    .neo-button.agent-nightshift-button {
+        --button-glyph-margin: 0 var(--fm-space-1) 0 0;
+        --button-padding     : 0 var(--fm-space-2);
+
+        .neo-button-text {
+            font: var(--fm-text-chrome);
+        }
+
+        &.pressed {
+            border-color: color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+            background   : color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+            color        : var(--fm-signal);
+
+            &:hover {
+                border-color: var(--fm-signal);
+                background   : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-panel-2));
+                color        : var(--fm-signal);
+            }
+        }
+
+        &.is-unknown {
+            color: var(--fm-ink-dim);
+        }
+
+        &.is-refused {
+            border-style: dashed;
+        }
+
+        @media (max-width: 560px) {
+            --button-glyph-margin: 0;
+            --button-padding     : 0;
+
+            .neo-button-text {
+                display: none;
+            }
         }
     }
 

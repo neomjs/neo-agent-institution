@@ -28,5 +28,13 @@
         "cross-env": "^10.1.0",
         "electron": "43.8.1",
         "electron-builder": "^26.0.12"
+    },
+    "overrides": {
+        "app-builder-lib@26.15.3": {
+            "minimatch@^10.2.5": "11.0.1"
+        },
+        "@electron/universal@2.0.3": {
+            "minimatch@^9.0.3": "11.0.1"
+        }
     }
 }
