@@ -326,24 +326,56 @@ class ReadingSurfacesController extends LivenessController {
      * roster's tab comes forward and its awaiting-merge button opens its list, when there is one.
      *
      * The caller moves the route first, and the shell keeps no DOM for an inactive view, so the list opens
-     * only once the button is mounted again. A hidden button has no list and is never mounted, so it answers
-     * at once.
+     * only once the button is mounted again. That wait belongs to the visit that asked: when the visit ends
+     * or the button hides before it mounts, the request answers not opened, and a later mount opens nothing.
+     * A hidden button has no list and is never mounted, so it answers at once.
+     * @param {Object}      [options]
+     * @param {AbortSignal} [options.signal] Aborts when the visit that asked ends
      * @returns {Promise<{opened: Boolean}>}
      */
-    async openMergeQueue() {
+    async openMergeQueue({signal} = {}) {
         const me = this;
 
         await me.revealResidentTab('fleet');
 
         const button = me.getReference('fleet-grid')?.getReference('awaiting-merge');
 
-        if (!button || button.hidden) {
+        if (!button || button.hidden || signal?.aborted || !await me.mountsWithinVisit(button, signal)) {
             return {opened: false}
         }
 
-        await button.mountedPromise;
-
         return {opened: await button.openMenu()}
+    }
+
+    /**
+     * @summary Waits for `button` to mount within the caller's visit: `true` once it mounts, `false` when
+     * `signal` aborts or the button hides first. Both listeners are released at the first answer, and the
+     * engine's mount promise, which outlives an unmount, can no longer change it.
+     * @param {Neo.component.Base} button
+     * @param {AbortSignal}        [signal]
+     * @returns {Promise<Boolean>}
+     * @protected
+     */
+    mountsWithinVisit(button, signal) {
+        return new Promise(resolve => {
+            let settled = false;
+
+            const
+                settle   = mounted => {
+                    if (!settled) {
+                        settled = true;
+                        signal?.removeEventListener('abort', onAbort);
+                        button.un('hiddenChange', onHidden);
+                        resolve(mounted)
+                    }
+                },
+                onAbort  = () => settle(false),
+                onHidden = ({value}) => value && settle(false);
+
+            signal?.addEventListener('abort', onAbort, {once: true});
+            button.on('hiddenChange', onHidden);
+            button.mountedPromise.then(() => settle(!signal?.aborted && !button.hidden))
+        })
     }
 
     /**

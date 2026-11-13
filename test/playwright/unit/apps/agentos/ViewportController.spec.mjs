@@ -91,6 +91,28 @@ test.describe('AgentOS.view.ViewportController — route → keeper-view tab', (
         expect(shell.activeIndex).toBe(1)
     });
 
+    test('a visit signal survives the arrival at its route and aborts when the shell leaves it (#948)', () => {
+        const
+            {controller, shell} = createController(),
+            listeners           = new Set();
+
+        shell.on = (name, fn) => name === 'activeIndexChange' && listeners.add(fn);
+        shell.un = (name, fn) => listeners.delete(fn);
+
+        const
+            change = value => listeners.forEach(fn => fn({oldValue: null, value})),
+            visit  = controller.visitSignal('/fleet');
+
+        change(1);
+        expect(visit.signal.aborted, 'arriving at Fleet keeps the visit').toBe(false);
+
+        change(0);
+        expect(visit.signal.aborted, 'Home ends the Fleet visit').toBe(true);
+
+        visit.release();
+        expect(listeners.size, 'release stops listening to the shell').toBe(0)
+    });
+
     test('keeps the authored shell header routes aligned with the controller routes', () => {
         const shellConfig = Viewport.config.items.find(item => item.reference === 'shell'),
               routes      = shellConfig.items.map(item => item.header.route);
