@@ -243,7 +243,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    8ce576f7af7e57479ab21f20baccc761ebc4b617
+    9191121d5ab6d2915ffdcab122a71d3cb1b0963a
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
@@ -330,7 +330,7 @@ apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SessionRotation.mjs
-    8ea79a1e52f5e453ffa8f43c78ee832896385eda
+    6345ca031717d11e583d55aae0becf5a800fd27f
 
 apps/agentos/util/SetupAsks.mjs
     5631188ae6808c721ebb030ad191ea3bc70b797b
@@ -348,7 +348,7 @@ apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    7091c9a4d50c616836a2b7b7b126cfd8fff3f9c4
+    d1eca9dc32e8b6330198aaadd5f7e00d4303aa0e
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -387,7 +387,7 @@ apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
 
 apps/agentos/view/fleet/activity/RowContainer.mjs
-    bca7c0418ac3297f6a95d5ff89b7f948ba0a7a96
+    99b5125c3b6fa1669e7f8cb72c1fcd1166c96955
 
 apps/agentos/view/fleet/activity/SelectionModel.mjs
     bccf458eaa03ae2f4d576211589c0a649b64f93f
@@ -402,7 +402,7 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     0a0fefc83e395d6928cb4e0433711f4d48ed35db
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    7a15878428e238767ccddec0fa576c442d2aa0cd
+    f139bcbe5b44374c4360bdad8ea3a31b3d586fce
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
@@ -411,7 +411,7 @@ apps/agentos/view/fleet/cockpit/LivenessController.mjs
     fa5a2b0ce81b168540ac914b1f3bba006f20fa8f
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    82f29c0854b198b3c71ad86a6efa7357969eee26
+    9da5266ecca53fb1dad92d4cea833495b45674aa
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
