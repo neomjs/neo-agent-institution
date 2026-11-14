@@ -4,6 +4,7 @@ import Button                 from '../../../../node_modules/neo.mjs/src/button/
 import FleetAgent             from '../../model/FleetAgent.mjs';
 import HomeCanvas             from './Canvas.mjs';
 import OpenWorkSeat           from '../../util/OpenWorkSeat.mjs';
+import ViewerTime             from '../../util/ViewerTime.mjs';
 import {INSTANCE_STATE_WORDS} from '../fleet/instances/SwitcherButton.mjs';
 
 /**
@@ -34,8 +35,15 @@ const SILENT = Object.freeze({kind: 'silent'});
 const counted = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
 /**
+ * @summary The operator's line from its runs, `·` between two.
+ * @param {Object[][]} runs Each run's segments
+ * @returns {Object[]} The line's segments
+ */
+const joined = runs => runs.flatMap((run, index) => [...(index ? [{text: ' · '}] : []), ...run]);
+
+/**
  * @summary The operator's line from its segments, with the reasons of the axes it names in the title.
- * @param {Object[]} segments The line's runs, `{text}` or `{link, text}`
+ * @param {Object[]} segments The line's runs, `{text}` or `{link, text, title?}`
  * @param {Object[]} axes     The axes the line names
  * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}}
  */
@@ -72,8 +80,9 @@ const door = (iconCls, route, question) => ({
  * pointer from the whole view and draws one mark per rostered agent from the team line's own read.
  *
  * Above everything, the operator's own line says what waits for the operator: the merges that wait for a
- * hand and the questions that wait for a word ({@link #operatorLine}). Its merge count opens the fleet
- * head's merge queue (`mergeQueueOpen`), its question count the Mailbox's open questions (`questionsOpen`).
+ * hand and the questions that wait for a word ({@link #operatorLine}), then, quieter, the asks that expired
+ * without one. Its merge count opens the fleet head's merge queue (`mergeQueueOpen`), its question count the
+ * Mailbox's open questions and its expired count the expired asks (`questionsOpen`, with the view to show).
  *
  * @summary Binds the Viewport provider's roster store and the roster surface's truths (the cockpit's
  * liveness owner fills them), the merge queue store, the open-work read's state and its questions axis, `instanceState`
@@ -153,9 +162,9 @@ class Container extends BaseContainer {
          */
         openWork_: null,
         /**
-         * The questions axis of the operator's line, the provider's `questions` block `{count, reason, state}`
-         * as its source answers it ({@link AgentOS.util.OpenWorkRead#questions}): `ok` · `unsupported` ·
-         * `unavailable`, or every leaf `null` while unanswered.
+         * The questions axis of the operator's line, the provider's `questions` block `{count, expired, reason,
+         * state}` as its source answers it ({@link AgentOS.util.OpenWorkRead#questions}): `ok` · `unsupported` ·
+         * `unavailable`, or every leaf `null` while unanswered. `expired` counts the asks that expired unanswered.
          * @member {Object|null} questions_=null
          * @reactive
          */
@@ -368,30 +377,56 @@ class Container extends BaseContainer {
     }
 
     /**
+     * @summary The quiet last run of the operator's line: the asks that expired unanswered within the
+     * producer's window, linked to their list. Only an integer count above zero speaks; a missing count, a
+     * `null` and a zero add nothing. Its title says what the number counts, from the window's start.
+     * @param {Object|null} expired The questions block's `{count, reason, since, state}`
+     * @param {Number}      now     The viewer's clock, for the window start's date
+     * @returns {Object[]|null} The run's one segment, or `null`
+     */
+    static expiredRun(expired, now) {
+        const count = expired?.count;
+
+        if (!Number.isInteger(count) || count <= 0) return null;
+
+        const since = ViewerTime.formatViewerTime(expired.since, {now})?.text;
+
+        return [{
+            link : 'expired',
+            text : `${count} expired unanswered`,
+            title: `asks whose deadline passed without an answer${since ? ` since ${since}` : ''}`
+        }]
+    }
+
+    /**
      * @summary The operator's own line: what waits for a hand (merges) and for a word (questions), one count
      * that belongs to the operator alone. "nothing waits for you" is said only when both axes are complete
      * and observed zero, and a stale observation keeps its age. An axis without a number leads, and so does
      * a zero that is not complete, each with its reason in the title. The other axis keeps its number,
      * never a 0, and a partial count reads as the least that waits ("at least 5 merges … · some could not
-     * be read"). Any axis with something to say lights the line, so a silent one never hides a known count;
-     * with nothing to say, the line is hidden. The merge count links to the fleet head's merge queue, the
-     * question count to the Mailbox's open questions.
+     * be read"). The asks that expired unanswered come last, quieter ({@link #expiredRun}), so the line
+     * still opens with what waits. Any axis with something to say lights the line, so a silent one never
+     * hides a known count; with nothing to say, the line is hidden. The merge count links to the fleet
+     * head's merge queue, the question count to the Mailbox's open questions, the expired count to the
+     * expired asks.
      * @param {Object}      facts
      * @param {Object|null} facts.openWork  The provider's `openWork` block: the merge axis's state
      * @param {Object[]}    facts.mergeRows The merge queue's rows (`{observedAt, stale}`)
-     * @param {Object|null} facts.questions The provider's `questions` block `{count, reason, state}`
+     * @param {Object|null} facts.questions The provider's `questions` block `{count, expired, reason, state}`
      * @param {Number}      [facts.now=Date.now()] The viewer's clock, for a stale queue's age
      * @returns {{hidden: Boolean, segments: Object[], text: String, title: String|null}} `segments` are the
-     * line's runs: `{text}`, or `{link, text}` for a count, `link` `merges` or `questions`
+     * line's runs: `{text}`, or `{link, text, title?}` for a count, `link` `merges`, `questions` or `expired`
      */
     static operatorLine({openWork, mergeRows = [], questions, now = Date.now()}) {
-        const axes = [
-            {noun: 'question', ...Container.questionsAxis(questions)},
-            {noun: 'merge',    ...Container.mergeAxis(openWork, mergeRows, now)}
-        ];
+        const
+            axes    = [
+                {noun: 'question', ...Container.questionsAxis(questions)},
+                {noun: 'merge',    ...Container.mergeAxis(openWork, mergeRows, now)}
+            ],
+            expired = Container.expiredRun(questions?.expired, now);
 
         if (axes.every(axis => axis.kind === 'counted' && axis.complete && axis.count === 0)) {
-            return lineOf([{text: `nothing waits for you${axes.find(axis => axis.asOf)?.asOf ?? ''}`}], [])
+            return lineOf(joined([[{text: `nothing waits for you${axes.find(axis => axis.asOf)?.asOf ?? ''}`}], ...(expired ? [expired] : [])]), [])
         }
 
         const
@@ -413,7 +448,9 @@ class Container extends BaseContainer {
             waiting.some(axis => axis.lowerBound) && runs.push([{text: 'some could not be read'}])
         }
 
-        return lineOf(runs.flatMap((run, index) => [...(index ? [{text: ' · '}] : []), ...run]), [...numberless, ...waiting])
+        expired && runs.push(expired);
+
+        return lineOf(joined(runs), [...numberless, ...waiting])
     }
 
     /**
@@ -533,8 +570,8 @@ class Container extends BaseContainer {
             operatorLine = me.getReference('operator-line');
 
         Object.assign(operatorLine.vdom, {
-            cn: operator.segments.map(({link, text}) => link
-                ? {tag: 'button', type: 'button', cls: ['fm-home-operator-link', `is-${link}`], text}
+            cn: operator.segments.map(({link, text, title}) => link
+                ? {tag: 'button', type: 'button', cls: ['fm-home-operator-link', `is-${link}`], text, ...(title ? {title} : {})}
                 : {tag: 'span', text}),
             title: operator.title
         });
@@ -574,14 +611,17 @@ class Container extends BaseContainer {
     /**
      * @summary Hands a click anywhere on Home to the field. A click on the operator line's merge count
      * asks for the fleet head's merge queue instead (`mergeQueueOpen`), one on its question count for the
-     * Mailbox's open questions (`questionsOpen`).
+     * Mailbox's open questions and one on its expired count for the expired asks (`questionsOpen`, with
+     * the view `open` or `expired`).
      * @param {Object} data
      */
     onFieldClick(data) {
         const link = data.path?.find(node => node.cls?.includes('fm-home-operator-link'));
 
         if (link) {
-            this.fire(link.cls.includes('is-questions') ? 'questionsOpen' : 'mergeQueueOpen');
+            link.cls.includes('is-merges')
+                ? this.fire('mergeQueueOpen')
+                : this.fire('questionsOpen', {view: link.cls.includes('is-expired') ? 'expired' : 'open'});
             return
         }
 

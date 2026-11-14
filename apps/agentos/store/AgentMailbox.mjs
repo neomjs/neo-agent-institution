@@ -15,8 +15,9 @@ import Store               from '../../../node_modules/neo.mjs/src/data/Store.mj
  * only data source, and its viewer-admission + read-only + active-inbox boundaries live on that
  * seam — the store is presentation plumbing over the adapter's immutable rows, newest first.
  *
- * The pane's open view lists the operator's open questions in their read's own order (priority, then age), so it
- * clears the sorter while it shows them ({@link #sortersOf}).
+ * The pane's open view lists the operator's open questions in their read's own order (priority, then age), and its
+ * expired view the expired asks in theirs (newest expiry first), so it clears the sorter while it shows either
+ * ({@link #sortersOf}).
  */
 class AgentMailbox extends Store {
     static config = {
@@ -47,13 +48,13 @@ class AgentMailbox extends Store {
     }
 
     /**
-     * @summary The sorters a list reads in: all mail newest first; the open questions none, because their read
-     * already orders them and a sorter would undo it.
-     * @param {'all'|'open'} view
+     * @summary The sorters a list reads in: all mail newest first; the open questions and the expired asks none,
+     * because their read already orders them and a sorter would undo it.
+     * @param {'all'|'open'|'expired'} view
      * @returns {Object[]} Fresh sorter configs
      */
     static sortersOf(view) {
-        return view === 'open' ? [] : [{direction: 'DESC', property: 'sentAt'}]
+        return view === 'open' || view === 'expired' ? [] : [{direction: 'DESC', property: 'sentAt'}]
     }
 }
 

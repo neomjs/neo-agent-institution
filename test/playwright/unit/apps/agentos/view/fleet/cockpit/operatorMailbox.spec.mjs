@@ -257,6 +257,39 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         expect(cockpit.operatorSnapshot, 'only the all-mail window is held for a rematerialized pane').toBe(null)
     });
 
+    test('inbox · the expired view reads the asks that expired unanswered and writes them to the pane alone (#959)', async () => {
+        const seen = [], expired = {...openQuestions(), since: '2026-10-02T04:00:00.000Z'};
+
+        setBridge({
+            fleetMailboxMirror: async () => { throw new Error('the all-mail read must not run in the expired view') },
+            fleetOwnQuestions : async params => { seen.push(params); return expired }
+        });
+
+        const {pane, cockpit} = makeReadOwner();
+
+        pane.view = 'expired';
+        await cockpit.loadOperatorInbox({offset: 50});
+
+        expect(seen).toEqual([{expired: true, offset: 50}]);
+        expect(pane.expired).toBe(expired);
+        expect(pane.questions, 'the open questions stay as they were').toBeUndefined();
+        expect(pane.snapshot).toBe(null);
+
+        // a switch away while the read is out lands nothing
+        let release;
+
+        setBridge({fleetOwnQuestions: () => new Promise(resolve => { release = () => resolve({...expired, count: 9}) })});
+
+        const late = cockpit.loadOperatorInbox({offset: 0});
+
+        await Promise.resolve();
+        pane.view = 'open';
+        release();
+        await late;
+
+        expect(pane.expired.count, 'the expired asks read for a list no longer in view never land').toBe(1)
+    });
+
     test('inbox · one fence serves both lists: a switch supersedes the other list\'s read in flight', async () => {
         let release;
 
@@ -425,7 +458,7 @@ test.describe('Fleet cockpit — operator mailbox (compose · recipients · own-
         const
             mail     = {rows: ['a:mail']},
             operator = {agentIdentityNodeId: '@op', githubUsername: 'op'},
-            retired  = {composeOutcome: null, identityPosture: null, questions: null, readFailed: false, record: null, snapshot: null},
+            retired  = {composeOutcome: null, expired: null, identityPosture: null, questions: null, readFailed: false, record: null, snapshot: null},
             flush    = () => new Promise(resolve => setTimeout(resolve, 0)),
             // the identity and window profile A answered, held the way a real controller holds them
             heldByA  = (fields = {}) => {

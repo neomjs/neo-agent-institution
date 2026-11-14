@@ -14,6 +14,7 @@ import FleetAwaitingMerge from '../../../../../../apps/agentos/store/FleetAwaiti
 import FleetRoster        from '../../../../../../apps/agentos/store/FleetRoster.mjs';
 import StateProvider  from '../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import HomeView       from '../../../../../../apps/agentos/view/home/Container.mjs';
+import ViewerTime     from '../../../../../../apps/agentos/util/ViewerTime.mjs';
 
 const PRODUCT_LINE = 'Mission control for a cross-model AI engineering team.';
 
@@ -323,6 +324,76 @@ test.describe('AgentOS.view.home.Container — the operator\'s own count (#557)'
 
         home.onFieldClick({path: [{cls: ['fm-home-operator']}, {cls: ['fm-home-view']}]});
         expect(asked.length, 'the line itself is not the link').toBe(2);
+
+        host.destroy()
+    })
+});
+
+test.describe('AgentOS.view.home.Container — the asks that expired unanswered (#959)', () => {
+    const
+        ok      = {state: 'ok', coverage: 'complete', observedAt: '2026-11-14T00:00:00.000Z', reason: null},
+        now     = Date.parse(ok.observedAt),
+        since   = '2026-11-07T00:19:00.000Z',
+        title   = `asks whose deadline passed without an answer since ${ViewerTime.formatViewerTime(since, {now}).text}`,
+        known   = (count, expired) => ({count, reason: null, state: 'ok', ...(expired === undefined ? {} : {expired})}),
+        counted = count => ({count, reason: null, since, state: 'ok'}),
+        rows    = count => Array.from({length: count}, () => ({observedAt: ok.observedAt, stale: false})),
+        line    = (merges, questions, openWork = ok) => HomeView.operatorLine({openWork, mergeRows: rows(merges), questions, now});
+
+    test('the third run comes last, quieter, after what waits: with asks waiting, with nothing waiting, and alone beside a silent axis', () => {
+        expect(line(2, known(5, counted(141))).text).toBe('5 questions · 2 merges wait for you · 141 expired unanswered');
+        expect(line(0, known(0, counted(3))).text).toBe('nothing waits for you · 3 expired unanswered');
+        expect(line(0, known(0, counted(1)), {state: 'unavailable', coverage: 'not-wired', reason: 'fleet open-work verb not wired'}))
+            .toMatchObject({hidden: false, text: '1 expired unanswered'});
+        expect(line(2, known(5, counted(141))).segments.at(-1), 'a link to its list, its title saying what the number counts')
+            .toEqual({link: 'expired', text: '141 expired unanswered', title})
+    });
+
+    test('only an integer count above zero speaks: a zero, a null and a block without the count leave the line as it was', () => {
+        const asToday = [line(2, known(5)).text, line(0, known(0)).text];
+
+        expect(asToday).toEqual(['5 questions · 2 merges wait for you', 'nothing waits for you']);
+        expect([line(2, known(5, counted(0))).text, line(0, known(0, counted(0))).text]).toEqual(asToday);
+        expect([line(2, known(5, counted(null))).text, line(0, known(0, counted(null))).text]).toEqual(asToday);
+        expect(line(2, known(5, {count: null, reason: 'fleet: the expired-questions read failed', since: null, state: 'unavailable'})).text).toBe(asToday[0]);
+        expect(line(0, known(0, counted(2.5))).text, 'no fraction of an ask').toBe(asToday[1]);
+        expect(line(0, known(0, counted(4)), ok).title, 'the reasons of the axes keep the line\'s title').toBe(null)
+    });
+
+    test('Home renders the run as a quiet link with its own title from the provider, and its click asks for the expired asks', () => {
+        const
+            {host, home} = createHome({
+                stateProvider: {
+                    module: StateProvider,
+                    data  : {
+                        gridAdapterState    : 'live',
+                        gridDegradedReason  : null,
+                        instanceState       : 'ok',
+                        openWork            : ok,
+                        questions           : {count: null, expired: {count: null, reason: null, since: null, state: null}, reason: null, state: null},
+                        shellPlaneConfigured: null
+                    },
+                    stores: {fleetAwaitingMerge: {module: FleetAwaitingMerge}, fleetRoster: {module: FleetRoster}}
+                }
+            }),
+            asked    = [],
+            provider = host.getStateProvider(),
+            operator = home.getReference('operator-line');
+
+        provider.setData({questions: known(0, counted(3))});
+        expect(operator.vdom.cn.map(node => node.text).join('')).toBe('nothing waits for you · 3 expired unanswered');
+        expect(operator.vdom.cn.at(-1)).toMatchObject({tag: 'button', type: 'button', cls: ['fm-home-operator-link', 'is-expired'], text: '3 expired unanswered'});
+        expect(operator.vdom.cn.at(-1).title).toMatch(/^asks whose deadline passed without an answer since /);
+
+        // the next answer carries no expired count: the run leaves with it
+        provider.setData({questions: known(0, {count: null, reason: null, since: null, state: null})});
+        expect(operator.vdom.cn.map(node => node.text).join('')).toBe('nothing waits for you');
+
+        home.on({mergeQueueOpen: () => asked.push('merges'), questionsOpen: data => asked.push(data.view)});
+        home.onFieldClick({path: [{cls: ['fm-home-operator-link', 'is-expired']}, {cls: ['fm-home-operator']}]});
+        home.onFieldClick({path: [{cls: ['fm-home-operator-link', 'is-questions']}, {cls: ['fm-home-operator']}]});
+        home.onFieldClick({path: [{cls: ['fm-home-operator-link', 'is-merges']}, {cls: ['fm-home-operator']}]});
+        expect(asked).toEqual(['expired', 'open', 'merges']);
 
         host.destroy()
     })

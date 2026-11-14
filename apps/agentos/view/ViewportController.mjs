@@ -764,16 +764,18 @@ class ViewportController extends Controller {
     }
 
     /**
-     * @summary Home's question count opens the questions: the route moves to the Fleet cockpit, whose Mailbox
-     * shows the operator's open questions.
+     * @summary Home's question count opens the questions, its expired count the expired asks: the route moves
+     * to the Fleet cockpit, whose Mailbox shows that view.
+     * @param {Object} [data]
+     * @param {'open'|'expired'} [data.view='open']
      * @returns {Promise<Object>} The cockpit's `{opened}`
      */
-    async onHomeQuestionsOpen() {
+    async onHomeQuestionsOpen({view = 'open'} = {}) {
         const me = this;
 
         await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
 
-        return me.getReference('fleet-cockpit').getController().openOperatorQuestions()
+        return me.getReference('fleet-cockpit').getController().openOperatorQuestions({view})
     }
 
     /**

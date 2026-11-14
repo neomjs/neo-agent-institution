@@ -73,14 +73,15 @@ test.describe('AgentOS operator mailbox — what waits for your word (#599)', ()
         box = null
     });
 
-    test('the head carries the two view chips before compose; all mail is the list in view', () => {
+    test('the head carries the view chips before compose; all mail is the list in view, and the expired chip waits for a count', () => {
         box = createBox();
 
         const actions = pane().getReference('mailbox-head').items.at(-1);
 
-        expect(actions.items.map(item => item.text)).toEqual(['all mail', 'for you · open', '✎ compose']);
+        expect(actions.items.map(item => item.text)).toEqual(['all mail', 'for you · open', 'expired', '✎ compose']);
         expect(chip('all').pressed).toBe(true);
         expect(chip('open').pressed).toBe(false);
+        expect(chip('expired').hidden).toBe(true);
         expect(pane().view).toBe('all')
     });
 
@@ -138,11 +139,11 @@ test.describe('AgentOS operator mailbox — what waits for your word (#599)', ()
         box.on('inboxPageRequest', data => asked.push(data.offset));
         asked.length = 0;
 
-        box.showOpenQuestions();
+        box.showQuestions();
         expect(pane().view).toBe('open');
         expect(asked).toEqual([0]);
 
-        box.showOpenQuestions();
+        box.showQuestions();
         expect(asked, 'already open: the list reads anew').toEqual([0, 0])
     });
 
@@ -341,5 +342,121 @@ test.describe('AgentOS operator mailbox — what waits for your word (#599)', ()
         pane().onRowSelect({record: pane().store.get('MESSAGE:q1')});
 
         expect(pane().getReference('mailbox-detail').viewerIdentity, 'the bound identity stands in for the missing admission').toBe('tobiu')
+    });
+});
+
+/**
+ * @summary The asks that expired unanswered in the Mailbox: a third chip counts them from Home's own block, the
+ * expired view lists the producer's rows in the producer's order and names its own states, and a plane without the
+ * producer's read never has its open list shown as the expired asks.
+ */
+test.describe('AgentOS operator mailbox — the asks that expired unanswered (#959)', () => {
+    let OperatorMailbox, box;
+
+    const
+        SINCE     = '2026-10-02T04:00:00.000Z',
+        createBox = cfg => Neo.create(OperatorMailbox, {appName, ...cfg}),
+        pane      = () => box.getReference('operator-inbox-pane'),
+        chip      = name => box.getReference(`view-${name}`),
+        stateLine = () => pane().getReference('mailbox-state'),
+        expired   = (rows, fields = {}) => ({...answered(rows), since: SINCE, ...fields}),
+        ask       = (messageId, sentAt) => question({messageId, sentAt, status: 'read', taskState: 'Expired'}),
+        block     = (count, fields = {}) => ({count: 5, reason: null, state: 'ok', expired: {count, reason: null, since: SINCE, state: 'ok', ...fields}});
+
+    test.beforeAll(async () => {
+        OperatorMailbox = (await import('../../../../../../../../apps/agentos/view/fleet/mailbox/OperatorContainer.mjs')).default
+    });
+
+    test.afterEach(() => {
+        box?.destroy();
+        box = null
+    });
+
+    test('the chip shows Home\'s number from the same block: it stands for a count above zero, and while its list is in view', () => {
+        box = createBox({questionCount: block(141)});
+
+        expect([chip('expired').hidden, chip('expired').text, chip('open').text]).toEqual([false, 'expired · 141', 'for you · 5 open']);
+        expect(chip('expired').vdom.title).toBe(null);
+
+        box.questionCount = block(0);
+        expect(chip('expired').hidden, 'nothing expired: no chip').toBe(true);
+
+        box.questionCount = block(null, {reason: 'fleet: the expired-questions read failed', state: 'unavailable', since: null});
+        expect(chip('expired').hidden, 'no number the read did not produce').toBe(true);
+
+        box.view = 'expired';
+        expect([chip('expired').hidden, chip('expired').pressed, chip('expired').text], 'the list in view keeps its chip').toEqual([false, true, 'expired']);
+        expect(chip('expired').vdom.title).toBe('fleet: the expired-questions read failed');
+
+        box.questionCount = {count: 5, reason: null, state: 'ok'};
+        box.view = 'all';
+        expect(chip('expired').hidden, 'a block without the expired count, as from a plane without the producer\'s read, adds nothing').toBe(true)
+    });
+
+    test('a navigation and the chip show the expired asks, read anew; the other chips let go', () => {
+        const asked = [];
+
+        box = createBox({questionCount: block(141), record: OPERATOR});
+        box.on('inboxPageRequest', data => asked.push(data.offset));
+        asked.length = 0;
+
+        box.showQuestions('expired');
+        expect([pane().view, chip('expired').pressed, chip('open').pressed, chip('all').pressed]).toEqual(['expired', true, false, false]);
+        expect(asked).toEqual([0]);
+
+        box.showQuestions('expired');
+        expect(asked, 'already in view: the list reads anew').toEqual([0, 0]);
+
+        box.onAllMailClick();
+        box.onExpiredClick();
+        expect([pane().view, asked]).toEqual(['expired', [0, 0, 0, 0]])
+    });
+
+    test('the expired view states its own read: not read yet, could not be read with its reason, none expired, or the asks', () => {
+        box = createBox({record: OPERATOR, view: 'expired'});
+        pane().now = NOW;
+
+        expect([pane().getPaneState(), stateLine().text]).toEqual(['unobserved', 'your expired asks have not been read']);
+
+        box.expired = {...unreadable('fleet: the expired-questions read failed'), since: null};
+        expect([pane().getPaneState(), stateLine().text]).toEqual(['degraded', 'expired asks could not be read · fleet: the expired-questions read failed']);
+        expect(pane().store.getCount()).toBe(0);
+
+        box.expired = expired([]);
+        expect([pane().getPaneState(), stateLine().text]).toEqual(['empty', 'no ask expired this week']);
+
+        box.expired = expired([ask('MESSAGE:e1', '2026-10-01T08:00:00.000Z')]);
+        expect([pane().getPaneState(), stateLine().hidden, pane().store.getCount()]).toEqual(['rows', true, 1])
+    });
+
+    test('the expired view lists the producer\'s rows in the producer\'s order, each on its own row', () => {
+        box = createBox({record: OPERATOR, view: 'expired'});
+
+        // newest expiry first: the order is the producer's, never re-sorted by when the ask was sent
+        box.expired = expired([
+            ask('MESSAGE:old-ask', '2026-09-20T08:00:00.000Z'),
+            {...ask('MESSAGE:threaded', '2026-10-01T08:00:00.000Z'), partOfThread: 'THREAD:x'},
+            {...ask('MESSAGE:new-ask', '2026-10-01T09:00:00.000Z'), partOfThread: 'THREAD:x'}
+        ]);
+
+        expect(pane().store.items.map(record => record.messageId)).toEqual(['MESSAGE:old-ask', 'MESSAGE:threaded', 'MESSAGE:new-ask'])
+    });
+
+    test('a list answer without its window start is never shown as the expired asks, and the two question lists never borrow each other\'s rows', () => {
+        box = createBox({record: OPERATOR, questions: answered([question()]), view: 'expired'});
+
+        // a plane without the producer's read ignores `expired` and answers the open list, without `since`
+        box.expired = answered([question({messageId: 'MESSAGE:open-1'})]);
+        expect([pane().getPaneState(), pane().store.getCount(), stateLine().text]).toEqual(['unobserved', 0, 'your expired asks have not been read']);
+
+        box.expired = unreadable('fleet: the open-questions read failed');
+        expect(pane().getPaneState(), 'a refusal without the window is not the expired read\'s either').toBe('unobserved');
+
+        box.expired = expired([ask('MESSAGE:e1', '2026-10-01T08:00:00.000Z')]);
+        box.view = 'open';
+        expect(pane().store.items.map(record => record.messageId), 'the open view shows its own read').toEqual(['MESSAGE:q1']);
+
+        box.view = 'expired';
+        expect(pane().store.items.map(record => record.messageId)).toEqual(['MESSAGE:e1'])
     });
 });
