@@ -204,6 +204,17 @@ class Controller extends FleetBatchController {
      */
     wakeRoutesSnapshot = null
     /**
+     * Read-fence + last answer of the cards' own rotation read ({@link #loadRotations}).
+     * @member {Number} rotationsReadGeneration=0
+     * @protected
+     */
+    rotationsReadGeneration = 0
+    /**
+     * @member {Object|null} rotationsSnapshot=null
+     * @protected
+     */
+    rotationsSnapshot = null
+    /**
      * @summary The cockpit-owned authenticated bridge — resolved fresh per call, never captured.
      * @returns {Object|undefined}
      * @protected
@@ -691,6 +702,34 @@ class Controller extends FleetBatchController {
 
             record && rotation !== undefined && record.set({rotation})
         })
+    }
+
+    /**
+     * @summary READ-OBSERVE for the cards: the wake-routes read whose seats' rotations land on their roster
+     * records ({@link #applyRotations}). It never fills the Wake pane, where reading the routes stays the
+     * operator's explicit first act, and an unwired verb or a failed read changes nothing.
+     * @returns {Promise<void>}
+     */
+    async loadRotations() {
+        const
+            me         = this,
+            {bridge}   = me,
+            generation = ++me.rotationsReadGeneration;
+
+        if (typeof bridge?.fleetWakeRoutes !== 'function') return;
+
+        let snapshot;
+
+        try {
+            snapshot = await bridge.fleetWakeRoutes({})
+        } catch (error) {
+            return
+        }
+
+        if (generation === me.rotationsReadGeneration && !me.isDestroyed) {
+            me.rotationsSnapshot = snapshot;
+            me.applyRotations(snapshot)
+        }
     }
 
     /**

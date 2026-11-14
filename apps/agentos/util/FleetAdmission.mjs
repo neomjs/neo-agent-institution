@@ -336,7 +336,7 @@ class FleetAdmission extends Base {
         store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
-        rotated && owner.loadWakeRoutes?.();
+        rotated && owner.loadRotations?.();
         FleetAdmission.expireOutageNote(owner, now);
 
         if (wasWired) {
@@ -453,8 +453,8 @@ class FleetAdmission extends Base {
             // the first live snapshot replaces what the store holds wholesale — re-seat or clear a
             // selection made against a now-removed record
             owner.reconcileSelection();
-            // the roster row carries no rotation: fresh records take the last wake-routes answer, when one landed first
-            owner.wakeRoutesSnapshot && owner.applyRotations?.(owner.wakeRoutesSnapshot)
+            // the roster row carries no rotation: fresh records take the cards' last rotation answer, when one landed first
+            owner.rotationsSnapshot && owner.applyRotations?.(owner.rotationsSnapshot)
         }
 
         FleetAdmission.expireOutageNote(owner, owner.rosterObservedAt);

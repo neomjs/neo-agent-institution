@@ -133,9 +133,9 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
     test('the rotations are re-read on the first activity page and on a rotation the store has not seen, never per tick', async () => {
         const
             {default: FleetAdmission} = await import('../../../../../../../../../apps/agentos/util/FleetAdmission.mjs'),
-            seen  = new Set(),
-            store = {get: id => seen.has(id) || null, ingestSnapshot: events => events.forEach(event => seen.add(event.eventId))},
-            owner = {activityWired: false, loadWakeRoutes() { this.reads++ }, reads: 0, getReference: () => null, publishConnection() {},
+            seen                      = new Set(),
+            store                     = {get: id => seen.has(id) || null, ingestSnapshot: events => events.forEach(event => seen.add(event.eventId))},
+            owner                     = {activityWired: false, loadRotations() { this.reads++ }, reads: 0, getReference: () => null, publishConnection() {},
                 resolveFleetActivityEventsStore: () => store},
             event = id => ({eventId: id, type: 'session-rotation', source: 'fleet:sessionRotation', confidence: 'observed', occurredAt: decidedAt}),
             admit = events => FleetAdmission.admitActivity(owner, {capability: {state: 'wired'}, events});
@@ -151,6 +151,36 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
 
         admit([event('fleet:sessionRotation:MESSAGE:r1:completed')]);
         expect(owner.reads).toBe(2)
+    });
+
+    test('the cards\' rotation read leaves the Wake pane to the operator: no pane write, no pane snapshot', async () => {
+        const
+            store = makeStore([{agentId: 'ada'}]),
+            pane  = {snapshot: null},
+            owner = {
+                applyRotations         : FleetCockpitController.prototype.applyRotations,
+                bridge                 : {fleetWakeRoutes: async () => ({capability: {state: 'wired'}, seats: [{agentId: 'ada', rotation: completed}]})},
+                component              : {getWakeRoutesPane: () => pane},
+                resolveFleetRosterStore: () => store,
+                rotationsReadGeneration: 0,
+                wakeRoutesSnapshot     : null
+            },
+            read  = () => FleetCockpitController.prototype.loadRotations.call(owner);
+
+        await read();
+
+        expect(store.get('ada').rotation).toEqual(completed);
+        expect(owner.rotationsSnapshot.seats).toHaveLength(1);
+        expect(pane.snapshot).toBeNull();
+        expect(owner.wakeRoutesSnapshot).toBeNull();
+
+        owner.bridge = {fleetWakeRoutes: async () => { throw new Error('fleet read exceeded 20ms') }};
+        await read();
+        expect(store.get('ada').rotation).toEqual(completed);
+
+        owner.bridge = null;
+        await read();
+        expect(store.get('ada').rotation).toEqual(completed)
     });
 
     test('the journal words a session-rotation event as the card does', () => {
