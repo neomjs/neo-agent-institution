@@ -51,11 +51,15 @@ export function formatConversationRef(repoSlug, number) {
 
 /**
  * @summary Resolves the full `neomjs/<repoSlug>#N` a row's object cell carries as its title, so hover
- * answers what the short reference compresses. Rows without a conversation number carry none.
+ * answers what the short reference compresses. A session rotation's title is its words with both full
+ * session ids and the receipt ({@link AgentOS.util.SessionRotation#describe}). Other rows without a
+ * conversation number carry none.
  * @param {Object} event Record or record-shaped object.
  * @returns {String|null}
  */
 export function getActivityObjectTitle(event) {
+    if (event?.type === 'session-rotation') return SessionRotation.describe(event.payload)?.title ?? null;
+
     const
         payload = event?.payload || {},
         subject = Neo.typeOf(payload.subject) === 'Object' ? payload.subject : null,

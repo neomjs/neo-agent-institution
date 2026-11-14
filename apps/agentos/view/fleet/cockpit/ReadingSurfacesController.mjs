@@ -89,6 +89,13 @@ class ReadingSurfacesController extends LivenessController {
      */
     catchUpMarkOutcome = null
     /**
+     * The roster cards' rotation read ({@link AgentOS.util.SessionRotation#readOf}): its fence, the profile
+     * it belongs to and the last readable answer. A profile switch retires it ({@link AgentOS.util.TargetBinding#retireRoster}).
+     * @member {Object|null} rotationRead=null
+     * @protected
+     */
+    rotationRead = null
+    /**
      * Read-fence for the Golden Path surface.
      * @member {Number} goldenPathReadGeneration=0
      * @protected

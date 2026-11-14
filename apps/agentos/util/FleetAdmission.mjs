@@ -453,10 +453,12 @@ class FleetAdmission extends Base {
             owner.rosterWired = true;
             // the first live snapshot replaces what the store holds wholesale — re-seat or clear a
             // selection made against a now-removed record
-            owner.reconcileSelection();
-            // the roster row carries no rotation: fresh records take the cards' last rotation answer, when one landed first
-            SessionRotation.reapply(owner)
+            owner.reconcileSelection()
         }
+
+        // the roster row carries no rotation: a record new to the store, in the first snapshot or joining a
+        // wired roster, takes the cards' last rotation answer when one landed first
+        SessionRotation.reapply(owner);
 
         FleetAdmission.expireOutageNote(owner, owner.rosterObservedAt);
 

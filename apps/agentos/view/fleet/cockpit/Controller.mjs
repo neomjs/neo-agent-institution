@@ -706,7 +706,7 @@ class Controller extends FleetBatchController {
 
         if (generation === me.wakeRoutesReadGeneration && !me.isDestroyed) {
             me.wakeRoutesSnapshot = snapshot;
-            SessionRotation.apply(me.resolveFleetRosterStore(), snapshot);
+            SessionRotation.admit(me, snapshot, bridge?.profileId ?? null);
 
             const livePane = me.component.getWakeRoutesPane();
 

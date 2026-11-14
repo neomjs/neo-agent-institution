@@ -2,12 +2,6 @@ import Base       from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import ViewerTime from './ViewerTime.mjs';
 
 /**
- * Each cockpit owner's rotation read ({@link AgentOS.util.SessionRotation#load}): its fence and its last answer.
- * @type {WeakMap<Object, {generation: Number, snapshot: Object|null}>}
- */
-const reads = new WeakMap();
-
-/**
  * @summary The words of a seat's session rotation: one formatter for the roster card and the journal.
  *
  * A rotation is the Fleet's decision on the seat's newest sunset receipt, `fleetWakeRoutes`
@@ -40,25 +34,42 @@ class SessionRotation extends Base {
         snapshot.seats.forEach(({agentId, rotation}) => {
             const record = agentId ? store.get(agentId) ?? store.allItems?.get(agentId) : null;
 
-            record && rotation !== undefined && record.set({rotation})
+            // an unchanged rotation writes nothing, so a re-apply only reaches records that lack it
+            record && rotation !== undefined && !Neo.isEqual(record.rotation, rotation) && record.set({rotation})
         })
     }
 
     /**
+     * @summary Admits a `fleetWakeRoutes` answer read through the bridge of `profileId`: held as the owner's
+     * rotation answer ({@link AgentOS.view.fleet.cockpit.ReadingSurfacesController#rotationRead}) and written
+     * onto the roster ({@link #apply}). An answer of another profile than the bridge now in hand, or an
+     * unreadable one, is dropped and leaves the held answer as it was.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit owner: its `bridgeProfileId` and its roster store.
+     * @param {Object|null} snapshot The `fleetWakeRoutes` answer `{capability, seats}`
+     * @param {String|null} profileId The profile of the bridge that answered
+     */
+    static admit(owner, snapshot, profileId) {
+        if (owner.isDestroyed || owner.bridgeProfileId !== profileId ||
+            snapshot?.capability?.state === 'unavailable' || !Array.isArray(snapshot?.seats)) return;
+
+        SessionRotation.readOf(owner, profileId).snapshot = snapshot;
+        SessionRotation.apply(owner.resolveFleetRosterStore?.(), snapshot)
+    }
+
+    /**
      * @summary The cards' own wake-routes read: the seats' rotations land on their roster records
-     * ({@link #apply}). It never fills the Wake pane, where reading the routes stays the operator's explicit
-     * first act. An unwired verb or a failed read changes nothing, and an older read landing after a newer
-     * one is dropped.
+     * ({@link #admit}). It never fills the Wake pane, where reading the routes stays the operator's explicit
+     * first act. An unwired verb or a failed read changes nothing, an older read landing after a newer one is
+     * dropped, and so is a read whose profile is no longer the bridge's.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit owner: its `bridge` and its roster store.
      * @returns {Promise<void>}
      */
     static async load(owner) {
         const
-            state      = reads.get(owner) ?? {generation: 0, snapshot: null},
             {bridge}   = owner,
-            generation = ++state.generation;
-
-        reads.set(owner, state);
+            profileId  = owner.bridgeProfileId,
+            read       = SessionRotation.readOf(owner, profileId),
+            generation = ++read.generation;
 
         if (typeof bridge?.fleetWakeRoutes !== 'function') return;
 
@@ -70,20 +81,31 @@ class SessionRotation extends Base {
             return
         }
 
-        if (generation === state.generation && !owner.isDestroyed) {
-            state.snapshot = snapshot;
-            SessionRotation.apply(owner.resolveFleetRosterStore?.(), snapshot)
-        }
+        generation === read.generation && SessionRotation.admit(owner, snapshot, profileId)
     }
 
     /**
-     * @summary Re-applies the owner's last rotation answer, if one landed: for roster records that arrived after it.
+     * @summary The owner's rotation read for `profileId`: the one it holds, or a fresh one when it holds
+     * none or another profile's.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner
+     * @param {String|null} profileId
+     * @returns {{generation: Number, profileId: String|null, snapshot: Object|null}}
+     */
+    static readOf(owner, profileId) {
+        const read = owner.rotationRead;
+
+        return read && read.profileId === profileId ? read : (owner.rotationRead = {generation: 0, profileId, snapshot: null})
+    }
+
+    /**
+     * @summary Re-applies the owner's last rotation answer, when it is the current profile's: for roster
+     * records that arrived after it, the first snapshot's and later joiners alike.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner
      */
     static reapply(owner) {
-        const snapshot = reads.get(owner)?.snapshot;
+        const read = owner.rotationRead;
 
-        snapshot && SessionRotation.apply(owner.resolveFleetRosterStore?.(), snapshot)
+        read?.snapshot && read.profileId === owner.bridgeProfileId && SessionRotation.apply(owner.resolveFleetRosterStore?.(), read.snapshot)
     }
 
     /**

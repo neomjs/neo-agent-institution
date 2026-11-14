@@ -51,6 +51,7 @@ class TargetBinding extends Base {
         owner.a2aWiredProfileId      = null;
         owner.planeOutageEpisodes    = null;
         owner.fleetStartGate         = null;
+        owner.rotationRead           = null;
 
         store.clear();
 
