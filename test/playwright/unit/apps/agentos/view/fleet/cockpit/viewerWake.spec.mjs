@@ -78,12 +78,14 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         };
 
         const cockpit = Object.assign(Object.create(FleetCockpitController.prototype), {
-            component         : {getStateProvider: () => provider, wakePollDigest: null},
+            component               : {getStateProvider: () => provider, wakePollDigest: null},
             feed,
-            isDestroyed       : false,
+            isDestroyed             : false,
             provider,
-            viewerWakeBridge  : null,
-            viewerWakeConsumer: null
+            viewerWakeBridge        : null,
+            viewerWakeConsumer      : null,
+            viewerWakeEverAlive     : false,
+            viewerWakeHandshakeTimer: null
         });
 
         return cockpit
@@ -91,8 +93,8 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
     // the chip over the stamped truth: the REAL provider derivation (the same
     // `deriveViewerWakeTelltale` the hook keeps live) over the fake provider's stamped
-    // `viewerWake` — the chip surface is `{ariaLabel, cls, text, title}`, with `title` living
-    // on `vdom.title` in production via the component's afterSetText pull.
+    // `viewerWake` — the chip surface is `{ariaLabel, cls, hidden, text, title}`, with `title`
+    // living on `vdom.title` in production via the component's syncAttribute pull.
     const renderSlot = cockpit => {
         // the REAL formula over the stamped truth (pull-based — it reads the viewerWake leaves
         // it derives from)
@@ -100,7 +102,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
             viewerWake: cockpit.provider.getData('viewerWake')
         });
 
-        return {text: chip.text, vdom: {title: chip.title, 'aria-label': chip.ariaLabel}}
+        return {hidden: chip.hidden, text: chip.text, vdom: {title: chip.title, 'aria-label': chip.ariaLabel}}
     };
 
     test.beforeAll(async () => {
@@ -128,11 +130,14 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         const stamped = cockpit.provider.getData('viewerWake');
 
+        expect(stamped.armed).toBe(false);
+        expect(stamped.everAlive).toBe(false);
         expect(stamped.stream.alive).toBe('unknown');
         expect(stamped.stream.reason).toContain('wake push not wired');
         expect(stamped.catchUp).toEqual({state: null, at: null, pending: null});
         const slot = renderSlot(cockpit);
-        // The slot wears the word pair; the stamped reason reaches the reader via title/aria.
+        // Unarmed composition hides the header chip while retaining the reason on viewerWake/title.
+        expect(slot.hidden).toBe(true);
         expect(slot.text).toBe('wake off');
         expect(slot.vdom.title).toContain('wake push not wired');
 
@@ -147,7 +152,9 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         cockpit.ensureViewerWakeStream();
 
         expect(cockpit.viewerWakeConsumer).toBe(null);
+        expect(cockpit.provider.getData('viewerWake').armed).toBe(false);
         expect(cockpit.provider.getData('viewerWake').stream.reason).toContain('no direct-browser wake capability');
+        expect(renderSlot(cockpit).hidden).toBe(true);
 
         cockpit.feed.destroy()
     });
@@ -169,9 +176,12 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         const stamped = cockpit.provider.getData('viewerWake');
 
+        expect(stamped.armed).toBe(true);
+        expect(stamped.everAlive).toBe(true);
         expect(stamped.stream.alive).toBe(true);
         expect(stamped.stream.reason).toBe('composed wake stream connected · armed for this viewer');
         const slot = renderSlot(cockpit);
+        expect(slot.hidden).toBe(false);
         expect(slot.text).toContain('wake live');
         expect(slot.vdom.title).toContain('wake push live');
 
@@ -323,6 +333,139 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(cockpit.provider.getData('viewerWake').catchUp).toEqual({state: 'fresh', at: 5000, pending: 3});
         expect(renderSlot(cockpit).vdom.title).toContain('catch-up: fresh (3 pending drained)');
 
+        cockpit.feed.destroy()
+    });
+
+    test('an async unarmed state handshake stamps armed: false and keeps the chip hidden while retaining the reason', async () => {
+        const stateConsumer = {
+            connected       : false,
+            consecutiveDrops: 0,
+            lastCatchUp     : null,
+            lastState       : null,
+            liveness        : {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane'},
+            start() {},
+            stop() {},
+            resolveDeliveryLiveness() { return this.liveness },
+            describe() {
+                return {
+                    connected       : this.connected,
+                    consecutiveDrops: this.consecutiveDrops,
+                    lastCatchUp     : this.lastCatchUp,
+                    lastState       : this.lastState
+                }
+            }
+        };
+
+        setBridge({openWakeStream: () => stateConsumer});
+
+        const cockpit = makeCockpit();
+
+        cockpit.ensureViewerWakeStream();
+
+        expect(cockpit.provider.getData('viewerWake').armed).toBe(null);
+        expect(renderSlot(cockpit).hidden).toBe(true);
+
+        // Simulate the SSE `event: state` handshake arriving asynchronously for an unarmed viewer.
+        stateConsumer.connected = true;
+        stateConsumer.lastState = {armedForViewer: false, reason: 'missing class-3 mint'};
+        stateConsumer.liveness  = {
+            alive : true,
+            reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)'
+        };
+
+        await expect.poll(() => cockpit.provider.getData('viewerWake').armed).toBe(false);
+
+        const stamped = cockpit.provider.getData('viewerWake');
+
+        expect(stamped.everAlive).toBe(false);
+        expect(stamped.stream.reason).toContain('not armed for this viewer (missing class-3 mint)');
+        expect(renderSlot(cockpit).hidden).toBe(true);
+
+        cockpit.clearViewerWakeHandshakeTimer();
+        cockpit.feed.destroy()
+    });
+
+    test('session-alive retention keeps wake off visible across a mid-session drop and resets on disarm or bridge swap', () => {
+        const makeStatefulFactory = () => {
+            const factory = {
+                created: [],
+                openWakeStream(opts) {
+                    const consumer = {
+                        opts,
+                        connected       : true,
+                        consecutiveDrops: 0,
+                        lastCatchUp     : null,
+                        lastState       : {armedForViewer: true, subscriptionId: 'sub-1'},
+                        liveness        : {alive: true, reason: 'composed wake stream connected · armed for this viewer'},
+                        start() {},
+                        stop() {},
+                        resolveDeliveryLiveness() { return this.liveness },
+                        describe() {
+                            return {
+                                connected       : this.connected,
+                                consecutiveDrops: this.consecutiveDrops,
+                                lastCatchUp     : this.lastCatchUp,
+                                lastState       : this.lastState
+                            }
+                        }
+                    };
+
+                    factory.created.push(consumer);
+                    return consumer
+                }
+            };
+
+            return factory
+        };
+
+        const factoryA = makeStatefulFactory(),
+              factoryB = makeStatefulFactory();
+
+        setBridge(factoryA);
+
+        const cockpit = makeCockpit();
+
+        cockpit.ensureViewerWakeStream();
+        expect(renderSlot(cockpit)).toMatchObject({hidden: false, text: 'wake live'});
+        expect(cockpit.provider.getData('viewerWake').everAlive).toBe(true);
+
+        // Mid-session disconnect clears lastState to null while reconnecting: chip stays visible as `wake off`.
+        const c0 = factoryA.created[0];
+        c0.connected        = false;
+        c0.consecutiveDrops = 1;
+        c0.lastState        = null;
+        c0.liveness         = {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane'};
+        cockpit.stampViewerWake();
+
+        expect(cockpit.provider.getData('viewerWake')).toMatchObject({armed: null, everAlive: true});
+        expect(renderSlot(cockpit)).toMatchObject({hidden: false, text: 'wake off'});
+
+        // Bridge swap resets session retention before the new consumer proves arming.
+        factoryB.openWakeStream = () => ({
+            connected       : false,
+            consecutiveDrops: 1,
+            lastCatchUp     : null,
+            lastState       : null,
+            liveness        : {alive: 'unknown', reason: 'wake stream connecting'},
+            start() {},
+            stop() {},
+            resolveDeliveryLiveness() { return this.liveness },
+            describe() {
+                return {
+                    connected       : this.connected,
+                    consecutiveDrops: this.consecutiveDrops,
+                    lastCatchUp     : this.lastCatchUp,
+                    lastState       : this.lastState
+                }
+            }
+        });
+        setBridge(factoryB);
+        cockpit.ensureViewerWakeStream();
+
+        expect(cockpit.provider.getData('viewerWake')).toMatchObject({armed: null, everAlive: false});
+        expect(renderSlot(cockpit).hidden).toBe(true);
+
+        cockpit.clearViewerWakeHandshakeTimer();
         cockpit.feed.destroy()
     })
 });

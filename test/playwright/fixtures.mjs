@@ -181,6 +181,16 @@ export async function landPlaneAdmission(page, snapshot) {
 }
 
 /**
+ * @summary Stamps one viewer-wake state override onto the mounted cockpit through `stampViewerWake`.
+ * @param {Object} page The Playwright page.
+ * @param {Object} viewerWake `{armed, everAlive, stream}` override.
+ * @returns {Promise<void>}
+ */
+export async function landViewerWake(page, viewerWake) {
+    await landFleet(page, {viewerWake})
+}
+
+/**
  * @summary Lands the tests' sample fleet (`test/playwright/fixture/fleetSample.mjs`): eleven roster
  * cards and six activity events, as live answers. A spec that reads cards or events calls this after
  * the cockpit is visible; it resolves once the first card renders.

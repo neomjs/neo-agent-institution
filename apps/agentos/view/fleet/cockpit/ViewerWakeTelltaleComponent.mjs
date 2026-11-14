@@ -2,13 +2,13 @@ import Component from '../../../../../node_modules/neo.mjs/src/component/Base.mj
 
 /**
  * @summary The per-viewer wake-push telltale — MY push lane's health, a different axis from the
- * spine banner (fleet transport) and the per-agent telltales (each resident's route). Always
- * rendered, quietly: live is one token wide, and a degraded push carries the consumer's reason
- * verbatim.
+ * spine banner (fleet transport) and the per-agent telltales (each resident's route). Rendered
+ * only when the viewer's push lane is armed or has been alive this session; absent when not armed,
+ * with its reason reachable in diagnostics detail.
  *
  * Presentation-thin: the chip fully derives on
  * {@link AgentOS.view.fleet.cockpit.StateProvider}'s `viewerWakeTelltale` derived data, and the
- * chrome slot binds every channel as its own first-class reactive config — `text`, `cls`,
+ * chrome slot binds every channel as its own first-class reactive config — `hidden`, `text`, `cls`,
  * `chipTitle`, `chipAriaLabel`. Title and aria are INDEPENDENTLY reactive on purpose: the drill
  * detail can move while the visible text stays byte-identical (a catch-up state change under a
  * stable "wake: live"), so no channel may ride another as its change proxy.
@@ -48,6 +48,12 @@ class ViewerWakeTelltaleComponent extends Component {
          * @reactive
          */
         chipTitle_: null,
+        /**
+         * Absent until the viewer's push lane is armed or has been alive this session.
+         * @member {Boolean} hidden=true
+         * @reactive
+         */
+        hidden: true,
         /**
          * @member {String} role='status'
          */

@@ -101,6 +101,7 @@ class ControlToolbar extends Toolbar {
                     chipAriaLabel: data => data.viewerWakeTelltale.ariaLabel,
                     chipTitle    : data => data.viewerWakeTelltale.title,
                     cls          : data => data.viewerWakeTelltale.cls.slice(1),
+                    hidden       : data => data.viewerWakeTelltale.hidden,
                     text         : data => data.viewerWakeTelltale.text
                 },
                 flex     : '0 1 auto',

@@ -185,11 +185,13 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         const fixturePort = fixture.port;
 
-        expect((await fixture.arm(subscriptionId)).armed, 'the real arming path must arm against the injected plane').toBe(true);
-
-        // ── boot the cockpit (fail-closed bridge), then wire the authenticated one ──────────────
+        // ── boot the cockpit (fail-closed bridge): cold/unarmed chrome renders no wake chip ──────
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+        const telltale = page.locator('.fm-viewer-wake');
+
+        await expect(telltale, 'cold cockpit renders no wake chip before arming').toHaveCount(0);
 
         const app        = await neuralLink.connectToApp('AgentOS'),
               [cockpit0] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
@@ -197,6 +199,7 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         expect(cockpitId, 'the FleetCockpit must exist in the App Worker').toBeTruthy();
 
+        // ── connect against an UNARMED server first: chip stays absent, Wake routes shows why ────
         await wireAuthenticatedFleetBridge({app, fleetUrl: fixture.endpoint, bearerToken, mcAuthorization: mcMint});
 
         // a fast deterministic cadence so the liveness tick performs the custody rebind promptly
@@ -209,7 +212,23 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
         await app.callMethod(cockpitId, 'controller.stopLiveness');
         await app.callMethod(cockpitId, 'controller.startLiveness');
 
-        const telltale = page.locator('.fm-viewer-wake');
+        await expect.poll(() => fixture.headersSeen.filter(entry => entry.class1Matches).length, {
+            message: 'the unarmed SSE stream handshake must connect', timeout: 20000, intervals: [200]
+        }).toBeGreaterThan(0);
+
+        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Wake routes'}).first().click();
+        const viewerWakeLine = page.locator('.fm-wakeroutes-viewer');
+        await expect(viewerWakeLine, 'diagnostics detail surfaces the unarmed reason').toContainText(
+            'viewer push: not armed — composed wake stream connected · not armed for this viewer',
+            {timeout: 20000}
+        );
+        await expect(telltale, 'an unarmed viewer sees no header wake chip').toHaveCount(0);
+        await page.keyboard.press('Escape');
+
+        // ── restart armed at the SAME endpoint: consumer self-reconnects into armed live state ───
+        await fixture.close();
+        fixture = await startWakeFixture({bearerToken, port: fixturePort});
+        expect((await fixture.arm(subscriptionId)).armed, 'the real arming path must arm against the injected plane').toBe(true);
 
         // ── the armed handshake reaches the chrome: live, quietly ───────────────────────────────
         await expect(telltale, 'the telltale reaches wake: live through the rebound bridge').toHaveText(/^wake live/, {timeout: 30000});

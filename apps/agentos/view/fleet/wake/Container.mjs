@@ -45,6 +45,12 @@ class WakeRoutePane extends Container {
          */
         snapshot_: null,
         /**
+         * Stamped viewer wake-push observation from the cockpit provider; `null` when standalone.
+         * @member {Object|null} viewerWake_=null
+         * @reactive
+         */
+        viewerWake_: null,
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
@@ -85,6 +91,12 @@ class WakeRoutePane extends Container {
             reference: 'wakeroutes-meta',
             text     : 'Wake routes not observed yet'
         }, {
+            ntype    : 'component',
+            cls      : ['fm-pane-meta', 'fm-wakeroutes-viewer'],
+            flex     : 'none',
+            hidden   : true,
+            reference: 'viewer-wake-line'
+        }, {
             ntype    : 'container',
             cls      : ['fm-wakeroutes-rows'],
             flex     : 1,
@@ -106,7 +118,8 @@ class WakeRoutePane extends Container {
         super.onConstructed(...args);
 
         this.seatStore = Neo.create(AgentWakeRoutes);
-        this.applySnapshot()
+        this.applySnapshot();
+        this.applyViewerWake()
     }
 
     /** @param {...*} args */
@@ -119,6 +132,45 @@ class WakeRoutePane extends Container {
     /** @param {Object|null} value @param {Object|null} oldValue */
     afterSetSnapshot(value, oldValue) {
         this.isConstructed && this.applySnapshot()
+    }
+
+    /**
+     * @summary Re-render the viewer push diagnostics line when provider-stamped truths change.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetViewerWake(value, oldValue) {
+        this.isConstructed && this.applyViewerWake()
+    }
+
+    /**
+     * @summary Render the viewer's own push-lane state and verbatim reason in diagnostics detail,
+     * keeping the unarmed reason reachable when the header telltale is absent.
+     */
+    applyViewerWake() {
+        const
+            lineEl     = this.getReference('viewer-wake-line'),
+            viewerWake = this.viewerWake;
+
+        if (!lineEl) return;
+
+        if (!viewerWake) {
+            lineEl.hidden = true;
+            lineEl.changeVdomRootKey('title', null);
+            return
+        }
+
+        const
+            armed  = viewerWake.armed,
+            alive  = armed === true && viewerWake.stream?.alive === true,
+            raw    = viewerWake.stream?.reason,
+            reason = typeof raw === 'string' && raw.trim() ? raw : 'no stream observation',
+            state  = alive ? 'live' : armed === false ? 'not armed' : 'off';
+
+        lineEl.hidden = false;
+        lineEl.text   = `viewer push: ${state} — ${reason}`;
+        lineEl.changeVdomRootKey('title', reason)
     }
 
     /** @summary Read (or re-read) the decomposed routes for the whole roster. */

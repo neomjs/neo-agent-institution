@@ -190,9 +190,11 @@ class StateProvider extends Provider {
              * @member {Object} viewerWake
              */
             viewerWake: {
-                stream : {alive: 'unknown', reason: 'wake stream not started', capturedAt: null},
-                catchUp: {state: null, at: null, pending: null},
-                signals: []
+                armed    : false,
+                everAlive: false,
+                stream   : {alive: 'unknown', reason: 'wake stream not started', capturedAt: null},
+                catchUp  : {state: null, at: null, pending: null},
+                signals  : []
             },
             /* ── leaf-complete DEFAULTS for the formula-owned truths ──
                `setData` drills object values into leaf paths, so each derived object declares
@@ -223,7 +225,7 @@ class StateProvider extends Provider {
              * Re-derives on every `viewerWake` stamp beat (the cadence the observations move on).
              * @member {Object} viewerWakeTelltale
              */
-            viewerWakeTelltale: {ariaLabel: '', cls: [], text: 'wake off', title: 'wake stream not started'}
+            viewerWakeTelltale: {ariaLabel: '', cls: [], hidden: true, text: 'wake off', title: 'wake stream not started'}
         },
         /**
          * The derivations, as REAL formulas — pull-based: the initial run at `onConstructed`
@@ -258,15 +260,17 @@ class StateProvider extends Provider {
              */
             spineBanner: data => deriveBannerVerdict(data),
             /**
-             * The wake chip `{ariaLabel, cls, text, title}` from the stamped consumer
+             * The wake chip `{ariaLabel, cls, hidden, text, title}` from the stamped consumer
              * observations (bounded signal window included).
              * @param {Object} data
              * @returns {Object}
              */
             viewerWakeTelltale: data => TelltaleDeriver.describeViewerWakeTelltale({
-                stream : data.viewerWake.stream ?? null,
-                catchUp: data.viewerWake.catchUp?.state ? data.viewerWake.catchUp : null,
-                signals: data.viewerWake.signals ?? []
+                armed    : data.viewerWake.armed ?? null,
+                everAlive: Boolean(data.viewerWake.everAlive),
+                stream   : data.viewerWake.stream ?? null,
+                catchUp  : data.viewerWake.catchUp?.state ? data.viewerWake.catchUp : null,
+                signals  : data.viewerWake.signals ?? []
             })
         },
         /**

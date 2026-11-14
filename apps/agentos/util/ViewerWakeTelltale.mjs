@@ -34,40 +34,33 @@ class ViewerWakeTelltale extends Base {
     /**
      * @summary Derives the telltale chip from the provider-held viewer-wake truths.
      *
-     * The chip is deliberately ALWAYS rendered (unlike the exception-only card chips): the viewer's
-     * push lane has exactly one instance, its nominal state is one quiet token wide ("wake: live"),
-     * and an operator glancing at chrome must be able to tell "live" from "nobody wired it" without a
-     * drill-in. Detail travels on `title` — the catch-up line plus the last observed signals — so the
-     * hover answers what the chip has no room for.
+     * The chip renders only when the viewer's push lane is armed (`armed === true`) or has been
+     * alive earlier in this session without an explicit unarmed verdict (`armed !== false && everAlive`).
+     * For an unarmed viewer, `hidden` is `true` while `title` and diagnostics detail retain the reason.
      *
-     * @param {Object} options
-     * @param {Object|null} [options.stream] `{alive: true|'unknown', reason, capturedAt}` — the
-     *     consumer's own liveness observation, stamped by the cockpit.
-     * @param {Object|null} [options.catchUp] `{state: 'fresh'|'failed'|'empty', at, pending}` or
-     *     `null` when no catch-up observation exists (seam unwired, or none fired yet).
-     * @param {Object[]} [options.signals] Newest-first `{kind, emittedAt, receivedAt}` rows from the
-     *     viewer wake feed (already bounded; only the first few enter the title).
-     * @param {Number} [options.nowMs=Date.now()] Injectable clock for the relative labels.
-     * @returns {{cls: String[], text: String, title: String, ariaLabel: String}}
+     * @param {Object} [options={}]
+     * @param {Boolean|null} [options.armed=null] Whether the fleet server armed push for this viewer.
+     * @param {Boolean} [options.everAlive=false] Whether push has been armed and live this session.
+     * @param {Object|null} [options.stream=null] `{alive: true|'unknown', reason, capturedAt}`.
+     * @param {Object|null} [options.catchUp=null] `{state: 'fresh'|'failed'|'empty', at, pending}` or `null`.
+     * @param {Object[]} [options.signals=[]] Newest-first `{kind, emittedAt, receivedAt}` rows.
+     * @param {Number} [options.nowMs=Date.now()] Injectable clock for relative labels.
+     * @returns {{ariaLabel: String, cls: String[], hidden: Boolean, text: String, title: String}}
      */
-    static describeViewerWakeTelltale({stream = null, catchUp = null, signals = [], nowMs = Date.now()} = {}) {
+    static describeViewerWakeTelltale({armed = null, everAlive = false, stream = null, catchUp = null, signals = [], nowMs = Date.now()} = {}) {
         const
-            alive      = stream?.alive === true,
+            visible    = armed === true || (armed !== false && everAlive === true),
+            live       = armed === true && stream?.alive === true,
             reason     = typeof stream?.reason === 'string' && stream.reason.trim() ? stream.reason : 'no stream observation',
             lastSignal = signals[0] ?? null;
 
         let text;
 
-        if (alive) {
+        if (live) {
             const relative = Number.isFinite(lastSignal?.receivedAt) ? ` · ${AgentFreshness.formatAge(nowMs - lastSignal.receivedAt)}` : '';
 
             text = `wake live${relative}`
         } else {
-            // The pill wears the status word pair; the consumer's absence-of-signal grammar passes
-            // through verbatim on the TITLE's first line and the aria label — chrome labels are
-            // never sentences (the old inline pass-through rendered "wake: wake stream
-            // disconnected (connect refused)": a duplicated axis word, clipped mid-word at bar
-            // widths — the #23 sketch's named failure mode).
             text = 'wake off'
         }
 
@@ -79,16 +72,15 @@ class ViewerWakeTelltale extends Base {
             `${signal.kind ?? 'wake'}${Number.isFinite(signal.receivedAt) ? ` · ${AgentFreshness.formatAge(nowMs - signal.receivedAt)}` : ''}`);
 
         const title = [
-            alive ? `wake push live — ${reason}` : `wake push unavailable — ${reason}`,
+            live ? `wake push live — ${reason}` : `wake push unavailable — ${reason}`,
             catchUpLine,
             signalLines.length ? `last signals: ${signalLines.join(' | ')}` : 'no signals observed on this stream'
         ].join('\n');
 
         return {
-            // The reason rides the aria label too: the pill word alone would make the title's
-            // hover the only path to the cause, unreachable to a screen reader.
-            ariaLabel: alive ? `Viewer wake push: ${text}` : `Viewer wake push: ${text} — ${reason}`,
-            cls      : ['fm-viewer-wake', alive ? 'fm-viewer-wake-live' : 'fm-viewer-wake-degraded'],
+            ariaLabel: live ? `Viewer wake push: ${text}` : `Viewer wake push: ${text} — ${reason}`,
+            cls      : ['fm-viewer-wake', live ? 'fm-viewer-wake-live' : 'fm-viewer-wake-degraded'],
+            hidden   : !visible,
             text,
             title
         }

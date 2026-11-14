@@ -247,6 +247,7 @@ class FleetCockpit extends VesselContainer {
                 header    : {text: 'Wake routes'},
                 reference : 'wakeRoutes',
                 autoHidden: true,
+                bind      : {viewerWake: data => data.viewerWake},
                 listeners : {wakeRoutesRequest: 'onWakeRoutesRequest'}
             }
         },

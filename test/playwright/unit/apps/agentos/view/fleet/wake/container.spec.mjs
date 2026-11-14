@@ -74,6 +74,46 @@ test.describe('WakeRoutePane — decomposed per-seat honesty (never fused)', () 
         expect(requests).toEqual([]);
         expect(pane.seatStore.count).toBe(0);
         expect(pane.getReference('wakeroutes-meta').text).toBe('Read the routes to see each seat’s wake path.');
+        expect(pane.getReference('viewer-wake-line').hidden).toBe(true);
+
+        pane.destroy()
+    });
+
+    test('viewerWake renders the viewer push diagnostics line across not-armed, live, and off states', () => {
+        const {pane} = createPane();
+        const line   = pane.getReference('viewer-wake-line');
+
+        expect(line.hidden).toBe(true);
+
+        pane.viewerWake = {
+            armed    : false,
+            everAlive: false,
+            stream   : {alive: true, reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)'}
+        };
+
+        expect(line.hidden).toBe(false);
+        expect(line.text).toBe('viewer push: not armed — composed wake stream connected · not armed for this viewer (missing class-3 mint)');
+        expect(line.vdom.title).toBe('composed wake stream connected · not armed for this viewer (missing class-3 mint)');
+
+        pane.viewerWake = {
+            armed    : true,
+            everAlive: true,
+            stream   : {alive: true, reason: 'composed wake stream connected · armed for this viewer'}
+        };
+
+        expect(line.text).toBe('viewer push: live — composed wake stream connected · armed for this viewer');
+
+        pane.viewerWake = {
+            armed    : true,
+            everAlive: true,
+            stream   : {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane'}
+        };
+
+        expect(line.text).toBe('viewer push: off — wake stream disconnected — poll remains the truth lane');
+
+        pane.viewerWake = null;
+        expect(line.hidden).toBe(true);
+        expect(line.vdom.title).toBeUndefined();
 
         pane.destroy()
     });

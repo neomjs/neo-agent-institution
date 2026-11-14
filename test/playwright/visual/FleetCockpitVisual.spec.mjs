@@ -1,7 +1,7 @@
 import {test, expect}                                                                                                                  from '@playwright/test';
 import {readFileSync, rmSync, writeFileSync}                                                                                           from 'node:fs';
 import path                                                                                                                            from 'node:path';
-import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks, landPlaneAdmission} from '../fixtures.mjs';
+import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks, landPlaneAdmission, landViewerWake} from '../fixtures.mjs';
 import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                                        from '../fixture/fleetSample.mjs';
 import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                                         from '../fixture/pinnedSetupHost.mjs';
 
@@ -941,15 +941,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
               cut    = el => el ? el.scrollWidth > el.clientWidth : null;
 
         return {
-            ariaLabel: banner.getAttribute('aria-label') || '',
-            buttons  : [...document.querySelectorAll('.fm-cockpit-bar > .neo-button')].map(el => Math.round(el.getBoundingClientRect().width)),
-            fontSize : getComputedStyle(banner).fontSize,
-            lead     : globalThis.__fmMeasureBannerLead(),
-            pillCut  : cut(banner),
-            title    : banner.getAttribute('title') || '',
-            wakeCut  : cut(wake),
-            wakeFont : wake ? getComputedStyle(wake).fontSize : null,
-            wakeLive : wake ? wake.classList.contains('fm-viewer-wake-live') : null
+            ariaLabel  : banner.getAttribute('aria-label') || '',
+            buttons    : [...document.querySelectorAll('.fm-cockpit-bar > .neo-button')].map(el => Math.round(el.getBoundingClientRect().width)),
+            fontSize   : getComputedStyle(banner).fontSize,
+            lead       : globalThis.__fmMeasureBannerLead(),
+            pillCut    : cut(banner),
+            title      : banner.getAttribute('title') || '',
+            wakeCut    : cut(wake),
+            wakeFont   : wake ? getComputedStyle(wake).fontSize : null,
+            wakeLive   : wake ? wake.classList.contains('fm-viewer-wake-live') : null,
+            wakePresent: Boolean(wake)
         }
     });
 
@@ -965,6 +966,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
             const read = await readRefusal(page);
 
+            expect(read.wakePresent, `${word}: an unarmed cold bar renders no wake chip`).toBe(false);
             expect(read.lead?.text, `${word}: the lead says why, and what connecting fixes`).toMatch(/\bconnect\b/i);
             expect(/\bretry\b/i.test(read.lead.text), `${word}: the lead names Retry exactly when the button offers it`).toBe(action === 'Retry');
             expect(read.lead.text, `${word}: the lead carries no address and no code`).not.toMatch(/plane\.neo\.test|plane-[a-z]/);
@@ -979,6 +981,15 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await expect(bar).toHaveScreenshot(golden)
         }
 
+        // Stamp an armed+disconnected viewer wake lane so the 821px→720px collapse-order checks
+        // continue guarding the armed-degraded `wake off` pill alongside the banner lead and buttons.
+        await landViewerWake(page, {
+            armed    : true,
+            everAlive: true,
+            stream   : {alive: 'unknown', reason: 'wake stream disconnected', capturedAt: 0}
+        });
+        await expect(page.locator('.fm-viewer-wake')).toHaveText('wake off');
+
         // just above the marks step the lead is the row's slack: it ellipsizes, while the longest pill
         // word, the wake pill and every button keep their width
         await page.setViewportSize({width: 821, height: 800});
@@ -987,6 +998,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         const squeezed = await readRefusal(page);
 
+        expect(squeezed.wakePresent, 'the armed-degraded wake pill renders in the squeeze frame').toBe(true);
         expect(squeezed.lead.width, 'the lead keeps a line to read').toBeGreaterThan(0);
         expect(squeezed.pillCut, 'the pill keeps its word').toBe(false);
         expect(squeezed.wakeCut, 'the wake pill keeps its word').toBe(false);
@@ -1006,6 +1018,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
         const narrow = await readRefusal(page);
 
+        expect(narrow.wakePresent, 'the armed-degraded wake pill stays rendered in the mark regime').toBe(true);
         expect(narrow.lead?.width, 'the reason keeps a visible line beside the mark').toBeGreaterThan(0);
         expect(narrow.lead.oneLine, 'the narrow lead never wraps').toBe(true);
         expect(narrow.title, 'the title still carries the whole sentence').toContain(narrow.lead.text);
