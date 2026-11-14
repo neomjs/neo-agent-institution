@@ -8,7 +8,7 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  *
  * Coverage: every event kind the merged cockpit DTO emits (the FLEET_COCKPIT_EVENT_TYPES —
  * lifecycle-request/success/failure, bridge-unavailable/gated, pr-activity, issue-activity,
- * lane-claim, work-stall, source-degraded) plus the design mock's four (pr / a2a / review / alert).
+ * lane-claim, session-rotation, work-stall, source-degraded) plus the design mock's four (pr / a2a / review / alert).
  *
  * Colors bind the dedicated --fm-kind-* family — event kind is a SEPARATE visual axis from agent
  * session-state (kind = what happened; state = agent health), so kinds never reuse the state
@@ -26,6 +26,7 @@ const KIND_TOKEN = {
     'issue-activity'    : '--fm-kind-a2a',
     'review'            : '--fm-kind-review',
     'lifecycle-request' : '--fm-kind-review',
+    'session-rotation'  : '--fm-kind-review',
     'bridge-gated'      : '--fm-kind-review',
     'alert'             : '--fm-kind-alert',
     'work-stall'        : '--fm-kind-alert',
@@ -44,6 +45,7 @@ const KIND_LABEL = {
     'issue-activity'    : 'issue',
     'review'            : 'review',
     'lifecycle-request' : 'request',
+    'session-rotation'  : 'rotation',
     'bridge-gated'      : 'gated',
     'alert'             : 'alert',
     'work-stall'        : 'stall',

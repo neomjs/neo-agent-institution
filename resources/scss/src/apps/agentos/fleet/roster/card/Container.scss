@@ -423,6 +423,20 @@
         }
     }
 
+    /* the seat's session rotation: one quiet line, the limited ink when it was refused or found no session */
+    .fm-card-rotation {
+        font         : var(--fm-text-micro);
+        color        : var(--fm-ink-dim);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+
+        &.fm-rotation-refused,
+        &.fm-rotation-incomplete {
+            color: var(--fm-state-limited);
+        }
+    }
+
     /* ── the source strip: ONE honest word-line; the ::before dot reads the fm-strip-<level> cls ── */
     .fm-card-strip {
         display    : flex;

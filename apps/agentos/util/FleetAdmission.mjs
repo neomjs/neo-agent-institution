@@ -1,6 +1,7 @@
 import ActivityObserver from './ActivityObserver.mjs';
 import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import LivenessCadence  from './LivenessCadence.mjs';
+import SessionRotation  from './SessionRotation.mjs';
 import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
@@ -322,6 +323,8 @@ class FleetAdmission extends Base {
             state     = partial ? 'partial' : 'live',
             answered  = {counts: Array.isArray(counts) ? counts : [], events: Array.isArray(events) ? events : []},
             admitted  = selector ? ActivityObserver.admitLive(owner, {a2a, ...answered, reason}, selector) : answered,
+            // the first page, and a rotation decision the store has not seen, re-read the seats' rotations for their cards
+            rotated   = !owner.activityWired || admitted.events.some(event => event?.type === 'session-rotation' && !store.get(event.eventId)),
             guidance  = FleetAdmission.deriveActivityGuidance({
                 capability,
                 events        : admitted.events,
@@ -334,6 +337,7 @@ class FleetAdmission extends Base {
         store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
+        rotated && SessionRotation.load(owner);
         FleetAdmission.expireOutageNote(owner, now);
 
         if (wasWired) {
@@ -451,6 +455,10 @@ class FleetAdmission extends Base {
             // selection made against a now-removed record
             owner.reconcileSelection()
         }
+
+        // the roster row carries no rotation: a record new to the store, in the first snapshot or joining a
+        // wired roster, takes the cards' last rotation answer when one landed first
+        SessionRotation.reapply(owner);
 
         FleetAdmission.expireOutageNote(owner, owner.rosterObservedAt);
 

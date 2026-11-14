@@ -1,9 +1,10 @@
-import ActorChip  from './ActorChipComponent.mjs';
-import Component  from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import EventChip  from './EventChipComponent.mjs';
-import NeoArray   from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
-import ViewerTime from '../../../util/ViewerTime.mjs';
+import ActorChip               from './ActorChipComponent.mjs';
+import Component               from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container               from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import EventChip               from './EventChipComponent.mjs';
+import NeoArray                from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
+import SessionRotation         from '../../../util/SessionRotation.mjs';
+import ViewerTime              from '../../../util/ViewerTime.mjs';
 import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
@@ -50,11 +51,15 @@ export function formatConversationRef(repoSlug, number) {
 
 /**
  * @summary Resolves the full `neomjs/<repoSlug>#N` a row's object cell carries as its title, so hover
- * answers what the short reference compresses. Rows without a conversation number carry none.
+ * answers what the short reference compresses. A session rotation's title is its words with both full
+ * session ids and the receipt ({@link AgentOS.util.SessionRotation#describe}). Other rows without a
+ * conversation number carry none.
  * @param {Object} event Record or record-shaped object.
  * @returns {String|null}
  */
 export function getActivityObjectTitle(event) {
+    if (event?.type === 'session-rotation') return SessionRotation.describe(event.payload)?.title ?? null;
+
     const
         payload = event?.payload || {},
         subject = Neo.typeOf(payload.subject) === 'Object' ? payload.subject : null,
@@ -155,6 +160,10 @@ export function getPullRequestStatus(event) {
  * @returns {String}
  */
 export function getActivityObjectText(event) {
+    if (event?.type === 'session-rotation') {
+        return SessionRotation.describe(event.payload)?.text ?? 'session rotation'
+    }
+
     const
         payload = event?.payload || {},
         subject = Neo.typeOf(payload.subject) === 'Object' ? payload.subject : null,
