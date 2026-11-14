@@ -41,6 +41,46 @@ class ObservatoryRelationList extends BaseList {
     }
 
     /**
+     * @summary The relations of `selectedId` in `scene`, seen from it, up to `listBudget`: grouped by type (an
+     * untyped one last) and direction (outgoing first), each group under a header that counts the group in the whole
+     * read, and in the feed's order within a group.
+     * @param {Object} pane The Observatory pane's state
+     * @param {Number} pane.listBudget
+     * @param {Object} pane.scene
+     * @param {String|null} pane.selectedId
+     * @returns {Object[]}
+     */
+    static rowsOf({listBudget, scene, selectedId}) {
+        const
+            index     = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
+            groupOf   = relation => `${relation.type ?? '\uffff'}\u0000${relation.direction === 'out' ? 0 : 1}`,
+            counts    = new Map(),
+            rows      = [],
+            relations = index < 0 ? [] : scene.edges.flatMap((pair, edge) => {
+                if (!pair.includes(index)) {
+                    return []
+                }
+
+                const other = scene.nodes[pair[0] === index ? pair[1] : pair[0]];
+
+                return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge] ?? null}]
+            });
+
+        relations.forEach(relation => counts.set(groupOf(relation), (counts.get(groupOf(relation)) ?? 0) + 1));
+
+        // the budget cuts in the feed's order; a stable sort keeps that order within each group
+        relations.slice(0, listBudget).sort((a, b) => groupOf(a) < groupOf(b) ? -1 : groupOf(a) > groupOf(b) ? 1 : 0).forEach((relation, at, listed) => {
+            if (at === 0 || groupOf(listed[at - 1]) !== groupOf(relation)) {
+                rows.push({count: counts.get(groupOf(relation)), direction: relation.direction, isHeader: true, type: relation.type})
+            }
+
+            rows.push(relation)
+        });
+
+        return rows.map((row, position) => ({...row, position}))
+    }
+
+    /**
      * @summary The base hook turns the whole list into a definition list (`dl`, `dt`, `dd`). This list stays the
      * flat `ul` of `li` rows it always was, with its headers as rows too, like the Tasks list: only the header
      * records' semantics apply.
