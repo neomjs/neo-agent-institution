@@ -34,12 +34,12 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
         });
         expect(fallback).toEqual({
             action   : 'recheck',
-            ariaLabel: 'Activity feed partial — some sources unavailable · pr-lane: unavailable',
+            ariaLabel: 'some sources unavailable · pr-lane: unavailable',
             hidden   : false,
             kind     : 'degraded',
-            lead     : 'Activity feed partial — some sources unavailable',
+            lead     : 'some sources unavailable',
             text     : 'feed partial',
-            title    : 'Activity feed partial — some sources unavailable · pr-lane: unavailable'
+            title    : 'some sources unavailable · pr-lane: unavailable'
         });
 
         const guided = SpineBanner.deriveSpineBanner({
@@ -47,18 +47,26 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             stream: {
                 state   : 'partial',
                 reason  : 'pr-lane: neo: ENOENT',
-                guidance: {summary: 'PR lanes unavailable · mailbox available', reason: 'pr-lane: neo: ENOENT'}
+                guidance: {
+                    missing  : 'PR lanes unavailable',
+                    remaining: 'mailbox available',
+                    reason   : 'pr-lane: neo: ENOENT',
+                    summary  : 'PR lanes unavailable · mailbox available'
+                }
             }
         });
         expect(guided).toEqual({
             action   : 'recheck',
-            ariaLabel: 'Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT',
+            ariaLabel: 'PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT',
             hidden   : false,
             kind     : 'degraded',
-            lead     : 'Activity feed partial — PR lanes unavailable · mailbox available',
+            lead     : 'PR lanes unavailable',
             text     : 'feed partial',
-            title    : 'Activity feed partial — PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT'
+            title    : 'PR lanes unavailable · mailbox available · pr-lane: neo: ENOENT'
         });
+        expect(guided.lead).not.toContain('feed partial');
+        expect(guided.lead).not.toContain('mailbox available');
+        expect(guided.title).toContain('mailbox available');
         expect(guided.title).not.toContain('last-known');
         expect(guided.title).not.toContain('complete');
         expect(SpineBanner.deriveSpineBanner({grid: {state: 'cold'}, stream: {state: 'partial'}}).kind).toBe('cold');
@@ -872,13 +880,18 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             });
 
             // Alongside `feed partial` (Row 5's H2 walk where PR lanes are unconfigured), the spine
-            // preserves both the partial-feed summary and the product-word recovery note in `lead`,
-            // while keeping both retained reasons and the ISO window on `title`/`ariaLabel` only.
+            // names only missing sources in `lead` (no pill repetition, no healthy sources, no recovered outage),
+            // while healthy sources, the recovery note, reasons, and ISO window ride on `title`/`ariaLabel`.
             const partialWithNote = SpineBanner.deriveSpineBanner({
                 grid  : {state: 'live'},
                 outage,
                 stream: {
-                    guidance: {reason: 'pr-lane: github token not configured', summary: 'PR lanes unavailable · mailbox available'},
+                    guidance: {
+                        missing  : 'PR lanes unavailable',
+                        remaining: 'mailbox available',
+                        reason   : 'pr-lane: github token not configured',
+                        summary  : 'PR lanes unavailable · mailbox available'
+                    },
                     state   : 'partial'
                 }
             });
@@ -886,9 +899,37 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             expect(partialWithNote.kind).toBe('degraded');
             expect(partialWithNote.text).toBe('feed partial');
             expect(partialWithNote.action).toBe('recheck');
-            expect(partialWithNote.lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane outage 21:59–21:59 — recovered');
-            expect(partialWithNote.title).toBe('Activity feed partial — PR lanes unavailable · mailbox available · Plane outage 21:59–21:59 — recovered · pr-lane: github token not configured · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z');
+            expect(partialWithNote.lead).toBe('PR lanes unavailable');
+            expect(partialWithNote.title).toBe('PR lanes unavailable · mailbox available · Plane outage 21:59–21:59 — recovered · pr-lane: github token not configured · mc-server, kb-server, fleet-server, orchestrator restarted · 2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z');
             expect(partialWithNote.ariaLabel).toBe(partialWithNote.title);
+            expect(partialWithNote.lead).not.toContain('feed partial');
+            expect(partialWithNote.lead).not.toContain('mailbox available');
+            expect(partialWithNote.lead).not.toContain('Plane outage');
+            expect(partialWithNote.title).toContain('mailbox available');
+            expect(partialWithNote.title).toContain('Plane outage');
+
+            // With PR lanes partial and the mailbox wired, after a recovered plane outage,
+            // the lead reads `PR lanes partial`, and the title carries `mailbox available` and the outage window.
+            const prLanesPartialWithOutage = SpineBanner.deriveSpineBanner({
+                grid  : {state: 'live'},
+                outage,
+                stream: {
+                    guidance: {
+                        missing  : 'PR lanes partial',
+                        remaining: 'mailbox available',
+                        reason   : 'pr-lane: 1 repo degraded',
+                        summary  : 'PR lanes partial · mailbox available'
+                    },
+                    state   : 'partial'
+                }
+            });
+            expect(prLanesPartialWithOutage.lead).toBe('PR lanes partial');
+            expect(prLanesPartialWithOutage.lead).not.toContain('feed partial');
+            expect(prLanesPartialWithOutage.lead).not.toContain('mailbox available');
+            expect(prLanesPartialWithOutage.lead).not.toContain('Plane outage');
+            expect(prLanesPartialWithOutage.title).toContain('mailbox available');
+            expect(prLanesPartialWithOutage.title).toContain('21:59–21:59');
+            expect(prLanesPartialWithOutage.title).toContain('2026-10-31T21:59:03.000Z–2026-10-31T21:59:37.000Z');
 
             // Past OUTAGE_NOTE_TTL_MS (5 min), the note expires on both live and feed partial paths
             const expiredOutage = {...outage, now: recoveredAt + SpineBanner.OUTAGE_NOTE_TTL_MS};
@@ -898,10 +939,15 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
                 grid  : {state: 'live'},
                 outage: expiredOutage,
                 stream: {
-                    guidance: {reason: 'pr-lane: github token not configured', summary: 'PR lanes unavailable · mailbox available'},
+                    guidance: {
+                        missing  : 'PR lanes unavailable',
+                        remaining: 'mailbox available',
+                        reason   : 'pr-lane: github token not configured',
+                        summary  : 'PR lanes unavailable · mailbox available'
+                    },
                     state   : 'partial'
                 }
-            }).lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available')
+            }).lead).toBe('PR lanes unavailable')
         })
     })
 });
