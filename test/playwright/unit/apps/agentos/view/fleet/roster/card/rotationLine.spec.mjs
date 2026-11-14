@@ -18,7 +18,7 @@ import * as core      from '../../../../../../../../../node_modules/neo.mjs/src/
 import Instance       from '../../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 
 test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#842)', () => {
-    let AgentCard, FleetAgent, SessionRotation, Store, ViewerTime, getActivityObjectText;
+    let AgentCard, FleetAgent, SessionRotation, Store, ViewerTime, getActivityObjectText, getActivityObjectTitle;
 
     const
         stores    = [],
@@ -53,7 +53,7 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
         SessionRotation = (await import('../../../../../../../../../apps/agentos/util/SessionRotation.mjs')).default;
         Store           = (await import('../../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default;
         ViewerTime      = (await import('../../../../../../../../../apps/agentos/util/ViewerTime.mjs')).default;
-        ({getActivityObjectText} = await import('../../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs'))
+        ({getActivityObjectText, getActivityObjectTitle} = await import('../../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs'))
     });
 
     test.afterAll(() => {
@@ -187,9 +187,79 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
         expect(store.get('ada').rotation).toEqual(completed)
     });
 
-    test('the journal words a session-rotation event as the card does', () => {
+    test('the rotation read belongs to the profile that answered: a switch neither re-applies the held answer nor admits a late one', async () => {
+        const
+            storeA = makeStore([{agentId: 'ada'}]),
+            storeB = makeStore([{agentId: 'ada'}]),
+            answer = {capability: {state: 'wired'}, seats: [{agentId: 'ada', rotation: completed}]},
+            owner  = {
+                bridge                 : {profileId: 'A', fleetWakeRoutes: async () => answer},
+                get bridgeProfileId() {return this.bridge?.profileId ?? null},
+                resolveFleetRosterStore: () => storeA,
+                rotationRead           : null
+            },
+            switchTo = (profileId, store) => {
+                owner.bridge                  = {profileId, fleetWakeRoutes: async () => ({capability: {state: 'wired'}, seats: []})};
+                owner.resolveFleetRosterStore = () => store
+            };
+
+        await SessionRotation.load(owner);
+        expect(storeA.get('ada').rotation).toEqual(completed);
+
+        // instance B's roster lands before its own rotation read: A's held answer stays off it
+        switchTo('B', storeB);
+        SessionRotation.reapply(owner);
+        expect(storeB.get('ada').rotation).toBeNull();
+
+        // a read of A still in flight when the operator switches to B lands nowhere
+        let release;
+
+        owner.bridge                  = {profileId: 'A', fleetWakeRoutes: () => new Promise(resolve => release = resolve)};
+        owner.resolveFleetRosterStore = () => storeA;
+
+        const inFlight = SessionRotation.load(owner);
+
+        switchTo('B', storeB);
+        release(answer);
+        await inFlight;
+        expect(storeB.get('ada').rotation).toBeNull();
+        expect(owner.rotationRead?.profileId ?? null).not.toBe('B')
+    });
+
+    test('a seat joining a wired roster takes the held rotation, and a re-apply writes only what changed', () => {
+        const
+            store  = makeStore([{agentId: 'ada', rotation: completed}]),
+            joiner = {...completed, receiptId: 'MESSAGE:r2'},
+            owner  = {
+                bridge                 : {profileId: 'A'},
+                get bridgeProfileId() {return this.bridge?.profileId ?? null},
+                resolveFleetRosterStore: () => store,
+                rotationRead           : null
+            };
+
+        SessionRotation.admit(owner, {capability: {state: 'wired'}, seats: [{agentId: 'ada', rotation: completed}, {agentId: 'clio', rotation: joiner}]}, 'A');
+
+        let writes = 0;
+
+        store.on('recordChange', () => writes++);
+        store.add({agentId: 'clio', sources, state: 'ok'});
+        SessionRotation.reapply(owner);
+
+        expect(store.get('clio').rotation).toEqual(joiner);
+        expect(store.get('ada').rotation).toEqual(completed);
+        expect(writes).toBe(1)
+    });
+
+    test('the journal words a session-rotation event as the card does, and its title keeps the full ids and the receipt', () => {
         expect(getActivityObjectText({type: 'session-rotation', payload: {...completed, decidedAt: null}})).toBe('rotated · from 1a2b3c4d to 5e6f7a8b');
         expect(getActivityObjectText({type: 'session-rotation', payload: {state: 'incomplete', reason: 'no-fresh-session'}})).toBe('rotation incomplete · no-fresh-session');
-        expect(getActivityObjectText({type: 'session-rotation', payload: {state: 'none'}})).toBe('session rotation')
+        expect(getActivityObjectText({type: 'session-rotation', payload: {state: 'none'}})).toBe('session rotation');
+
+        const title = getActivityObjectTitle({type: 'session-rotation', payload: completed});
+
+        expect(title).toContain('from 1a2b3c4d-old');
+        expect(title).toContain('to 5e6f7a8b-new');
+        expect(title).toContain('receipt MESSAGE:r1');
+        expect(getActivityObjectTitle({type: 'session-rotation', payload: {state: 'none'}})).toBeNull()
     });
 });
