@@ -61,6 +61,13 @@ class ObservatorySelectionContainer extends Container {
          */
         note_: null,
         /**
+         * True while the section shares the side panel below an open `Nodes` list: it sizes to its content up to half
+         * the panel and scrolls its relations inside beyond that.
+         * @member {Boolean} split_=false
+         * @reactive
+         */
+        split_: false,
+        /**
          * The title, the head (label and kind), the facts, the actions with the id they copy, and the relations.
          * @member {Object[]} items
          */
@@ -226,6 +233,39 @@ class ObservatorySelectionContainer extends Container {
      */
     afterSetNote(value, oldValue) {
         oldValue !== undefined && this.render()
+    }
+
+    /**
+     * Triggered after the split config got changed: in split mode the relation list shrinks from its intrinsic height
+     * rather than expanding to `0%` of an auto-sized container, and takes `1 1 0%` again when Selected owns the panel.
+     * @param {Boolean} value
+     * @param {Boolean|undefined} oldValue
+     * @protected
+     */
+    afterSetSplit(value, oldValue) {
+        const me = this, relations = me.getReference('observatory-relations'), split = Boolean(value);
+
+        me.toggleCls('is-split', split);
+        relations?.set({
+            flex : split ? '0 1 auto' : 1,
+            style: {...relations.style, flex: split ? '0 1 auto' : '1 1 0%'}
+        })
+    }
+
+    /**
+     * @summary Moves keyboard focus to the first visible action (`Open` when the node has a source, else `Copy id`).
+     * @returns {Promise<Neo.button.Base|null>}
+     */
+    async focusFirstAction() {
+        const me = this, open = me.getReference('selected-open'), target = me.facts && (!open.hidden ? open : me.getReference('selected-copy'));
+
+        if (!target) {
+            return null
+        }
+
+        !Neo.config.unitTestMode && me.mounted && await me.promiseUpdate();
+        target.focus(target.id, false, true, 'keyboard');
+        return target
     }
 
     /**

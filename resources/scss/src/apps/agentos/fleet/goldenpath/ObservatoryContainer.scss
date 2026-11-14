@@ -32,15 +32,123 @@
         }
     }
 
-    /* the Nodes list's order in words, under its chrome line in the detail role; a collapsed section keeps only the
-       chrome line */
-    .fm-observatory-nodes-caption {
-        color  : var(--fm-ink-dim);
-        font   : var(--fm-text-detail);
+    /* the Nodes filter row: label/id substring field + compact native kind select, both at 26px height,
+       panel body type (12px), and the panel's teal focus border (--fm-signal) */
+    .fm-observatory-nodes-filter {
+        gap    : var(--fm-space-1);
+        padding: 0 var(--fm-space-3) var(--fm-space-1);
+
+        .neo-textfield {
+            --textfield-border-color             : var(--fm-line);
+            --textfield-border-color-active      : var(--fm-signal);
+            --textfield-border-color-hovered     : var(--fm-ink-dim);
+            --textfield-border-radius            : var(--fm-chip-radius);
+            --textfield-border-width             : 1px;
+            --textfield-input-background-color   : var(--fm-panel-2);
+            --textfield-input-color              : var(--fm-ink);
+            --textfield-input-font               : var(--fm-text-body);
+            --textfield-input-height             : 24px;
+            --textfield-input-padding            : 0 var(--fm-space-2);
+            --textfield-input-placeholder-color  : var(--fm-ink-dim);
+            --textfield-input-placeholder-opacity: 1;
+            --textfield-outline-active           : none;
+            --textfield-outline-hovered          : none;
+            --trigger-background-color-hover     : transparent;
+            --trigger-border-width               : 0px;
+            --trigger-color                      : var(--fm-ink-dim);
+            --trigger-color-hover                : var(--fm-ink);
+
+            margin   : 0;
+            min-width: 0;
+
+            .neo-input-wrapper {
+                box-sizing: border-box;
+                height    : 100%;
+
+                &:focus-within {
+                    border-color: var(--fm-signal);
+                }
+            }
+
+            .neo-textfield-input {
+                height   : 100%;
+                min-width: 0;
+            }
+
+            .neo-field-trigger {
+                font-size  : 11px;
+                height     : 100%;
+                line-height: 1;
+                width      : 20px;
+
+                &.neo-is-hidden {
+                    width: 0;
+                }
+            }
+        }
+
+        .neo-selectfield {
+            flex     : none;
+            gap      : 0;
+            max-width: 128px;
+            position : relative;
+
+            &::after {
+                color         : var(--fm-ink-dim);
+                content       : '▾';
+                font          : var(--fm-text-chrome);
+                pointer-events: none;
+                position      : absolute;
+                right         : var(--fm-space-2);
+                top           : 50%;
+                transform     : translateY(-50%);
+            }
+
+            .neo-selectfield-input {
+                appearance   : none;
+                background   : var(--fm-panel-2);
+                border       : 1px solid var(--fm-line);
+                border-radius: var(--fm-chip-radius);
+                box-sizing   : border-box;
+                color        : var(--fm-ink);
+                cursor       : pointer;
+                font         : var(--fm-text-body);
+                height       : 26px;
+                line-height  : 24px;
+                min-height   : 0;
+                overflow     : hidden;
+                padding      : 0 20px 0 var(--fm-space-2);
+                text-overflow: ellipsis;
+                white-space  : nowrap;
+
+                &:hover:not(:focus) {
+                    border-color: var(--fm-ink-dim);
+                }
+
+                &:focus,
+                &:focus-visible {
+                    border-color: var(--fm-signal);
+                    outline     : none;
+                }
+            }
+        }
+    }
+
+    /* the Nodes list's order or match summary in the detail role, with Clear filter beside a zero-match line;
+       a collapsed section keeps only the chrome line */
+    .fm-observatory-nodes-detail {
+        gap    : var(--fm-space-2);
         padding: 0 var(--fm-space-3) var(--fm-space-1);
     }
 
-    .fm-observatory-nodes-head:has(.fm-observatory-section-head[aria-expanded="false"]) .fm-observatory-nodes-caption {
+    .fm-observatory-nodes-caption {
+        color        : var(--fm-ink-dim);
+        font         : var(--fm-text-detail);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+    }
+
+    .fm-observatory-nodes-head:has(.fm-observatory-section-head[aria-expanded="false"]) > :not(.fm-observatory-nodes-row) {
         display: none;
     }
 
@@ -58,6 +166,10 @@
        field without chrome, the text the Copy action selects */
     .fm-observatory-selected {
         min-height: 0;
+
+        &.is-split {
+            max-height: 50%;
+        }
     }
 
     .fm-observatory-selected-head {

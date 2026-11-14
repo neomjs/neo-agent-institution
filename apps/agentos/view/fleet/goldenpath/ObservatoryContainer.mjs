@@ -8,6 +8,7 @@ import ObservatoryCanvas             from './ObservatoryCanvas.mjs';
 import ObservatoryHeadComponent      from './ObservatoryHeadComponent.mjs';
 import ObservatoryNodeList           from './ObservatoryNodeList.mjs';
 import ObservatoryNodesHeadContainer from './ObservatoryNodesHeadContainer.mjs';
+import ObservatoryRelationList       from './ObservatoryRelationList.mjs';
 import ObservatorySceneLayout        from '../../../util/ObservatorySceneLayout.mjs';
 import ObservatorySelectionContainer from './ObservatorySelectionContainer.mjs';
 import ObservatoryTeamContainer      from './ObservatoryTeamContainer.mjs';
@@ -199,6 +200,12 @@ class ObservatoryContainer extends Container {
          */
         lensPeers_: [],
         /**
+         * Active filter over the Nodes list (`{query, kind}` or `null`), narrowing the scene before {@link #listBudget}.
+         * @member {Object|null} nodeFilter_=null
+         * @reactive
+         */
+        nodeFilter_: null,
+        /**
          * The Nodes list's order ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}): `changed` leads
          * with what changed in the attention window, `relations` with the most related. Session view state; the
          * Nodes head's toggle flips it.
@@ -209,7 +216,7 @@ class ObservatoryContainer extends Container {
         /**
          * The side panel's open section (`team`, `wells`, `nodes` or `selected`): it takes the panel's remaining height
          * and the others collapse to their heads, each still naming its count. Selecting a node opens `selected`,
-         * unless the viewer is browsing `nodes`: the list stays, and the collapsed Selected head line names the node.
+         * unless the viewer is browsing `nodes`: the list stays open above while `selected` opens below it.
          * `wells` opens only when the viewer chooses it.
          * @member {String} openSection_='team'
          * @reactive
@@ -300,15 +307,9 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * The items exist from here on: the lists take their stores and report their choices, the Team section its
-     * checks, the View section's controls and the selected node's actions theirs, the canvas joins the body where a
-     * canvas worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
-     * readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so the side panel takes
-     * the whole body — and an envelope in the config reaches the head and the panel.
-     *
-     * Beside the canvas, the engine's splitter resizes the side panel for the session. Its bounds are the panel's
-     * CSS `min-width` and `max-width`, which the engine's drag clamps against. Nothing stores the width, so a
-     * new pane starts at the default.
+     * @summary Wires the projection stores, section listeners, View controls, Nodes head filter/order/keyboard
+     * flow, and optional canvas + splitter (when `useCanvasWorker` is enabled outside `unitTestMode`), then syncs
+     * the initial envelope across the head and side panel.
      */
     onConstructed() {
         super.onConstructed();
@@ -320,7 +321,7 @@ class ObservatoryContainer extends Container {
 
         nodes.store     = me.nodeStore;
         relations.store = me.relationStore;
-        nodes    .on('select', me.onNodeListSelect,     me);
+        nodes    .on({headFocus: () => me.getReference('observatory-nodes-title')?.focus(undefined, false, true, 'keyboard'), itemAction: () => me.getReference('observatory-selected')?.focusFirstAction(), select: me.onNodeListSelect, scope: me});
         relations.on('select', me.onRelationListSelect, me);
         // a well's row turns the camera alone: no node moves and the selection stays
         me.getReference('observatory-wells').on({sectionHeadClick: ({section}) => me.chooseSection(section), wellSelect: ({id}) => me.getReference('observatory-canvas')?.flyTo(id)});
@@ -333,7 +334,7 @@ class ObservatoryContainer extends Container {
         me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
-        me.getReference('observatory-nodes-head').on({orderChange: ({order}) => me.nodeOrder = order, sectionHeadClick: ({section}) => me.chooseSection(section)});
+        me.getReference('observatory-nodes-head').on({filterChange: ({filter}) => me.nodeFilter = filter, listEnter: () => { me.openSection !== 'nodes' && me.chooseSection('nodes'); nodes.enterFromHead(me.selectedId) }, orderChange: ({order}) => me.nodeOrder = order, sectionHeadClick: ({section}) => me.chooseSection(section)});
         me.afterSetNodeOrder(me.nodeOrder);
         me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.chooseSection(section));
         me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.chooseSection(section));
@@ -369,7 +370,8 @@ class ObservatoryContainer extends Container {
         me.getReference('observatory-wells').sync(me.scene);
         me.fillNodeList();
         me.syncLists();
-        me.updateSelection()
+        me.updateSelection();
+        me.syncSections()
     }
 
     /**
@@ -480,6 +482,23 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * Triggered after the Nodes filter changed: the head reflects it and the list re-projects over the scene.
+     * @param {Object|null} value
+     * @param {Object|null|undefined} oldValue
+     * @protected
+     */
+    afterSetNodeFilter(value, oldValue) {
+        const me = this, head = me.getReference('observatory-nodes-head');
+
+        head && (head.filter = value);
+
+        if (oldValue !== undefined && me.scene) {
+            me.fillNodeList();
+            me.syncLists()
+        }
+    }
+
+    /**
      * Triggered after the Nodes order changed: the head says which order reads, and the list reorders, keeping the
      * selection.
      * @param {String} value
@@ -529,12 +548,19 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     afterSetSelectedId(value, oldValue) {
-        const me = this;
+        const me = this, nodes = me.getReference('observatory-nodes'), selected = me.getReference('observatory-selected');
 
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
         me.updateSelection();
-        value && me.openSection !== 'nodes' && me.chooseSection('selected')
+
+        if (me.openSection === 'nodes') {
+            me.syncSections();
+            !Neo.config.unitTestMode && value && me.mounted && Promise.all([selected.promiseUpdate(), me.getReference('observatory-relations').promiseUpdate()])
+                .then(() => me.selectedId === value && me.openSection === 'nodes' && nodes.revealRecord(me.nodeStore.get(value)))
+        } else if (value) {
+            me.chooseSection('selected')
+        }
     }
 
     /**
@@ -557,7 +583,8 @@ class ObservatoryContainer extends Container {
     applyScene(scene, cause) {
         const me = this, {selectedId} = me;
 
-        me.scene = scene;
+        me.scene          = scene;
+        me.relationCounts = null;
         me.channels();
         me.updateLine();
 
@@ -575,7 +602,8 @@ class ObservatoryContainer extends Container {
         me.getReference('observatory-wells')?.sync(scene);
         me.fillNodeList();
         me.syncLists();
-        me.updateSelection()
+        me.updateSelection();
+        me.syncSections()
     }
 
     /**
@@ -617,31 +645,23 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Fills the node list from the current scene in the chosen {@link #nodeOrder}
-     * ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}) up to {@link #listBudget} rows; the order
-     * applies to the whole read before the budget cuts it. The section's head names the order and says when the list
-     * holds less than the read.
+     * @summary Projects the current scene through {@link #nodeFilter} and {@link #nodeOrder}
+     * ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#projectOf}) up to {@link #listBudget} rows, and
+     * updates the section head's counts, filter and available kinds.
      * @protected
      */
     fillNodeList() {
         const
-            me                             = this,
-            {listBudget, nodeStore, scene} = me,
-            counts                         = new Uint32Array(scene.nodes.length);
+            me                                         = this,
+            {listBudget, nodeFilter, nodeStore, scene} = me,
+            counts                                     = me.relationCounts ??= ObservatoryNodeList.relationsOf(scene),
+            {indices, matched, total}                  = ObservatoryNodeList.projectOf(scene, me.nodeOrder, counts, nodeFilter, listBudget),
+            listed                                     = indices.map(index => scene.nodes[index]);
 
-        scene.edges.forEach(([from, to]) => {
-            counts[from]++;
-            from !== to && counts[to]++
-        });
-
-        const listed = ObservatoryNodeList.orderOf(scene, me.nodeOrder, counts).slice(0, listBudget).map(index => scene.nodes[index]);
-
-        me.relationCounts = counts;
-        me.extraId        = null;
+        me.extraId = null;
         nodeStore.clear();
         listed.length && nodeStore.add(listed.map(node => me.rowOf(node)));
-
-        me.getReference('observatory-nodes-head')?.set({counts: {listed: listed.length, total: scene.nodes.length}})
+        me.getReference('observatory-nodes-head')?.set({counts: {listed: listed.length, matched, total}, filter: nodeFilter, kinds: ObservatoryNodeList.kindsOf(scene, nodeFilter?.kind)})
     }
 
     /**
@@ -672,13 +692,16 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Escape in the pane backs out one step: a selection drops first, then the lens lifts, and with
-     * neither nothing changes.
+     * @summary Escape in the pane backs out one step: from inside Selected while Nodes is split open it returns focus
+     * to the selected row; otherwise a selection drops first, then the lens lifts.
+     * @param {Object} [data]
      */
-    onEscape() {
-        const me = this;
+    onEscape(data) {
+        const me = this, selected = me.getReference('observatory-selected');
 
-        if (me.selectedId) {
+        if (me.selectedId && me.openSection === 'nodes' && (selected?.containsFocus || data?.path?.some(node => node.id === selected?.id))) {
+            me.getReference('observatory-nodes')?.updateItemFocus(me.nodeStore.get(me.selectedId))
+        } else if (me.selectedId) {
             me.onSelectionClear()
         } else if (me.lensPeers.length) {
             me.lensPeers = []
@@ -808,56 +831,32 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Puts the node list's selection on the selected node — a node beyond the list's budget joins it
-     * — and fills the relation list with that node's relations, seen from it, up to {@link #listBudget}: grouped
-     * by type (an untyped one last) and direction (outgoing first), each group under a header that counts the
-     * group in the whole read, and in the feed's order within a group. A reloaded node list has lost its
-     * selection, so it is placed again.
+     * @summary Puts the node list's selection on the selected node — a matching node beyond the budget joins it
+     * — and fills the relation list from {@link AgentOS.view.fleet.goldenpath.ObservatoryRelationList#rowsOf}.
      * @protected
      */
     syncLists() {
         const
-            me                                         = this,
-            {listBudget, nodeStore, scene, selectedId} = me,
-            nodes                                      = me.getReference('observatory-nodes'),
-            index                                      = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
-            groupOf                                    = relation => `${relation.type ?? '￿'}\u0000${relation.direction === 'out' ? 0 : 1}`,
-            counts                                     = new Map(),
-            rows                                       = [],
-            relations                                  = index < 0 ? [] : scene.edges.flatMap((pair, edge) => {
-                if (!pair.includes(index)) {
-                    return []
-                }
+            me                             = this,
+            {nodeStore, scene, selectedId} = me,
+            nodes                          = me.getReference('observatory-nodes'),
+            index                          = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
+            matchesSelection               = index >= 0 && ObservatoryNodeList.matchesNode(scene.nodes[index], me.nodeFilter),
+            rows                           = ObservatoryRelationList.rowsOf(me);
 
-                const other = scene.nodes[pair[0] === index ? pair[1] : pair[0]];
-
-                return [{direction: pair[0] === index ? 'out' : 'in', otherId: other.id, otherKind: other.kind, otherLabel: other.label, type: scene.edgeTypes[edge] ?? null}]
-            });
-
-        relations.forEach(relation => counts.set(groupOf(relation), (counts.get(groupOf(relation)) ?? 0) + 1));
-
-        // the budget cuts in the feed's order; a stable sort keeps that order within each group
-        relations.slice(0, listBudget).sort((a, b) => groupOf(a) < groupOf(b) ? -1 : groupOf(a) > groupOf(b) ? 1 : 0).forEach((relation, at, listed) => {
-            if (at === 0 || groupOf(listed[at - 1]) !== groupOf(relation)) {
-                rows.push({count: counts.get(groupOf(relation)), direction: relation.direction, isHeader: true, type: relation.type})
-            }
-
-            rows.push(relation)
-        });
-
-        // one row beyond the budget at most: the selection, while the listed nodes lack it
-        if (me.extraId && me.extraId !== selectedId) {
+        // one row beyond the budget at most: the selection, while it matches the filter and the listed nodes lack it
+        if (me.extraId && (me.extraId !== selectedId || !matchesSelection)) {
             nodeStore.remove(me.extraId);
             me.extraId = null
         }
 
-        if (index >= 0 && !nodeStore.get(selectedId)) {
+        if (matchesSelection && !nodeStore.get(selectedId)) {
             nodeStore.add(me.rowOf(scene.nodes[index]));
             me.extraId = selectedId
         }
 
         me.relationStore.clear();
-        rows.length && me.relationStore.add(rows.map((row, position) => ({...row, position})));
+        rows.length && me.relationStore.add(rows);
 
         const record = index < 0 ? null : nodeStore.get(selectedId);
 
@@ -879,26 +878,32 @@ class ObservatoryContainer extends Container {
 
     /**
      * @summary Opens {@link #openSection} to the side panel's remaining height and collapses the others to their
-     * heads; a head is pressed and `aria-expanded` while its section is open. The View section is not a section: it always shows.
+     * heads; while `nodes` is open with a selection, `selected` opens below it up to half the panel. The View section always shows.
      * @protected
      */
     syncSections() {
-        const me = this, {openSection} = me;
+        const me = this, {openSection} = me, split = openSection === 'nodes' && Boolean(me.selectedId);
+
+        if (!me.getReference('observatory-selected')) {
+            return
+        }
 
         [['team', 'observatory-team', 'observatory-peers-title'],
          ['wells', 'observatory-wells', 'observatory-wells-title'],
          ['nodes', 'observatory-nodes', 'observatory-nodes-title'],
          ['selected', 'observatory-selected', 'selected-section-head']].forEach(([section, body, head]) => {
-            const isOpen = section === openSection, component = me.getReference(body), button = me.getReference(head);
+            const isOpen = section === openSection, isSplit = section === 'selected' && split, expanded = isOpen || isSplit,
+                  flex = isOpen ? 1 : isSplit ? '0 1 auto' : 'none', component = me.getReference(body), button = me.getReference(head);
 
             // the layout copied flex into the style when it placed the section, so a change must reach the style
             component.set({
-                flex : isOpen ? 1 : 'none',
-                style: {...component.style, flex: isOpen ? '1 1 0%' : 'none'}
+                flex,
+                ...(section === 'selected' && {split: isSplit}),
+                style: {...component.style, flex: isOpen ? '1 1 0%' : flex}
             });
-            component.toggleCls('is-collapsed', !isOpen);
-            button.pressed               = isOpen;
-            button.vdom['aria-expanded'] = String(isOpen);
+            component.toggleCls('is-collapsed', !expanded);
+            button.pressed               = expanded;
+            button.vdom['aria-expanded'] = String(expanded);
             button.update()
         })
     }

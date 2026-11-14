@@ -923,11 +923,190 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
         pane.selectedId = null;
         expect(pane.openSection).toBe('selected');
 
-        // a viewer browsing the node list keeps it: the keys walk the rows while the Selected head line names the node
+        // a viewer browsing the node list keeps it open above while Selected opens in split mode below
         pane.openSection = 'nodes';
         pane.selectedId  = q('issue-303');
         expect(pane.openSection).toBe('nodes');
         expect(headOf(pane)[0]).toBe('third route item');
+
+        pane.destroy()
+    });
+
+    test('selecting from the node list splits the panel so the selection\'s details and actions stay visible, and the keyboard enters from the Nodes head, reaches the first action, and backs out with Escape', () => {
+        const
+            pane      = createPane({envelope: teamRead()}),
+            nodes     = pane.getReference('observatory-nodes'),
+            nodesHead = pane.getReference('observatory-nodes-title'),
+            selected  = selectedOf(pane),
+            open      = selected.getReference('selected-open'),
+            copy      = selected.getReference('selected-copy'),
+            unselect  = selected.getReference('selected-clear'),
+            focused   = [];
+
+        unselect.useRippleEffect = nodesHead.useRippleEffect = false;
+
+        [nodesHead, open, copy].forEach(button => {
+            button.focus = () => focused.push(button.reference)
+        });
+
+        let focusedRecord = null;
+        nodes.updateItemFocus = async record => {
+            focusedRecord = record;
+            focused.push(`row:${record?.id}`)
+        };
+
+        // ArrowDown on the Nodes head opens Nodes and focuses + selects the first row
+        nodesHead.keys.onKeyDown({key: 'ArrowDown'});
+        const firstId = pane.nodeStore.getAt(0).id;
+
+        expect(pane.openSection).toBe('nodes');
+        expect(pane.selectedId).toBe(firstId);
+        expect(focusedRecord?.id).toBe(firstId);
+        expect([
+            nodes.flex,
+            nodes.cls.includes('is-collapsed'),
+            selected.flex,
+            selected.split,
+            selected.cls.includes('is-collapsed'),
+            selected.cls.includes('is-split'),
+            selected.getReference('selected-facts').hidden,
+            selected.getReference('selected-actions').hidden,
+            selected.getReference('observatory-relations-title').hidden,
+            selected.getReference('selected-section-head').vdom['aria-expanded'],
+            unselect.tooltip.text.includes('(Escape)')
+        ], 'AC-3: a node-list selection leaves details, actions and relations visible below the open list').toEqual([
+            1, false, '0 1 auto', true, false, true, false, false, false, 'true', true
+        ]);
+
+        // ArrowUp on the first row returns focus to the Nodes head while keeping the selection
+        const firstItemId = nodes.getItemId(firstId);
+        focused.length = 0;
+        nodes.keys.onKeyDown({key: 'ArrowUp', path: [{id: firstItemId, cls: ['neo-list-item']}]});
+        expect(focused).toEqual(['observatory-nodes-title']);
+        expect(pane.selectedId).toBe(firstId);
+
+        // ArrowUp on a later row leaves focus in the list (Navigator owns intra-list upward steps)
+        const secondRecord = pane.nodeStore.getAt(1), secondItemId = nodes.getItemId(secondRecord.id);
+        nodes.selectItem(secondRecord);
+        focused.length = 0;
+        nodes.keys.onKeyDown({key: 'ArrowUp', path: [{id: secondItemId, cls: ['neo-list-item']}]});
+        expect(focused).toEqual([]);
+
+        // Enter on a work-item row focuses Open; Escape from inside Selected returns focus to that row without dropping selectedId
+        focused.length = 0;
+        nodes.keys.onKeyDown({key: 'Enter', path: [{id: secondItemId, cls: ['neo-list-item']}]});
+        expect(focused).toEqual(['selected-open']);
+
+        focused.length = 0;
+        pane.keys.onKeyDown({key: 'Escape', path: [{id: open.id}, {id: selected.id}]});
+        expect(pane.selectedId, 'Escape from Selected returns to the row without clearing').toBe(secondRecord.id);
+        expect(focused).toEqual([`row:${secondRecord.id}`]);
+
+        // Space on a sourceless row (concept) focuses Copy id as the first visible action
+        const dockRecord = pane.nodeStore.get(q('concept-dock'));
+        nodes.selectItem(dockRecord);
+        focused.length = 0;
+        nodes.keys.onKeyDown({key: ' ', path: [{id: nodes.getItemId(dockRecord.id), cls: ['neo-list-item']}]});
+        expect(focused).toEqual(['selected-copy']);
+
+        // Escape from the row (outside Selected) drops the selection and closes the split
+        pane.keys.onKeyDown({key: 'Escape', path: [{id: nodes.id}]});
+        expect([pane.selectedId, pane.openSection, selected.cls.includes('is-collapsed'), selected.cls.includes('is-split'), nodes.flex])
+            .toEqual([null, 'nodes', true, false, 1]);
+
+        // ArrowDown from the head when a selection already exists focuses that selected row rather than row 0
+        pane.selectedId = secondRecord.id;
+        focused.length  = 0;
+        nodesHead.keys.onKeyDown({key: 'ArrowDown'});
+        expect(focused).toEqual([`row:${secondRecord.id}`]);
+
+        // Clear closes the split as well
+        unselect.onClick({});
+        expect([pane.selectedId, selected.cls.includes('is-collapsed'), selected.cls.includes('is-split'), nodes.flex])
+            .toEqual([null, true, false, 1]);
+
+        pane.destroy()
+    });
+
+    test('the Nodes head debounces typed queries outside the keystroke, clears no-match with Clear filter without leaking a non-matching selection into the list, and flushes on ArrowDown into the rows (#958 AC-3, AC-5)', async () => {
+        const
+            extraNodes = Array.from({length: 12}, (_, i) => ({
+                id            : q(`issue-${500 + i}`),
+                label         : `Backlog item ${i + 1}`,
+                kind          : 'ISSUE',
+                state         : 'OPEN',
+                lastActivityAt: Date.now() - (i + 1) * 60000
+            })),
+            sessionNode = {
+                id            : 'neomjs/neo#summary_96e284fc-e256-4ab7-9745-0eadea5b1a5c',
+                label         : 'Sunset walkthrough session',
+                kind          : 'SESSION_SUMMARY',
+                lastActivityAt: Date.now() - 86400000 * 10
+            },
+            pane        = createPane({
+                listBudget: 5,
+                envelope  : graphRead({
+                    route : [q('issue-500')],
+                    nodes : [...extraNodes, sessionNode],
+                    edges : [],
+                    counts: {nodes: 13, edges: 0, seeds: 1, communities: 1, paths: 0}
+                })
+            }),
+            head        = pane.getReference('observatory-nodes-head'),
+            queryField  = pane.getReference('observatory-nodes-query'),
+            kindField   = pane.getReference('observatory-nodes-kind'),
+            clearButton = pane.getReference('observatory-nodes-filter-clear'),
+            nodes       = pane.getReference('observatory-nodes');
+
+        clearButton.useRippleEffect = false;
+        // unitTestMode builds no VNode tree; stub an empty root so TextField#onInputValueChange runs end to end
+        queryField.vnode = {childNodes: []};
+        let focusedRecord = null;
+        nodes.updateItemFocus = async record => { focusedRecord = record };
+
+        // Initially capped at listBudget=5; session sits outside the 5 listed rows
+        expect(pane.nodeStore.getCount()).toBe(5);
+        expect(pane.nodeStore.get(sessionNode.id)).toBeNull();
+
+        // Select issue-500 first so we also prove a non-matching selection never leaks into a filtered list
+        pane.selectedId = q('issue-500');
+
+        // Rapid keystrokes do NOT synchronously re-project inside the keystroke
+        let fillCalls = 0;
+        const origFill = pane.fillNodeList.bind(pane);
+        pane.fillNodeList = (...args) => { fillCalls++; return origFill(...args) };
+
+        queryField.onInputValueChange({value: 's'});
+        queryField.onInputValueChange({value: 'su'});
+        queryField.onInputValueChange({value: 'sun'});
+        queryField.onInputValueChange({value: 'sunset'});
+        expect(fillCalls, 'typing runs outside the keystroke (debounced)').toBe(0);
+
+        await new Promise(resolve => setTimeout(resolve, 180));
+        expect(fillCalls, 'settled debounce projects once').toBe(1);
+        expect(pane.nodeStore.items.map(r => r.id)).toEqual([sessionNode.id]);
+        expect(pane.getReference('observatory-nodes-title').text).toBe('Nodes · 1 of 13');
+        expect(pane.getReference('observatory-nodes-caption').text).toBe('matching “sunset”');
+
+        // No-match state ('zebra') empties the list (even with issue-500 still selected!) and exposes Clear filter
+        queryField.onInputValueChange({value: 'zebra'});
+        await new Promise(resolve => setTimeout(resolve, 180));
+        expect(pane.nodeStore.getCount()).toBe(0);
+        expect(pane.getReference('observatory-nodes-title').text).toBe('Nodes · 0 of 13');
+        expect(pane.getReference('observatory-nodes-caption').text).toBe('No nodes match “zebra”');
+        expect(clearButton.hidden).toBe(false);
+
+        // Clear filter restores today's full budgeted list immediately
+        clearButton.onClick({});
+        expect([queryField.value, kindField.value, clearButton.hidden, pane.nodeStore.getCount()])
+            .toEqual([null, null, true, 5]);
+
+        // Typing + immediate ArrowDown flushes the pending query before entering row 0
+        queryField.onInputValueChange({value: 'walkthrough'});
+        queryField.keys.onKeyDown({key: 'ArrowDown'});
+        expect(focusedRecord?.id).toBe(sessionNode.id);
+        expect(pane.selectedId).toBe(sessionNode.id);
+        expect(head.getReference('observatory-nodes-title').text).toBe('Nodes · 1 of 13');
 
         pane.destroy()
     });

@@ -570,6 +570,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(details).toHaveAttribute('aria-expanded', 'true');
         await expect(currency).toBeVisible();
         await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
+        await settle();
 
         const
             places = () => Promise.all(NODES.map(({id}) => locate(id))),
@@ -712,5 +713,278 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await selectedHead.click();
         await expect(pane.locator('.fm-observatory-selected-no-source')).toHaveText('No source view for concept');
         await expect(pane.getByRole('link', {name: 'Open on GitHub'})).toHaveCount(0)
+    });
+
+    test('a list selection opens its details and actions below the list without a second click, keeps one row of context below the selected row, sizes up to half the panel, and takes the keyboard from the Nodes head through Open and back via Escape at the same scroll position', async ({page, neuralLink}) => {
+        const
+            {land, pane, selection, settle, stats} = await openObservatory(page, neuralLink),
+            now          = Date.now(),
+            nodes        = Array.from({length: 60}, (_, i) => ({
+                id            : q(`issue-${1000 + i}`),
+                label         : `Fixture work item ${i + 1}: the list row and its detail stay together`,
+                kind          : 'ISSUE',
+                authoredBy    : i % 2 ? '@neo-opus-vega' : '@tobiu',
+                state         : 'OPEN',
+                lastActivityAt: now - i * 60000
+            })),
+            // node 0 carries 18 relations so its split caps around half the panel and scrolls inside; node 23 carries 1 relation
+            edges        = [
+                ...Array.from({length: 18}, (_, i) => ({from: q('issue-1000'), to: q(`issue-${1001 + i}`), type: 'relates'})),
+                {from: q('issue-1023'), to: q('issue-1024'), type: 'mentions'}
+            ],
+            side         = pane.locator('.fm-observatory-side'),
+            list         = pane.locator('.fm-observatory-node-list'),
+            rows         = list.locator('.neo-list-item'),
+            selectedPane = pane.locator('.fm-observatory-selected'),
+            facts        = pane.locator('.fm-observatory-selected-facts'),
+            openLink     = pane.getByRole('link', {name: 'Open on GitHub'}),
+            clearBtn     = pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}),
+            relationList = pane.locator('.fm-observatory-relation-list'),
+            nodesHead    = pane.getByRole('button', {name: /^Nodes/});
+
+        await land(read({
+            route : [q('issue-1000'), q('issue-1023')],
+            nodes,
+            edges,
+            counts: {nodes: 60, edges: edges.length, seeds: 2, communities: 2, paths: 1}
+        }));
+        await settle();
+
+        await nodesHead.click();
+        await expect(list).toBeVisible();
+        await expect(rows).toHaveCount(60);
+
+        const fullListHeight = await list.evaluate(el => el.clientHeight);
+
+        // AC-4 + Condition 1 & 2: clicking row 23 shows details, facts, Open and relations with no second click,
+        // keeps row 23 + row 24 fully inside the list viewport, and sizes the 1-relation selection to its content (< 50% of side panel)
+        await rows.nth(23).evaluate(el => el.scrollIntoView({block: 'end'}));
+        await rows.nth(23).click();
+
+        await expect(selection).toHaveText(nodes[23].label);
+        await expect(selectedPane).not.toHaveClass(/is-collapsed/);
+        await expect(selectedPane).toHaveClass(/is-split/);
+        await expect(facts).toBeVisible();
+        await expect(openLink, 'AC-4: mouse click reaches Open with no second click').toBeVisible();
+        await expect(openLink).toHaveAttribute('href', 'https://github.com/neomjs/neo/issues/1023');
+        await expect(clearBtn).toBeVisible();
+
+        // Condition 1: row 23 and one row of context below it (row 24) sit completely inside the list's visible box
+        await expect.poll(async () => {
+            const [listBox, rowBox, nextBox] = await Promise.all([
+                list.boundingBox(),
+                rows.nth(23).boundingBox(),
+                rows.nth(24).boundingBox()
+            ]);
+
+            return Boolean(listBox && rowBox && nextBox &&
+                rowBox.y >= listBox.y - 1 &&
+                nextBox.y + nextBox.height <= listBox.y + listBox.height + 1);
+        }, {message: 'selected row is fully in view with one row of context below it'}).toBe(true);
+
+        // Condition 2 (short content): 1 relation takes content height, well under half the side panel
+        const [sideBox, shortSelBox] = await Promise.all([side.boundingBox(), selectedPane.boundingBox()]);
+        expect(shortSelBox.height).toBeLessThan(sideBox.height * 0.45);
+
+        // Condition 3: Clear closes the split and returns the list to its full height at the same scroll position
+        const scrollBeforeClear = await list.evaluate(el => el.scrollTop);
+        expect(scrollBeforeClear).toBeGreaterThan(0);
+
+        await clearBtn.click();
+        await expect(selectedPane).toHaveClass(/is-collapsed/);
+        expect(await list.evaluate(el => el.clientHeight)).toBe(fullListHeight);
+        expect(await list.evaluate(el => el.scrollTop)).toBe(scrollBeforeClear);
+
+        // AC-2 + Condition 4: real key events from the NODES head
+        await list.evaluate(el => el.scrollTo({top: 0, behavior: 'instant'}));
+        await nodesHead.focus();
+        await expect(nodesHead).toBeFocused();
+
+        await page.keyboard.press('ArrowDown');
+        await expect(rows.nth(0), 'ArrowDown from Nodes head focuses row 0').toBeFocused();
+        await expect(selection).toHaveText(nodes[0].label);
+        expect((await stats()).selectedId).toBe(q('issue-1000'));
+
+        // Condition 2 (tall content): 18 relations cap around half the side panel and scroll inside
+        const tallSelBox = await selectedPane.boundingBox();
+        expect(tallSelBox.height).toBeLessThanOrEqual(sideBox.height * 0.52);
+        expect(await relationList.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+
+        // ArrowUp on row 0 returns focus to the NODES head
+        await page.keyboard.press('ArrowUp');
+        await expect(nodesHead, 'ArrowUp on the first row returns to the Nodes head').toBeFocused();
+
+        // ArrowDown re-enters the selected row; walk down into scrolled territory
+        await page.keyboard.press('ArrowDown');
+        await expect(rows.nth(0)).toBeFocused();
+
+        for (let step = 0; step < 18; step++) {
+            await page.keyboard.press('ArrowDown');
+        }
+
+        await expect(rows.nth(18)).toBeFocused();
+        await expect(selection).toHaveText(nodes[18].label);
+        await expect.poll(async () => {
+            const [listBox, nextBox] = await Promise.all([list.boundingBox(), rows.nth(19).boundingBox()]);
+            return Boolean(listBox && nextBox && nextBox.y + nextBox.height <= listBox.y + listBox.height + 1);
+        }).toBe(true);
+
+        const heldScrollTop = await list.evaluate(el => el.scrollTop);
+        expect(heldScrollTop).toBeGreaterThan(0);
+
+        // Enter moves focus to the selection's first action; Escape returns focus to that row at the same scrollTop
+        await page.keyboard.press('Enter');
+        await expect(openLink, 'Enter moves focus to the first action').toBeFocused();
+
+        await page.keyboard.press('Escape');
+        await expect(rows.nth(18), 'Escape returns focus to the row').toBeFocused();
+        expect(await list.evaluate(el => el.scrollTop), 'at the same scroll position').toBe(heldScrollTop);
+        expect((await stats()).selectedId).toBe(q('issue-1018'));
+
+        // Space also moves focus to the first action; Escape returns to the row, and a second Escape closes the split at the same scrollTop
+        await page.keyboard.press(' ');
+        await expect(openLink, 'Space moves focus to the first action').toBeFocused();
+
+        await page.keyboard.press('Escape');
+        await expect(rows.nth(18)).toBeFocused();
+        expect(await list.evaluate(el => el.scrollTop)).toBe(heldScrollTop);
+
+        await page.keyboard.press('Escape');
+        await expect(selectedPane).toHaveClass(/is-collapsed/);
+        expect((await stats()).selectedId).toBeNull();
+        expect(await list.evaluate(el => el.scrollTop), 'Escape closes the split at the same scroll position').toBe(heldScrollTop);
+
+        // Light-theme WCAG contrast check on .fm-observatory-selected-facts (>= 4.5 : 1)
+        await rows.nth(18).click();
+        await expect(facts).toBeVisible();
+        await page.evaluate(() => {
+            document.documentElement.classList.remove('neo-theme-neo-dark');
+            document.documentElement.classList.add('neo-theme-neo-light');
+            document.body?.classList.remove('neo-theme-neo-dark');
+            document.body?.classList.add('neo-theme-neo-light');
+        });
+        const contrast = await pane.evaluate(paneEl => {
+            const
+                factsEl = paneEl.querySelector('.fm-observatory-selected-facts'),
+                parse   = rgb => rgb.match(/\d+(\.\d+)?/g).slice(0, 3).map(v => {
+                    const c = Number(v) / 255;
+                    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+                }),
+                lum     = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b,
+                fg      = lum(parse(getComputedStyle(factsEl).color)),
+                bg      = lum(parse(getComputedStyle(paneEl).backgroundColor));
+            return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+        });
+        expect(contrast, 'facts contrast in neo-theme-neo-light meets 4.5:1').toBeGreaterThanOrEqual(4.5)
+    });
+
+    test('the Nodes filter finds a session past the 500-row budget by title or kind, offers Open in Memories, and names a way out on no match (#958 AC-4, AC-5)', async ({page, neuralLink}) => {
+        const
+            {land, pane, selection, settle} = await openObservatory(page, neuralLink),
+            now          = Date.now(),
+            sessionId    = '96e284fc-e256-4ab7-9745-0eadea5b1a5c',
+            sessionNode  = {
+                id            : `neomjs/neo#summary_${sessionId}`,
+                label         : 'Sunset handover walkthrough session',
+                kind          : 'SESSION_SUMMARY',
+                authoredBy    : '@neo-opus-vega',
+                lastActivityAt: now - 30 * 86400000
+            },
+            nodes        = [
+                ...Array.from({length: 520}, (_, i) => ({
+                    id            : q(`issue-${2000 + i}`),
+                    label         : `Active issue ${i + 1}`,
+                    kind          : 'ISSUE',
+                    authoredBy    : '@tobiu',
+                    state         : 'OPEN',
+                    lastActivityAt: now - i * 60000
+                })),
+                sessionNode
+            ],
+            list         = pane.locator('.fm-observatory-node-list'),
+            rows         = list.locator('.neo-list-item'),
+            nodesHead    = pane.getByRole('button', {name: /^Nodes/}),
+            queryInput   = pane.getByPlaceholder('Filter label or id'),
+            kindSelect   = pane.getByRole('combobox', {name: 'Node kind'}),
+            caption      = pane.locator('.fm-observatory-nodes-caption'),
+            clearFilter  = pane.getByRole('button', {name: 'Clear filter'}),
+            openMemories = pane.getByRole('button', {name: 'Open in Memories'});
+
+        await land(read({
+            route : [q('issue-2000')],
+            nodes,
+            edges : [],
+            counts: {nodes: nodes.length, edges: 0, seeds: 1, communities: 1, paths: 0}
+        }));
+        await settle();
+
+        await nodesHead.click();
+        await expect(list).toBeVisible();
+        await expect(nodesHead).toHaveText('Nodes · 500 of 521');
+        await expect(rows).toHaveCount(500);
+        await expect(list).not.toContainText(sessionNode.label);
+
+        // Empty field keeps its clear trigger collapsed (width 0), never rendering an idle × icon
+        const emptyTriggerWidth = await pane.locator('.fm-observatory-nodes-filter .neo-trigger-clear').evaluate(
+            el => Math.round(el.getBoundingClientRect().width)
+        );
+        expect(emptyTriggerWidth).toBe(0);
+
+        // Clio AC-1 geometry + teal focus border check on TextField and Select
+        await queryInput.focus();
+        const styleFacts = await pane.evaluate(paneEl => {
+            const
+                wrapper = paneEl.querySelector('.fm-observatory-nodes-filter .neo-input-wrapper'),
+                field   = paneEl.querySelector('.fm-observatory-nodes-filter .neo-textfield'),
+                select  = paneEl.querySelector('.fm-observatory-nodes-filter .neo-selectfield-input'),
+                signal  = getComputedStyle(paneEl).getPropertyValue('--fm-signal').trim(),
+                probe   = document.createElement('span');
+            probe.style.color = signal;
+            paneEl.appendChild(probe);
+            const signalRgb = getComputedStyle(probe).color;
+            probe.remove();
+            return {
+                fieldHeight  : Math.round(field.getBoundingClientRect().height),
+                selectHeight : Math.round(select.getBoundingClientRect().height),
+                selectFontPx : getComputedStyle(select).fontSize,
+                focusBorder  : getComputedStyle(wrapper).borderTopColor,
+                signalRgb
+            };
+        });
+        expect(styleFacts.fieldHeight).toBe(26);
+        expect(styleFacts.selectHeight).toBe(26);
+        expect(styleFacts.selectFontPx).toBe('12px');
+        expect(styleFacts.focusBorder).toBe(styleFacts.signalRgb);
+
+        // AC-4: typing the session's title finds it past the 500-row budget; ArrowDown enters row 0 and offers Open in Memories
+        await queryInput.fill('Sunset handover walkthrough');
+        await expect(nodesHead).toHaveText('Nodes · 1 of 521');
+        await expect(caption).toHaveText('matching “Sunset handover walkthrough”');
+        await expect(rows).toHaveCount(1);
+
+        await page.keyboard.press('ArrowDown');
+        await expect(rows.nth(0)).toBeFocused();
+        await expect(selection).toHaveText(sessionNode.label);
+        await expect(openMemories).toBeVisible();
+
+        // AC-5: no-match reads as a state with its way out (Clear filter)
+        await queryInput.fill('zebra');
+        await expect(nodesHead).toHaveText('Nodes · 0 of 521');
+        await expect(caption).toHaveText('No nodes match “zebra”');
+        await expect(clearFilter).toBeVisible();
+        await expect(rows).toHaveCount(0);
+
+        await clearFilter.click();
+        await expect(nodesHead).toHaveText('Nodes · 500 of 521');
+        // While sessionNode (rank 521) stays selected, syncLists keeps it appended as row 501; clearing selection returns to 500
+        await expect(rows).toHaveCount(501);
+        await pane.locator('.fm-observatory-selected').getByRole('button', {name: 'Clear'}).click();
+        await expect(rows).toHaveCount(500);
+
+        // Kind filter alone finds SESSION_SUMMARY as well
+        await kindSelect.selectOption({label: 'SESSION_SUMMARY'});
+        await expect(nodesHead).toHaveText('Nodes · 1 of 521');
+        await expect(caption).toHaveText('kind SESSION_SUMMARY');
+        await expect(rows).toHaveCount(1);
     });
 });
