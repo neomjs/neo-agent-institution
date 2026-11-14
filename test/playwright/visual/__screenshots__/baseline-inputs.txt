@@ -6,7 +6,7 @@
 # golden may have been captured at an earlier one.
 
 engine
-    08dfefc634af97548ed1bf85d9777d3641d12ea4
+    2f38667e682eeca0b807e1fa6bcf48bdc8a522f3
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -537,7 +537,7 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    e0a8b7af55ca45c12b1250a700bcf12a30865897
+    18ba77da8a824d41a25dd21e27d2ec75453da9c2
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
     596d998021392537c1e01e670bdd47c733e1431c
@@ -825,7 +825,7 @@ resources/scss/src/apps/agentos/fleet/wake/Container.scss
     7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
 
 resources/scss/src/apps/agentos/home/Container.scss
-    a6bc84085acb03657dafcfc125e8ec659655746c
+    bc44e702a8c4791e4f4ee03e11259eb6d451430b
 
 resources/scss/src/apps/agentos/setup/CreateContainer.scss
     fe6f38beeb0e578107750454626b99fdc1759ef8
@@ -990,7 +990,7 @@ test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-ligh
     0b0558d78d9280939f768069047dbf72cd21f849
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    83fc959ff081af02d6a24d12658075cdbbb690d0
+    e0885522d42f454764d1230dda6182a0fc8fcb30
 
 test/playwright/visual/SystemViewVisual.spec.mjs
     a4ff9bcf49ccb1e4fac425d421d5fdea8412f089
@@ -1182,19 +1182,19 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator
     13d7044b1f4084d1652363c09ce6da43365e1d4e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-light.png
-    fcb30f67164753d59eadce56af91661c74831106
+    fb4822aabfb7c6e174e64ac519faa11b4e13398c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-none.png
     06d1788a2e6dfa8708c889a1a23301fe15004f3f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-nothing-light.png
-    b8d1ac9d65b7ae268bdab0e69e2f2cbda062c1a8
+    be89217b907005bcd0bfd460f8aa46a45e10f1ce
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-nothing.png
-    0f8b4d22b90e08feb1694f0f307b214152960720
+    d3e835c8ecdc6634d5cd3a867691d14923728062
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired.png
-    29c61a4f493e194cf3a8fc3a55f8e2f14ca5657d
+    373791f9e58ad428bdeeaba236876461737d728d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-nothing.png
     04f8abc2c9d22bdc4ac082d2a9a8e43e4ee15713

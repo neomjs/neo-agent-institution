@@ -412,7 +412,9 @@ test.describe('AgentOS operator mailbox — the asks that expired unanswered (#9
         expect([pane().view, asked]).toEqual(['expired', [0, 0, 0, 0]])
     });
 
-    test('the expired view states its own read: not read yet, could not be read with its reason, none expired, or the asks', () => {
+    test('the expired view states its own read: not read yet, could not be read with its reason, none expired, or the asks', async () => {
+        const {default: ViewerTime} = await import('../../../../../../../../apps/agentos/util/ViewerTime.mjs');
+
         box = createBox({record: OPERATOR, view: 'expired'});
         pane().now = NOW;
 
@@ -422,8 +424,12 @@ test.describe('AgentOS operator mailbox — the asks that expired unanswered (#9
         expect([pane().getPaneState(), stateLine().text]).toEqual(['degraded', 'expired asks could not be read · fleet: the expired-questions read failed']);
         expect(pane().store.getCount()).toBe(0);
 
+        // the empty line names the read's own window, true for any length
         box.expired = expired([]);
-        expect([pane().getPaneState(), stateLine().text]).toEqual(['empty', 'no ask expired this week']);
+        expect([pane().getPaneState(), stateLine().text]).toEqual(['empty', `no ask expired since ${ViewerTime.formatViewerTime(SINCE, {now: NOW}).text}`]);
+        // an answer without its window start names none (the view never shows one; the line stays true regardless)
+        expect(pane().constructor.prototype.getStateText.call({questionsView: true, view: 'expired', listSource: {count: 0}, now: NOW}, 'empty'))
+            .toBe('no ask expired');
 
         box.expired = expired([ask('MESSAGE:e1', '2026-10-01T08:00:00.000Z')]);
         expect([pane().getPaneState(), stateLine().hidden, pane().store.getCount()]).toEqual(['rows', true, 1])

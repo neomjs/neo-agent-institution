@@ -66,14 +66,10 @@
             outline-offset: 2px;
         }
 
-        /* the asks that expired unanswered: quieter than the counts that wait, so the line's own words
-           until the pointer finds the way in */
+        /* the asks that expired unanswered: quieter than the counts that wait (the secondary ink holds
+           6.5 : 1 dark and 5.0 : 1 light on the ground), and a link like them */
         &.is-expired {
-            text-decoration-line: none;
-
-            &:hover {
-                text-decoration-line: underline;
-            }
+            color: var(--fm-ink-dim);
         }
     }
 

@@ -5,6 +5,7 @@ import MailboxGrid       from './Grid.mjs';
 import DetailContainer   from './DetailContainer.mjs';
 import AgentFreshness    from '../../../util/AgentFreshness.mjs';
 import Splitter          from '../../../../../node_modules/neo.mjs/src/component/Splitter.mjs';
+import ViewerTime        from '../../../util/ViewerTime.mjs';
 
 /**
  * @summary Is this payload the mirror adapter's own envelope?
@@ -65,7 +66,7 @@ function isRecognizedExpiredAnswer(answer) {
  * @type {Object}
  */
 const QUESTION_LINES = Object.freeze({
-    expired: {degraded: 'expired asks could not be read', empty: 'no ask expired this week',    noun: 'expired', unobserved: 'your expired asks have not been read'},
+    expired: {degraded: 'expired asks could not be read', empty: 'no ask expired',              noun: 'expired', unobserved: 'your expired asks have not been read'},
     open   : {degraded: 'your questions could not be read', empty: 'nothing waits for your word', noun: 'open',    unobserved: 'your open questions have not been read'}
 });
 
@@ -131,7 +132,7 @@ const EMPTY_WINDOWS = 3;
  * producer's window, from the owner-written `expired` read, newest expiry first, each on its own row like the open
  * questions. Only the expired read's own answer is shown there: one without its window start (`since`) is a plane
  * that answered the open list instead. Its states: not read yet, `expired asks could not be read · <reason>`, or
- * `no ask expired this week`.
+ * `no ask expired since <the window start, viewer date>`.
  *
  * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the buffered
  * `grid.Container` with one pooled {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered
@@ -875,8 +876,12 @@ class MailboxPane extends Container {
             switch (state) {
                 case 'degraded':
                     return `${lines.degraded} · ${read.reason || 'source unavailable'}`;
-                case 'empty':
-                    return lines.empty;
+                case 'empty': {
+                    // the expired list names its own window, true for any length; without one it names none
+                    const since = this.view === 'expired' ? ViewerTime.formatViewerTime(read?.since, {now: this.now})?.text : null;
+
+                    return since ? `${lines.empty} since ${since}` : lines.empty
+                }
                 case 'unshown':
                     return `${read.count.toLocaleString('en-US')} ${lines.noun} · none can be shown here`;
                 case 'stopped':
