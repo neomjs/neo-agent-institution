@@ -305,18 +305,20 @@ class ReadingSurfacesController extends LivenessController {
     }
 
     /**
-     * @summary Open the operator's open questions for a view outside the cockpit (Home's question count): the
-     * Mailbox tab comes forward showing `for you · open`, read anew.
+     * @summary Open the operator's questions for a view outside the cockpit (Home's question or expired count):
+     * the Mailbox tab comes forward showing `for you · open` or the expired asks, read anew.
+     * @param {Object} [options]
+     * @param {'open'|'expired'} [options.view='open']
      * @returns {Promise<{opened: Boolean}>}
      */
-    async openOperatorQuestions() {
+    async openOperatorQuestions({view = 'open'} = {}) {
         const me = this;
 
         await me.revealResidentTab('operator');
 
         const mailbox = me.component.getOperatorMailboxPane();
 
-        mailbox?.showOpenQuestions();
+        mailbox?.showQuestions(view);
 
         return {opened: !!mailbox}
     }

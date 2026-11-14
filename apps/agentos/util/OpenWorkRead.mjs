@@ -57,18 +57,24 @@ class OpenWorkRead extends Base {
      * @summary The operator's questions axis from one answer, leaf-complete like the `openWork` block: the
      * wire's own `questions` block when it carries one, else `unsupported`, because this read lists no
      * one's open Tasks yet. An answer nobody gave (none yet, `not-wired`, `unanswered`) leaves every leaf
-     * `null`, the silence the merge axis keeps for the same answers.
+     * `null`, the silence the merge axis keeps for the same answers. The block's `expired` count, the asks
+     * that expired unanswered since its window's start `since`, rides along the same way; a wire without
+     * one leaves its leaves `null`. Every leaf is written, because the provider merges its data deeply: a
+     * leaf left out would keep the previous answer's value.
      * @param {Object|null} snapshot One `fleetOpenWork` envelope, or `null` while unanswered.
-     * @returns {{count: Number|null, reason: String|null, state: String|null}}
+     * @returns {{count: Number|null, expired: Object, reason: String|null, state: String|null}} `expired` is
+     * `{count, reason, since, state}`
      */
     static questions(snapshot) {
-        if (!snapshot || (snapshot.state === 'unavailable' && snapshot.coverage !== 'unavailable')) {
-            return {count: null, reason: null, state: null}
-        }
+        const answered = snapshot && (snapshot.state !== 'unavailable' || snapshot.coverage === 'unavailable');
 
-        const {count = null, reason = null, state = null} = snapshot.questions ?? {reason: 'questions are not listed yet', state: 'unsupported'};
+        const
+            {count = null, reason = null, state = null, expired: block} = answered
+                ? snapshot.questions ?? {reason: 'questions are not listed yet', state: 'unsupported'}
+                : {},
+            {count: expiredCount = null, reason: expiredReason = null, since = null, state: expiredState = null} = block ?? {};
 
-        return {count, reason, state}
+        return {count, expired: {count: expiredCount, reason: expiredReason, since, state: expiredState}, reason, state}
     }
 
     /**

@@ -6,7 +6,7 @@
 # golden may have been captured at an earlier one.
 
 engine
-    41e5632698be771e8255859f7cb7cac6086894e7
+    08dfefc634af97548ed1bf85d9777d3641d12ea4
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -147,7 +147,7 @@ apps/agentos/store/AgentDefinitions.mjs
     18ff9f95962b20f6eddf2681bb0ba44158e3421f
 
 apps/agentos/store/AgentMailbox.mjs
-    40e36d5fdcf6f78a8da8b9e2f84f67ac768a8070
+    7a290c06c0ab2d7369da390ff7ceb3a6922cd177
 
 apps/agentos/store/AgentRecentTurns.mjs
     21ece4633fefbb5f345bca3ae2ffb9038c29bc97
@@ -282,13 +282,13 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     34a5f76d23060c5b41f6cde706a77932e6d0b87a
 
 apps/agentos/util/OpenWorkRead.mjs
-    18f67a1a242f338cfef956172cb16df9aa4137ac
+    d4cb54459a861992edb65e8b8a95974bf9c87f90
 
 apps/agentos/util/OpenWorkSeat.mjs
     a9f145e5d8f5dd64023627883806241471d04e97
 
 apps/agentos/util/OperatorInbox.mjs
-    eb07e26e9a62db649105946c377df8063bd61dad
+    0c6e714f638623405a3c80ee73b014e1d16059a9
 
 apps/agentos/util/Participation.mjs
     797b9190ad13733d77313600d936b586d1c3ced7
@@ -345,7 +345,7 @@ apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    60f92e0f78209699acebdb5bd6e8caa030a1c31c
+    7091c9a4d50c616836a2b7b7b126cfd8fff3f9c4
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -360,10 +360,10 @@ apps/agentos/view/NightshiftButton.mjs
     bf4efe1fbf237b925e49a555162e29d5b6e46f61
 
 apps/agentos/view/Viewport.mjs
-    a90fade562a991159f9707d97446eb69c5c5e54e
+    760aaf9fb54cb91b40febf52d755b950d125ae0f
 
 apps/agentos/view/ViewportController.mjs
-    5ea03e6412c9017ad3ba0d59bdbbe0d5c21a70d3
+    46b21f9ba6ae7705f2eaf1eec1bb2d5fdad8d322
 
 apps/agentos/view/accounts/Controller.mjs
     05c14bcda560d8f32b9495556ff99f8f3e4842bc
@@ -408,7 +408,7 @@ apps/agentos/view/fleet/cockpit/LivenessController.mjs
     fa5a2b0ce81b168540ac914b1f3bba006f20fa8f
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    9433212eec361522a25fae0ec9c1f9a93607809a
+    82f29c0854b198b3c71ad86a6efa7357969eee26
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
@@ -534,7 +534,7 @@ apps/agentos/view/fleet/mailbox/ComposeForm.mjs
     67b78ee148fde84abe18b4f319bb94d1f0065076
 
 apps/agentos/view/fleet/mailbox/Container.mjs
-    90966888cf152979aa0076620214e203f085e8c1
+    e0a8b7af55ca45c12b1250a700bcf12a30865897
 
 apps/agentos/view/fleet/mailbox/DetailContainer.mjs
     596d998021392537c1e01e670bdd47c733e1431c
@@ -543,7 +543,7 @@ apps/agentos/view/fleet/mailbox/Grid.mjs
     6abcc6af119f951ae8443ef866fa1cd701521e3b
 
 apps/agentos/view/fleet/mailbox/OperatorContainer.mjs
-    987ea9811f0fce4b84928d38a945323f5a2d1623
+    7fea839a16aea7e044110258ebadf05e59988c79
 
 apps/agentos/view/fleet/mailbox/PublishRequestComponent.mjs
     9627a6ea1c680e6ab70580d7c6799743339b0b5b
@@ -639,7 +639,7 @@ apps/agentos/view/home/Canvas.mjs
     4db7cdfbf16f8d7374ebc0a6bf815fd636861b82
 
 apps/agentos/view/home/Container.mjs
-    d9d46b47d5d7f06cb66ce35c9fdd934bb4844493
+    171779faa814c63e04f3b9a1761dabb4c86fee9d
 
 apps/agentos/view/setup/ConnectContainer.mjs
     1ac25df8aff1d8370f95b60ef3e3fae0b546cfbc
@@ -822,7 +822,7 @@ resources/scss/src/apps/agentos/fleet/wake/Container.scss
     7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
 
 resources/scss/src/apps/agentos/home/Container.scss
-    4f017430805847298af682224a569cca5c5cb879
+    a6bc84085acb03657dafcfc125e8ec659655746c
 
 resources/scss/src/apps/agentos/setup/CreateContainer.scss
     fe6f38beeb0e578107750454626b99fdc1759ef8
@@ -987,7 +987,7 @@ test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-ligh
     0b0558d78d9280939f768069047dbf72cd21f849
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    d26a8040d9909a3659e2dac3475b11db97a79b34
+    570442cffb29323bd78612011dd4f24f2cc8321f
 
 test/playwright/visual/SystemViewVisual.spec.mjs
     a4ff9bcf49ccb1e4fac425d421d5fdea8412f089
@@ -1172,6 +1172,21 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-both.png
     13d7044b1f4084d1652363c09ce6da43365e1d4e
 
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-light.png
+    fcb30f67164753d59eadce56af91661c74831106
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-none.png
+    06d1788a2e6dfa8708c889a1a23301fe15004f3f
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-nothing-light.png
+    b8d1ac9d65b7ae268bdab0e69e2f2cbda062c1a8
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-nothing.png
+    0f8b4d22b90e08feb1694f0f307b214152960720
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired.png
+    29c61a4f493e194cf3a8fc3a55f8e2f14ca5657d
+
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-nothing.png
     04f8abc2c9d22bdc4ac082d2a9a8e43e4ee15713
 
@@ -1270,6 +1285,12 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-path.png
     f5dc23b1febf9063488454223d52ae4d8e2c1350
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-expired-light.png
+    d15b676e885de0ca79cd4fad3ef204013a9d73c5
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-expired.png
+    9193d529b01860d5cea9a14e2c9854725098b42e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-open-questions.png
     48935a5587551a2b6d8126ee0ba047b968d33878

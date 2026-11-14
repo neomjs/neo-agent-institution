@@ -65,6 +65,16 @@
             outline       : 2px solid var(--fm-ink);
             outline-offset: 2px;
         }
+
+        /* the asks that expired unanswered: quieter than the counts that wait, so the line's own words
+           until the pointer finds the way in */
+        &.is-expired {
+            text-decoration-line: none;
+
+            &:hover {
+                text-decoration-line: underline;
+            }
+        }
     }
 
     .fm-home-eyebrow {

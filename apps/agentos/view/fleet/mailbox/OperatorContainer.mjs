@@ -38,10 +38,12 @@ import OperatorComposeForm from './ComposeForm.mjs';
  * chip, or Escape inside the form, closes it. The page's open slot — inline reveal or an own south
  * tab — stays open: if compose becomes a tab, the chip routes there and the rows do not move.
  *
- * **What waits for your word.** Beside compose, two chips switch the list: `all mail`, or `for you · 3 open`,
+ * **What waits for your word.** Beside compose, the chips switch the list: `all mail`, or `for you · 3 open`,
  * the operator's open questions. The count is Home's own (the provider's `questions` block), so a number shows
  * only when that read produced one; unavailable, the chip reads `for you · open` with the reason on its title.
- * The switch is session view state, never persisted, and every switch reads the first window of its list.
+ * A third chip, `expired · 141`, lists the asks that expired unanswered, from the same block's `expired` count:
+ * it stands while that count is above zero, or while its list is in view. The switch is session view state,
+ * never persisted, and every switch reads the first window of its list.
  *
  * @class AgentOS.view.fleet.mailbox.OperatorContainer
  * @extends Neo.container.Base
@@ -125,9 +127,10 @@ class OperatorMailbox extends Container {
          */
         identityPosture_: null,
         /**
-         * Which list the inbox shows, passed straight to the pane: `all` mail, or the operator's `open`
-         * questions. Set by the head's chips, and by a navigation that opens the questions (Home's count).
-         * @member {'all'|'open'} view_='all'
+         * Which list the inbox shows, passed straight to the pane: `all` mail, the operator's `open`
+         * questions, or the asks that `expired` unanswered. Set by the head's chips, and by a navigation that
+         * opens the questions (Home's counts).
+         * @member {'all'|'open'|'expired'} view_='all'
          * @reactive
          */
         view_: 'all',
@@ -137,6 +140,12 @@ class OperatorMailbox extends Container {
          * @reactive
          */
         questions_: null,
+        /**
+         * The owner's expired-asks read (`fleetOwnQuestions({expired: true})`), passed straight to the pane.
+         * @member {Object|null} expired_=null
+         * @reactive
+         */
+        expired_: null,
         /**
          * The cockpit's cadence clock, forwarded without a snapshot projection.
          * @member {Number|null} now_=null
@@ -150,8 +159,8 @@ class OperatorMailbox extends Container {
          */
         readFailed_: false,
         /**
-         * The open-question count the chip shows, bound to the provider's `questions` block
-         * `{count, reason, state}`, the one Home's line counts.
+         * The counts the chips show, bound to the provider's `questions` block `{count, expired, reason, state}`,
+         * the one Home's line counts.
          * @member {Object|null} questionCount_=null
          * @reactive
          */
@@ -233,7 +242,7 @@ class OperatorMailbox extends Container {
         if (inbox) {
             me.record   && (inbox.record   = me.record);
             me.snapshot && (inbox.snapshot = me.snapshot);
-            inbox.set({now: me.now, questions: me.questions, readFailed: me.readFailed, view: me.view})
+            inbox.set({expired: me.expired, now: me.now, questions: me.questions, readFailed: me.readFailed, view: me.view})
         }
         form && me.recipientOptions?.length && (form.recipientOptions = me.recipientOptions);
         me.applyIdentityPosture();
@@ -260,6 +269,14 @@ class OperatorMailbox extends Container {
                 handler        : 'onOpenQuestionsClick',
                 handlerScope   : me,
                 reference      : 'view-open',
+                useRippleEffect: false
+            }, {
+                module         : Button,
+                cls            : ['fm-mailbox-view-chip'],
+                handler        : 'onExpiredClick',
+                handlerScope   : me,
+                hidden         : true,
+                reference      : 'view-expired',
                 useRippleEffect: false
             }, {
                 module         : Button,
@@ -437,6 +454,16 @@ class OperatorMailbox extends Container {
     }
 
     /**
+     * Triggered after the owner's expired-asks read changed — passed straight to the pane.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetExpired(value, oldValue) {
+        this.isConstructed && (this.getReference('operator-inbox-pane').expired = value)
+    }
+
+    /**
      * @summary Forward the cadence clock to the inbox's freshness-only projection.
      * @param {Number|null} value
      * @param {Number|null} oldValue
@@ -489,33 +516,47 @@ class OperatorMailbox extends Container {
     }
 
     /**
-     * @summary Render the view chips: the pressed one is the list in view, and the questions chip counts only
-     * what its read produced (`for you · 3 open`), plain `for you · open` with the reason on its title otherwise.
+     * @summary Render the view chips: the pressed one is the list in view. Each count chip shows only what its
+     * read produced (`for you · 3 open`, `expired · 141`), its plain word with the reason on its title otherwise.
+     * The expired chip stands while its count is above zero or its list is in view.
      * @protected
      */
     applyViewChips() {
         const
-            me                     = this,
-            {count, reason, state} = me.questionCount ?? {},
-            counted                = state === 'ok' && Number.isInteger(count),
-            open                   = me.getReference('view-open');
+            me      = this,
+            block   = me.questionCount ?? {},
+            expired = block.expired ?? {},
+            counted = ({count, state}) => state === 'ok' && Number.isInteger(count),
+            chip    = (reference, read, config) => {
+                const button = me.getReference(reference);
+
+                if (button) {
+                    button.set(config);
+                    // the reason rides the native title, as on Home's line
+                    button.vdom.title = counted(read) ? null : read.reason || null;
+                    button.update()
+                }
+            };
 
         me.getReference('view-all')?.set({pressed: me.view === 'all'});
 
-        if (open) {
-            open.set({pressed: me.view === 'open', text: counted ? `for you · ${count} open` : 'for you · open'});
-            // the reason rides the native title, as on Home's line
-            open.vdom.title = counted ? null : reason || null;
-            open.update()
-        }
+        chip('view-open', block, {pressed: me.view === 'open', text: counted(block) ? `for you · ${block.count} open` : 'for you · open'});
+
+        chip('view-expired', expired, {
+            hidden : !(counted(expired) && expired.count > 0) && me.view !== 'expired',
+            pressed: me.view === 'expired',
+            text   : counted(expired) ? `expired · ${expired.count}` : 'expired'
+        })
     }
 
     /**
-     * @summary Show the operator's open questions, read anew: the entry for a navigation (Home's question count).
+     * @summary Show the operator's questions, read anew: the entry for a navigation (Home's question count, or
+     * its expired count).
+     * @param {'open'|'expired'} [view='open']
      */
-    showOpenQuestions() {
-        if (this.view !== 'open') {
-            this.view = 'open'
+    showQuestions(view = 'open') {
+        if (this.view !== view) {
+            this.view = view
         } else if (this.record) {
             this.onInboxPageRequest({offset: 0})
         }
@@ -540,6 +581,14 @@ class OperatorMailbox extends Container {
      */
     onOpenQuestionsClick() {
         this.view = 'open'
+    }
+
+    /**
+     * @summary The `expired` chip's handler.
+     * @protected
+     */
+    onExpiredClick() {
+        this.view = 'expired'
     }
 
     /**
