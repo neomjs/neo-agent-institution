@@ -548,29 +548,27 @@ class ObservatoryContainer extends Container {
      * @protected
      */
     afterSetSelectedId(value, oldValue) {
-        const me = this, nodes = me.getReference('observatory-nodes'), selected = me.getReference('observatory-selected');
+        const me = this;
 
         me.getReference('observatory-canvas')?.set({selectedId: value});
         me.syncLists();
         me.updateSelection();
 
         if (me.openSection === 'nodes') {
-            me.syncSections();
-            !Neo.config.unitTestMode && value && me.mounted && Promise.all([selected.promiseUpdate(), me.getReference('observatory-relations').promiseUpdate()])
-                .then(() => me.selectedId === value && me.openSection === 'nodes' && nodes.revealRecord(me.nodeStore.get(value)))
+            me.syncSections(true)
         } else if (value) {
             me.chooseSection('selected')
         }
     }
 
     /**
-     * Triggered after the openSection config got changed: the side panel opens that section.
+     * Triggered after the openSection config got changed: the side panel opens that section, Nodes with the selection in view.
      * @param {String} value
      * @param {String|undefined} oldValue
      * @protected
      */
     afterSetOpenSection(value, oldValue) {
-        oldValue !== undefined && this.syncSections()
+        oldValue !== undefined && this.syncSections(value === 'nodes')
     }
 
     /**
@@ -879,10 +877,12 @@ class ObservatoryContainer extends Container {
     /**
      * @summary Opens {@link #openSection} to the side panel's remaining height and collapses the others to their
      * heads; while `nodes` is open with a selection, `selected` opens below it up to half the panel. The View section always shows.
+     * With `reveal`, the split then keeps the selection's row in view; a new read passes none, never pulling the list away.
+     * @param {Boolean} [reveal=false]
      * @protected
      */
-    syncSections() {
-        const me = this, {openSection} = me, split = openSection === 'nodes' && Boolean(me.selectedId);
+    syncSections(reveal = false) {
+        const me = this, {openSection, selectedId} = me, split = openSection === 'nodes' && Boolean(selectedId);
 
         if (!me.getReference('observatory-selected')) {
             return
@@ -905,7 +905,11 @@ class ObservatoryContainer extends Container {
             button.pressed               = expanded;
             button.vdom['aria-expanded'] = String(expanded);
             button.update()
-        })
+        });
+
+        // the list's bounds move with Selected and its relations, so the reveal measures once both settled
+        reveal && split && me.mounted && !Neo.config.unitTestMode && me.trap(Promise.all([me.getReference('observatory-selected').promiseUpdate(), me.getReference('observatory-relations').promiseUpdate()]))
+            .then(() => me.selectedId === selectedId && me.openSection === 'nodes' && me.getReference('observatory-nodes').revealRecord(me.nodeStore.get(selectedId)))
     }
 
     /**

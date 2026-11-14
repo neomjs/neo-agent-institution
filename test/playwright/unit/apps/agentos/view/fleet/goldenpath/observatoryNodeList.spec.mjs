@@ -168,3 +168,41 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryNodeList — the order t
         expect(elapsedMs, `150k-node filter completed in ${elapsedMs.toFixed(2)}ms (budget < 100ms)`).toBeLessThan(100);
     });
 });
+
+test.describe('AgentOS.view.fleet.goldenpath.ObservatoryNodeList — keeping a row in view', () => {
+    test('reveals run one at a time: the second measures only after the first one scrolled, and a failed one does not stop the next (#972)', async () => {
+        const
+            list    = Neo.create(ObservatoryNodeList, {appName}),
+            order   = [],
+            settle  = {},
+            tick    = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        // each reveal records its start, waits for its own release, then records its end
+        list.revealNow = async record => {
+            order.push(`start ${record.id}`);
+            await new Promise((resolve, reject) => settle[record.id] = {reject, resolve});
+            order.push(`end ${record.id}`)
+        };
+
+        const first = list.revealRecord({id: 'a'}), second = list.revealRecord({id: 'b'}), third = list.revealRecord({id: 'c'});
+
+        await tick();
+        expect(order).toEqual(['start a']);
+
+        settle.a.resolve();
+        await first;
+        await tick();
+        expect(order).toEqual(['start a', 'end a', 'start b']);
+
+        settle.b.reject(new Error('the list left the DOM'));
+        await expect(second).rejects.toThrow('the list left the DOM');
+        await tick();
+        expect(order).toEqual(['start a', 'end a', 'start b', 'start c']);
+
+        settle.c.resolve();
+        await third;
+        expect(order).toEqual(['start a', 'end a', 'start b', 'start c', 'end c']);
+
+        list.destroy()
+    });
+});

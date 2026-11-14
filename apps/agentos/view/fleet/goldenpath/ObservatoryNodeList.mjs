@@ -54,6 +54,13 @@ class ObservatoryNodeList extends BaseList {
      * @member {Object} navigator={scrollIntoView: false, workerKeys: ['Enter', ' ']}
      */
     navigator = {scrollIntoView: false, workerKeys: ['Enter', ' ']}
+    /**
+     * The reveal in flight: {@link #revealRecord} queues behind it, so each reveal measures after the previous one
+     * scrolled.
+     * @member {Promise<void>} revealing=Promise.resolve()
+     * @protected
+     */
+    revealing = Promise.resolve()
 
     /**
      * @summary Whether `filter` narrows the scene (`query` or `kind` non-empty).
@@ -259,7 +266,7 @@ class ObservatoryNodeList extends BaseList {
 
     /**
      * @summary Enters the list from the `Nodes` head: focuses and selects the current selection when listed, else the
-     * first row.
+     * first row, and keeps that row in view ({@link #revealRecord}): the focus itself never scrolls ({@link #navigator}).
      * @param {String|null} [selectedId=null]
      * @returns {Promise<void>}
      */
@@ -272,7 +279,8 @@ class ObservatoryNodeList extends BaseList {
 
         me.selectItem(record);
         !Neo.config.unitTestMode && me.mounted && await me.promiseUpdate();
-        await me.updateItemFocus(record)
+        await me.trap(me.updateItemFocus(record));
+        await me.revealRecord(record)
     }
 
     /**
@@ -296,12 +304,13 @@ class ObservatoryNodeList extends BaseList {
     }
 
     /**
-     * @summary Scrolls the list only as far as needed to keep `record` completely in view with one row of context
-     * below it, without moving rows that already clear both bounds.
+     * @summary One reveal ({@link #revealRecord}): measures the list, the row and the row below it, and scrolls by the
+     * difference.
      * @param {AgentOS.model.GraphSceneNode|null} record
      * @returns {Promise<void>}
+     * @protected
      */
-    async revealRecord(record) {
+    async revealNow(record) {
         const me = this, {store} = me, index = record && store ? store.indexOf(record) : -1;
 
         if (index < 0 || !me.mounted || Neo.config.unitTestMode) {
@@ -336,6 +345,19 @@ class ObservatoryNodeList extends BaseList {
         if (delta !== 0) {
             await Neo.main.DomAccess.scrollBy({behavior: 'instant', direction: 'top', id: me.id, value: delta, windowId: me.windowId})
         }
+    }
+
+    /**
+     * @summary Scrolls the list only as far as needed to keep `record` completely in view with one row of context
+     * below it, without moving rows that already clear both bounds. Reveals run one at a time ({@link #revealing}):
+     * each scrolls by a measured difference, so two in flight for one row would add up.
+     * @param {AgentOS.model.GraphSceneNode|null} record
+     * @returns {Promise<void>}
+     */
+    revealRecord(record) {
+        const reveal = () => this.revealNow(record);
+
+        return this.revealing = this.revealing.then(reveal, reveal)
     }
 }
 
