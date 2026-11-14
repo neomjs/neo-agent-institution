@@ -1,6 +1,7 @@
 import ActivityObserver from './ActivityObserver.mjs';
 import Base             from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import LivenessCadence  from './LivenessCadence.mjs';
+import SessionRotation  from './SessionRotation.mjs';
 import TargetBinding    from './TargetBinding.mjs';
 import {FLEET_COCKPIT_EVENT_TYPES, FLEET_COCKPIT_SOURCES} from '../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
@@ -336,7 +337,7 @@ class FleetAdmission extends Base {
         store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
-        rotated && owner.loadRotations?.();
+        rotated && SessionRotation.load(owner);
         FleetAdmission.expireOutageNote(owner, now);
 
         if (wasWired) {
@@ -454,7 +455,7 @@ class FleetAdmission extends Base {
             // selection made against a now-removed record
             owner.reconcileSelection();
             // the roster row carries no rotation: fresh records take the cards' last rotation answer, when one landed first
-            owner.rotationsSnapshot && owner.applyRotations?.(owner.rotationsSnapshot)
+            SessionRotation.reapply(owner)
         }
 
         FleetAdmission.expireOutageNote(owner, owner.rosterObservedAt);

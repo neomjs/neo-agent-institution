@@ -2,6 +2,12 @@ import Base       from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import ViewerTime from './ViewerTime.mjs';
 
 /**
+ * Each cockpit owner's rotation read ({@link AgentOS.util.SessionRotation#load}): its fence and its last answer.
+ * @type {WeakMap<Object, {generation: Number, snapshot: Object|null}>}
+ */
+const reads = new WeakMap();
+
+/**
  * @summary The words of a seat's session rotation: one formatter for the roster card and the journal.
  *
  * A rotation is the Fleet's decision on the seat's newest sunset receipt, `fleetWakeRoutes`
@@ -18,6 +24,66 @@ class SessionRotation extends Base {
          * @protected
          */
         className: 'AgentOS.util.SessionRotation'
+    }
+
+    /**
+     * @summary Writes each seat's rotation from a `fleetWakeRoutes` answer onto its roster record, as the Fleet
+     * answered it, so the card reads it with the rest of the row. A seat the answer omits keeps its record's
+     * rotation, and so does every seat of an older Fleet whose seats carry no `rotation`. An unreadable answer
+     * writes nothing.
+     * @param {Neo.data.Store|null} store The roster store (`FleetAgent` records keyed by `agentId`)
+     * @param {Object|null} snapshot The `fleetWakeRoutes` answer `{capability, seats}`
+     */
+    static apply(store, snapshot) {
+        if (!store || snapshot?.capability?.state === 'unavailable' || !Array.isArray(snapshot?.seats)) return;
+
+        snapshot.seats.forEach(({agentId, rotation}) => {
+            const record = agentId ? store.get(agentId) ?? store.allItems?.get(agentId) : null;
+
+            record && rotation !== undefined && record.set({rotation})
+        })
+    }
+
+    /**
+     * @summary The cards' own wake-routes read: the seats' rotations land on their roster records
+     * ({@link #apply}). It never fills the Wake pane, where reading the routes stays the operator's explicit
+     * first act. An unwired verb or a failed read changes nothing, and an older read landing after a newer
+     * one is dropped.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit owner: its `bridge` and its roster store.
+     * @returns {Promise<void>}
+     */
+    static async load(owner) {
+        const
+            state      = reads.get(owner) ?? {generation: 0, snapshot: null},
+            {bridge}   = owner,
+            generation = ++state.generation;
+
+        reads.set(owner, state);
+
+        if (typeof bridge?.fleetWakeRoutes !== 'function') return;
+
+        let snapshot;
+
+        try {
+            snapshot = await bridge.fleetWakeRoutes({})
+        } catch (error) {
+            return
+        }
+
+        if (generation === state.generation && !owner.isDestroyed) {
+            state.snapshot = snapshot;
+            SessionRotation.apply(owner.resolveFleetRosterStore?.(), snapshot)
+        }
+    }
+
+    /**
+     * @summary Re-applies the owner's last rotation answer, if one landed: for roster records that arrived after it.
+     * @param {AgentOS.view.fleet.cockpit.Controller} owner
+     */
+    static reapply(owner) {
+        const snapshot = reads.get(owner)?.snapshot;
+
+        snapshot && SessionRotation.apply(owner.resolveFleetRosterStore?.(), snapshot)
     }
 
     /**

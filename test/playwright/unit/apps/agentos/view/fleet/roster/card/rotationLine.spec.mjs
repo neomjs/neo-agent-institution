@@ -18,7 +18,7 @@ import * as core      from '../../../../../../../../../node_modules/neo.mjs/src/
 import Instance       from '../../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 
 test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#842)', () => {
-    let AgentCard, FleetAgent, FleetCockpitController, Store, ViewerTime, getActivityObjectText;
+    let AgentCard, FleetAgent, SessionRotation, Store, ViewerTime, getActivityObjectText;
 
     const
         stores    = [],
@@ -48,11 +48,11 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
     const at   = instant => ViewerTime.formatViewerTime(instant, {now}).text;
 
     test.beforeAll(async () => {
-        AgentCard              = (await import('../../../../../../../../../apps/agentos/view/fleet/roster/card/Container.mjs')).default;
-        FleetAgent             = (await import('../../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
-        FleetCockpitController = (await import('../../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs')).default;
-        Store                  = (await import('../../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default;
-        ViewerTime             = (await import('../../../../../../../../../apps/agentos/util/ViewerTime.mjs')).default;
+        AgentCard       = (await import('../../../../../../../../../apps/agentos/view/fleet/roster/card/Container.mjs')).default;
+        FleetAgent      = (await import('../../../../../../../../../apps/agentos/model/FleetAgent.mjs')).default;
+        SessionRotation = (await import('../../../../../../../../../apps/agentos/util/SessionRotation.mjs')).default;
+        Store           = (await import('../../../../../../../../../node_modules/neo.mjs/src/data/Store.mjs')).default;
+        ViewerTime      = (await import('../../../../../../../../../apps/agentos/util/ViewerTime.mjs')).default;
         ({getActivityObjectText} = await import('../../../../../../../../../apps/agentos/view/fleet/activity/RowContainer.mjs'))
     });
 
@@ -114,8 +114,7 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
     test('the wake-routes read writes each seat\'s rotation onto its roster record, and an older Fleet or an unreadable answer writes nothing', () => {
         const
             store = makeStore([{agentId: 'ada'}, {agentId: 'clio', rotation: completed}]),
-            owner = {resolveFleetRosterStore: () => store},
-            apply = snapshot => FleetCockpitController.prototype.applyRotations.call(owner, snapshot);
+            apply = snapshot => SessionRotation.apply(store, snapshot);
 
         apply({capability: {state: 'wired'}, seats: [{agentId: 'ada', rotation: completed}, {agentId: 'ghost', rotation: completed}]});
         expect(store.get('ada').rotation).toEqual(completed);
@@ -135,8 +134,8 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
             {default: FleetAdmission} = await import('../../../../../../../../../apps/agentos/util/FleetAdmission.mjs'),
             seen                      = new Set(),
             store                     = {get: id => seen.has(id) || null, ingestSnapshot: events => events.forEach(event => seen.add(event.eventId))},
-            owner                     = {activityWired: false, loadRotations() { this.reads++ }, reads: 0, getReference: () => null, publishConnection() {},
-                resolveFleetActivityEventsStore: () => store},
+            owner                     = {activityWired: false, reads: 0, getReference: () => null, publishConnection() {},
+                bridge: {fleetWakeRoutes: async () => (owner.reads++, {seats: []})}, resolveFleetActivityEventsStore: () => store},
             event = id => ({eventId: id, type: 'session-rotation', source: 'fleet:sessionRotation', confidence: 'observed', occurredAt: decidedAt}),
             admit = events => FleetAdmission.admitActivity(owner, {capability: {state: 'wired'}, events});
 
@@ -158,21 +157,26 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
             store = makeStore([{agentId: 'ada'}]),
             pane  = {snapshot: null},
             owner = {
-                applyRotations         : FleetCockpitController.prototype.applyRotations,
                 bridge                 : {fleetWakeRoutes: async () => ({capability: {state: 'wired'}, seats: [{agentId: 'ada', rotation: completed}]})},
                 component              : {getWakeRoutesPane: () => pane},
                 resolveFleetRosterStore: () => store,
-                rotationsReadGeneration: 0,
                 wakeRoutesSnapshot     : null
             },
-            read  = () => FleetCockpitController.prototype.loadRotations.call(owner);
+            read  = () => SessionRotation.load(owner);
 
         await read();
 
         expect(store.get('ada').rotation).toEqual(completed);
-        expect(owner.rotationsSnapshot.seats).toHaveLength(1);
         expect(pane.snapshot).toBeNull();
         expect(owner.wakeRoutesSnapshot).toBeNull();
+
+        // a roster that lands after the answer takes it without a second read
+        const later = makeStore([{agentId: 'ada'}]);
+
+        owner.resolveFleetRosterStore = () => later;
+        SessionRotation.reapply(owner);
+        expect(later.get('ada').rotation).toEqual(completed);
+        owner.resolveFleetRosterStore = () => store;
 
         owner.bridge = {fleetWakeRoutes: async () => { throw new Error('fleet read exceeded 20ms') }};
         await read();

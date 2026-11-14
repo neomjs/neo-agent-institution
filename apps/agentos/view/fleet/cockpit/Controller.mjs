@@ -4,6 +4,7 @@ import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapt
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import OperatorInbox               from '../../../util/OperatorInbox.mjs';
 import RecentTurnsRead             from '../../../util/RecentTurnsRead.mjs';
+import SessionRotation             from '../../../util/SessionRotation.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
 import SpineAction                 from '../../../util/SpineAction.mjs';
 import StageWindow                 from '../../../util/StageWindow.mjs';
@@ -203,17 +204,6 @@ class Controller extends FleetBatchController {
      * @protected
      */
     wakeRoutesSnapshot = null
-    /**
-     * Read-fence + last answer of the cards' own rotation read ({@link #loadRotations}).
-     * @member {Number} rotationsReadGeneration=0
-     * @protected
-     */
-    rotationsReadGeneration = 0
-    /**
-     * @member {Object|null} rotationsSnapshot=null
-     * @protected
-     */
-    rotationsSnapshot = null
     /**
      * @summary The cockpit-owned authenticated bridge — resolved fresh per call, never captured.
      * @returns {Object|undefined}
@@ -685,54 +675,6 @@ class Controller extends FleetBatchController {
     }
 
     /**
-     * @summary Writes each seat's rotation from a wake-routes answer onto its roster record, as the Fleet
-     * answered it, so the card reads it with the rest of the row. A seat the answer omits keeps its record's
-     * rotation, and so does every seat of an older Fleet whose seats carry no `rotation`. An unreadable answer
-     * writes nothing.
-     * @param {Object|null} snapshot The `fleetWakeRoutes` answer `{capability, seats}`
-     * @protected
-     */
-    applyRotations(snapshot) {
-        const store = this.resolveFleetRosterStore();
-
-        if (!store || snapshot?.capability?.state === 'unavailable' || !Array.isArray(snapshot?.seats)) return;
-
-        snapshot.seats.forEach(({agentId, rotation}) => {
-            const record = agentId ? store.get(agentId) ?? store.allItems?.get(agentId) : null;
-
-            record && rotation !== undefined && record.set({rotation})
-        })
-    }
-
-    /**
-     * @summary READ-OBSERVE for the cards: the wake-routes read whose seats' rotations land on their roster
-     * records ({@link #applyRotations}). It never fills the Wake pane, where reading the routes stays the
-     * operator's explicit first act, and an unwired verb or a failed read changes nothing.
-     * @returns {Promise<void>}
-     */
-    async loadRotations() {
-        const
-            me         = this,
-            {bridge}   = me,
-            generation = ++me.rotationsReadGeneration;
-
-        if (typeof bridge?.fleetWakeRoutes !== 'function') return;
-
-        let snapshot;
-
-        try {
-            snapshot = await bridge.fleetWakeRoutes({})
-        } catch (error) {
-            return
-        }
-
-        if (generation === me.rotationsReadGeneration && !me.isDestroyed) {
-            me.rotationsSnapshot = snapshot;
-            me.applyRotations(snapshot)
-        }
-    }
-
-    /**
      * @summary READ-OBSERVE: the decomposed per-seat wake-route envelope — the memories sibling,
      * no variance.
      * @param {Object} [params]
@@ -764,7 +706,7 @@ class Controller extends FleetBatchController {
 
         if (generation === me.wakeRoutesReadGeneration && !me.isDestroyed) {
             me.wakeRoutesSnapshot = snapshot;
-            me.applyRotations(snapshot);
+            SessionRotation.apply(me.resolveFleetRosterStore(), snapshot);
 
             const livePane = me.component.getWakeRoutesPane();
 
