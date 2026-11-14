@@ -940,7 +940,8 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
             }), host);
 
             expect(provider.data.streamAdapterState).toBe('partial');
-            expect(verdictOf(provider.data).lead).toMatch(/^Activity feed partial — PR lanes unavailable · mailbox available · Plane outage [^·()]+–[^·()]+ — recovered$/);
+            expect(verdictOf(provider.data).lead).toBe('PR lanes unavailable');
+            expect(verdictOf(provider.data).title).toMatch(/^PR lanes unavailable · mailbox available · Plane outage [^·()]+–[^·()]+ — recovered/);
 
             // Automatic expiry on a subsequent cadence read at tPartialRecovered + OUTAGE_NOTE_TTL_MS
             now = tPartialRecovered + SpineBanner.OUTAGE_NOTE_TTL_MS;
@@ -962,7 +963,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                 recoveredAt: null,
                 startedAt  : null
             });
-            expect(verdictOf(provider.data).lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available');
+            expect(verdictOf(provider.data).lead).toBe('PR lanes unavailable');
 
             // Clicking Recheck on `feed partial` also clears an active outage note immediately
             provider.setData({
@@ -972,7 +973,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                     startedAt  : now - 30_000
                 }
             });
-            expect(verdictOf(provider.data).lead).toContain('Plane outage');
+            expect(verdictOf(provider.data).title).toContain('Plane outage');
             host.reconnectFleet = () => {};
             await SpineAction.run(host);
             expect(provider.data.planeOutageNote).toEqual({
@@ -980,7 +981,7 @@ test.describe('Fleet cockpit — the spine-banner pipeline (formula → componen
                 recoveredAt: null,
                 startedAt  : null
             });
-            expect(verdictOf(provider.data).lead).toBe('Activity feed partial — PR lanes unavailable · mailbox available')
+            expect(verdictOf(provider.data).lead).toBe('PR lanes unavailable')
         } finally {
             Date.now = originalNow
         }
