@@ -1780,7 +1780,8 @@ async function runRehearsalArm() {
                 graphPath : path.join(smokeRoot, 'sqlite', 'memory-core-graph.sqlite'),
                 nlPort,
                 signingKey: privateKey.export({format: 'pem', type: 'pkcs8'}),
-                standIn   : journeyModule.writeStandInLauncher({directory: path.join(rehearsalDir, 'bin'), runtime: standInRuntime.runtime})
+                standIn   : journeyModule.writeStandInLauncher({directory: path.join(rehearsalDir, 'bin'), runtime: standInRuntime.runtime}),
+                storeRoot : path.join(rehearsalDir, 'harnesses')
             });
 
         // A failed boot settles as a verdict, the way the smoke's own boot does, so teardown never rethrows it.
@@ -2046,14 +2047,16 @@ app.whenReady().then(async () => {
                 const [verifier, references, contracts] = await Promise.all([
                     loadRuntimeGenerationVerifier(source), loadRuntimeGenerationReferences(source), loadRuntimeMaintenanceContracts(source)
                 ]);
-                runtimeMaintenance = startRuntimeMaintenance(() => retireRuntimeGenerations({
+                runtimeMaintenance = startRuntimeMaintenance(({signal}) => retireRuntimeGenerations({
                     directory       : path.dirname(launcherRuntime.generation.directory), currentGeneration: launcherRuntime.generation,
                     journalDirectory: path.join(app.getPath('userData'), 'brain', 'fleet', 'launch-admission'),
-                    verifier, references, ...contracts
+                    verifier, references, ...contracts, signal
                 }), {
                     onResult: result => {
                         const removed = result.generations.filter(row => row.state === 'removed');
                         if (removed.length) console.log('HARNESS_RUNTIME_RETIRED ' + JSON.stringify(removed.map(row => row.id)));
+                        // A halted pass names the step it stopped in, once per pass rather than every minute.
+                        if (result.phase) console.warn(`HARNESS_RUNTIME_MAINTENANCE_DEFERRED ${result.reason} ${result.phase.step} ${result.phase.id ?? '-'}`);
                     },
                     onError: error => console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message))
                 });

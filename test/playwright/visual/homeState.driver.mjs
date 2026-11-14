@@ -11,8 +11,10 @@ import OpenWorkRead from '../../../apps/agentos/util/OpenWorkRead.mjs';
  * cockpit's open-work read projects one (`OpenWorkRead`), questions axis included: `unsupported`, since the
  * landed answer carries no questions block. `staleMinutes=M` lands that answer stale and M minutes old. That
  * read runs at mount and then once a minute, so a capture taken right after landing shows the landed answer.
- * `questions=N` lands the answer with an `ok` questions block of N instead.
- * Query: `shellPlaneConfigured=false` (anything else lands `null`), `merges=N`, `staleMinutes=M`, `questions=N`.
+ * `questions=N` lands the answer with an `ok` questions block of N instead, and `expired=E` adds the block's count of
+ * the asks that expired unanswered within a seven-day window.
+ * Query: `shellPlaneConfigured=false` (anything else lands `null`), `merges=N`, `staleMinutes=M`, `questions=N`,
+ * `expired=E`.
  */
 const
     home   = Neo.manager.Component.findFirst('ntype', 'fm-home-view'),
@@ -32,12 +34,15 @@ if (params.has('merges')) {
     const
         staleMinutes = Number(params.get('staleMinutes') ?? 0),
         observedAt   = new Date(Date.now() - staleMinutes * 60 * 1000).toISOString(),
+        expired      = params.has('expired')
+            ? {expired: {count: Number(params.get('expired')), reason: null, since: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), state: 'ok'}}
+            : {},
         snapshot     = {
             coverage : 'complete',
             observedAt,
             reason   : null,
             state    : staleMinutes > 0 ? 'stale' : 'ok',
-            ...(params.has('questions') ? {questions: {count: Number(params.get('questions')), reason: null, state: 'ok'}} : {})
+            ...(params.has('questions') ? {questions: {count: Number(params.get('questions')), reason: null, state: 'ok', ...expired}} : {})
         };
 
     provider.setData({

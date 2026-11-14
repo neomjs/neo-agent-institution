@@ -181,6 +181,57 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect(await fs.readFile(path.join(interrupted, 'keep'), 'utf8')).toBe('foreign');
     });
 
+    test('a pass whose await never settles releases both leases at its deadline and names the step', async () => {
+        const lease = path.join(directory, references.RUNTIME_REFERENCE_LEASE);
+        let entered, later;
+        const result = await retireRuntimeGenerations({...options(), deadlineMs: 200}, {transactionFn, inspectProcesses: () => {
+            entered = fs.readFile(lease, 'utf8');
+            later   = new Promise(resolve => setTimeout(resolve, 100)).then(() => fs.readFile(lease, 'utf8'));
+            return new Promise(() => {});
+        }});
+        expect(result).toMatchObject({state: 'deferred', reason: 'pass-deadline', phase: {step: 'census', id: unused.value.id}});
+        // A stuck step does not pulse: the lease's lastPulse stays where the pass last made progress.
+        expect(JSON.parse(await later).lastPulse).toBe(JSON.parse(await entered).lastPulse);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+        expect((await fs.readdir(directory)).filter(name => name.startsWith('.retiring-'))).toEqual([]);
+    });
+
+    test('an owner abort ends a pass stuck in a step at once', async () => {
+        const controller = new AbortController();
+        const result     = await retireRuntimeGenerations({...options(), signal: controller.signal},
+            {transactionFn, inspectProcesses: () => { controller.abort(); return new Promise(() => {}) }});
+        expect(result).toMatchObject({state: 'deferred', reason: 'pass-aborted', phase: {step: 'census', id: unused.value.id}});
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
+    test('a halt never abandons a removal in flight: a successor cannot take custody until it finishes', async () => {
+        const controller = new AbortController();
+        let resume, entered;
+        const paused    = new Promise(resolve => { resume = resolve });
+        const inRemoval = new Promise(resolve => { entered = resolve });
+        const pending   = retireRuntimeGenerations({...options(), signal: controller.signal, deadlineMs: 50}, {transactionFn,
+            inspectProcesses: emptyCensus, removeTree: async target => { entered(target); await paused; return removeOwnedRuntimeTree(target) }});
+        const target    = await inRemoval;
+        controller.abort();
+        await new Promise(resolve => setTimeout(resolve, 100)); // past the deadline as well
+        // a successor reaches neither lease, so it cannot retain or replace the tree under the removal
+        expect(transactionFn).toThrow(/held/);
+        expect(() => references.holdRuntimeGenerationReferences({directory})).toThrow(/held/);
+        expect((await retireRuntimeGenerations(options(), {transactionFn, inspectProcesses: emptyCensus})).state).toBe('deferred');
+        expect(await fs.stat(target)).toBeTruthy();
+        resume();
+        const result = await pending;
+        expect(result.generations.find(row => row.id === unused.value.id)).toMatchObject({state: 'removed'});
+        await expect(fs.stat(target)).rejects.toMatchObject({code: 'ENOENT'});
+        expect(await verifier.readRuntimeGeneration({directory: current.value.directory})).toEqual(current.value);
+        expect(await verifier.readRuntimeGeneration({directory: rollback.value.directory})).toEqual(rollback.value);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
     test('a concurrent reference owner defers maintenance without creating retirement state', async () => {
         const held = references.holdRuntimeGenerationReferences({directory});
         try {
@@ -209,4 +260,13 @@ test('maintenance cadence coalesces overlap and teardown joins the active pass',
     release(); await closing;
     tick(); await Promise.resolve();
     expect(calls).toBe(1);
+});
+
+test('teardown aborts the running pass and never waits past its close bound', async () => {
+    let seen;
+    const maintenance = startRuntimeMaintenance(({signal} = {}) => { seen = signal; return new Promise(() => {}) }, {
+        closeTimeoutMs: 20, setIntervalFn() { return {unref() {}} }, clearIntervalFn() {}
+    });
+    await maintenance.close();
+    expect(seen?.aborted).toBe(true);
 });

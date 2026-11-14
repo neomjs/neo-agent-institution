@@ -724,28 +724,58 @@ class ViewportController extends Controller {
 
     /**
      * @summary Home's merge count opens the merge queue: the route moves to the Fleet cockpit, whose head
-     * opens its list of the pull requests awaiting the operator's merge.
+     * opens its list of the pull requests awaiting the operator's merge. The open is scoped to this visit,
+     * so leaving Fleet before the list could open ends the request.
      * @returns {Promise<Object>} The cockpit's `{opened}`
      */
     async onHomeMergeQueueOpen() {
-        const me = this;
+        const
+            me    = this,
+            visit = me.visitSignal('/fleet');
 
-        await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
+        try {
+            await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
 
-        return me.getReference('fleet-cockpit').getController().openMergeQueue()
+            return await me.getReference('fleet-cockpit').getController().openMergeQueue({signal: visit.signal})
+        } finally {
+            visit.release()
+        }
     }
 
     /**
-     * @summary Home's question count opens the questions: the route moves to the Fleet cockpit, whose Mailbox
-     * shows the operator's open questions.
+     * @summary A signal for one visit of `route`: it aborts once the shell activates another keeper-view, so
+     * work started for the visit cannot land on a later one. Arriving at `route` keeps it live.
+     * @param {String} route
+     * @returns {{signal: AbortSignal, release: Function}} `release()` stops listening to the shell
+     */
+    visitSignal(route) {
+        const
+            shell    = this.getReference('shell'),
+            visit    = new AbortController(),
+            index    = shell?.getTabBar()?.items?.find(button => button.route === route)?.index,
+            onChange = ({value}) => value !== index && visit.abort();
+
+        shell?.on('activeIndexChange', onChange);
+
+        return {
+            signal : visit.signal,
+            release: () => shell?.un('activeIndexChange', onChange)
+        }
+    }
+
+    /**
+     * @summary Home's question count opens the questions, its expired count the expired asks: the route moves
+     * to the Fleet cockpit, whose Mailbox shows that view.
+     * @param {Object} [data]
+     * @param {'open'|'expired'} [data.view='open']
      * @returns {Promise<Object>} The cockpit's `{opened}`
      */
-    async onHomeQuestionsOpen() {
+    async onHomeQuestionsOpen({view = 'open'} = {}) {
         const me = this;
 
         await Neo.Main.setRoute({value: '/fleet', windowId: me.windowId});
 
-        return me.getReference('fleet-cockpit').getController().openOperatorQuestions()
+        return me.getReference('fleet-cockpit').getController().openOperatorQuestions({view})
     }
 
     /**

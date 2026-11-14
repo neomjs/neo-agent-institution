@@ -111,6 +111,12 @@ class FleetAgent extends Model {
             name        : 'presence',
             defaultValue: null
         }, {
+            // The seat's session rotation, as the producer answered it: `fleetWakeRoutes` `seats[].rotation`,
+            // the decision on its newest sunset receipt ({@link AgentOS.util.SessionRotation}). The roster read
+            // does not carry it; the cockpit writes it from the wake-routes read. null = no answer yet.
+            name        : 'rotation',
+            defaultValue: null
+        }, {
             // the launch seam's derived launchability truth (a launch template exists for the
             // family), stamped Brain-side on the roster row; tri-state — true / false / null
             // (not read back yet) — so the field carries no type coercion

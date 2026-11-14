@@ -45,6 +45,31 @@ function isRecognizedQuestionsAnswer(answer) {
 }
 
 /**
+ * @summary Is this the expired-asks read's own answer?
+ *
+ * `fleetOwnQuestions({expired: true})` answers the questions read's shape plus `since`: the window's start as an ISO
+ * instant on `ok`, `null` on `unavailable`. A plane without that read ignores `expired` and answers the open list,
+ * without `since`, so an answer that lacks it is never shown as the expired asks.
+ * @param {Object} answer Candidate payload.
+ * @returns {Boolean}
+ * @private
+ */
+function isRecognizedExpiredAnswer(answer) {
+    return isRecognizedQuestionsAnswer(answer)
+        && Object.hasOwn(answer, 'since')
+        && (answer.state === 'ok' ? typeof answer.since === 'string' : answer.since === null)
+}
+
+/**
+ * The state lines of the two question lists, in the pane's words: the open questions and the expired asks.
+ * @type {Object}
+ */
+const QUESTION_LINES = Object.freeze({
+    expired: {degraded: 'expired asks could not be read', empty: 'no ask expired this week',    noun: 'expired', unobserved: 'your expired asks have not been read'},
+    open   : {degraded: 'your questions could not be read', empty: 'nothing waits for your word', noun: 'open',    unobserved: 'your open questions have not been read'}
+});
+
+/**
  * @summary Is this a real page window?
  *
  * The bounds render as fact beside the rows ("51–60"), and the steps derive their offsets from them.
@@ -101,6 +126,12 @@ const EMPTY_WINDOWS = 3;
  * on its own row: no sorter re-sorts them and no thread collapses one away. Its states are its own: not read yet,
  * `your questions could not be read · <reason>`, or `nothing waits for your word`. Reading a message never removes
  * a row; only the Task's transition or expiry does.
+ *
+ * **The expired view.** The same host can switch to `view: 'expired'`: the asks that expired unanswered within the
+ * producer's window, from the owner-written `expired` read, newest expiry first, each on its own row like the open
+ * questions. Only the expired read's own answer is shown there: one without its window start (`since`) is a plane
+ * that answered the open list instead. Its states: not read yet, `expired asks could not be read · <reason>`, or
+ * `no ask expired this week`.
  *
  * **Rows** render through {@link AgentOS.view.fleet.mailbox.Grid} — the buffered
  * `grid.Container` with one pooled {@link AgentOS.view.fleet.mailbox.RowComponent} per rendered
@@ -183,9 +214,10 @@ class MailboxPane extends Container {
          */
         actionOutcome_: null,
         /**
-         * Which list the pane shows: `all` mail from the mirror `snapshot`, or the viewer's `open` questions from
-         * the owner-written `questions` read. Only a host that owns its inbox switches it.
-         * @member {'all'|'open'} view_='all'
+         * Which list the pane shows: `all` mail from the mirror `snapshot`, the viewer's `open` questions from
+         * the owner-written `questions` read, or the asks that `expired` unanswered from the owner-written
+         * `expired` read. Only a host that owns its inbox switches it.
+         * @member {'all'|'open'|'expired'} view_='all'
          * @reactive
          */
         view_: 'all',
@@ -196,6 +228,13 @@ class MailboxPane extends Container {
          * @reactive
          */
         questions_: null,
+        /**
+         * The owner's expired-asks read (`fleetOwnQuestions({expired: true})`): the open read's shape plus `since`,
+         * the window's start. `null` = not read yet. Owner-written, never fetched here.
+         * @member {Object|null} expired_=null
+         * @reactive
+         */
+        expired_: null,
         /**
          * The mailbox mirror's honest live cadence (ms) — the freshness window the snapshot's
          * `capturedAt` is judged against. Tunable, not contractual.
@@ -381,6 +420,17 @@ class MailboxPane extends Container {
     }
 
     /**
+     * Triggered after the owner's expired-asks read landed: it answers the window request in flight.
+     * @param {Object|null} value
+     * @param {Object|null} oldValue
+     * @protected
+     */
+    afterSetExpired(value, oldValue) {
+        this.pendingOffset = null;
+        this.isConstructed && this.applySnapshot()
+    }
+
+    /**
      * Triggered after the owner's open-questions read landed: it answers the window request in flight.
      * @param {Object|null} value
      * @param {Object|null} oldValue
@@ -400,17 +450,26 @@ class MailboxPane extends Container {
     afterSetView(value, oldValue) {
         this.emptyWindows  = 0;
         this.pendingOffset = null;
-        // the open questions keep their read's order (priority, then age); all mail reads newest first
+        // the question lists keep their read's order; all mail reads newest first
         this.store && (this.store.sorters = AgentMailboxStore.sortersOf(value));
         this.isConstructed && this.applySnapshot()
     }
 
     /**
-     * @summary The answer the list in view renders: the open-questions read, or the mirror snapshot.
+     * @summary The answer the list in view renders: the open-questions read, the expired-asks read, or the mirror
+     * snapshot.
      * @returns {Object|null}
      */
     get listSource() {
-        return this.view === 'open' ? this.questions : this.snapshot
+        return this.view === 'open' ? this.questions : this.view === 'expired' ? this.expired : this.snapshot
+    }
+
+    /**
+     * @summary Is a question list in view (the open questions or the expired asks), rather than all mail?
+     * @returns {Boolean}
+     */
+    get questionsView() {
+        return this.view === 'open' || this.view === 'expired'
     }
 
     /**
@@ -537,7 +596,7 @@ class MailboxPane extends Container {
      */
     applyFreshness() {
         const source = this.listSource,
-              observedAt = this.view === 'open' ? source?.capturedAt : source?.capability?.capturedAt,
+              observedAt = this.questionsView ? source?.capturedAt : source?.capability?.capturedAt,
               ledger = source ? {freshnessTtl: this.freshnessTtl, observedAt, stale: this.readFailed} : null,
               {cls, label} = AgentFreshness.describePaneFreshness(AgentFreshness.classifyPaneFreshness(ledger, this.now ?? Date.now()));
 
@@ -569,7 +628,7 @@ class MailboxPane extends Container {
     getPaneState() {
         const snapshot = this.snapshot;
 
-        if (this.view === 'open') return this.getQuestionsState();
+        if (this.questionsView) return this.getQuestionsState();
 
         if (!snapshot) return 'unobserved';
 
@@ -616,16 +675,17 @@ class MailboxPane extends Container {
     }
 
     /**
-     * @summary Classify the open-questions read: not read yet or unrecognized → `unobserved`, `unavailable` →
-     * `degraded` (its reason, never an empty list), and a complete `ok` read by its count → `empty` for a complete
-     * zero, otherwise `rows`: a page can show none of the questions the count holds.
+     * @summary Classify the question list in view (the open questions or the expired asks): not read yet or
+     * unrecognized → `unobserved`, `unavailable` → `degraded` (its reason, never an empty list), and a complete `ok`
+     * read by its count → `empty` for a complete zero, otherwise `rows`: a page can show none of the questions the
+     * count holds.
      * @returns {String} 'unobserved' | 'degraded' | 'empty' | 'rows'
      * @protected
      */
     getQuestionsState() {
-        const answer = this.questions;
+        const answer = this.listSource;
 
-        if (!isRecognizedQuestionsAnswer(answer)) return 'unobserved';
+        if (!(this.view === 'expired' ? isRecognizedExpiredAnswer(answer) : isRecognizedQuestionsAnswer(answer))) return 'unobserved';
         if (answer.state === 'unavailable')       return 'degraded';
         if (!isRecognizedPage(answer.page) || !Number.isSafeInteger(answer.count)) return 'unobserved';
 
@@ -693,8 +753,8 @@ class MailboxPane extends Container {
         if (fingerprint !== me.projectedFingerprint) {
             const
                 extend    = rows && source.page?.offset > 0 && me.projectedView === me.view,
-                // a thread never hides an open question: the open view lists each one on its own row
-                projected = rows ? source.rows.map(row => me.view === 'open' ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [];
+                // a thread never hides a question: a question list shows each one on its own row
+                projected = rows ? source.rows.map(row => me.questionsView ? {...row, partOfThread: null, threadCollapsed: false} : {...row, threadCollapsed: true}) : [];
 
             rowsGrid.applyBags(extend ? rowsGrid.extractBags().concat(projected) : projected, {continuation: extend});
             me.projectedFingerprint = fingerprint;
@@ -704,10 +764,10 @@ class MailboxPane extends Container {
 
         // The next window is the operator's to reach ({@link #onScrollEdge}); this pass once asked for it while
         // `page.hasMore` held, and a boot walked the whole inbox, 173 pages in three minutes. One window is the
-        // exception: open questions that showed no row answered no gesture, and the edge cannot ask again while the
-        // visible rows stay the same, so the pane asks itself, {@link EMPTY_WINDOWS} in a row at most, past a run of
-        // rows the graph cannot project.
-        if (me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null && me.emptyWindows <= EMPTY_WINDOWS) {
+        // exception: a question list's window that showed no row answered no gesture, and the edge cannot ask again
+        // while the visible rows stay the same, so the pane asks itself, {@link EMPTY_WINDOWS} in a row at most, past
+        // a run of rows the graph cannot project.
+        if (me.questionsView && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null && me.emptyWindows <= EMPTY_WINDOWS) {
             me.pendingOffset = source.page.offset + source.page.limit;
             me.fire('pageRequest', {offset: me.pendingOffset, source: me})
         }
@@ -716,7 +776,7 @@ class MailboxPane extends Container {
         // read's end, the line says what the read showed and `read on` continues from the served cursor
         const
             shown   = rows && me.store.getCount() > 0,
-            stopped = me.view === 'open' && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null,
+            stopped = me.questionsView && rows && !source.rows.length && source.page.hasMore && me.pendingOffset === null,
             line    = stopped ? (shown ? 'more' : 'stopped') : shown ? null : !rows ? state : me.pendingOffset === null ? 'unshown' : 'unobserved';
 
         stateCmp.set({cls: ['fm-mailbox-state', `is-${line ?? state}`], hidden: !line, text: line ? me.getStateText(line) : ''});
@@ -798,7 +858,7 @@ class MailboxPane extends Container {
      * subject) — all of which arrive as `admission.state: 'unavailable'`. Saying "source degraded"
      * would blame Memory Core for a refusal the adapter made, so the line states only what this
      * view actually knows — no rows, and the reason verbatim from the owner.
-     * @param {String} state From {@link #getPaneState} (never 'rows' here), `unshown` (open questions counted that no
+     * @param {String} state From {@link #getPaneState} (never 'rows' here), `unshown` (questions counted that no
      *     window could show), or `stopped` / `more` (the pane's own asks stopped short of the read's end, with no row
      *     or with rows in view).
      * @returns {String}
@@ -809,20 +869,22 @@ class MailboxPane extends Container {
             snapshot = this.snapshot,
             subject  = snapshot?.admission?.subjectAgentId || this.record?.agentId || 'this agent';
 
-        if (this.view === 'open') {
+        if (this.questionsView) {
+            const lines = QUESTION_LINES[this.view], read = this.listSource;
+
             switch (state) {
                 case 'degraded':
-                    return `your questions could not be read · ${this.questions.reason || 'source unavailable'}`;
+                    return `${lines.degraded} · ${read.reason || 'source unavailable'}`;
                 case 'empty':
-                    return 'nothing waits for your word';
+                    return lines.empty;
                 case 'unshown':
-                    return `${this.questions.count.toLocaleString('en-US')} open · none can be shown here`;
+                    return `${read.count.toLocaleString('en-US')} ${lines.noun} · none can be shown here`;
                 case 'stopped':
-                    return `${this.questions.count.toLocaleString('en-US')} open · the ones read so far cannot be shown`;
+                    return `${read.count.toLocaleString('en-US')} ${lines.noun} · the ones read so far cannot be shown`;
                 case 'more':
-                    return `${this.questions.count.toLocaleString('en-US')} open · more follow`;
+                    return `${read.count.toLocaleString('en-US')} ${lines.noun} · more follow`;
                 default:
-                    return 'your open questions have not been read'
+                    return lines.unobserved
             }
         }
 

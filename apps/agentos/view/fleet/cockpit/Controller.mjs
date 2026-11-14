@@ -4,6 +4,7 @@ import FleetLifecycleIntentAdapter from '../../../util/FleetLifecycleIntentAdapt
 import OpenWorkRead                from '../../../util/OpenWorkRead.mjs';
 import OperatorInbox               from '../../../util/OperatorInbox.mjs';
 import RecentTurnsRead             from '../../../util/RecentTurnsRead.mjs';
+import SessionRotation             from '../../../util/SessionRotation.mjs';
 import SourceHealth                from '../../../util/SourceHealth.mjs';
 import SpineAction                 from '../../../util/SpineAction.mjs';
 import StageWindow                 from '../../../util/StageWindow.mjs';
@@ -705,6 +706,7 @@ class Controller extends FleetBatchController {
 
         if (generation === me.wakeRoutesReadGeneration && !me.isDestroyed) {
             me.wakeRoutesSnapshot = snapshot;
+            SessionRotation.admit(me, snapshot, bridge?.profileId ?? null);
 
             const livePane = me.component.getWakeRoutesPane();
 

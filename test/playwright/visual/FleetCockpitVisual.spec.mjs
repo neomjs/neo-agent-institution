@@ -209,6 +209,38 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')
     });
 
+    test('the session rotation reads on its card: the fresh session named, a refusal with its reason (#842)', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        // the lane arm's two cards (its goldens are the BEFORE pair), each carrying a rotation at the fixture day
+        const laneLine      = 'control-plane state synchronization for source-alpha continuation',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString(),
+              lane          = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null},
+              rotations     = [
+                  {state: 'completed', reason: null, receiptId: 'MESSAGE:fixture-r1', decidedAt: '2026-07-05T21:17:00.000Z',
+                      oldSessionId: '1a2b3c4d-0000-4000-8000-000000000001', newSessionId: '5e6f7a8b-0000-4000-8000-000000000002', nextEligibleAt: null},
+                  {state: 'refused', reason: 'minimum-interval', receiptId: 'MESSAGE:fixture-r2', decidedAt: '2026-07-05T22:05:00.000Z',
+                      oldSessionId: '9c8d7e6f-0000-4000-8000-000000000003', newSessionId: null, nextEligibleAt: '2026-07-05T22:47:00.000Z'}
+              ];
+
+        await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
+            ...row,
+            laneLine     : index === 0 ? laneLine : null,
+            laneClaimedAt: index === 0 ? laneClaimedAt : null,
+            rotation     : rotations[index],
+            sources      : {...row.sources, lane}
+        } : row));
+
+        const card = row => page.locator('.fm-agent-card', {
+            has: page.getByRole('img', {name: row.displayName, exact: true})
+        });
+
+        await expect(card(sampleRoster[0]).locator('.fm-card-rotation')).toContainText('· from 1a2b3c4d to 5e6f7a8b');
+        await expect(card(sampleRoster[1]).locator('.fm-card-rotation')).toContainText('rotation refused · minimum-interval · next ');
+        await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-rotation-completed.png');
+        await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-rotation-refused.png')
+    });
+
     test('the open work reads on the cards it waits on, and the merge queue sits after the bar; both skins', async ({page}) => {
         await bootSettledCockpit(page);
         await landFleetOpenWork(page, sampleOpenWork);
@@ -2575,6 +2607,60 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(new URL(page.url()).hash).toBe('#/fleet')
     });
 
+    test('Home\'s operator line counts the asks that expired unanswered — last and quieter, after what waits and after "nothing waits", and absent when none expired; both skins; the count opens the expired asks (#959)', async ({page}) => {
+        // tall enough for the lower dock to show the Mailbox head the click lands on
+        await page.setViewportSize({width: 1600, height: 1100});
+        await bootSettledCockpit(page);
+
+        const
+            home     = await openHome(page),
+            operator = home.locator('.fm-home-operator'),
+            land     = async query => {
+                const result = await page.evaluate(path => Neo.worker.App.loadModule({path}), `${HOME_DRIVER}?shellPlaneConfigured=null&${query}&t=${++driverTick}`);
+
+                expect(result.success, `the driver loaded: ${JSON.stringify(result)}`).toBe(true)
+            };
+
+        await land('merges=2&questions=5&expired=0');
+        await expect(operator, 'none expired: the line as it was').toHaveText('5 questions · 2 merges wait for you');
+        await settleField(page, '11');
+        await expect(home).toHaveScreenshot('home-operator-expired-none.png');
+
+        await land('merges=2&questions=5&expired=141');
+        await expect(operator).toHaveText('5 questions · 2 merges wait for you · 141 expired unanswered');
+        await expect(operator.getByRole('button', {name: '141 expired unanswered'})).toHaveAttribute('title', /^asks whose deadline passed without an answer since /);
+        await expect(home).toHaveScreenshot('home-operator-expired.png');
+
+        // quieter than the counts that wait: the line's own colour, no mark until the pointer finds it
+        const look = name => operator.getByRole('button', {name}).evaluate(el => {
+            const style = getComputedStyle(el);
+
+            return {color: style.color === getComputedStyle(el.parentElement).color, line: style.textDecorationLine}
+        });
+
+        expect(await look('2 merges')).toEqual({color: true, line: 'underline'});
+        expect(await look('141 expired unanswered')).toEqual({color: true, line: 'none'});
+
+        await land('merges=0&questions=0&expired=3');
+        await expect(operator).toHaveText('nothing waits for you · 3 expired unanswered');
+        await expect(home).toHaveScreenshot('home-operator-expired-nothing.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await settleField(page, '11', 'light');
+        await expect(home).toHaveScreenshot('home-operator-expired-nothing-light.png');
+
+        await land('merges=2&questions=5&expired=141');
+        await expect(operator).toHaveText('5 questions · 2 merges wait for you · 141 expired unanswered');
+        await expect(home).toHaveScreenshot('home-operator-expired-light.png');
+
+        // one click on the expired count: the Fleet view, its Mailbox on the expired asks, the chip counting Home's number
+        await operator.getByRole('button', {name: '141 expired unanswered'}).click();
+        await expect(page.locator('.fm-operator-mailbox:visible .fm-mailbox-view-chip.pressed')).toHaveText('expired · 141');
+        expect(new URL(page.url()).hash).toBe('#/fleet')
+    });
+
     test('the cockpit before any answer and after an empty one — cold says "not answered yet", an empty answer offers the first agent; both skins', async ({page}) => {
         // the cold boot: nothing is landed — nothing is seeded, no source has answered
         await bootColdCockpit(page);
@@ -2629,6 +2715,37 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.mouse.move(0, 0);
         await page.waitForTimeout(400);
         await expect(pane).toHaveScreenshot('pane-mailbox-open-questions.png')
+    });
+
+    test('the operator\'s expired asks — `expired · 3` pressed beside `for you · 2 open`, three rows in the producer\'s order, the first open with what its sender planned; both skins (#959)', async ({page}) => {
+        // tall enough for the lower dock to hold the three rows beside the open detail
+        await page.setViewportSize({width: 1280, height: 1100});
+        await bootSettledCockpit(page);
+
+        const
+            name  = /^\s*Mailbox\s*$/i,
+            strip = page.locator('.neo-dashboard-dock-tabs .neo-tab-header-button', {hasText: name}),
+            tab   = await strip.count() ? strip.first() : page.locator('.neo-dashboard-dock-rail-tab', {hasText: name}).first(),
+            pane  = page.locator('.fm-operator-mailbox:visible').first();
+
+        await tab.click();
+        await expect(pane).toBeVisible({timeout: 30000});
+
+        const loaded = await page.evaluate(modulePath => Neo.worker.App.loadModule({path: modulePath}), `${OPERATOR_QUESTIONS_DRIVER}?state=expired&t=${++driverTick}`);
+
+        expect(loaded.success, `the driver loaded: ${JSON.stringify(loaded)}`).toBe(true);
+        await expect(pane.locator('.fm-mailbox-view-chip')).toHaveText(['all mail', 'for you · 2 open', 'expired · 3']);
+        await expect(pane.locator('.fm-mailbox-view-chip.pressed')).toHaveText('expired · 3');
+        await expect(pane.locator('.fm-mail-row')).toHaveCount(3);
+        await expect(pane.locator('.fm-mailbox-detail-expired')).toHaveText('expired; planned fallback: hold the PR for the next cut and say so on it');
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(pane).toHaveScreenshot('pane-mailbox-expired.png');
+
+        await switchToLightSkin(page);
+        await page.mouse.move(0, 0);
+        await page.waitForTimeout(400);
+        await expect(pane).toHaveScreenshot('pane-mailbox-expired-light.png')
     });
 
     test('every strip and rail pane at 1280 — its head, its inset and its verbs, as the operator reads them', async ({page}) => {

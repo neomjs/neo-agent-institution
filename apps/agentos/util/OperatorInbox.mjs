@@ -115,6 +115,19 @@ function computePublishRevisionDigest(payload = {}) {
 }
 
 /**
+ * The operator mailbox config each list's read lands on, by the list in view.
+ * @type {Object}
+ */
+const LIST_CONFIGS = Object.freeze({all: 'snapshot', expired: 'expired', open: 'questions'});
+
+/**
+ * @summary The list a mailbox shows: its question views by name, anything else all mail.
+ * @param {Object|null} mailbox
+ * @returns {'all'|'open'|'expired'}
+ */
+const listOf = mailbox => mailbox?.view === 'open' || mailbox?.view === 'expired' ? mailbox.view : 'all';
+
+/**
  * @summary The operator's own inbox, owner-side: the list it shows, compose, and on a message opened from the
  * inbox, read it in full, mark it read and resolve its Task (the Fleet verbs `fleetOwnMessage`,
  * `markOwnMessageRead`, `transitionOwnTask`, all under the operator's transport-stamped identity).
@@ -201,11 +214,12 @@ class OperatorInbox extends Base {
 
     /**
      * @summary READ-OBSERVE: one window of the list the operator mailbox shows: all mail from the mirror
-     * (`fleetMailboxMirror`, held as the owner's `operatorSnapshot`), or in the open view the operator's open
-     * questions (`fleetOwnQuestions`). The gate IS the honest outcome (no pane / no bound subject / no verb →
-     * the pane's `unobserved` state stands); a throwing bridge keeps the last-known list with a stale marker.
-     * One fence serves both lists: a switch supersedes the other list's read in flight, and a refused intent
-     * invalidates older reads. Explicit reads coalesce behind one wire; automatic reads never queue.
+     * (`fleetMailboxMirror`, held as the owner's `operatorSnapshot`), in the open view the operator's open
+     * questions (`fleetOwnQuestions`), or in the expired view the asks that expired unanswered
+     * (`fleetOwnQuestions({expired: true})`). The gate IS the honest outcome (no pane / no bound subject / no
+     * verb → the pane's `unobserved` state stands); a throwing bridge keeps the last-known list with a stale
+     * marker. One fence serves every list: a switch supersedes the other list's read in flight, and a refused
+     * intent invalidates older reads. Explicit reads coalesce behind one wire; automatic reads never queue.
      * A bridge bound to another profile first retires the held identity and window, so no page is read as the
      * previous instance's viewer.
      * @param {Object} [params]
@@ -226,14 +240,15 @@ class OperatorInbox extends Base {
         const
             mailbox    = owner.component.getOperatorMailboxPane(),
             subject    = owner.operatorRecord?.agentIdentityNodeId,
-            open       = mailbox?.view === 'open',
+            view       = listOf(mailbox),
+            questions  = view !== 'all',
             profileId  = owner.bridgeProfileId,
             generation = ++owner.operatorInboxReadGeneration,
             current    = () => !me.isDestroyed && !owner.isDestroyed && generation === owner.operatorInboxReadGeneration &&
                 owner.bridge === bridge && owner.bridgeProfileId === profileId && owner.operatorRecord?.agentIdentityNodeId === subject &&
-                (owner.component.getOperatorMailboxPane()?.view === 'open') === open;
+                listOf(owner.component.getOperatorMailboxPane()) === view;
 
-        if (!mailbox || !subject || typeof bridge?.[open ? 'fleetOwnQuestions' : 'fleetMailboxMirror'] !== 'function') {
+        if (!mailbox || !subject || typeof bridge?.[questions ? 'fleetOwnQuestions' : 'fleetMailboxMirror'] !== 'function') {
             return
         }
 
@@ -255,20 +270,20 @@ class OperatorInbox extends Base {
 
         try {
             me.readInFlight++;
-            const answer = await owner.boundedRead(Promise.resolve().then(() => open
-                ? bridge.fleetOwnQuestions({offset})
+            const answer = await owner.boundedRead(Promise.resolve().then(() => questions
+                ? bridge.fleetOwnQuestions(view === 'expired' ? {expired: true, offset} : {offset})
                 : bridge.fleetMailboxMirror({subjectAgentId: subject, offset})), () => me.onWireSettled());
 
             if (current()) {
                 // A revoked admission must clear rows even if the operator scrolled during this read.
                 const live = owner.component.getOperatorMailboxPane(),
-                      refused = open ? answer?.state !== 'ok' : answer?.admission?.state !== 'granted';
+                      refused = questions ? answer?.state !== 'ok' : answer?.admission?.state !== 'granted';
                 if (automatic && !refused && live && !live.canRefreshFirstPage()) return;
 
-                open || (owner.operatorSnapshot = answer);
+                questions || (owner.operatorSnapshot = answer);
                 if (live) {
-                    live.set({now: Date.now(), readFailed: refused || (!open && answer?.capability?.state !== 'wired'),
-                        [open ? 'questions' : 'snapshot']: answer})
+                    live.set({now: Date.now(), readFailed: refused || (!questions && answer?.capability?.state !== 'wired'),
+                        [LIST_CONFIGS[view]]: answer})
                 }
             }
         } catch (error) {

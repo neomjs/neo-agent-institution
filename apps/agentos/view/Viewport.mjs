@@ -108,8 +108,9 @@ class Viewport extends BaseViewport {
                 // every leaf null until the first answer lands
                 openWork: {coverage: null, observedAt: null, reason: null, state: null},
                 // the operator line's questions axis, projected by the same read owner from the same
-                // answer: its source's state and reason, leaf-complete like `openWork`
-                questions: {count: null, reason: null, state: null},
+                // answer: its source's state and reason, and the asks that expired unanswered since the
+                // window's start, leaf-complete like `openWork`
+                questions: {count: null, expired: {count: null, reason: null, since: null, state: null}, reason: null, state: null},
                 // the plane's operator presence record, written by the roster's read owner with each answer
                 // and by the Nightshift toggle's own write; `mode: null` is unknown, never present
                 operatorPresence: {expired: false, mode: null, since: null, until: null},
