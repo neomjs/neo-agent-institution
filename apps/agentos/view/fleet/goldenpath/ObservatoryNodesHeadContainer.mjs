@@ -5,8 +5,9 @@ import ObservatorySceneLayout from '../../../util/ObservatorySceneLayout.mjs';
 /**
  * @summary The head of the Observatory's Nodes section: the title with how much of the read the list holds and the
  * toggle between the list's two orders on the chrome line, and beneath them the order in words, in the detail role.
- * The title fires `sectionHeadClick` and the toggle `orderChange`; the pane owns both choices and writes back
- * {@link #order} and {@link #counts}. A collapsed section keeps only the chrome line (`ObservatoryContainer.scss`).
+ * The title fires `sectionHeadClick` on click and `listEnter` on `ArrowDown`, and the toggle fires `orderChange`; the
+ * pane owns both choices and writes back {@link #order} and {@link #counts}. A collapsed section keeps only the chrome
+ * line (`ObservatoryContainer.scss`).
  * @class AgentOS.view.fleet.goldenpath.ObservatoryNodesHeadContainer
  * @extends Neo.container.Base
  */
@@ -56,6 +57,7 @@ class ObservatoryNodesHeadContainer extends Container {
                 module   : Button,
                 cls      : ['fm-observatory-side-title', 'fm-observatory-section-head'],
                 flex     : 1,
+                keys     : {Down: (data, button) => button.up('fm-observatory-nodes-head')?.fire('listEnter')},
                 reference: 'observatory-nodes-title',
                 text     : 'Nodes',
                 ui       : 'ghost'

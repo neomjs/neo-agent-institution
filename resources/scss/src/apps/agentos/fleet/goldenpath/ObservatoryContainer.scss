@@ -58,6 +58,10 @@
        field without chrome, the text the Copy action selects */
     .fm-observatory-selected {
         min-height: 0;
+
+        &.is-split {
+            max-height: 50%;
+        }
     }
 
     .fm-observatory-selected-head {
