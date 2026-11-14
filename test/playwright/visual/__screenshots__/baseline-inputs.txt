@@ -243,7 +243,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    a76a3ac80f737bc1682ce718d5585767b0d6c04a
+    8ce576f7af7e57479ab21f20baccc761ebc4b617
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
@@ -330,7 +330,7 @@ apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
 apps/agentos/util/SessionRotation.mjs
-    bfa62a469a6fe9b71b474ce92100fda795e48f64
+    8ea79a1e52f5e453ffa8f43c78ee832896385eda
 
 apps/agentos/util/SetupAsks.mjs
     5631188ae6808c721ebb030ad191ea3bc70b797b
@@ -402,7 +402,7 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     0a0fefc83e395d6928cb4e0433711f4d48ed35db
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    f129da6440af252351cbd972fbdcd4bbc9c93324
+    7a15878428e238767ccddec0fa576c442d2aa0cd
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
