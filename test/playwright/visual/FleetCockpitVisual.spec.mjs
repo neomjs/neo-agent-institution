@@ -2631,7 +2631,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(operator.getByRole('button', {name: '141 expired unanswered'})).toHaveAttribute('title', /^asks whose deadline passed without an answer since /);
         await expect(home).toHaveScreenshot('home-operator-expired.png');
 
-        // quieter than the counts that wait: the line's own colour, no mark until the pointer finds it
+        // quieter than the counts that wait, and a link like them (#963): the secondary ink, the same dotted underline
         const look = name => operator.getByRole('button', {name}).evaluate(el => {
             const style = getComputedStyle(el);
 
@@ -2639,7 +2639,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         });
 
         expect(await look('2 merges')).toEqual({color: true, line: 'underline'});
-        expect(await look('141 expired unanswered')).toEqual({color: true, line: 'none'});
+        expect(await look('141 expired unanswered')).toEqual({color: false, line: 'underline'});
 
         await land('merges=0&questions=0&expired=3');
         await expect(operator).toHaveText('nothing waits for you · 3 expired unanswered');
