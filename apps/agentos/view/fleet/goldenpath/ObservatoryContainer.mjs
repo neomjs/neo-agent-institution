@@ -200,6 +200,12 @@ class ObservatoryContainer extends Container {
          */
         lensPeers_: [],
         /**
+         * Active filter over the Nodes list (`{query, kind}` or `null`), narrowing the scene before {@link #listBudget}.
+         * @member {Object|null} nodeFilter_=null
+         * @reactive
+         */
+        nodeFilter_: null,
+        /**
          * The Nodes list's order ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}): `changed` leads
          * with what changed in the attention window, `relations` with the most related. Session view state; the
          * Nodes head's toggle flips it.
@@ -301,15 +307,9 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * The items exist from here on: the lists take their stores and report their choices, the Team section its
-     * checks, the View section's controls and the selected node's actions theirs, the canvas joins the body where a
-     * canvas worker exists — without one (a config without it; the unit harness, whose stubs resolve the worker's
-     * readiness but never define `Neo.worker.Canvas`) the engine's canvas boot throws, so the side panel takes
-     * the whole body — and an envelope in the config reaches the head and the panel.
-     *
-     * Beside the canvas, the engine's splitter resizes the side panel for the session. Its bounds are the panel's
-     * CSS `min-width` and `max-width`, which the engine's drag clamps against. Nothing stores the width, so a
-     * new pane starts at the default.
+     * @summary Wires the projection stores, section listeners, View controls, Nodes head filter/order/keyboard
+     * flow, and optional canvas + splitter (when `useCanvasWorker` is enabled outside `unitTestMode`), then syncs
+     * the initial envelope across the head and side panel.
      */
     onConstructed() {
         super.onConstructed();
@@ -334,7 +334,7 @@ class ObservatoryContainer extends Container {
         me.getReference('heat-toggle')        .set({handler: 'onHeatToggleClick',  handlerScope: me});
         me.getReference('mail-toggle')        .set({handler: 'onMailToggleClick',  handlerScope: me});
         me.getReference('route-toggle')       .set({handler: 'onRouteToggleClick', handlerScope: me});
-        me.getReference('observatory-nodes-head').on({listEnter: () => { me.openSection !== 'nodes' && me.chooseSection('nodes'); nodes.enterFromHead(me.selectedId) }, orderChange: ({order}) => me.nodeOrder = order, sectionHeadClick: ({section}) => me.chooseSection(section)});
+        me.getReference('observatory-nodes-head').on({filterChange: ({filter}) => me.nodeFilter = filter, listEnter: () => { me.openSection !== 'nodes' && me.chooseSection('nodes'); nodes.enterFromHead(me.selectedId) }, orderChange: ({order}) => me.nodeOrder = order, sectionHeadClick: ({section}) => me.chooseSection(section)});
         me.afterSetNodeOrder(me.nodeOrder);
         me.getReference('observatory-team').on('sectionHeadClick', ({section}) => me.chooseSection(section));
         me.getReference('observatory-selected').on('sectionHeadClick', ({section}) => me.chooseSection(section));
@@ -482,6 +482,23 @@ class ObservatoryContainer extends Container {
     }
 
     /**
+     * Triggered after the Nodes filter changed: the head reflects it and the list re-projects over the scene.
+     * @param {Object|null} value
+     * @param {Object|null|undefined} oldValue
+     * @protected
+     */
+    afterSetNodeFilter(value, oldValue) {
+        const me = this, head = me.getReference('observatory-nodes-head');
+
+        head && (head.filter = value);
+
+        if (oldValue !== undefined && me.scene) {
+            me.fillNodeList();
+            me.syncLists()
+        }
+    }
+
+    /**
      * Triggered after the Nodes order changed: the head says which order reads, and the list reorders, keeping the
      * selection.
      * @param {String} value
@@ -566,7 +583,8 @@ class ObservatoryContainer extends Container {
     applyScene(scene, cause) {
         const me = this, {selectedId} = me;
 
-        me.scene = scene;
+        me.scene          = scene;
+        me.relationCounts = null;
         me.channels();
         me.updateLine();
 
@@ -627,31 +645,23 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Fills the node list from the current scene in the chosen {@link #nodeOrder}
-     * ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#orderOf}) up to {@link #listBudget} rows; the order
-     * applies to the whole read before the budget cuts it. The section's head names the order and says when the list
-     * holds less than the read.
+     * @summary Projects the current scene through {@link #nodeFilter} and {@link #nodeOrder}
+     * ({@link AgentOS.view.fleet.goldenpath.ObservatoryNodeList#projectOf}) up to {@link #listBudget} rows, and
+     * updates the section head's counts, filter and available kinds.
      * @protected
      */
     fillNodeList() {
         const
-            me                             = this,
-            {listBudget, nodeStore, scene} = me,
-            counts                         = new Uint32Array(scene.nodes.length);
+            me                                         = this,
+            {listBudget, nodeFilter, nodeStore, scene} = me,
+            counts                                     = me.relationCounts ??= ObservatoryNodeList.relationsOf(scene),
+            {indices, matched, total}                  = ObservatoryNodeList.projectOf(scene, me.nodeOrder, counts, nodeFilter, listBudget),
+            listed                                     = indices.map(index => scene.nodes[index]);
 
-        scene.edges.forEach(([from, to]) => {
-            counts[from]++;
-            from !== to && counts[to]++
-        });
-
-        const listed = ObservatoryNodeList.orderOf(scene, me.nodeOrder, counts).slice(0, listBudget).map(index => scene.nodes[index]);
-
-        me.relationCounts = counts;
-        me.extraId        = null;
+        me.extraId = null;
         nodeStore.clear();
         listed.length && nodeStore.add(listed.map(node => me.rowOf(node)));
-
-        me.getReference('observatory-nodes-head')?.set({counts: {listed: listed.length, total: scene.nodes.length}})
+        me.getReference('observatory-nodes-head')?.set({counts: {listed: listed.length, matched, total}, filter: nodeFilter, kinds: ObservatoryNodeList.kindsOf(scene, nodeFilter?.kind)})
     }
 
     /**
@@ -821,9 +831,8 @@ class ObservatoryContainer extends Container {
     }
 
     /**
-     * @summary Puts the node list's selection on the selected node — a node beyond the list's budget joins it
+     * @summary Puts the node list's selection on the selected node — a matching node beyond the budget joins it
      * — and fills the relation list from {@link AgentOS.view.fleet.goldenpath.ObservatoryRelationList#rowsOf}.
-     * A reloaded node list has lost its selection, so it is placed again.
      * @protected
      */
     syncLists() {
@@ -832,15 +841,16 @@ class ObservatoryContainer extends Container {
             {nodeStore, scene, selectedId} = me,
             nodes                          = me.getReference('observatory-nodes'),
             index                          = selectedId && Object.hasOwn(scene.index, selectedId) ? scene.index[selectedId] : -1,
+            matchesSelection               = index >= 0 && ObservatoryNodeList.matchesNode(scene.nodes[index], me.nodeFilter),
             rows                           = ObservatoryRelationList.rowsOf(me);
 
-        // one row beyond the budget at most: the selection, while the listed nodes lack it
-        if (me.extraId && me.extraId !== selectedId) {
+        // one row beyond the budget at most: the selection, while it matches the filter and the listed nodes lack it
+        if (me.extraId && (me.extraId !== selectedId || !matchesSelection)) {
             nodeStore.remove(me.extraId);
             me.extraId = null
         }
 
-        if (index >= 0 && !nodeStore.get(selectedId)) {
+        if (matchesSelection && !nodeStore.get(selectedId)) {
             nodeStore.add(me.rowOf(scene.nodes[index]));
             me.extraId = selectedId
         }

@@ -56,6 +56,76 @@ class ObservatoryNodeList extends BaseList {
     navigator = {scrollIntoView: false, workerKeys: ['Enter', ' ']}
 
     /**
+     * @summary Whether `filter` narrows the scene (`query` or `kind` non-empty).
+     * @param {Object|null} filter
+     * @returns {Boolean}
+     */
+    static hasFilter(filter) {
+        return ObservatoryNodeList.normalizeFilter(filter).active
+    }
+
+    /**
+     * @summary Sorted distinct `kind` values present in `scene.nodes`, retaining `selectedKind` when active so a view
+     * toggle that hides a kind never invalidates the current choice.
+     * @param {Object|null} scene
+     * @param {String|null} [selectedKind=null]
+     * @returns {String[]}
+     */
+    static kindsOf(scene, selectedKind = null) {
+        const kinds = new Set();
+
+        for (const node of scene?.nodes ?? []) {
+            node?.kind && kinds.add(node.kind)
+        }
+
+        selectedKind && kinds.add(selectedKind);
+
+        return [...kinds].sort((a, b) => a.localeCompare(b, 'en-US'))
+    }
+
+    /**
+     * @summary Whether `node` satisfies `filter` (`kind` exact match intersected with case-insensitive `label` or `id`
+     * substring). An empty filter matches every node.
+     * @param {Object|null} node
+     * @param {Object|null} filter
+     * @returns {Boolean}
+     */
+    static matchesNode(node, filter) {
+        const {active, kind, queryLower} = filter?.active !== undefined ? filter : ObservatoryNodeList.normalizeFilter(filter);
+
+        if (!active) {
+            return true
+        }
+
+        if (!node || (kind && node.kind !== kind)) {
+            return false
+        }
+
+        if (!queryLower) {
+            return true
+        }
+
+        return Boolean(
+            (node.label && String(node.label).toLowerCase().includes(queryLower)) ||
+            (node.id    && String(node.id).toLowerCase().includes(queryLower))
+        )
+    }
+
+    /**
+     * @summary Normalizes `{query, kind}` into `{active, kind, query, queryLower}`.
+     * @param {Object|null} filter
+     * @returns {{active: Boolean, kind: String|null, query: String, queryLower: String}}
+     */
+    static normalizeFilter(filter) {
+        const
+            query      = typeof filter?.query === 'string' ? filter.query.trim() : '',
+            queryLower = query.toLowerCase(),
+            kind       = typeof filter?.kind === 'string' && filter.kind ? filter.kind : null;
+
+        return {active: Boolean(queryLower || kind), kind, query, queryLower}
+    }
+
+    /**
      * @summary The order the list reads in. `changed` puts the nodes that changed within the attention window first,
      * counting only the kinds that carry attention ({@link AgentOS.util.ObservatorySceneLayout#heatEvents}), so a
      * message or a file never leads on a change alone, merged and closed work included; then every node by its last
@@ -68,14 +138,102 @@ class ObservatoryNodeList extends BaseList {
      * @returns {Number[]} The scene's node indices, in reading order
      */
     static orderOf(scene, by, relations, now = Date.now()) {
+        const {nodes} = scene;
+
+        return ObservatoryNodeList.sortIndices(nodes.map((node, index) => index), nodes, by, relations, now)
+    }
+
+    /**
+     * @summary Filters `scene.nodes` by `{query, kind}`, sorts the matching indices in {@link #orderOf}'s reading
+     * order, and slices at `budget`, returning `{indices, matched, total}`. Filtering runs before sorting so a
+     * 150,000-node scene scans linearly and sorts only the matches; an empty filter equals {@link #orderOf}.
+     * @param {Object} scene An {@link AgentOS.util.ObservatorySceneLayout#fromGraphScene} scene
+     * @param {'changed'|'relations'} by
+     * @param {Uint32Array|Number[]} relations Per node, its relations in the read
+     * @param {Object|null} [filter=null] `{query, kind}`
+     * @param {Number} [budget=Infinity] Maximum listed indices
+     * @param {Number} [now=Date.now()] Epoch ms
+     * @returns {{indices: Number[], matched: Number, total: Number}}
+     */
+    static projectOf(scene, by, relations, filter = null, budget = Infinity, now = Date.now()) {
+        const
+            nodes                      = scene?.nodes ?? [],
+            total                      = nodes.length,
+            {active, kind, queryLower} = ObservatoryNodeList.normalizeFilter(filter);
+
+        if (!active) {
+            const ordered = ObservatoryNodeList.orderOf(scene, by, relations, now);
+
+            return {
+                indices: budget < ordered.length ? ordered.slice(0, budget) : ordered,
+                matched: total,
+                total
+            }
+        }
+
+        const matchedIndices = [];
+
+        for (let i = 0; i < total; i++) {
+            const node = nodes[i];
+
+            if (kind && node.kind !== kind) {
+                continue
+            }
+
+            if (queryLower) {
+                const
+                    labelHit = node.label ? String(node.label).toLowerCase().includes(queryLower) : false,
+                    idHit    = labelHit || (node.id ? String(node.id).toLowerCase().includes(queryLower) : false);
+
+                if (!idHit) {
+                    continue
+                }
+            }
+
+            matchedIndices.push(i)
+        }
+
+        ObservatoryNodeList.sortIndices(matchedIndices, nodes, by, relations, now);
+
+        return {
+            indices: budget < matchedIndices.length ? matchedIndices.slice(0, budget) : matchedIndices,
+            matched: matchedIndices.length,
+            total
+        }
+    }
+
+    /**
+     * @summary Per-node incident edge count across `scene.edges` (self-loops counted once).
+     * @param {Object|null} scene
+     * @returns {Uint32Array}
+     */
+    static relationsOf(scene) {
+        const counts = new Uint32Array(scene?.nodes?.length ?? 0);
+
+        scene?.edges?.forEach(([from, to]) => {
+            counts[from]++;
+            from !== to && counts[to]++
+        });
+
+        return counts
+    }
+
+    /**
+     * @summary Sorts `indices` in place by {@link #orderOf}'s comparator (`changed` or `relations`, ties in layout order).
+     * @param {Number[]} indices
+     * @param {Object[]} nodes
+     * @param {'changed'|'relations'} by
+     * @param {Uint32Array|Number[]} relations
+     * @param {Number} [now=Date.now()]
+     * @returns {Number[]} `indices`
+     */
+    static sortIndices(indices, nodes, by, relations, now = Date.now()) {
         const
             {heatEvents} = ObservatorySceneLayout,
             {windowMs}   = ObservatorySceneLayout.attention,
-            {nodes}      = scene,
             at           = index => nodes[index].lastActivityAt ?? -Infinity,
             bearing      = index => heatEvents[nodes[index].kind] === true || heatEvents[nodes[index].kind] === 'open',
-            changed      = index => bearing(index) && now - at(index) <= windowMs ? 1 : 0,
-            indices      = nodes.map((node, index) => index);
+            changed      = index => bearing(index) && now - at(index) <= windowMs ? 1 : 0;
 
         return by === 'relations'
             ? indices.sort((a, b) => relations[b] - relations[a] || a - b)

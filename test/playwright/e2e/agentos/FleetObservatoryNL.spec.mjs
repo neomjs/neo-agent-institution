@@ -570,6 +570,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(details).toHaveAttribute('aria-expanded', 'true');
         await expect(currency).toBeVisible();
         await expect(currency).toHaveText(/^Current · captured .+ · complete$/);
+        await settle();
 
         const
             places = () => Promise.all(NODES.map(({id}) => locate(id))),
@@ -875,5 +876,115 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
         });
         expect(contrast, 'facts contrast in neo-theme-neo-light meets 4.5:1').toBeGreaterThanOrEqual(4.5)
+    });
+
+    test('the Nodes filter finds a session past the 500-row budget by title or kind, offers Open in Memories, and names a way out on no match (#958 AC-4, AC-5)', async ({page, neuralLink}) => {
+        const
+            {land, pane, selection, settle} = await openObservatory(page, neuralLink),
+            now          = Date.now(),
+            sessionId    = '96e284fc-e256-4ab7-9745-0eadea5b1a5c',
+            sessionNode  = {
+                id            : `neomjs/neo#summary_${sessionId}`,
+                label         : 'Sunset handover walkthrough session',
+                kind          : 'SESSION_SUMMARY',
+                authoredBy    : '@neo-opus-vega',
+                lastActivityAt: now - 30 * 86400000
+            },
+            nodes        = [
+                ...Array.from({length: 520}, (_, i) => ({
+                    id            : q(`issue-${2000 + i}`),
+                    label         : `Active issue ${i + 1}`,
+                    kind          : 'ISSUE',
+                    authoredBy    : '@tobiu',
+                    state         : 'OPEN',
+                    lastActivityAt: now - i * 60000
+                })),
+                sessionNode
+            ],
+            list         = pane.locator('.fm-observatory-node-list'),
+            rows         = list.locator('.neo-list-item'),
+            nodesHead    = pane.getByRole('button', {name: /^Nodes/}),
+            queryInput   = pane.getByPlaceholder('Filter label or id'),
+            kindSelect   = pane.getByRole('combobox', {name: 'Node kind'}),
+            caption      = pane.locator('.fm-observatory-nodes-caption'),
+            clearFilter  = pane.getByRole('button', {name: 'Clear filter'}),
+            openMemories = pane.getByRole('button', {name: 'Open in Memories'});
+
+        await land(read({
+            route : [q('issue-2000')],
+            nodes,
+            edges : [],
+            counts: {nodes: nodes.length, edges: 0, seeds: 1, communities: 1, paths: 0}
+        }));
+        await settle();
+
+        await nodesHead.click();
+        await expect(list).toBeVisible();
+        await expect(nodesHead).toHaveText('Nodes · 500 of 521');
+        await expect(rows).toHaveCount(500);
+        await expect(list).not.toContainText(sessionNode.label);
+
+        // Empty field keeps its clear trigger collapsed (width 0), never rendering an idle × icon
+        const emptyTriggerWidth = await pane.locator('.fm-observatory-nodes-filter .neo-trigger-clear').evaluate(
+            el => Math.round(el.getBoundingClientRect().width)
+        );
+        expect(emptyTriggerWidth).toBe(0);
+
+        // Clio AC-1 geometry + teal focus border check on TextField and Select
+        await queryInput.focus();
+        const styleFacts = await pane.evaluate(paneEl => {
+            const
+                wrapper = paneEl.querySelector('.fm-observatory-nodes-filter .neo-input-wrapper'),
+                field   = paneEl.querySelector('.fm-observatory-nodes-filter .neo-textfield'),
+                select  = paneEl.querySelector('.fm-observatory-nodes-filter .neo-selectfield-input'),
+                signal  = getComputedStyle(paneEl).getPropertyValue('--fm-signal').trim(),
+                probe   = document.createElement('span');
+            probe.style.color = signal;
+            paneEl.appendChild(probe);
+            const signalRgb = getComputedStyle(probe).color;
+            probe.remove();
+            return {
+                fieldHeight  : Math.round(field.getBoundingClientRect().height),
+                selectHeight : Math.round(select.getBoundingClientRect().height),
+                selectFontPx : getComputedStyle(select).fontSize,
+                focusBorder  : getComputedStyle(wrapper).borderTopColor,
+                signalRgb
+            };
+        });
+        expect(styleFacts.fieldHeight).toBe(26);
+        expect(styleFacts.selectHeight).toBe(26);
+        expect(styleFacts.selectFontPx).toBe('12px');
+        expect(styleFacts.focusBorder).toBe(styleFacts.signalRgb);
+
+        // AC-4: typing the session's title finds it past the 500-row budget; ArrowDown enters row 0 and offers Open in Memories
+        await queryInput.fill('Sunset handover walkthrough');
+        await expect(nodesHead).toHaveText('Nodes · 1 of 521');
+        await expect(caption).toHaveText('matching “Sunset handover walkthrough”');
+        await expect(rows).toHaveCount(1);
+
+        await page.keyboard.press('ArrowDown');
+        await expect(rows.nth(0)).toBeFocused();
+        await expect(selection).toHaveText(sessionNode.label);
+        await expect(openMemories).toBeVisible();
+
+        // AC-5: no-match reads as a state with its way out (Clear filter)
+        await queryInput.fill('zebra');
+        await expect(nodesHead).toHaveText('Nodes · 0 of 521');
+        await expect(caption).toHaveText('No nodes match “zebra”');
+        await expect(clearFilter).toBeVisible();
+        await expect(rows).toHaveCount(0);
+
+        await clearFilter.click();
+        await expect(nodesHead).toHaveText('Nodes · 500 of 521');
+        // While sessionNode (rank 521) stays selected, syncLists keeps it appended as row 501; clearing selection returns to 500
+        await expect(rows).toHaveCount(501);
+        await pane.locator('.fm-observatory-selected').getByRole('button', {name: 'Clear'}).click();
+        await expect(rows).toHaveCount(500);
+
+        // Kind filter alone finds SESSION_SUMMARY as well
+        await kindSelect.selectOption({label: 'SESSION_SUMMARY'});
+        await expect(nodesHead).toHaveText('Nodes · 1 of 521');
+        await expect(caption).toHaveText('kind SESSION_SUMMARY');
+        await expect(rows).toHaveCount(1);
     });
 });

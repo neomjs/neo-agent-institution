@@ -1027,4 +1027,87 @@ test.describe('AgentOS.view.fleet.goldenpath.ObservatoryContainer — the side p
 
         pane.destroy()
     });
+
+    test('the Nodes head debounces typed queries outside the keystroke, clears no-match with Clear filter without leaking a non-matching selection into the list, and flushes on ArrowDown into the rows (#958 AC-3, AC-5)', async () => {
+        const
+            extraNodes = Array.from({length: 12}, (_, i) => ({
+                id            : q(`issue-${500 + i}`),
+                label         : `Backlog item ${i + 1}`,
+                kind          : 'ISSUE',
+                state         : 'OPEN',
+                lastActivityAt: Date.now() - (i + 1) * 60000
+            })),
+            sessionNode = {
+                id            : 'neomjs/neo#summary_96e284fc-e256-4ab7-9745-0eadea5b1a5c',
+                label         : 'Sunset walkthrough session',
+                kind          : 'SESSION_SUMMARY',
+                lastActivityAt: Date.now() - 86400000 * 10
+            },
+            pane        = createPane({
+                listBudget: 5,
+                envelope  : graphRead({
+                    route : [q('issue-500')],
+                    nodes : [...extraNodes, sessionNode],
+                    edges : [],
+                    counts: {nodes: 13, edges: 0, seeds: 1, communities: 1, paths: 0}
+                })
+            }),
+            head        = pane.getReference('observatory-nodes-head'),
+            queryField  = pane.getReference('observatory-nodes-query'),
+            kindField   = pane.getReference('observatory-nodes-kind'),
+            clearButton = pane.getReference('observatory-nodes-filter-clear'),
+            nodes       = pane.getReference('observatory-nodes');
+
+        clearButton.useRippleEffect = false;
+        // unitTestMode builds no VNode tree; stub an empty root so TextField#onInputValueChange runs end to end
+        queryField.vnode = {childNodes: []};
+        let focusedRecord = null;
+        nodes.updateItemFocus = async record => { focusedRecord = record };
+
+        // Initially capped at listBudget=5; session sits outside the 5 listed rows
+        expect(pane.nodeStore.getCount()).toBe(5);
+        expect(pane.nodeStore.get(sessionNode.id)).toBeNull();
+
+        // Select issue-500 first so we also prove a non-matching selection never leaks into a filtered list
+        pane.selectedId = q('issue-500');
+
+        // Rapid keystrokes do NOT synchronously re-project inside the keystroke
+        let fillCalls = 0;
+        const origFill = pane.fillNodeList.bind(pane);
+        pane.fillNodeList = (...args) => { fillCalls++; return origFill(...args) };
+
+        queryField.onInputValueChange({value: 's'});
+        queryField.onInputValueChange({value: 'su'});
+        queryField.onInputValueChange({value: 'sun'});
+        queryField.onInputValueChange({value: 'sunset'});
+        expect(fillCalls, 'typing runs outside the keystroke (debounced)').toBe(0);
+
+        await new Promise(resolve => setTimeout(resolve, 180));
+        expect(fillCalls, 'settled debounce projects once').toBe(1);
+        expect(pane.nodeStore.items.map(r => r.id)).toEqual([sessionNode.id]);
+        expect(pane.getReference('observatory-nodes-title').text).toBe('Nodes · 1 of 13');
+        expect(pane.getReference('observatory-nodes-caption').text).toBe('matching “sunset”');
+
+        // No-match state ('zebra') empties the list (even with issue-500 still selected!) and exposes Clear filter
+        queryField.onInputValueChange({value: 'zebra'});
+        await new Promise(resolve => setTimeout(resolve, 180));
+        expect(pane.nodeStore.getCount()).toBe(0);
+        expect(pane.getReference('observatory-nodes-title').text).toBe('Nodes · 0 of 13');
+        expect(pane.getReference('observatory-nodes-caption').text).toBe('No nodes match “zebra”');
+        expect(clearButton.hidden).toBe(false);
+
+        // Clear filter restores today's full budgeted list immediately
+        clearButton.onClick({});
+        expect([queryField.value, kindField.value, clearButton.hidden, pane.nodeStore.getCount()])
+            .toEqual([null, null, true, 5]);
+
+        // Typing + immediate ArrowDown flushes the pending query before entering row 0
+        queryField.onInputValueChange({value: 'walkthrough'});
+        queryField.keys.onKeyDown({key: 'ArrowDown'});
+        expect(focusedRecord?.id).toBe(sessionNode.id);
+        expect(pane.selectedId).toBe(sessionNode.id);
+        expect(head.getReference('observatory-nodes-title').text).toBe('Nodes · 1 of 13');
+
+        pane.destroy()
+    });
 });
