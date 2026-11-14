@@ -322,6 +322,8 @@ class FleetAdmission extends Base {
             state     = partial ? 'partial' : 'live',
             answered  = {counts: Array.isArray(counts) ? counts : [], events: Array.isArray(events) ? events : []},
             admitted  = selector ? ActivityObserver.admitLive(owner, {a2a, ...answered, reason}, selector) : answered,
+            // the first page, and a rotation decision the store has not seen, re-read the seats' rotations for their cards
+            rotated   = !owner.activityWired || admitted.events.some(event => event?.type === 'session-rotation' && !store.get(event.eventId)),
             guidance  = FleetAdmission.deriveActivityGuidance({
                 capability,
                 events        : admitted.events,
@@ -334,6 +336,7 @@ class FleetAdmission extends Base {
         store.ingestSnapshot(admitted.events, {replace: !owner.activityWired});
         owner.activityWired     = true;
         owner.activityProfileId = profileId;
+        rotated && owner.loadWakeRoutes?.();
         FleetAdmission.expireOutageNote(owner, now);
 
         if (wasWired) {
@@ -449,7 +452,9 @@ class FleetAdmission extends Base {
             owner.rosterWired = true;
             // the first live snapshot replaces what the store holds wholesale — re-seat or clear a
             // selection made against a now-removed record
-            owner.reconcileSelection()
+            owner.reconcileSelection();
+            // the roster row carries no rotation: fresh records take the last wake-routes answer, when one landed first
+            owner.wakeRoutesSnapshot && owner.applyRotations?.(owner.wakeRoutesSnapshot)
         }
 
         FleetAdmission.expireOutageNote(owner, owner.rosterObservedAt);

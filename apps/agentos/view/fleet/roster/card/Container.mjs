@@ -78,6 +78,7 @@ import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
 import SeatLaunchAdmission from '../../../../util/SeatLaunchAdmission.mjs';
 import SeatModel         from '../../../../util/SeatModel.mjs';
 import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
+import SessionRotation   from '../../../../util/SessionRotation.mjs';
 import SourceHealth      from '../../../../util/SourceHealth.mjs';
 import Telltale          from '../../../../util/Telltale.mjs';
 
@@ -361,6 +362,13 @@ class AgentCard extends Container {
                 reference: 'card-lane'
             }]
         }, {
+            // the seat's session rotation (renderRotationLine): it names the fresh session once that one
+            // registered, reports a refusal or a missing session, and stays hidden for a quiet seat
+            ntype    : 'component',
+            cls      : ['fm-card-rotation'],
+            hidden   : true,
+            reference: 'card-rotation'
+        }, {
             // ONE honest source word-line: the fm-strip-<level> cls colours the ::before dot; the text
             // is summary-default and NAMES the abnormal source. Full facts reach via the drill (detail).
             ntype    : 'component',
@@ -514,6 +522,27 @@ class AgentCard extends Container {
         lane.update();
 
         return active
+    }
+
+    /**
+     * @summary Renders the seat's rotation line from `record.rotation` in the words
+     * {@link AgentOS.util.SessionRotation#describe} gives the journal too. The state rides the cls
+     * (`fm-rotation-<state>`), and a rotation without words hides the line.
+     * @param {Object} record
+     * @param {Number} now The card's wall clock, for the viewer-time words.
+     * @protected
+     */
+    renderRotationLine(record, now) {
+        const
+            line  = this.getReference('card-rotation'),
+            words = SessionRotation.describe(record.rotation, {now});
+
+        line.set({
+            cls   : ['fm-card-rotation', ...(words ? [`fm-rotation-${words.state}`] : [])],
+            hidden: !words,
+            text  : words?.text ?? null
+        });
+        line.changeVdomRootKey('title', words?.title ?? null)
     }
 
     /**
@@ -765,6 +794,7 @@ class AgentCard extends Container {
         me.getReference('card-engine').text = record.engineTag ?? '';
 
         me.refreshLaneLine(record, sources.lane);
+        me.renderRotationLine(record, now);
 
         // a badge only for a REPORTED positive count: null/absent = no stamped count → no badge.
         // The text is always the whole phrase; `data-count` is the narrow form the SCSS renders where

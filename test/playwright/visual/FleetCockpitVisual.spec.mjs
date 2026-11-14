@@ -209,6 +209,38 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-lane-empty.png')
     });
 
+    test('the session rotation reads on its card: the fresh session named, a refusal with its reason (#842)', async ({page}) => {
+        await bootSettledCockpit(page);
+
+        // the lane arm's two cards (its goldens are the BEFORE pair), each carrying a rotation at the fixture day
+        const laneLine      = 'control-plane state synchronization for source-alpha continuation',
+              laneClaimedAt = new Date(Date.now() - 12 * 60_000).toISOString(),
+              lane          = {source: 'memory-core:mailbox', state: 'wired', confidence: 'observed', reason: null},
+              rotations     = [
+                  {state: 'completed', reason: null, receiptId: 'MESSAGE:fixture-r1', decidedAt: '2026-07-05T21:17:00.000Z',
+                      oldSessionId: '1a2b3c4d-0000-4000-8000-000000000001', newSessionId: '5e6f7a8b-0000-4000-8000-000000000002', nextEligibleAt: null},
+                  {state: 'refused', reason: 'minimum-interval', receiptId: 'MESSAGE:fixture-r2', decidedAt: '2026-07-05T22:05:00.000Z',
+                      oldSessionId: '9c8d7e6f-0000-4000-8000-000000000003', newSessionId: null, nextEligibleAt: '2026-07-05T22:47:00.000Z'}
+              ];
+
+        await landFleetRoster(page, sampleRoster.map((row, index) => index < 2 ? {
+            ...row,
+            laneLine     : index === 0 ? laneLine : null,
+            laneClaimedAt: index === 0 ? laneClaimedAt : null,
+            rotation     : rotations[index],
+            sources      : {...row.sources, lane}
+        } : row));
+
+        const card = row => page.locator('.fm-agent-card', {
+            has: page.getByRole('img', {name: row.displayName, exact: true})
+        });
+
+        await expect(card(sampleRoster[0]).locator('.fm-card-rotation')).toContainText('· from 1a2b3c4d to 5e6f7a8b');
+        await expect(card(sampleRoster[1]).locator('.fm-card-rotation')).toContainText('rotation refused · minimum-interval · next ');
+        await expect(card(sampleRoster[0])).toHaveScreenshot('fleet-card-rotation-completed.png');
+        await expect(card(sampleRoster[1])).toHaveScreenshot('fleet-card-rotation-refused.png')
+    });
+
     test('the open work reads on the cards it waits on, and the merge queue sits after the bar; both skins', async ({page}) => {
         await bootSettledCockpit(page);
         await landFleetOpenWork(page, sampleOpenWork);

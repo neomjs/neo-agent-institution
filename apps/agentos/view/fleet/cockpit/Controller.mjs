@@ -674,6 +674,26 @@ class Controller extends FleetBatchController {
     }
 
     /**
+     * @summary Writes each seat's rotation from a wake-routes answer onto its roster record, as the Fleet
+     * answered it, so the card reads it with the rest of the row. A seat the answer omits keeps its record's
+     * rotation, and so does every seat of an older Fleet whose seats carry no `rotation`. An unreadable answer
+     * writes nothing.
+     * @param {Object|null} snapshot The `fleetWakeRoutes` answer `{capability, seats}`
+     * @protected
+     */
+    applyRotations(snapshot) {
+        const store = this.resolveFleetRosterStore();
+
+        if (!store || snapshot?.capability?.state === 'unavailable' || !Array.isArray(snapshot?.seats)) return;
+
+        snapshot.seats.forEach(({agentId, rotation}) => {
+            const record = agentId ? store.get(agentId) ?? store.allItems?.get(agentId) : null;
+
+            record && rotation !== undefined && record.set({rotation})
+        })
+    }
+
+    /**
      * @summary READ-OBSERVE: the decomposed per-seat wake-route envelope — the memories sibling,
      * no variance.
      * @param {Object} [params]
@@ -705,6 +725,7 @@ class Controller extends FleetBatchController {
 
         if (generation === me.wakeRoutesReadGeneration && !me.isDestroyed) {
             me.wakeRoutesSnapshot = snapshot;
+            me.applyRotations(snapshot);
 
             const livePane = me.component.getWakeRoutesPane();
 

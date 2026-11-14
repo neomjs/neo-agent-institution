@@ -1,9 +1,10 @@
-import ActorChip  from './ActorChipComponent.mjs';
-import Component  from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
-import Container  from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
-import EventChip  from './EventChipComponent.mjs';
-import NeoArray   from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
-import ViewerTime from '../../../util/ViewerTime.mjs';
+import ActorChip       from './ActorChipComponent.mjs';
+import Component       from '../../../../../node_modules/neo.mjs/src/component/Base.mjs';
+import Container       from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import EventChip       from './EventChipComponent.mjs';
+import NeoArray        from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
+import SessionRotation from '../../../util/SessionRotation.mjs';
+import ViewerTime      from '../../../util/ViewerTime.mjs';
 import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
 
 /**
@@ -155,6 +156,10 @@ export function getPullRequestStatus(event) {
  * @returns {String}
  */
 export function getActivityObjectText(event) {
+    if (event?.type === 'session-rotation') {
+        return SessionRotation.describe(event.payload)?.text ?? 'session rotation'
+    }
+
     const
         payload = event?.payload || {},
         subject = Neo.typeOf(payload.subject) === 'Object' ? payload.subject : null,
