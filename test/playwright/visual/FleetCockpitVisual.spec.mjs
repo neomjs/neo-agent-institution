@@ -2631,7 +2631,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(operator.getByRole('button', {name: '141 expired unanswered'})).toHaveAttribute('title', /^asks whose deadline passed without an answer since /);
         await expect(home).toHaveScreenshot('home-operator-expired.png');
 
-        // quieter than the counts that wait, and a link like them (#963): the secondary ink, the same dotted underline
+        // quieter than the counts that wait, and a link like them: the secondary ink, the same dotted underline
         const look = name => operator.getByRole('button', {name}).evaluate(el => {
             const style = getComputedStyle(el);
 

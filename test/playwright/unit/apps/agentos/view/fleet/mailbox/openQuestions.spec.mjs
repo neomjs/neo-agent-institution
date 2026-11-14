@@ -424,7 +424,7 @@ test.describe('AgentOS operator mailbox — the asks that expired unanswered (#9
         expect([pane().getPaneState(), stateLine().text]).toEqual(['degraded', 'expired asks could not be read · fleet: the expired-questions read failed']);
         expect(pane().store.getCount()).toBe(0);
 
-        // #963: the empty line names the read's own window, true for any length
+        // the empty line names the read's own window, true for any length
         box.expired = expired([]);
         expect([pane().getPaneState(), stateLine().text]).toEqual(['empty', `no ask expired since ${ViewerTime.formatViewerTime(SINCE, {now: NOW}).text}`]);
         // an answer without its window start names none (the view never shows one; the line stays true regardless)
