@@ -267,7 +267,7 @@ apps/agentos/util/HarnessChoice.mjs
     5353681c953a7d15c682f4f3f0b6aa489335d62f
 
 apps/agentos/util/KindRegistry.mjs
-    b33024720f4b84257113f91ea0664f7be2e26081
+    db75f6ce0962174983c55df11596f6041f6c50b3
 
 apps/agentos/util/LivenessCadence.mjs
     4275a2a020d6ceb01f5bcd72426653f8d1b57ec3
