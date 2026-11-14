@@ -78,7 +78,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    6d55714a7a47795c258c72fc1d8d3842b66d9e13
+    3f1165bc944d5f9a80eb7286fa356779beccbe40
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -243,7 +243,7 @@ apps/agentos/util/FamilyTokens.mjs
     72203dc48ca18ac9d4361cea40730d941ee64428
 
 apps/agentos/util/FleetAdmission.mjs
-    6deb18d8d6acf0c725ecbdcef3384778fb092f9d
+    a76a3ac80f737bc1682ce718d5585767b0d6c04a
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
     642205615b8830d72cd87b4db7044d8f0f012baf
@@ -329,6 +329,9 @@ apps/agentos/util/SeatModel.mjs
 apps/agentos/util/SeatSessionFolder.mjs
     5c407e6a03f2b440af221d6a6e314aa7f89f6f53
 
+apps/agentos/util/SessionRotation.mjs
+    bfa62a469a6fe9b71b474ce92100fda795e48f64
+
 apps/agentos/util/SetupAsks.mjs
     5631188ae6808c721ebb030ad191ea3bc70b797b
 
@@ -384,7 +387,7 @@ apps/agentos/view/fleet/activity/EventChipComponent.mjs
     c36dac634fbb1cccaae121e947b5a41aae2149a7
 
 apps/agentos/view/fleet/activity/RowContainer.mjs
-    55fc244f9104bdffce056d7529f4d57f3ebee12b
+    bca7c0418ac3297f6a95d5ff89b7f948ba0a7a96
 
 apps/agentos/view/fleet/activity/SelectionModel.mjs
     bccf458eaa03ae2f4d576211589c0a649b64f93f
@@ -399,7 +402,7 @@ apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
     0a0fefc83e395d6928cb4e0433711f4d48ed35db
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
-    76a872a8a6a784f5f36f3ed0d4d92905e6b25d4a
+    f129da6440af252351cbd972fbdcd4bbc9c93324
 
 apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
@@ -609,7 +612,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     0f9fcc21fa8136e8bf79c7bfd0722aef1b4f0973
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    14a4708072c78342d2957b16cb36f9f56602e022
+    5c64c0889deb3e9e3cb64f1454cc665274c13e94
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a
@@ -798,7 +801,7 @@ resources/scss/src/apps/agentos/fleet/roster/Container.scss
     fcc36aa714d4d9f54bdd4973e17c7d85daf2b12d
 
 resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    a9ebad8f28cf69f62e297360acbb71701673efc9
+    42aa518aa3db04288e41dc55fb9fbc7a89e88e7e
 
 resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
     a44934170253161f3d0067031116e88e141223b3
@@ -987,7 +990,7 @@ test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-ligh
     0b0558d78d9280939f768069047dbf72cd21f849
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    570442cffb29323bd78612011dd4f24f2cc8321f
+    83fc959ff081af02d6a24d12658075cdbbb690d0
 
 test/playwright/visual/SystemViewVisual.spec.mjs
     a4ff9bcf49ccb1e4fac425d421d5fdea8412f089
@@ -1129,6 +1132,12 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-pr
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-preparing.png
     dbe7f5f3ff3cf91d23e8c1991cef55d3361a3861
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-rotation-completed.png
+    510f6f1770e246ce7d7ff80983d32b8ae8cbcfe0
+
+test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-rotation-refused.png
+    8bb55de2bc31b9e266b4ec82b18264787d7ae536
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-skills-unverified-light.png
     bf65466d1e0cec380bf5eb2dfe16b595f8131ebc
