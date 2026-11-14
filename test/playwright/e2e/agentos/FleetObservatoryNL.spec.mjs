@@ -987,4 +987,70 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
         await expect(caption).toHaveText('kind SESSION_SUMMARY');
         await expect(rows).toHaveCount(1);
     });
+
+    test('the split shows an existing selection\'s row: entered from the Nodes head after the list scrolled away or after a canvas selection, and opened by a click on the head (#972)', async ({page, neuralLink}) => {
+        const
+            {land, pane, selection, selectNode, settle, stats} = await openObservatory(page, neuralLink),
+            now       = Date.now(),
+            nodes     = Array.from({length: 60}, (_, i) => ({
+                id            : q(`issue-${1000 + i}`),
+                label         : `Fixture work item ${i + 1}`,
+                kind          : 'ISSUE',
+                authoredBy    : i % 2 ? '@neo-opus-vega' : '@tobiu',
+                state         : 'OPEN',
+                lastActivityAt: now - i * 60000
+            })),
+            list      = pane.locator('.fm-observatory-node-list'),
+            rows      = list.locator('.neo-list-item'),
+            nodesHead = pane.getByRole('button', {name: /^Nodes/}),
+            teamHead  = pane.getByRole('button', {name: /^Team/}),
+            clearBtn  = pane.locator('.fm-observatory-selected-actions').getByRole('button', {name: 'Clear'}),
+            // the row and the one below it sit inside the list's visible box
+            inView    = async index => {
+                const [listBox, rowBox, nextBox] = await Promise.all([list.boundingBox(), rows.nth(index).boundingBox(), rows.nth(index + 1).boundingBox()]);
+
+                return Boolean(listBox && rowBox && nextBox && rowBox.y >= listBox.y - 1 && nextBox.y + nextBox.height <= listBox.y + listBox.height + 1)
+            },
+            // a canvas selection of row 40's node while Team is open, the list scrolled to its top
+            selectOnCanvas = async () => {
+                await list.evaluate(el => el.scrollTo({top: 0, behavior: 'instant'}));
+                await teamHead.click();
+                await selectNode(q('issue-1040'));
+                await expect(selection).toHaveText(nodes[40].label)
+            };
+
+        await land(read({
+            route : [q('issue-1000')],
+            nodes,
+            edges : [{from: q('issue-1000'), to: q('issue-1001'), type: 'relates'}],
+            counts: {nodes: 60, edges: 1, seeds: 1, communities: 1, paths: 1}
+        }));
+        await settle();
+
+        // A: a list selection at row 40, the list scrolled back to its top, then ArrowDown on the Nodes head
+        await nodesHead.click();
+        await rows.nth(40).evaluate(el => el.scrollIntoView({block: 'end'}));
+        await rows.nth(40).click();
+        await expect(selection).toHaveText(nodes[40].label);
+        await list.evaluate(el => el.scrollTo({top: 0, behavior: 'instant'}));
+        await nodesHead.focus();
+        await page.keyboard.press('ArrowDown');
+        await expect(rows.nth(40), 'A: ArrowDown on the head focuses the selected row').toBeFocused();
+        await expect.poll(() => inView(40), {message: 'A: the selected row and the next one are in view'}).toBe(true);
+        expect((await stats()).selectedId).toBe(q('issue-1040'));
+
+        // B: a canvas selection while Team is open, then ArrowDown on the collapsed Nodes head
+        await clearBtn.click();
+        await selectOnCanvas();
+        await nodesHead.focus();
+        await page.keyboard.press('ArrowDown');
+        await expect(rows.nth(40), 'B: ArrowDown on the collapsed head focuses the selected row').toBeFocused();
+        await expect.poll(() => inView(40), {message: 'B: the split opens with the selected row in view'}).toBe(true);
+
+        // C: the same canvas selection, then a click on the Nodes head
+        await clearBtn.click();
+        await selectOnCanvas();
+        await nodesHead.click();
+        await expect.poll(() => inView(40), {message: 'C: a click on the head opens the split with the selected row in view'}).toBe(true)
+    });
 });

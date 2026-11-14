@@ -480,13 +480,13 @@ apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
     14f0c9064cc032c4b4d4010c3ed03f9adc3f698c
 
 apps/agentos/view/fleet/goldenpath/ObservatoryContainer.mjs
-    dfdee3583bec9de54f2d9348bc0749431f90d6a0
+    d641f417eac86bc265c73db88fd9d2de577b9a4a
 
 apps/agentos/view/fleet/goldenpath/ObservatoryHeadComponent.mjs
     81b499e811b0aa1024a3e6c7d3864c8d38bc4d99
 
 apps/agentos/view/fleet/goldenpath/ObservatoryNodeList.mjs
-    37094db860e51a53570e4e7b8a99feecf827da4b
+    cb6b41de22dbbbc2375f641aceb839f93fd367be
 
 apps/agentos/view/fleet/goldenpath/ObservatoryNodesHeadContainer.mjs
     b164021c4e17df5f221269356f48fc754d80b17b
