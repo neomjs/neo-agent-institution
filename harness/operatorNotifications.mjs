@@ -269,15 +269,20 @@ export function createOperatorNotifier({read, show, isFocused, intervalMs = OPER
  * nothing references can be collected while it waits in the OS's list, its click handler with it.
  *
  * A click shows the cockpit and, when there is one to show, points it at {@link OPERATOR_NOTICE_ROUTE}. Past
- * {@link OPERATOR_NOTICE_RETAINED} the oldest is let go, for an OS that never reports a close.
+ * {@link OPERATOR_NOTICE_RETAINED} the oldest is let go, for an OS that never reports a close. A notification the
+ * OS refuses is let go as well, and each distinct refusal is logged once: macOS refuses an app it has not
+ * authorized without showing anything, so the log line is the only trace of a delivery that never happened.
  * @param {Object} options
  * @param {Function} options.Notification Electron's notification class.
  * @param {Function} options.openCockpit `() => Boolean`: shows the cockpit window; falsy when there is none.
  * @param {Function} options.navigate `(route) => void`: points the shown cockpit at a route.
+ * @param {Function} [options.log] Receives one line per distinct delivery error.
  * @returns {{show: Function, clear: Function, readonly retained: Number}}
  */
-export function createNoticePresenter({Notification, openCockpit, navigate}) {
-    const live = new Set();
+export function createNoticePresenter({Notification, openCockpit, navigate, log = () => {}}) {
+    const
+        live    = new Set(),
+        refused = new Set();
 
     return {
         /**
@@ -294,6 +299,15 @@ export function createNoticePresenter({Notification, openCockpit, navigate}) {
                 openCockpit() && navigate(OPERATOR_NOTICE_ROUTE)
             });
             notification.on('close', release);
+            notification.on('failed', (event, error) => {
+                release();
+
+                if (!refused.has(error)) {
+                    refused.add(error);
+                    while (refused.size > OPERATOR_NOTICE_RETAINED) refused.delete(refused.values().next().value);
+                    log(`delivery failed: ${error}`)
+                }
+            });
 
             live.add(notification);
 

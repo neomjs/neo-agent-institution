@@ -1047,14 +1047,16 @@ function recordSmokeRunState(isolationRoot) {
  */
 function startOperatorNotifier(cockpit) {
     const
+        log       = line => console.log('HARNESS_OPERATOR_NOTICES ' + line),
         presenter = createNoticePresenter({
             Notification,
+            log,
             navigate   : route => cockpit.webContents.executeJavaScript(`location.hash = ${JSON.stringify(route)}`).catch(() => {}),
             openCockpit: () => appLifecycle.openCockpit()
         }),
         notifier  = createOperatorNotifier({
             isFocused: () => BrowserWindow.getFocusedWindow() !== null,
-            log      : line => console.log('HARNESS_OPERATOR_NOTICES ' + line),
+            log,
             read     : (method, params) => fleetCapability.read(method, params),
             show     : notice => presenter.show(notice)
         });

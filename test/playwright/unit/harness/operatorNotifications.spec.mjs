@@ -252,6 +252,32 @@ test.describe('harness operator notice presenter', () => {
         expect(presenter.retained).toBe(0)
     });
 
+    test('a refused notice is let go, and each distinct refusal is logged once', () => {
+        const
+            lines     = [],
+            presenter = createNoticePresenter({Notification: FakeNotification, log: line => lines.push(line), navigate: () => {}, openCockpit: () => true});
+
+        presenter.show({title: 'Ready to merge', body: 'neomjs/neo #2'});
+        presenter.show({title: 'Ready to merge', body: 'neomjs/neo #3'});
+        presenter.show({title: 'A question waits for you', body: '@neo-opus-vega: ask a'});
+
+        const [first, second, third] = FakeNotification.made;
+
+        first.listeners.failed({}, 'Notifications are not allowed for this application');
+        second.listeners.failed({}, 'Notifications are not allowed for this application');
+
+        expect(lines, 'the same refusal twice is one line').toEqual(['delivery failed: Notifications are not allowed for this application']);
+        expect(presenter.retained, 'a refused notice is let go').toBe(1);
+
+        third.listeners.failed({}, 'The operation could not be completed');
+
+        expect(lines).toEqual([
+            'delivery failed: Notifications are not allowed for this application',
+            'delivery failed: The operation could not be completed'
+        ]);
+        expect(presenter.retained).toBe(0)
+    });
+
     test('past the cap the oldest is let go, and a quit lets every one go', () => {
         const presenter = createNoticePresenter({Notification: FakeNotification, navigate: () => {}, openCockpit: () => true});
 
