@@ -47,7 +47,15 @@ test('native setup uses the shown running seat and stays busy until its answer',
     expect(calls).toEqual([{agentId: 'seat', activateNativeWake: true, expectedStartedAt: startedAt}]);
     resolve({state: 'running', nativeWakePreparation: {state: 'prepared'}, wakeRoute: {state: 'ready', adapter: 'primary-session'}});
     await request;
-    expect(record.nativeWakeFeedback).toContain('not yet confirmed');
+    expect(record.nativeWakeOutcome).toBe('ready');
+    runtime.updateRecord(record);
+    expect(runtime.getReference('native-wake-feedback').text).toContain('not yet confirmed');
+    expect(runtime.getReference('native-wake-description').hidden).toBe(false);
+    record.set({sources: null}); runtime.updateRecord(record);
+    expect(runtime.getReference('native-wake-feedback').hidden).toBe(true);
+    record.set({sources}); runtime.updateRecord(record);
+    record.set({nativeWakeSetup: {expectedStartedAt: '2026-11-15T10:00:00.000Z'}}); runtime.updateRecord(record);
+    expect(runtime.getReference('native-wake-feedback').hidden).toBe(true);
     record.set({nativeWakeSetup: null}); runtime.updateRecord(record);
     expect(runtime.getReference('native-wake-setup').hidden).toBe(true);
     runtime.onNativeWakeClick();
@@ -69,8 +77,47 @@ test('native setup refuses a stale selection or launch and reports backend refus
     expect(wrongSeat.accepted).toBe(false);
     expect(calls).toEqual([]);
     await Adapter.handleFleetLifecycleIntent({action: 'setupNativeWake', agentId: 'seat', expectedStartedAt: startedAt}, record, {bridge});
-    expect(record.nativeWakeFeedback).toContain('stopped or restarted');
+    expect(record.nativeWakeOutcome).toBe('seat-changed');
     expect(calls).toHaveLength(1);
+});
+
+test('native outcomes have family-specific, actionable view guidance without config or delivery claims', async () => {
+    const startedAt = '2026-11-15T09:00:00.000Z';
+    const record = createRecord({harnessType: 'codex-desktop', nativeWakeSetup: {expectedStartedAt: startedAt}});
+    const intent = {action: 'setupNativeWake', agentId: 'seat', expectedStartedAt: startedAt};
+    group = Neo.create(SeatRuntimeContainer, {appName, record});
+    for (const family of ['codex-desktop', 'antigravity']) {
+        record.set({harnessType: family});
+        for (const [result, expected] of [
+            [{nativeWakePreparation: {state: 'prepared'}, wakeRoute: {state: 'ready', adapter: 'primary-session'}}, 'ready'],
+            [{nativeWakePreparation: {state: 'prepared'}, wakeRoute: {state: 'unarmed'}}, 'not-ready'],
+            [{nativeWakePreparation: {state: 'refused', reason: 'running-seat-changed'}}, 'seat-changed'],
+            [{nativeWakePreparation: {state: 'refused', reason: 'receiver-mismatch'}}, 'unconfirmed'],
+            [{status: 'rejected', reason: '/private/secret/path'}, 'unconfirmed'],
+            [{}, 'unconfirmed']
+        ]) {
+            await Adapter.handleFleetLifecycleIntent(intent, record, {bridge: {startAgent: async () => result}});
+            expect(record.nativeWakeOutcome).toBe(expected);
+            group.updateRecord(record);
+            const text = group.getReference('native-wake-feedback').text;
+            expect(text).not.toMatch(/\/private|configuration|CLI/);
+            if (expected === 'ready') {
+                expect(text).toContain('not yet confirmed');
+                expect(text).toContain(family === 'codex-desktop' ? 'Hooks settings' : 'new main Antigravity session');
+                expect(group.getReference('native-wake-description').hidden).toBe(family === 'codex-desktop');
+            } else if (expected === 'seat-changed') expect(text).toContain('Refresh');
+            else expect(text).toContain('Retry setup');
+        }
+        await Adapter.handleFleetLifecycleIntent(intent, record, {bridge: {startAgent: async () => { throw new Error('/private/secret/path') }}});
+        expect(record.nativeWakeOutcome).toBe('unconfirmed');
+        group.updateRecord(record);
+        expect(group.getReference('native-wake-feedback').text).toContain('Retry setup');
+        expect(group.getReference('runtime-control-feedback').text).not.toContain('/private');
+        await Adapter.handleFleetLifecycleIntent(intent, record, {bridge: null});
+        expect(record.nativeWakeOutcome).toBe('unconfirmed');
+        group.updateRecord(record);
+        expect(group.getReference('native-wake-feedback').text).toContain('Retry setup');
+    }
 });
 
 test('native setup times out without admitting a second in-flight request', async () => {

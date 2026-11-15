@@ -197,8 +197,12 @@ class FleetAgent extends Model {
             name        : 'nativeWakeSetup',
             defaultValue: null
         }, {
-            // Local feedback for the last explicit setup attempt.
-            name        : 'nativeWakeFeedback',
+            // Typed local outcome for the last explicit setup attempt; the view owns its wording.
+            name        : 'nativeWakeOutcome',
+            defaultValue: null
+        }, {
+            // Launch the local outcome describes; a later process must not inherit its feedback.
+            name        : 'nativeWakeOutcomeStartedAt',
             defaultValue: null
         }, {
             // The original Start's generation and held/released/unknown pin, never inferred from installed state.

@@ -416,10 +416,14 @@ test.describe('AgentOS Fleet memories — authenticated resident-tab journey (#1
             await expect(pane).toContainText(/@neo-opus-ada · 3 of 3 sessions/);
             await page.evaluate(() => document.fonts.ready);
 
-            // the roster selection holds the inspector revealed over the register; the drill button and
-            // the goldens need the register uncovered with the resident still selected, at the width the
-            // goldens record beside a docked inspector, so it is pinned as a column
-            await page.locator('.neo-dashboard-dock-reveal-overlay .neo-dashboard-dock-reveal-pin').first().click();
+            // Set up the named inspector as a column before measuring the Memories register.
+            const pinned = await app.callMethod(cockpit.properties.id, 'applyDockZoneOperation',
+                [{operation: 'setItemPinned', itemId: 'detail', pinned: true}]);
+            expect(pinned.errors).toEqual([]);
+            expect(pinned.document.items.detail.autoHidden).toBe(false);
+            await app.callMethod(cockpit.properties.id, 'onDockZoneDocumentChange', [pinned.document]);
+            await expect(page.locator('.fm-fleet-cards > .neo-list-item', {hasText: /\bAda\b/})).toHaveAttribute('aria-selected', 'true');
+            await expect(page.locator('.fm-agent-detail')).toBeVisible();
             await expect(page.locator('.neo-dashboard-dock-rail-tab.pressed'), 'the pin ends the reveal').toHaveCount(0, {timeout: 10000});
             await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 

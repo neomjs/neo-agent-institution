@@ -120,11 +120,21 @@ class SeatRuntimeContainer extends Container {
         const eligible = wired && record.state === 'ok' && !record.launchRefusal &&
             ['codex-desktop', 'antigravity'].includes(family) && typeof capability?.expectedStartedAt === 'string' &&
             Boolean(capability.expectedStartedAt);
-        this.getReference('native-wake-description').set({hidden: !eligible, text: family === 'antigravity'
+        const nextStep = family === 'antigravity'
+            ? 'Start a new main Antigravity session.'
+            : 'If prompted, review this seat’s Hooks settings, then send an ordinary message in the seat.';
+        const hasCurrentOutcome = eligible && record.nativeWakeOutcomeStartedAt === capability?.expectedStartedAt && Boolean(record.nativeWakeOutcome);
+        this.getReference('native-wake-description').set({hidden: !eligible || hasCurrentOutcome && family === 'codex-desktop', text: family === 'antigravity'
             ? 'This configures a shared Antigravity sidecar for this macOS user; other Antigravity instances may load it.'
-            : 'This prepares native delivery for this managed Codex seat. If prompted, review its Hooks settings, then send an ordinary message in the seat.'});
+            : `This prepares native delivery for this managed Codex seat. ${nextStep}`});
         this.getReference('native-wake-setup').set({hidden: !eligible, disabled: Boolean(record.pendingAction) || record.controlReason?.kind === 'unauthorized'});
-        this.getReference('native-wake-feedback').set({hidden: !record.nativeWakeFeedback, text: record.nativeWakeFeedback || ''});
+        const feedbackText = {
+            ready        : `Native route ready. ${nextStep} Delivery is not yet confirmed.`,
+            'not-ready'  : 'Native route is not ready. Retry setup; delivery is not confirmed.',
+            'seat-changed': 'The seat stopped or restarted. Refresh and try again.',
+            unconfirmed  : 'Native delivery setup could not be confirmed. Retry setup; delivery is not confirmed.'
+        }[hasCurrentOutcome ? record.nativeWakeOutcome : null] || '';
+        this.getReference('native-wake-feedback').set({hidden: !feedbackText, text: feedbackText});
         const exitText = wired && record.state === 'off' && record.participationStatus !== 'operator_benched'
             ? SeatExitReason.detailText(record.exitReason) : null;
         const feedback = record.pendingAction ? 'Lifecycle request in progress…' : record.controlReason?.reason || record.launchRefusal || exitText || '';

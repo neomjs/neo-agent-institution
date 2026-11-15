@@ -260,12 +260,17 @@ class FleetLifecycleIntentAdapter extends Base {
         if (typeof bridge?.[method] !== 'function') {
             const controlReason = FleetLifecycleIntentAdapter.createControlReason(action, 'unauthorized', 'Fleet Registry bridge unavailable');
 
+            if (action === 'setupNativeWake') {
+                record.set({nativeWakeOutcome: 'unconfirmed', nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
+                FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason: {...controlReason, reason: ''}});
+                return {accepted: false, action, method, ok: false, status: 'unauthorized', isCurrent}
+            }
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason});
 
             return {accepted: false, action, method, ok: false, status: 'unauthorized', controlReason, isCurrent}
         }
 
-        if (action === 'setupNativeWake') record.set({nativeWakeFeedback: null});
+        if (action === 'setupNativeWake') record.set({nativeWakeOutcome: null, nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
         FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {
             controlReason: null,
             pendingAction: action
@@ -276,20 +281,22 @@ class FleetLifecycleIntentAdapter extends Base {
                 return {accepted: true, action, method, ok: false, status: 'superseded', isCurrent}
             }
 
-            if (action === 'setupNativeWake' && !controlReason) {
+            let nativeOutcome = null;
+            if (action === 'setupNativeWake') {
                 const preparation = result?.nativeWakePreparation;
-                record.set({nativeWakeFeedback: preparation?.state === 'prepared'
-                    ? result?.wakeRoute?.adapter === 'primary-session' && result.wakeRoute.state === 'ready'
-                        ? record.harnessType === 'antigravity'
-                            ? 'Native route ready. Start a new main Antigravity session; delivery is not yet confirmed.'
-                            : 'Native route ready. Review the seat hook if prompted and send an ordinary message; delivery is not yet confirmed.'
-                        : 'Preparation completed, but the native route is not ready. Check the receiver configuration, then retry. Delivery is not confirmed.'
-                    : preparation?.reason === 'running-seat-changed'
-                        ? 'The seat stopped or restarted. Refresh and try again.'
-                        : 'Native delivery setup was not confirmed. Check the seat wake setup and receiver configuration, then retry.'});
+                nativeOutcome = preparation?.reason === 'running-seat-changed' ? 'seat-changed'
+                    : preparation?.state === 'prepared' ? result?.wakeRoute?.adapter === 'primary-session' && result.wakeRoute.state === 'ready'
+                        ? 'ready' : 'not-ready'
+                        : 'unconfirmed';
+                record.set({nativeWakeOutcome: nativeOutcome, nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
+                // Native setup failures use the view's bounded guidance, not raw backend prose.
+                controlReason = null;
             }
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {controlReason, pendingAction: null});
 
+            if (nativeOutcome && nativeOutcome !== 'ready') {
+                return {accepted: true, action, method, ok: false, status: 'rejected', nativeOutcome, isCurrent}
+            }
             return controlReason
                 ? {accepted: true, action, method, ok: false, status: controlReason.kind, controlReason, isCurrent}
                 : {accepted: true, action, method, ok: true, status: 'settled', result, isCurrent}

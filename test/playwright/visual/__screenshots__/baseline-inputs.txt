@@ -78,7 +78,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    a258da02db479710c1d069fd942e8e17b0ac1c6b
+    e420f510c402b704c4ae13d291925f083746dfec
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -246,7 +246,7 @@ apps/agentos/util/FleetAdmission.mjs
     9191121d5ab6d2915ffdcab122a71d3cb1b0963a
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
-    a1ca879a19c960b232024f2478e6b441cf565734
+    e55ac4c9fc98fee47ceb381b1445401e3b3d0c28
 
 apps/agentos/util/FleetStartPlan.mjs
     35fe190e3be78f479f0da2a560421b3d3da5a5e6
@@ -465,7 +465,7 @@ apps/agentos/view/fleet/detail/SeatRenameContainer.mjs
     0f8b44b34a4e531fec2ee41db18547ac63b0671f
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
-    687959af0939ac48cdcd5223a0a18c28d5bdcad1
+    e64916b497b937b53f34a20677f2371ffa92f40a
 
 apps/agentos/view/fleet/detail/ThoughtStreamBodyContainer.mjs
     dd4154d69698f389093890b20967879c97ecbcc4
@@ -951,7 +951,7 @@ test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-wit
     48d5e2cfa45676649d1560c8edc5d72a2a0f026b
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs
-    d5b54d49f40f519bf57404265bf9883591e04e61
+    ec6288116c4ebef783286678ac31db60495d3d8e
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots/memories-summary-dark-chromium-darwin.png
     c11c98ff180b2940e1417c8676ccf6394624441b
