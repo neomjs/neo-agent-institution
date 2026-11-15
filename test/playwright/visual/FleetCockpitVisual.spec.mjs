@@ -1,7 +1,7 @@
 import {test, expect}                                                                                                                  from '@playwright/test';
 import {readFileSync, rmSync, writeFileSync}                                                                                           from 'node:fs';
 import path                                                                                                                            from 'node:path';
-import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks, landPlaneAdmission, landViewerWake} from '../fixtures.mjs';
+import {landAgentDefinitions, landBrainHealth, landFleetActivity, landFleetOpenWork, landFleetRecentTurns, landFleetRoster, landFleetSample, landFleetTasks, landPlaneAdmission} from '../fixtures.mjs';
 import {sampleDefinitions, sampleOpenWork, sampleRoster, sampleTasks}                                                                                        from '../fixture/fleetSample.mjs';
 import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}                                                                                         from '../fixture/pinnedSetupHost.mjs';
 
@@ -947,9 +947,6 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             lead       : globalThis.__fmMeasureBannerLead(),
             pillCut    : cut(banner),
             title      : banner.getAttribute('title') || '',
-            wakeCut    : cut(wake),
-            wakeFont   : wake ? getComputedStyle(wake).fontSize : null,
-            wakeLive   : wake ? wake.classList.contains('fm-viewer-wake-live') : null,
             wakePresent: Boolean(wake)
         }
     });
@@ -966,7 +963,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
 
             const read = await readRefusal(page);
 
-            expect(read.wakePresent, `${word}: an unarmed cold bar renders no wake chip`).toBe(false);
+            expect(read.wakePresent, `${word}: cockpit chrome renders no wake chip`).toBe(false);
             expect(read.lead?.text, `${word}: the lead says why, and what connecting fixes`).toMatch(/\bconnect\b/i);
             expect(/\bretry\b/i.test(read.lead.text), `${word}: the lead names Retry exactly when the button offers it`).toBe(action === 'Retry');
             expect(read.lead.text, `${word}: the lead carries no address and no code`).not.toMatch(/plane\.neo\.test|plane-[a-z]/);
@@ -981,27 +978,17 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             await expect(bar).toHaveScreenshot(golden)
         }
 
-        // Stamp an armed+disconnected viewer wake lane so the 821px→720px collapse-order checks
-        // continue guarding the armed-degraded `wake off` pill alongside the banner lead and buttons.
-        await landViewerWake(page, {
-            armed    : true,
-            everAlive: true,
-            stream   : {alive: 'unknown', reason: 'wake stream disconnected', capturedAt: 0}
-        });
-        await expect(page.locator('.fm-viewer-wake')).toHaveText('wake off');
-
         // just above the marks step the lead is the row's slack: it ellipsizes, while the longest pill
-        // word, the wake pill and every button keep their width
+        // word and every button keep their width
         await page.setViewportSize({width: 821, height: 800});
         await landPlaneRefusal(page, 'plane-unreachable', 'plane unreachable', 'Retry');
         await expect.poll(() => readRefusal(page).then(read => read.lead?.clipped), {message: 'the lead ellipsizes first', timeout: 10000}).toBe(true);
 
         const squeezed = await readRefusal(page);
 
-        expect(squeezed.wakePresent, 'the armed-degraded wake pill renders in the squeeze frame').toBe(true);
+        expect(squeezed.wakePresent, 'no wake pill renders in the squeeze frame').toBe(false);
         expect(squeezed.lead.width, 'the lead keeps a line to read').toBeGreaterThan(0);
         expect(squeezed.pillCut, 'the pill keeps its word').toBe(false);
-        expect(squeezed.wakeCut, 'the wake pill keeps its word').toBe(false);
         expect(squeezed.buttons, 'every button keeps its width').toEqual(wides['plane-unreachable'].buttons);
 
         await page.setViewportSize({width: 1280, height: 800});
@@ -1011,20 +998,16 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await page.waitForTimeout(400);
         await expect(bar).toHaveScreenshot('banner-pat-refused-light.png');
 
-        // the mark regime: the fleet pill retracts to its mark and its lead keeps one truncated line;
-        // no non-live state is a bare mark, so a degraded wake chip, which has no lead, keeps its word
+        // the mark regime: the fleet pill retracts to its mark and its lead keeps one truncated line
         await page.setViewportSize({width: 720, height: 900});
         await expect.poll(() => readRefusal(page).then(read => read.fontSize), {message: 'the pill drops to its mark', timeout: 10000}).toBe('0px');
 
         const narrow = await readRefusal(page);
 
-        expect(narrow.wakePresent, 'the armed-degraded wake pill stays rendered in the mark regime').toBe(true);
+        expect(narrow.wakePresent, 'no wake pill renders in the mark regime').toBe(false);
         expect(narrow.lead?.width, 'the reason keeps a visible line beside the mark').toBeGreaterThan(0);
         expect(narrow.lead.oneLine, 'the narrow lead never wraps').toBe(true);
         expect(narrow.title, 'the title still carries the whole sentence').toContain(narrow.lead.text);
-        expect(narrow.wakeLive, 'the fixture wake is degraded').toBe(false);
-        expect(narrow.wakeFont, 'a degraded wake keeps its word in the mark regime').not.toBe('0px');
-        expect(narrow.wakeCut, 'and the word reads whole').toBe(false);
 
         await expect(bar).toHaveScreenshot('banner-pat-refused-light-720.png')
     });

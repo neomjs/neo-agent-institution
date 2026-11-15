@@ -5,31 +5,29 @@ const {generateLocalBearerToken} = await loadAgentOsModule('ai/mcp/server/shared
 
 /**
  * @summary The viewer wake journey proven on the MOUNTED cockpit against the REAL
- * push-lane producer: bridge wired (two mints, two headers) → the cockpit's liveness tick rebinds
- * the wake stream to the NEW bridge (custody heal) → the fanout's `state` handshake vouches
- * `armedForViewer` + the subscription id → the telltale renders `wake live` → a digest pushed
- * through the production fan-out lands in the page (feed detail on the telltale title) →
- * transport killed → the telltale carries the consumer's own absence-of-signal reason → transport
- * restarted at the SAME endpoint → the consumer's OWN reconnect (no re-wire) restores `live`.
+ * push-lane producer: cold unwired → unarmed handshake → armed handshake → brokered cold catch-up
+ * drain → pushed digest → transport loss → self-reconnect, all rendered on the Wake routes
+ * diagnostics line while cockpit header chrome renders no wake chip for any viewer.
  *
  * The SSE surface is the PRODUCTION fan-out (`createFleetWakeFanout`) — registerStream's
  * handshake, arming via the real `armRelaySubscription` path (plane calls injected), and
  * `handleDigest` routing by proven identity. Only the HTTP shell around it is fixture: admission
  * is a bearer-equality check, and every OTHER wire surface answers 404 DELIBERATELY — the roster
  * and activity stay honestly degraded throughout, proving the viewer-wake axis is independent
- * chrome, not a spine passenger.
+ * of the spine.
  *
  * The cold-drain leg rides the capability's BROKERED digest-poll default: the vouched handshake
  * triggers one `POST /fleet/events/digest` carrying the SAME two headers as the stream, the
- * fixture answers the endpoint contract, and the drained count renders in the telltale detail —
- * no worker-realm injection, no mint outside the bridge closure. The consumer-level catch-up
- * mechanics (watermark continuity, fresh ≠ empty ≠ failed) stay pinned in
+ * fixture answers the endpoint contract, and the drained count renders in the Wake routes detail
+ * title — no worker-realm injection, no mint outside the bridge closure. The consumer-level
+ * catch-up mechanics (watermark continuity, fresh ≠ empty ≠ failed) stay pinned in
  * `fleetWakeStreamConsumer.spec.mjs`; the server-side brokering (viewer-credentialed MC session)
  * is pinned in `fleetWakeArming.spec.mjs` + `FleetServerComposition.spec.mjs`.
  *
- * Run: NEO_E2E_PORT=8121 npx playwright test agentos/FleetCockpitViewerWakeNL -c test/playwright/playwright.config.e2e.mjs --workers=1
+ * Run: NEO_E2E_PORT=8121 npx playwright test agentos/FleetCockpitViewerWakeNL -c test/playwright/playwright.config.e2e.nl.mjs --workers=1
  *
- * @see apps/agentos/view/fleet/cockpit/Container.mjs (ensureViewerWakeStream / stampViewerWake / syncViewerWakeTelltale)
+ * @see apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs (ensureViewerWakeStream / stampViewerWake)
+ * @see apps/agentos/view/fleet/wake/Container.mjs (WakeRoutePane.describeViewerWake)
  * @see apps/agentos/fleet/fleetWakeStreamConsumer.mjs (the browser consumer under test)
  * @see ai/services/fleet/fleetWakeFanout.mjs (the production push-lane producer)
  */
@@ -166,7 +164,7 @@ async function startWakeFixture({bearerToken, port = 0}) {
 }
 
 test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => {
-    test('bridge wire → custody rebind → armed handshake → live telltale → pushed digest → loss → self-reconnect', async ({page, neuralLink}) => {
+    test('cold unwired → unarmed handshake → armed handshake → cold drain → pushed digest → loss → self-reconnect in Wake routes', async ({page, neuralLink}) => {
         test.setTimeout(180_000);
 
         const pageErrors = [];
@@ -185,13 +183,20 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         const fixturePort = fixture.port;
 
-        // ── boot the cockpit (fail-closed bridge): cold/unarmed chrome renders no wake chip ──────
+        // ── boot the cockpit (fail-closed bridge): header chrome renders no wake chip ────────────
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
 
-        const telltale = page.locator('.fm-viewer-wake');
+        const telltale       = page.locator('.fm-viewer-wake'),
+              viewerWakeLine = page.locator('.fm-wakeroutes-viewer');
 
-        await expect(telltale, 'cold cockpit renders no wake chip before arming').toHaveCount(0);
+        await expect(telltale, 'cockpit chrome renders no wake chip on cold boot').toHaveCount(0);
+
+        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Wake routes'}).first().click();
+        await expect(viewerWakeLine, 'cold pre-handshake browser stream reads off, never a premature not armed verdict').toContainText(
+            'viewer push: off — wake stream disconnected',
+            {timeout: 20000}
+        );
 
         const app        = await neuralLink.connectToApp('AgentOS'),
               [cockpit0] = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
@@ -199,10 +204,10 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         expect(cockpitId, 'the FleetCockpit must exist in the App Worker').toBeTruthy();
 
-        // ── connect against an UNARMED server first: chip stays absent, Wake routes shows why ────
+        // ── connect against an UNARMED server first: Wake routes shows not armed, no header chip ─
         await wireAuthenticatedFleetBridge({app, fleetUrl: fixture.endpoint, bearerToken, mcAuthorization: mcMint});
 
-        // a fast deterministic cadence so the liveness tick performs the custody rebind promptly
+        // a fast deterministic cadence so the liveness tick performs the custody rebind and stamps
         await app.setProperties(cockpitId, {
             // every read due on every 300 ms pass, so the timer drives each edge
             livenessCadence     : {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0},
@@ -216,27 +221,23 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
             message: 'the unarmed SSE stream handshake must connect', timeout: 20000, intervals: [200]
         }).toBeGreaterThan(0);
 
-        await page.locator('.neo-dashboard-dock-rail-tab', {hasText: 'Wake routes'}).first().click();
-        const viewerWakeLine = page.locator('.fm-wakeroutes-viewer');
-        await expect(viewerWakeLine, 'diagnostics detail surfaces the unarmed reason').toContainText(
+        await expect(viewerWakeLine, 'Wake routes surfaces the unarmed reason').toContainText(
             'viewer push: not armed — composed wake stream connected · not armed for this viewer',
             {timeout: 20000}
         );
         await expect(telltale, 'an unarmed viewer sees no header wake chip').toHaveCount(0);
-        await page.keyboard.press('Escape');
 
         // ── restart armed at the SAME endpoint: consumer self-reconnects into armed live state ───
         await fixture.close();
         fixture = await startWakeFixture({bearerToken, port: fixturePort});
         expect((await fixture.arm(subscriptionId)).armed, 'the real arming path must arm against the injected plane').toBe(true);
 
-        // ── the armed handshake reaches the chrome: live, quietly ───────────────────────────────
-        await expect(telltale, 'the telltale reaches wake: live through the rebound bridge').toHaveText(/^wake live/, {timeout: 30000});
-        await expect(telltale).toHaveClass(/fm-viewer-wake-live/);
-
-        const liveTitle = await telltale.getAttribute('title');
-
-        expect(liveTitle, 'the title carries the armed reason').toContain('armed for this viewer');
+        // ── the armed handshake reaches Wake routes while chrome keeps zero wake chip ────────────
+        await expect(viewerWakeLine, 'Wake routes reaches live through the rebound bridge').toContainText(
+            'viewer push: live — composed wake stream connected · armed for this viewer',
+            {timeout: 30000}
+        );
+        await expect(telltale, 'an armed live viewer also renders no header wake chip').toHaveCount(0);
 
         // two mints, two headers, wire-level: the admitted stream presented the class-1 bearer and
         // the DISTINCT class-3 mint on its own header
@@ -247,9 +248,9 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
 
         // ── the COLD DRAIN through the brokered default: the vouched handshake fired exactly one
         // digest poll on the events origin, carrying the SAME two headers, and the drained count
-        // renders in the telltale detail — the catch-up truth lane, end-to-end in the page
-        await expect.poll(async () => await telltale.getAttribute('title') ?? '', {
-            message: 'the brokered cold drain reaches the telltale detail', timeout: 20000, intervals: [250]
+        // renders in the Wake routes detail title — the catch-up truth lane, end-to-end in the page
+        await expect.poll(async () => await viewerWakeLine.getAttribute('title') ?? '', {
+            message: 'the brokered cold drain reaches the Wake routes detail title', timeout: 20000, intervals: [250]
         }).toContain('catch-up: fresh (4 pending drained)');
 
         const drained = fixture.digestCalls[0];
@@ -260,7 +261,7 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
         expect(drained.body.subscriptionId).toBe(subscriptionId);
         expect(drained.body.sinceLogId).toBe(0);
 
-        // ── a digest pushed through the PRODUCTION fan-out lands in the page ────────────────────
+        // ── a digest pushed through the PRODUCTION fan-out lands in Wake routes detail ───────────
         fixture.fanout.handleDigest({
             subscriptionId,
             agentIdentity: VIEWER_IDENTITY,
@@ -276,31 +277,28 @@ test.describe('FleetCockpit — viewer wake push journey (#17130 leg 2)', () => 
             }
         });
 
-        await expect.poll(async () => await telltale.getAttribute('title') ?? '', {
-            message: 'the pushed digest reaches the telltale detail (the feed rendering)', timeout: 20000, intervals: [250]
+        await expect.poll(async () => await viewerWakeLine.getAttribute('title') ?? '', {
+            message: 'the pushed digest reaches the Wake routes detail title', timeout: 20000, intervals: [250]
         }).toContain('last signals: wake/digest');
 
-        // the wake axis is independent chrome: the spine may be degraded (every non-push surface
-        // refuses here, deliberately) while MY push lane is live — different surfaces, different truths
-        await expect(telltale).toHaveText(/^wake live/);
+        // the wake axis is independent of the spine: every non-push surface refuses here,
+        // deliberately, while the viewer push lane stays live in Wake routes
+        await expect(viewerWakeLine).toContainText('viewer push: live — composed wake stream connected · armed for this viewer');
 
-        // ── transport KILLED: the consumer's own observation reaches the chrome verbatim ────────
-        // The pill wears the status word pair only; the absence-of-signal reason rides the title's
-        // first line (the chrome grammar: labels are never sentences).
+        // ── transport KILLED: the consumer's own observation reaches Wake routes verbatim ────────
         await fixture.close();
 
-        await expect(telltale, 'a dead stream drops the pill to its off word — the reason rides the title, never a verdict')
-            .toHaveText('wake off', {timeout: 30000});
-        await expect(telltale).toHaveAttribute('title', /poll remains the truth lane/);
-        await expect(telltale).toHaveClass(/fm-viewer-wake-degraded/);
+        await expect(viewerWakeLine, 'a dead stream drops the Wake routes line to off with its verbatim reason')
+            .toHaveText(/^viewer push: off — wake stream disconnected .* — poll remains the truth lane$/, {timeout: 30000});
+        await expect(telltale).toHaveCount(0);
 
         // ── transport RESTARTED at the SAME endpoint: the consumer reconnects ITSELF ────────────
         fixture = await startWakeFixture({bearerToken, port: fixturePort});
         expect((await fixture.arm(subscriptionId)).armed).toBe(true);
 
         // no re-wire, no new bridge: recovery is the consumer's own backoff loop
-        await expect(telltale, 'the consumer self-reconnects and the telltale returns to live')
-            .toHaveText(/^wake live/, {timeout: 60000});
+        await expect(viewerWakeLine, 'the consumer self-reconnects and the Wake routes line returns to live')
+            .toContainText('viewer push: live — composed wake stream connected · armed for this viewer', {timeout: 60000});
 
         await fixture.close();
 

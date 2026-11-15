@@ -12,7 +12,7 @@ apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
 
 apps/agentos/TOKENS.md
-    c15a2088996b9fdb06913968c49161f6cc36bf59
+    7c730090e653c9bb36a72b4a87bd0166ab698cc2
 
 apps/agentos/VisualSystem.md
     5ab4fe754bd834a946a9da3bc8f96d28efa9ea96
@@ -222,7 +222,7 @@ apps/agentos/util/AddAgentFlow.mjs
     b3d0d001b1b4f51a91684e72f4b65d50b9b1f018
 
 apps/agentos/util/AgentFreshness.mjs
-    82ac3c17912b1cb8b6fcae46662b0701f238e87e
+    2289804e1062adef0e015bacc2db8413525546d1
 
 apps/agentos/util/BrainHealthRead.mjs
     dbb5519544c6bdf7adb141d3eff45bef4c4caae1
@@ -356,9 +356,6 @@ apps/agentos/util/Telltale.mjs
 apps/agentos/util/ViewerTime.mjs
     b0a16c6fa13ce2f786790c4d5ca9da88c8b1eb78
 
-apps/agentos/util/ViewerWakeTelltale.mjs
-    9ce31fa0b05de91901b8a2ceb7acae03c13b842c
-
 apps/agentos/view/NightshiftButton.mjs
     bf4efe1fbf237b925e49a555162e29d5b6e46f61
 
@@ -399,7 +396,7 @@ apps/agentos/view/fleet/cockpit/Container.mjs
     9dc68763d5f0cde80014ab190cb6c50fe67cd39a
 
 apps/agentos/view/fleet/cockpit/ControlToolbar.mjs
-    804fc380869508d3ab96a45d671647d9fef95f78
+    e54934258948d6581509e8cdfc500d618578b554
 
 apps/agentos/view/fleet/cockpit/Controller.mjs
     f139bcbe5b44374c4360bdad8ea3a31b3d586fce
@@ -417,16 +414,13 @@ apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
 
 apps/agentos/view/fleet/cockpit/StateProvider.mjs
-    83630363e2adb2529c181f010c111186dffe2d6c
+    d0a2486866d3ed404cce2519def4cc6e05ac9db8
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
     b221692b44ea6aa07a74cf17cb48d9e9eef8210c
 
 apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs
-    aabb1fd7e3309fe7ec128e5f68d1356acdc38de6
-
-apps/agentos/view/fleet/cockpit/ViewerWakeTelltaleComponent.mjs
-    e6f68e30332c7cb45da28e78c90aee72d71872e6
+    ace8b3c5b0f6e52d4c3faafd738263e543ecfed3
 
 apps/agentos/view/fleet/detail/AgentConfigComponent.mjs
     5a0a48c9033b1a311da9ade7cad3c97caf411f86
@@ -636,7 +630,7 @@ apps/agentos/view/fleet/tasks/List.mjs
     2907fa3afc910389ce58638a80202b9740cffede
 
 apps/agentos/view/fleet/wake/Container.mjs
-    0989bd32a3a8f69140a279c6433ec66a8873d279
+    e502c665310ce0d69344137f1214c4342d57cd05
 
 apps/agentos/view/home/Canvas.mjs
     4db7cdfbf16f8d7374ebc0a6bf815fd636861b82
@@ -678,7 +672,7 @@ resources/scss/src/apps/agentos/NightshiftButton.scss
     323cbfd4a54217691769fbee3edced0e77202c7a
 
 resources/scss/src/apps/agentos/Viewport.scss
-    e657e0c50666b785bcf2b9e31558d376f10ccd3a
+    58af1b7f3f2969495722e2d3f902c0e439f378e9
 
 resources/scss/src/apps/agentos/accounts/List.scss
     94fa05801c3e3642c6586cb2c9072418bfa8081c
@@ -702,13 +696,10 @@ resources/scss/src/apps/agentos/fleet/catchup/Container.scss
     a2bb58e723c846f130e6a1c3d942440cca6f4d0b
 
 resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    145f2f4db994d542e33c3d93da90f89dd97bb1b7
+    a7470543a814e55b6ebdcdb169b637eca91062c3
 
 resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
     a76f2a2b6be68b4938b5625da00489fbb71a85f7
-
-resources/scss/src/apps/agentos/fleet/cockpit/ViewerWakeTelltaleComponent.scss
-    c20dde34f57fc46edab4407001b4aab73a761067
 
 resources/scss/src/apps/agentos/fleet/detail/AgentConfigComponent.scss
     f4c6b989675a533ab65d419a1b897e38c64a8153
@@ -765,7 +756,7 @@ resources/scss/src/apps/agentos/fleet/instances/SwitcherButton.scss
     15743959d3ab65e1e5732c333be9db3432667dc4
 
 resources/scss/src/apps/agentos/fleet/mailbox/Chips.scss
-    17c59a0093ba8b8e9a959ae5dd56c474f8ecd8e8
+    db490bc092a2009b9926a8bdeaa2d08455c16a29
 
 resources/scss/src/apps/agentos/fleet/mailbox/ComposeForm.scss
     911485c152a176b6252412802bc0b441aec2b0c9
@@ -990,7 +981,7 @@ test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-ligh
     0b0558d78d9280939f768069047dbf72cd21f849
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    05e61589a03f14093d3579ecb878d5d816fc0b45
+    1878fa44c7697ecc675dd79ed36624a294b19fef
 
 test/playwright/visual/SystemViewVisual.spec.mjs
     a4ff9bcf49ccb1e4fac425d421d5fdea8412f089
@@ -1038,10 +1029,10 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-not-a-
     cd3e20d23fffc8d486d85270e91cc332ffbc64ef
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light-720.png
-    b2e54f262fb1a4a06dd0961e2d9b767f4e2903a6
+    a8123b0e477e2595e0e5691deb2b9f5fe92dbbaa
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light.png
-    c59d7db048429ecf33952069567d5c1f9cf4d21c
+    935312c7bd1a313c2bbd1a76cec4b117daacc2f9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused.png
     0f352289b64f14eca64a9a49d6b195412d024db4
@@ -1317,7 +1308,7 @@ test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-tasks.pn
     abd4147f21256a5a84efd43b9343a9deb2202fb5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-wake-routes.png
-    f95f79fc6ec97ebbb404b18db598cae5f1a931e6
+    7b26babcfe4dcbd242d6f5d909da7cfcf2808a48
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-active.png
     f43bbd5dac030b3039b19cc9cbde84fa63f595f8

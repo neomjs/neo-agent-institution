@@ -62,10 +62,8 @@ test('the declared chrome binds the derived truths — banner revealed with the 
     // the reconnect affordance binds the SAME derived leaf — visible on any spoken verdict
     expect(reconnect.hidden).toBe(false);
 
-    // the wake chip binds its own derivation and hides on a cold unarmed boot
-    expect(telltale.hidden, 'an unarmed cold viewer sees no wake chip').toBe(true);
-    expect(telltale.text).toBe('wake off');
-    expect(telltale.cls).toContain('fm-viewer-wake-degraded');
+    // no wake chip renders in cockpit chrome; the viewer's push state lives in Wake routes
+    expect(telltale).toBeNull();
 
     cockpit.destroy();
     shell.destroy()
@@ -159,48 +157,6 @@ test('RA-1 witness: the cockpit derivation writes the PARENT-owned instanceState
 
     cockpit.destroy();
     parentProvider.destroy()
-});
-
-test('RA-2 falsifier: the wake title moves while the visible text stays byte-identical — no channel rides another as a change proxy', async () => {
-    const shell   = createShellProvider(),
-          cockpit = Neo.create(FleetCockpit, {
-              stateProvider: {
-                  module: CockpitStateProvider,
-                  parent: shell,
-                  stores: {
-                      fleetActivityEvents: {module: FleetActivityEvents},
-                      viewerWakeFeed     : {module: ViewerWakeFeed}
-                  }
-              }
-          });
-
-    await cockpit.refreshPromise;
-
-    const
-        provider = cockpit.getStateProvider(),
-        telltale = cockpit.getReference('viewer-wake-telltale'),
-        stream   = {alive: false, reason: 'wake stream disconnected', capturedAt: 1000};
-
-    // stamp 1: armed + degraded, no catch-up observation
-    provider.setData('viewerWake', {armed: true, everAlive: true, stream, catchUp: {state: null, at: null, pending: null}, signals: []});
-
-    expect(telltale.hidden).toBe(false);
-
-    const text1  = telltale.text,
-          title1 = telltale.chipTitle;
-
-    // stamp 2: the catch-up observation arrives — the visible text derives ONLY from the stream
-    // half here, so it stays byte-identical while the drill detail (title) must move
-    provider.setData('viewerWake', {armed: true, everAlive: true, stream, catchUp: {state: 'fresh', at: 2000, pending: 3}, signals: []});
-
-    expect(telltale.text, 'the visible chip line is byte-identical across the stamps').toBe(text1);
-    expect(telltale.chipTitle, 'the drill detail moved anyway — its own first-class binding').not.toBe(title1);
-    expect(telltale.chipTitle).toContain('catch-up: fresh (3 pending drained)');
-    expect(telltale.vdom.title).toBe(telltale.chipTitle);
-    expect(telltale.vdom['aria-label']).toContain('Viewer wake push');
-
-    cockpit.destroy();
-    shell.destroy()
 });
 
 // The leaf-complete witness the fakes cannot give: `setData` drills object values into leaf paths
@@ -464,77 +420,6 @@ test('a boot refusal binds the banner button to its way back: Retry, then Connec
 
         expect(button.text).toBe('Connect');
         expect(button.iconCls).toContain('fa-plug')
-    } finally {
-        cockpit.destroy();
-        parent.destroy()
-    }
-});
-
-test('viewer-wake-telltale binds hidden: absent when unarmed, revealed when armed or session-alive, hidden again on disarm', async () => {
-    const
-        parent  = createShellProvider(),
-        cockpit = Neo.create(FleetCockpit, {
-            stateProvider: {
-                module: CockpitStateProvider,
-                parent,
-                stores: {
-                    fleetActivityEvents: {module: FleetActivityEvents},
-                    viewerWakeFeed     : {module: ViewerWakeFeed}
-                }
-            }
-        });
-
-    try {
-        await cockpit.refreshPromise;
-
-        const
-            provider = cockpit.getStateProvider(),
-            telltale = cockpit.getReference('viewer-wake-telltale');
-
-        expect(telltale.hidden, 'cold boot starts hidden').toBe(true);
-
-        provider.setData('viewerWake', {
-            armed    : false,
-            everAlive: false,
-            stream   : {alive: true, reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)', capturedAt: 1000},
-            catchUp  : {state: null, at: null, pending: null},
-            signals  : []
-        });
-
-        expect(telltale.hidden, 'header chip stays absent when not armed').toBe(true);
-        expect(telltale.chipTitle).toContain('not armed for this viewer (missing class-3 mint)');
-
-        provider.setData('viewerWake', {
-            armed    : true,
-            everAlive: true,
-            stream   : {alive: true, reason: 'composed wake stream connected · armed for this viewer', capturedAt: 2000},
-            catchUp  : {state: null, at: null, pending: null},
-            signals  : []
-        });
-
-        expect(telltale.hidden, 'header chip reveals once push is armed').toBe(false);
-        expect(telltale.text).toBe('wake live');
-
-        provider.setData('viewerWake', {
-            armed    : null,
-            everAlive: true,
-            stream   : {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane', capturedAt: 3000},
-            catchUp  : {state: null, at: null, pending: null},
-            signals  : []
-        });
-
-        expect(telltale.hidden, 'mid-session drop stays visible as wake off').toBe(false);
-        expect(telltale.text).toBe('wake off');
-
-        provider.setData('viewerWake', {
-            armed    : false,
-            everAlive: false,
-            stream   : {alive: true, reason: 'composed wake stream connected · not armed for this viewer (revoked)', capturedAt: 4000},
-            catchUp  : {state: null, at: null, pending: null},
-            signals  : []
-        });
-
-        expect(telltale.hidden, 'explicit not-armed verdict hides the chip again').toBe(true)
     } finally {
         cockpit.destroy();
         parent.destroy()

@@ -442,14 +442,14 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
         }
     });
 
-    test('Wake routes binds viewerWake so the unarmed push reason stays reachable while the header chip is hidden', async () => {
+    test('Wake routes binds viewerWake as the sole viewer-push surface while header chrome carries no wake chip', async () => {
         cockpit = create();
 
         const
             provider = cockpit.getStateProvider(),
-            telltale = cockpit.getReference('viewer-wake-telltale'),
             result   = cockpit.applyDockZoneOperation({operation: 'setItemAutoHidden', itemId: 'wakeRoutes', autoHidden: false});
 
+        expect(cockpit.getReference('viewer-wake-telltale')).toBeNull();
         expect(result.errors).toEqual([]);
         await cockpit.onDockZoneDocumentChange(result.document);
         await cockpit.refreshPromise;
@@ -459,33 +459,30 @@ test.describe('AgentOS.view.fleet.cockpit.Container — the duties are declared 
             pane = cockpit.getWakeRoutesPane(),
             line = pane.getReference('viewer-wake-line');
 
-        expect(telltale.hidden).toBe(true);
         expect(line.hidden).toBe(false);
         expect(line.text).toBe('viewer push: not armed — wake push not wired — this composition carries no direct-browser wake capability');
 
         provider.setData('viewerWake', {
-            armed    : false,
-            everAlive: false,
-            stream   : {alive: true, reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)', capturedAt: 1000},
-            catchUp  : {state: null, at: null, pending: null},
-            signals  : []
+            armed  : false,
+            stream : {alive: true, reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)', capturedAt: 1000},
+            catchUp: {state: null, at: null, pending: null},
+            signals: []
         });
 
-        expect(telltale.hidden).toBe(true);
         expect(line.text).toBe('viewer push: not armed — composed wake stream connected · not armed for this viewer (missing class-3 mint)');
-        expect(line.vdom.title).toBe('composed wake stream connected · not armed for this viewer (missing class-3 mint)');
+        expect(line.vdom.title).toContain('composed wake stream connected · not armed for this viewer (missing class-3 mint)');
 
         provider.setData('viewerWake', {
-            armed    : true,
-            everAlive: true,
-            stream   : {alive: true, reason: 'composed wake stream connected · armed for this viewer', capturedAt: 2000},
-            catchUp  : {state: null, at: null, pending: null},
-            signals  : []
+            armed  : true,
+            stream : {alive: true, reason: 'composed wake stream connected · armed for this viewer', capturedAt: 2000},
+            catchUp: {state: 'fresh', at: 2000, pending: 3},
+            signals: [{kind: 'wake/digest', emittedAt: null, receivedAt: 2000}]
         });
 
-        expect(telltale.hidden).toBe(false);
-        expect(telltale.text).toBe('wake live');
-        expect(line.text).toBe('viewer push: live — composed wake stream connected · armed for this viewer')
+        expect(cockpit.getReference('viewer-wake-telltale')).toBeNull();
+        expect(line.text).toBe('viewer push: live — composed wake stream connected · armed for this viewer');
+        expect(line.vdom.title).toContain('catch-up: fresh (3 pending drained)');
+        expect(line.vdom.title).toContain('last signals: wake/digest')
     });
 
     test('a prior selection survives a direct Review write; a write that hides the inspector or names nothing declared seats nobody', async () => {

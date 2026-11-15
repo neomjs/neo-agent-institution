@@ -21,7 +21,7 @@
        indicator's nearest ancestors instead (the tab-family block below). */
 
     /* The chip-family geometry contract (TOKENS.md §04): ONE anatomy for every status/kind
-       idiom — telltale, spine banner, viewer-wake, event chips, state dots. The family owns
+       idiom — telltale, spine banner, event chips, state dots. The family owns
        GEOMETRY only; color value-authority stays with the theme twins (--fm-state-* / --fm-kind-*),
        and each idiom binds it through one local indirection. Theme-neutral by construction, so
        both skins inherit the same anatomy for free. */

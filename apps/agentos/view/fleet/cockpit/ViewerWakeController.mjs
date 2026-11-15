@@ -31,32 +31,6 @@ class ViewerWakeController extends ComponentController {
      */
     viewerWakeBridge = null
 
-    /**
-     * Whether the viewer's push lane has been armed and live during the current bridge session.
-     * @member {Boolean} viewerWakeEverAlive=false
-     * @protected
-     */
-    viewerWakeEverAlive = false
-
-    /**
-     * Short bounded timer polling for the initial SSE `state` frame after opening a stream.
-     * @member {*|null} viewerWakeHandshakeTimer=null
-     * @protected
-     */
-    viewerWakeHandshakeTimer = null
-
-
-    /**
-     * @summary Cancel any pending post-open handshake check.
-     * @protected
-     */
-    clearViewerWakeHandshakeTimer() {
-        if (this.viewerWakeHandshakeTimer !== null) {
-            clearTimeout(this.viewerWakeHandshakeTimer);
-            this.viewerWakeHandshakeTimer = null
-        }
-    }
-
 
     /**
      * @summary The provider-owned bounded viewer-wake feed; absent composition yields no feed.
@@ -85,35 +59,26 @@ class ViewerWakeController extends ComponentController {
             {bridge} = me;
 
         if (!bridge?.openWakeStream) {
-            me.clearViewerWakeHandshakeTimer();
-
             if (me.viewerWakeConsumer) {
                 me.viewerWakeConsumer.stop();
                 me.viewerWakeConsumer = null;
                 me.viewerWakeBridge   = null
             }
 
-            me.viewerWakeEverAlive = false;
             me.stampViewerWake({
-                armed : false,
-                stream: {
-                    alive     : 'unknown',
-                    reason    : 'wake push not wired — this composition carries no direct-browser wake capability',
-                    capturedAt: Date.now()
-                }
+                alive     : 'unknown',
+                reason    : 'wake push not wired — this composition carries no direct-browser wake capability',
+                capturedAt: Date.now()
             });
             return
         }
 
         if (me.viewerWakeConsumer && me.viewerWakeBridge === bridge) {
             me.stampViewerWake();
-            me.watchViewerWakeHandshake(me.viewerWakeConsumer);
             return
         }
 
-        me.clearViewerWakeHandshakeTimer();
         me.viewerWakeConsumer?.stop();
-        me.viewerWakeEverAlive = false;
 
         me.viewerWakeConsumer = bridge.openWakeStream({
             onWake: signal => me.onViewerWakeSignal(signal),
@@ -122,46 +87,7 @@ class ViewerWakeController extends ComponentController {
         me.viewerWakeBridge = bridge;
 
         me.viewerWakeConsumer.start();
-        me.stampViewerWake();
-        me.watchViewerWakeHandshake(me.viewerWakeConsumer)
-    }
-
-
-    /**
-     * @summary Observe the asynchronous SSE `state` handshake promptly after stream start or
-     * reconnect without adding non-whitelisted options to `openWakeStream`.
-     * @param {Object} consumer
-     * @param {Number} [remaining=20]
-     * @protected
-     */
-    watchViewerWakeHandshake(consumer, remaining = 20) {
-        const
-            me       = this,
-            snapshot = consumer?.describe?.() ?? null;
-
-        if (me.isDestroyed || me.viewerWakeConsumer !== consumer || remaining <= 0) {
-            return
-        }
-
-        if (!snapshot || !('lastState' in snapshot) || snapshot.lastState !== null || (snapshot.consecutiveDrops > 0 && !snapshot.connected)) {
-            return
-        }
-
-        if (me.viewerWakeHandshakeTimer !== null) {
-            return
-        }
-
-        me.viewerWakeHandshakeTimer = setTimeout(() => {
-            me.viewerWakeHandshakeTimer = null;
-
-            if (me.isDestroyed || me.viewerWakeConsumer !== consumer) {
-                return
-            }
-
-            me.stampViewerWake();
-            me.watchViewerWakeHandshake(consumer, remaining - 1)
-        }, 100);
-        me.viewerWakeHandshakeTimer?.unref?.()
+        me.stampViewerWake()
     }
 
 
@@ -192,44 +118,33 @@ class ViewerWakeController extends ComponentController {
 
 
     /**
-     * @summary Write the consumer's OWN observations into the provider (`viewerWake`) — the
-     * telltale and diagnostics surfaces bind and render from one writer.
-     * @param {Object|null} [override=null] Optional `{armed, everAlive, stream}` override.
+     * @summary Write the consumer's OWN observations into the provider (`viewerWake`) so the
+     * Wake routes diagnostics surface binds and renders from one writer.
+     * @param {Object|null} [streamOverride=null] Optional stream liveness override when unwired.
      * @protected
      */
-    stampViewerWake(override = null) {
+    stampViewerWake(streamOverride = null) {
         const
             me       = this,
             provider = me.component.getStateProvider(),
             consumer = me.viewerWakeConsumer,
-            snapshot = consumer?.describe?.() ?? null,
-            liveness = override?.stream ?? (consumer
+            snapshot = consumer?.describe() ?? null,
+            liveness = streamOverride ?? (consumer
                 ? {...consumer.resolveDeliveryLiveness(), capturedAt: Date.now()}
                 : {alive: 'unknown', reason: 'wake stream not started', capturedAt: Date.now()}),
-            armed    = override && 'armed' in override
-                ? override.armed
-                : !consumer
-                    ? false
-                    : snapshot && 'lastState' in snapshot
-                        ? (snapshot.lastState === null ? null : Boolean(snapshot.lastState.armedForViewer))
-                        : (liveness?.alive === true ? true : null);
-
-        if (override && 'everAlive' in override) {
-            me.viewerWakeEverAlive = Boolean(override.everAlive)
-        } else if (armed === false) {
-            me.viewerWakeEverAlive = false
-        } else if (armed === true && liveness?.alive === true) {
-            me.viewerWakeEverAlive = true
-        }
+            armed    = !me.bridge?.openWakeStream
+                ? false
+                : snapshot?.lastState
+                    ? snapshot.lastState.armedForViewer === true
+                    : null;
 
         if (!provider) return;
 
         provider.setData('viewerWake', {
             armed,
-            everAlive: Boolean(me.viewerWakeEverAlive),
-            stream   : liveness,
-            catchUp  : snapshot?.lastCatchUp ?? {state: null, at: null, pending: null},
-            signals  : (me.getViewerWakeFeed()?.items ?? []).slice(0, 5).map(record => ({
+            stream : liveness,
+            catchUp: snapshot?.lastCatchUp ?? {state: null, at: null, pending: null},
+            signals: (me.getViewerWakeFeed()?.items ?? []).slice(0, 5).map(record => ({
                 kind      : record.kind,
                 emittedAt : record.emittedAt,
                 receivedAt: record.receivedAt
@@ -246,11 +161,9 @@ class ViewerWakeController extends ComponentController {
     destroy(...args) {
         const me = this;
 
-        me.clearViewerWakeHandshakeTimer();
         me.viewerWakeConsumer?.stop();
-        me.viewerWakeConsumer  = null;
-        me.viewerWakeBridge    = null;
-        me.viewerWakeEverAlive = false;
+        me.viewerWakeConsumer = null;
+        me.viewerWakeBridge   = null;
         super.destroy(...args)
     }
 }

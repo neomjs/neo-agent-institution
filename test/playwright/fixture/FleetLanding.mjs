@@ -69,12 +69,7 @@ class FleetLanding extends Base {
          * One `/fleet/probe` plane-admission envelope to land as the owner's answer, `{snapshot}`.
          * @member {Object|null} planeAdmission_=null
          */
-        planeAdmission_: {[isDescriptor]: true, value: null, isEqual: () => false},
-        /**
-         * One viewer-wake override `{armed, everAlive, stream}` to stamp onto the cockpit provider.
-         * @member {Object|null} viewerWake_=null
-         */
-        viewerWake_: {[isDescriptor]: true, value: null, isEqual: () => false}
+        planeAdmission_: {[isDescriptor]: true, value: null, isEqual: () => false}
     }
 
     /**
@@ -208,16 +203,6 @@ class FleetLanding extends Base {
      */
     afterSetTasks(value) {
         value && this.landTasks(value.snapshot)
-    }
-
-    /**
-     * @param {Object|null} value
-     */
-    afterSetViewerWake(value) {
-        if (value) {
-            this.owner.stopLiveness();
-            this.owner.stampViewerWake(value)
-        }
     }
 
     /**

@@ -87,52 +87,50 @@
   <p class="eyebrow">agent institution · fleet manager</p>
   <h1>Header + agent detail — the information architecture cut</h1>
   <p class="lede">The operator's brief, verbatim: <b>"it is not 'make chips smaller' — which items should be in there? in which order?"</b> This sketch answers exactly that for the two chrome surfaces, against live captures (2026-08-30): the cockpit bar renders a five-fact prose sentence <i>between action buttons</i> while the wake chip clips mid-word beside it; the detail rail clips the agent's NAME to three characters while spelling out the model tag beside it — inverted importance — six state lines wrap mid-phrase, a tool button floats OVER content, and three state vocabularies coexist in one stack. The fix is declared item sets, one pill vocabulary, and a declared collapse order — content decisions first, geometry second.</p>
-  <p class="note"><b>Current state (updated 2026-11-14):</b> this page now records the chrome as shipped. Since the 2026-08-30 cut: the product bar gained the shell title (09-04, #107), the first-run setup line (10-02, #441) and the Nightshift toggle (11-12, #929); the view buttons left the cockpit bar (09-12, #133 — perspectives are applied from the Perspectives drawer); the banner gained its visible lead (#533); the wake pill renders only for a viewer whose push lane is armed or has been alive this session, and is absent when not armed with its reason in the Wake routes detail surface; the detail rail became a Status / Configuration tab body under a ledger of up to seven rows. The captures above remain the problem this page answered.</p>
+  <p class="note"><b>Current state (updated 2026-11-15):</b> this page now records the chrome as shipped. Since the 2026-08-30 cut: the product bar gained the shell title (09-04, #107), the first-run setup line (10-02, #441) and the Nightshift toggle (11-12, #929); the view buttons left the cockpit bar (09-12, #133 — perspectives are applied from the Perspectives drawer); the banner gained its visible lead (#533); there is no wake pill in chrome — the viewer's push state lives in Wake routes; the detail rail became a Status / Configuration tab body under a ledger of up to seven rows. The captures above remain the problem this page answered.</p>
 
   <div class="col-label">the two chrome tiers, named</div>
   <table>
     <tr><th>tier</th><th>owns</th><th>item classes (complete, in order)</th></tr>
     <tr><td><b>product bar</b> (viewport top toolbar)</td><td>which product, which instance, the operator's own controls</td><td class="mono">logo · "Agent OS" title · instance switcher · setup line (a packaged first run only) ·(spacer)· Nightshift toggle (pressed while the operator is away; the plane's record) · theme switch</td></tr>
-    <tr><td><b>cockpit bar</b> (<span class="mono">ControlToolbar</span>)</td><td>what state, what next</td><td class="mono">(spacer)· STATE (fleet pill + its lead · wake pill while push is armed or session-alive, one right-aligned block) · ACTIONS (Reconnect, or Connect for a plane answer, while the fleet pill shows · the start summary after a start · Return memories / Reattach detail while that pane is away · Start fleet)</td></tr>
+    <tr><td><b>cockpit bar</b> (<span class="mono">ControlToolbar</span>)</td><td>what state, what next</td><td class="mono">(spacer)· STATE (fleet pill + its lead, one right-aligned block; no wake pill in chrome) · ACTIONS (Reconnect, or Connect for a plane answer, while the fleet pill shows · the start summary after a start · Return memories / Reattach detail while that pane is away · Start fleet)</td></tr>
   </table>
   <p class="note"><b>The one structural law:</b> state never sits between action buttons. The 2026-08-30 bar interleaved them (views → banner prose → Reconnect → wake chip → Start fleet); the declared order groups state as ONE right-aligned block BEFORE the action group, so the space left of the state block is honest whitespace, not accidental slack. Only state and action ride the cockpit bar: identity rides the product bar, and the views (Overview · Focus · Review) are perspectives, applied from their drawer since #133.</p>
 
   <div class="col-label">label content: the rewrite (facts move to their tiers — nothing is lost, everything is re-homed)</div>
   <table>
     <tr><th>fact (today: all inline in one sentence)</th><th>destination</th></tr>
-    <tr><td>state verdict ("fleet offline" / "degraded" / "wake off")</td><td><b>the pill text</b> — a status word, never a sentence</td></tr>
+    <tr><td>state verdict ("fleet offline" / "degraded")</td><td><b>the pill text</b> — a status word, never a sentence</td></tr>
     <tr><td>the reason, in product words ("Fleet server offline", a refusal's connect-card sentence with its Connect step)</td><td><b>the lead</b>: one visible line beside the pill, truncated with an ellipsis, never only on hover (amended 2026-10-04)</td></tr>
     <tr><td>endpoint (<span class="mono">127.0.0.1:8083/fleet</span>) + the retained cause</td><td><b>the pill's title</b> (T5 pattern), which repeats the lead and adds the cause; never the only carrier of the reason</td></tr>
     <tr><td>remediation (<span class="mono">npm run ai:fleet-server</span> / "start it from the checkout")</td><td><b>detail surface</b> (system/diagnostics view · popover), never chrome</td></tr>
-    <tr><td>wake push state &amp; reason ("stream disconnected (connect refused)" / "not armed for this viewer")</td><td><b>armed or session-alive viewer:</b> the wake pill renders (<span class="mono">wake live</span> / <span class="mono">wake off</span>) with the reason on its <b>title</b>. <b>not armed viewer:</b> the wake pill is absent from chrome, and the reason stays reachable in the <b>Wake routes</b> diagnostics detail</td></tr>
+    <tr><td>wake push state &amp; reason ("stream disconnected (connect refused)" / "not armed for this viewer")</td><td><b>no wake pill in chrome;</b> the viewer's push state (<span class="mono">live</span> / <span class="mono">off</span> / <span class="mono">not armed</span>) and its reason live in <b>Wake routes</b></td></tr>
   </table>
-  <p class="note"><b>Label-language law:</b> a chrome label is one status word or word pair from the existing pill vocabulary — the axis word (<span class="mono">fleet</span>, <span class="mono">wake</span>) plus a state word. The live capture's <span class="mono">"wake: wake stream disconnected (connec…"</span> shows the failure mode of prose-in-chrome twice at once: the axis word duplicates itself, and the sentence clips mid-word. The typed connection-state vocabulary (its own ticket) slots into the pill TEXT when it lands; this sketch fixes the container the vocabulary renders into.</p>
+  <p class="note"><b>Label-language law:</b> a chrome label is one status word or word pair from the existing pill vocabulary — the axis word (<span class="mono">fleet</span>) plus a state word. The live capture's <span class="mono">"wake: wake stream disconnected (connec…"</span> showed the failure mode of prose-in-chrome twice at once: the axis word duplicated itself, and the sentence clipped mid-word; wake has since left chrome altogether for Wake routes. The typed connection-state vocabulary (its own ticket) slots into the pill TEXT when it lands; this sketch fixes the container the vocabulary renders into.</p>
 
-  <div class="col-label">the cockpit bar as shipped — wide (> 760px container): fleet pill, its lead, the wake pill (when armed or session-alive), then the actions</div>
+  <div class="col-label">the cockpit bar as shipped — wide (> 760px container): fleet pill, its lead, then the actions (no wake pill in chrome)</div>
   <div class="bar">
     <span class="spacer"></span>
     <span class="statebox h">
       <span class="pill" title="Fleet server offline · 127.0.0.1:8083/fleet; showing the static roster"><span class="dot dot-bad"></span>fleet offline</span>
       <span style="font:var(--t-micro);color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">Fleet server offline</span>
-      <span class="pill" title="wake stream disconnected (connect refused)"><span class="dot dot-off"></span>wake off</span>
     </span>
     <span class="btn">⟳ Reconnect</span>
     <span class="btn primary">▶ Start fleet</span>
   </div>
-  <p class="barw">wide — the state block keeps one row, right-aligned, before the actions; the lead takes what the row leaves, and the wake pill joins only for an armed or session-alive viewer. (An early cut stacked the pills on the 50px band; that space was the engine's 48px buttons, and a stack would grow the bar where it has the most width to spare.)</p>
+  <p class="barw">wide — the state block keeps one row, right-aligned, before the actions; the lead takes what the row leaves; no wake pill in chrome, because the viewer's push state lives in Wake routes.</p>
 
-  <div class="col-label">narrow (≤ 760px container): the fleet pill drops to its mark and its lead keeps one truncated line; an armed degraded wake keeps its word, so no non-live state is a bare mark</div>
+  <div class="col-label">narrow (≤ 760px container): the fleet pill drops to its mark and its lead keeps one truncated line; no wake pill in chrome</div>
   <div class="bar" style="max-width:560px">
     <span class="spacer"></span>
     <span class="statebox h">
       <span class="pill" title="Fleet server offline · 127.0.0.1:8083/fleet; showing the static roster"><span class="dot dot-bad"></span></span>
       <span style="font:var(--t-micro);color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:96px">Fleet server offline</span>
-      <span class="pill" title="wake off — stream disconnected (connect refused)"><span class="dot dot-off"></span>wake off</span>
     </span>
     <span class="btn">⟳</span>
     <span class="btn primary">▶</span>
   </div>
-  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) the fleet pill's word drops to its mark while its lead keeps the reason on a truncated line; when the wake pill is rendered (armed or session-alive viewer), a live wake drops to its mark too, while a degraded wake has no lead and keeps its word, because no non-live state may be a bare mark (Clio, 2026-10-04); an unarmed viewer renders no wake pill at any width; (2) action labels drop → icon buttons. Nothing clips mid-word except the lead's ellipsis, which is its designed form: the lead is the row's slack, so it shortens before a pill or a button loses a pixel. The T5 title repeats the whole sentence at every width. Reconnect and the lead render only while the fleet pill is not hidden, so the narrow bar in a healthy fleet is just the start icon (plus a quiet wake mark when armed).</p>
+  <p class="note"><b>Declared collapse order</b> (container query on the cockpit bar, the mechanism the roster/card/activity surfaces already use): (1) the fleet pill's word drops to its mark while its lead keeps the reason on a truncated line — no non-live state becomes a bare mark (Clio, 2026-10-04), and there is no wake pill in chrome at any width (the viewer's push state lives in Wake routes); (2) action labels drop → icon buttons. Nothing clips mid-word except the lead's ellipsis, which is its designed form: the lead is the row's slack, so it shortens before the pill or a button loses a pixel. The T5 title repeats the whole sentence at every width. Reconnect and the lead render only while the fleet pill is not hidden, so the narrow bar in a healthy fleet is just the start icon.</p>
   <p class="falsifier">header falsifiers: no label carries an endpoint or shell command inline (grep the chrome vdom for "npm run" / host:port = empty) · no mid-word clipping at 1280/1024/900/730 (computed receipts: scrollWidth ≤ clientWidth on every chrome label but the lead) · the lead renders a visible line at every width and is the only chrome label that ellipsizes · the state block sits left of the first action button at every width · the axis word renders exactly once per pill.</p>
 
   <div class="divider"></div>
@@ -177,7 +175,7 @@
   <div class="divider"></div>
 
   <div class="col-label">implementation coordinates (as shipped)</div>
-  <p class="note">The cockpit bar is its own class, <span class="mono">view/fleet/cockpit/ControlToolbar.mjs</span>: the state block (banner, lead, wake telltale) and the actions, bound to the cockpit provider's verdicts (<span class="mono">util/SpineBanner.mjs</span>, <span class="mono">util/ViewerWakeTelltale.mjs</span>). Its collapse order is a container query in <span class="mono">fleet/cockpit/Container.scss</span>. The product bar is the viewport's top toolbar (<span class="mono">view/Viewport.mjs</span>). The detail identity header, ledger and tab body live in <span class="mono">view/fleet/detail/Container.mjs</span>. The throttle→capacity rename changed only the rendered label and the row's source gate; the model field, its enum and the adapter seam stay as they were.</p>
+  <p class="note">The cockpit bar is its own class, <span class="mono">view/fleet/cockpit/ControlToolbar.mjs</span>: the state block (banner and lead; no wake pill in chrome) and the actions, bound to the cockpit provider's verdict (<span class="mono">util/SpineBanner.mjs</span>), while the viewer's push state renders in <span class="mono">view/fleet/wake/Container.mjs</span>. Its collapse order is a container query in <span class="mono">fleet/cockpit/Container.scss</span>. The product bar is the viewport's top toolbar (<span class="mono">view/Viewport.mjs</span>). The detail identity header, ledger and tab body live in <span class="mono">view/fleet/detail/Container.mjs</span>. The throttle→capacity rename changed only the rendered label and the row's source gate; the model field, its enum and the adapter seam stay as they were.</p>
 </div>
 </body>
 </html>

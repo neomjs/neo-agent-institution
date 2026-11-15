@@ -135,6 +135,39 @@ class WakeRoutePane extends Container {
     }
 
     /**
+     * @summary Derive the viewer's push-lane diagnostics line and hover detail in one place:
+     * `armed === false` → `not armed`, `armed === true && stream?.alive === true` → `live`,
+     * otherwise `off`.
+     * @param {Object|null} viewerWake
+     * @returns {{hidden: Boolean, state: String|null, text: String, title: String|null}}
+     */
+    static describeViewerWake(viewerWake) {
+        if (!viewerWake) {
+            return {hidden: true, state: null, text: '', title: null}
+        }
+
+        const
+            state     = viewerWake.armed === false
+                ? 'not armed'
+                : viewerWake.armed === true && viewerWake.stream?.alive === true
+                    ? 'live'
+                    : 'off',
+            raw       = viewerWake.stream?.reason,
+            reason    = typeof raw === 'string' && raw.trim() ? raw : 'no stream observation',
+            text      = `viewer push: ${state} — ${reason}`,
+            catchUp   = viewerWake.catchUp,
+            drained   = Number.isFinite(catchUp?.pending) && catchUp.pending > 0 ? ` (${catchUp.pending} pending drained)` : '',
+            catchLine = catchUp?.state ? `catch-up: ${catchUp.state}${drained}` : 'catch-up: no observation',
+            signals   = Array.isArray(viewerWake.signals) ? viewerWake.signals : [],
+            sigLine   = signals.length > 0
+                ? `last signals: ${signals.slice(0, 5).map(item => item?.kind || 'wake').join(' | ')}`
+                : 'no signals observed on this stream',
+            title     = `${text}\n${catchLine}\n${sigLine}`;
+
+        return {hidden: false, state, text, title}
+    }
+
+    /**
      * @summary Re-render the viewer push diagnostics line when provider-stamped truths change.
      * @param {Object|null} value
      * @param {Object|null} oldValue
@@ -145,32 +178,20 @@ class WakeRoutePane extends Container {
     }
 
     /**
-     * @summary Render the viewer's own push-lane state and verbatim reason in diagnostics detail,
-     * keeping the unarmed reason reachable when the header telltale is absent.
+     * @summary Render the viewer's own push-lane state, verbatim reason, and catch-up/signal detail.
      */
     applyViewerWake() {
-        const
-            lineEl     = this.getReference('viewer-wake-line'),
-            viewerWake = this.viewerWake;
+        const lineEl = this.getReference('viewer-wake-line');
 
         if (!lineEl) return;
 
-        if (!viewerWake) {
-            lineEl.hidden = true;
-            lineEl.changeVdomRootKey('title', null);
-            return
+        const {hidden, text, title} = WakeRoutePane.describeViewerWake(this.viewerWake);
+
+        lineEl.hidden = hidden;
+        if (!hidden) {
+            lineEl.text = text
         }
-
-        const
-            armed  = viewerWake.armed,
-            alive  = armed === true && viewerWake.stream?.alive === true,
-            raw    = viewerWake.stream?.reason,
-            reason = typeof raw === 'string' && raw.trim() ? raw : 'no stream observation',
-            state  = alive ? 'live' : armed === false ? 'not armed' : 'off';
-
-        lineEl.hidden = false;
-        lineEl.text   = `viewer push: ${state} — ${reason}`;
-        lineEl.changeVdomRootKey('title', reason)
+        lineEl.changeVdomRootKey('title', title)
     }
 
     /** @summary Read (or re-read) the decomposed routes for the whole roster. */

@@ -1,7 +1,6 @@
-import Button                      from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
-import SpineBannerComponent        from './SpineBannerComponent.mjs';
-import Toolbar                     from '../../../../../node_modules/neo.mjs/src/toolbar/Base.mjs';
-import ViewerWakeTelltaleComponent from './ViewerWakeTelltaleComponent.mjs';
+import Button               from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
+import SpineBannerComponent from './SpineBannerComponent.mjs';
+import Toolbar              from '../../../../../node_modules/neo.mjs/src/toolbar/Base.mjs';
 
 /**
  * The banner action button's icon and word per spine action (`SpineBanner`); no action is Reconnect.
@@ -15,9 +14,9 @@ const SPINE_ACTIONS = Object.freeze({
 });
 
 /**
- * @summary The cockpit's control bar: the spine's state block (the fleet pill, its lead, the wake
- * telltale) right-aligned before the action group (Reconnect or Connect, the start summary, the
- * recall verbs, Start fleet).
+ * @summary The cockpit's control bar: the spine's state block (the fleet pill and its lead)
+ * right-aligned before the action group (Reconnect or Connect, the start summary, the recall
+ * verbs, Start fleet).
  *
  * The bar is declared chrome. Its items bind the cockpit's state provider and resolve their string
  * handlers on the cockpit's controller, the closest ones up the tree, and register their references
@@ -57,17 +56,13 @@ class ControlToolbar extends Toolbar {
          */
         items: ['->', {
             // THE STATE BLOCK — the bar's structural law: state never sits between action
-            // buttons; the two spine axes (fleet · wake) render as one right-aligned block
-            // before the action group. The pills run in a row wherever they carry their
-            // words; narrow widths drop them to marks while the lead keeps its line.
+            // buttons; the fleet pill and its lead render as one right-aligned block before
+            // the action group (no wake pill in chrome; the viewer's push state lives in Wake routes).
             ntype : 'container',
             cls   : ['fm-bar-state'],
             flex  : '0 1 auto',
             layout: {ntype: 'hbox', align: 'center'},
-            // Both pills size to their words: the block's flexbox layout would otherwise
-            // write `flex: 1 1 0%` onto each child, which splits the row form's width equally
-            // and clipped the longer pill mid-word while the shorter one held slack.
-            items: [{
+            items : [{
                 // the per-SPINE honesty pill — the derived spineBanner leaves bind here at
                 // the consumption site; the status word, with the retained cause on title/aria
                 module   : SpineBannerComponent,
@@ -83,7 +78,7 @@ class ControlToolbar extends Toolbar {
             }, {
                 // the reason, VISIBLE beside the pill: a non-live state never hides behind a hover.
                 // `text`, never `html`. A zero basis makes it the row's slack: it shows what the
-                // pills leave and ellipsizes first, so a pill never loses its word to it
+                // row leaves and ellipsizes first, so the pill never loses its word to it
                 ntype    : 'component',
                 bind     : {
                     hidden: data => data.spineBanner.hidden || !data.spineBanner.lead,
@@ -92,20 +87,6 @@ class ControlToolbar extends Toolbar {
                 cls      : ['fm-spine-banner-lead'],
                 flex     : '1 1 0%',
                 reference: 'fleet-spine-banner-lead'
-            }, {
-                // the per-viewer wake-push telltale — every channel of the derived chip binds
-                // here as its own first-class config (text, cls, title, aria — independently
-                // reactive; see the component class)
-                module   : ViewerWakeTelltaleComponent,
-                bind     : {
-                    chipAriaLabel: data => data.viewerWakeTelltale.ariaLabel,
-                    chipTitle    : data => data.viewerWakeTelltale.title,
-                    cls          : data => data.viewerWakeTelltale.cls.slice(1),
-                    hidden       : data => data.viewerWakeTelltale.hidden,
-                    text         : data => data.viewerWakeTelltale.text
-                },
-                flex     : '0 1 auto',
-                reference: 'viewer-wake-telltale'
             }]
         }, {
             // the banner's action: Reconnect re-drives every liveness seam through the existing
