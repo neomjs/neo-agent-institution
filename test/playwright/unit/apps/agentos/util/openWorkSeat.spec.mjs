@@ -42,11 +42,12 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
     test('explicit producer actions own the card and detail words, even when CI alone suggests another action', () => {
         const actions = [
-            ['repair-ci',       'red',               'author',   'red',               'green'],
-            ['address-changes', 'changes-requested', 'author',   'changes requested', 'red'],
-            ['rebase',          'rebase',            'author',   'rebase required',   'green'],
-            ['review',          'review-due',        'reviewer', 'review due',        'green'],
-            ['route-review',    'route-review',      'author',   'request review',    'red']
+            ['repair-ci',          'red',                'author',   'red',                       'green'],
+            ['address-changes',    'changes-requested',  'author',   'changes requested',         'red'],
+            ['rebase',             'rebase',             'author',   'rebase required',           'green'],
+            ['review',             'review-due',         'reviewer', 'review due',                'green'],
+            ['route-review',       'route-review',       'author',   'request review',            'red'],
+            ['await-prerequisite', 'await-prerequisite', 'author',   'waits on a blocked ticket', 'green']
         ];
 
         actions.forEach(([kind, displayKind, role, words, ci], index) => {
@@ -102,21 +103,27 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
     test('mixed explicit kinds share one rank while preserving deduplication and stale age', () => {
         const observedAt = '2026-10-03T07:40:00.000Z', now = Date.parse('2026-10-03T08:00:00.000Z'),
+            // the producer's hold of an approved, green head whose close target still has an open blocker
+            waits        = row(7, {role: 'author', kind: 'await-prerequisite', ids: [ada], targets: ['neomjs/neo-agent-brain#1768']}, {ci: 'green'}),
             routing      = row(5, {role: 'author', kind: 'route-review', ids: [ada]}, {ci: 'green'}),
             review       = row(4, {role: 'reviewer', kind: 'review', ids: [ada]}),
             rebase       = row(3, {role: 'author', kind: 'rebase', ids: [ada]}, {ci: 'green', stale: true, observedAt}),
             changes      = row(2, {role: 'author', kind: 'address-changes', ids: [ada]}, {ci: 'green'}),
             repair       = row(1, {role: 'author', kind: 'repair-ci', ids: [ada]}, {ci: 'red'}),
             unknown      = row(6, {role: 'author', kind: 'future-action', ids: [ada]}),
-            answer       = held([unknown, routing, rebase, changes, repair], [review, rebase]),
+            answer       = held([unknown, waits, routing, rebase, changes, repair], [review, rebase]),
             entries      = OpenWorkSeat.held(answer, ada),
             summary      = OpenWorkSeat.summarize(answer, ada);
 
-        expect(entries.rows.map(entry => entry.kind)).toEqual(['red', 'changes-requested', 'rebase', 'review-due', 'route-review', 'unknown']);
-        expect(summary).toEqual({count: 6, worst: 'red', stale: true, observedAt});
-        expect(OpenWorkSeat.describe(summary, now).title).toBe('6 pull requests waiting on this seat · worst: red · stale · observed 20m ago');
+        expect(entries.rows.map(entry => entry.kind)).toEqual(['red', 'changes-requested', 'rebase', 'review-due', 'route-review', 'await-prerequisite', 'unknown']);
+        expect(summary).toEqual({count: 7, worst: 'red', stale: true, observedAt});
+        expect(OpenWorkSeat.describe(summary, now).title).toBe('7 pull requests waiting on this seat · worst: red · stale · observed 20m ago');
         expect(OpenWorkSeat.describeRow(entries.rows[2], now).line).toBe('author · rebase required · observed 20m ago · stale');
-        expect(OpenWorkSeat.describeRow(entries.rows[4], now).line).toBe('author · request review')
+        expect(OpenWorkSeat.describeRow(entries.rows[4], now).line).toBe('author · request review');
+        expect(OpenWorkSeat.describeRow(entries.rows[5], now).line).toBe('author · waits on a blocked ticket');
+
+        // the wait asks nothing of the seat now, so a requested change still names the card's worst
+        expect(OpenWorkSeat.summarize(held([waits, changes]), ada).worst).toBe('changes-requested')
     });
 
     test('the held rows count once each, and the worst is named: red > changes requested > review due', () => {
