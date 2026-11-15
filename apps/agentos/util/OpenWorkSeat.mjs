@@ -197,7 +197,8 @@ class OpenWorkSeat extends Base {
 
     /**
      * @summary The card chip for one seat's held open work: its words, its accessible name and its title,
-     * as one unit, so the visible text and the spoken one cannot diverge.
+     * as one unit, so the visible text and the spoken one cannot diverge. The count says which pull requests
+     * are on the seat, not that each waits on it: a wait on a blocked ticket asks nothing of the seat.
      * @param {Object|null} openWork One {@link #summarize} result, or `null`.
      * @param {Number} [now=Date.now()] The viewer's clock, for a stale chip's age.
      * @returns {{hidden: Boolean, stale: Boolean, text: String, ariaLabel: String|null, title: String|null}}
@@ -218,8 +219,8 @@ class OpenWorkSeat extends Base {
             hidden   : false,
             stale,
             text     : `${count} ${count === 1 ? 'PR' : 'PRs'} · ${word}`,
-            ariaLabel: `Open work: ${count} ${prs} waiting on this seat, worst: ${word}${stale ? ', stale' : ''}.`,
-            title    : `${count} ${prs} waiting on this seat · worst: ${word}${stale ? ' · stale' : ''}${age}`
+            ariaLabel: `Open work: ${count} ${prs} on this seat, worst: ${word}${stale ? ', stale' : ''}.`,
+            title    : `${count} ${prs} on this seat · worst: ${word}${stale ? ' · stale' : ''}${age}`
         }
     }
 }

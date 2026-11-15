@@ -58,8 +58,8 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
             expect(entry.kind, kind).toBe(displayKind);
             expect(chip.text, kind).toBe(`1 PR · ${words}`);
-            expect(chip.ariaLabel, kind).toBe(`Open work: 1 pull request waiting on this seat, worst: ${words}.`);
-            expect(chip.title, kind).toBe(`1 pull request waiting on this seat · worst: ${words}`);
+            expect(chip.ariaLabel, kind).toBe(`Open work: 1 pull request on this seat, worst: ${words}.`);
+            expect(chip.title, kind).toBe(`1 pull request on this seat · worst: ${words}`);
             expect(detail.line, kind).toBe(`${role} · ${words} · observed 3m ago`)
         })
     });
@@ -76,7 +76,7 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
             expect(entries.map(entry => entry.kind), kind).toEqual(['red', 'unknown']);
             expect(summary, kind).toMatchObject({count: 2, worst: 'red'});
             expect(OpenWorkSeat.describe(summary).text, kind).toBe('2 PRs · red');
-            expect(OpenWorkSeat.describe(summary).ariaLabel, kind).toBe('Open work: 2 pull requests waiting on this seat, worst: red.');
+            expect(OpenWorkSeat.describe(summary).ariaLabel, kind).toBe('Open work: 2 pull requests on this seat, worst: red.');
             expect(OpenWorkSeat.describeRow(entries[1]).line, kind).toBe('author · next action unknown');
             expect(OpenWorkSeat.describe(OpenWorkSeat.summarize(held([unknown]), ada)).text, kind)
                 .toBe('1 PR · next action unknown')
@@ -117,13 +117,21 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
         expect(entries.rows.map(entry => entry.kind)).toEqual(['red', 'changes-requested', 'rebase', 'review-due', 'route-review', 'await-prerequisite', 'unknown']);
         expect(summary).toEqual({count: 7, worst: 'red', stale: true, observedAt});
-        expect(OpenWorkSeat.describe(summary, now).title).toBe('7 pull requests waiting on this seat · worst: red · stale · observed 20m ago');
+        expect(OpenWorkSeat.describe(summary, now).title).toBe('7 pull requests on this seat · worst: red · stale · observed 20m ago');
         expect(OpenWorkSeat.describeRow(entries.rows[2], now).line).toBe('author · rebase required · observed 20m ago · stale');
         expect(OpenWorkSeat.describeRow(entries.rows[4], now).line).toBe('author · request review');
         expect(OpenWorkSeat.describeRow(entries.rows[5], now).line).toBe('author · waits on a blocked ticket');
 
-        // the wait asks nothing of the seat now, so a requested change still names the card's worst
-        expect(OpenWorkSeat.summarize(held([waits, changes]), ada).worst).toBe('changes-requested')
+        // the wait asks nothing of the seat now, so a requested change still names the card's worst, and neither
+        // the card's name nor its title says the waiting pull request waits on the seat
+        const alone = OpenWorkSeat.describe(OpenWorkSeat.summarize(held([waits]), ada)),
+              mixed = OpenWorkSeat.describe(OpenWorkSeat.summarize(held([waits, changes]), ada));
+
+        expect(OpenWorkSeat.summarize(held([waits, changes]), ada).worst).toBe('changes-requested');
+        expect(alone).toMatchObject({text: '1 PR · waits on a blocked ticket', ariaLabel: 'Open work: 1 pull request on this seat, worst: waits on a blocked ticket.',
+            title: '1 pull request on this seat · worst: waits on a blocked ticket'});
+        expect(mixed).toMatchObject({text: '2 PRs · changes requested', ariaLabel: 'Open work: 2 pull requests on this seat, worst: changes requested.',
+            title: '2 pull requests on this seat · worst: changes requested'})
     });
 
     test('the held rows count once each, and the worst is named: red > changes requested > review due', () => {
@@ -216,8 +224,8 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
             hidden   : false,
             stale    : false,
             text     : '1 PR · review due',
-            ariaLabel: 'Open work: 1 pull request waiting on this seat, worst: review due.',
-            title    : '1 pull request waiting on this seat · worst: review due'
+            ariaLabel: 'Open work: 1 pull request on this seat, worst: review due.',
+            title    : '1 pull request on this seat · worst: review due'
         });
 
         const now   = Date.parse('2026-10-03T08:07:00.000Z'),
@@ -225,7 +233,7 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
 
         expect(stale.text).toBe('3 PRs · red');
         expect(stale.stale).toBe(true);
-        expect(stale.title).toBe('3 pull requests waiting on this seat · worst: red · stale · observed 7m ago');
-        expect(stale.ariaLabel).toBe('Open work: 3 pull requests waiting on this seat, worst: red, stale.')
+        expect(stale.title).toBe('3 pull requests on this seat · worst: red · stale · observed 7m ago');
+        expect(stale.ariaLabel).toBe('Open work: 3 pull requests on this seat, worst: red, stale.')
     });
 });
