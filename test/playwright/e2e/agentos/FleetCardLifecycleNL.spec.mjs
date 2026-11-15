@@ -235,6 +235,15 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
             await expect(runtime).toContainText('Delivery is not yet confirmed');
             await testInfo.attach('native-setup-ready', {body: await runtime.screenshot(), contentType: 'image/png'});
             expect(requests()).toHaveLength(1);
+            // View-only fixture: the adapter's unavailable result is covered by the unit test.
+            const [runtimeComponent] = await app.queryComponent({className: 'AgentOS.view.fleet.detail.SeatRuntimeContainer'}, ['id']);
+            await app.callMethod(runtimeComponent.properties.id, 'record.set', [{nativeWakeOutcome: 'bridge-unavailable',
+                nativeWakeOutcomeStartedAt: NATIVE_STARTED_AT, controlReason: {action: 'setupNativeWake', kind: 'unauthorized', reason: ''}}]);
+            await expect(setup).toBeDisabled();
+            await expect(runtime).toContainText('Fleet bridge is unavailable');
+            await expect(runtime).toContainText('Connect or reconnect Fleet');
+            await testInfo.attach('native-setup-unavailable', {body: await runtime.screenshot(), contentType: 'image/png'});
+            expect(requests()).toHaveLength(1);
         } finally { await fleet.close() }
     });
 

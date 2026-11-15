@@ -261,7 +261,7 @@ class FleetLifecycleIntentAdapter extends Base {
             const controlReason = FleetLifecycleIntentAdapter.createControlReason(action, 'unauthorized', 'Fleet Registry bridge unavailable');
 
             if (action === 'setupNativeWake') {
-                record.set({nativeWakeOutcome: 'unconfirmed', nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
+                record.set({nativeWakeOutcome: 'bridge-unavailable', nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
                 FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason: {...controlReason, reason: ''}});
                 return {accepted: false, action, method, ok: false, status: 'unauthorized', isCurrent}
             }

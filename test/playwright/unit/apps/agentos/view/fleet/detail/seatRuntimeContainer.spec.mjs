@@ -114,9 +114,15 @@ test('native outcomes have family-specific, actionable view guidance without con
         expect(group.getReference('native-wake-feedback').text).toContain('Retry setup');
         expect(group.getReference('runtime-control-feedback').text).not.toContain('/private');
         await Adapter.handleFleetLifecycleIntent(intent, record, {bridge: null});
+        expect(record.nativeWakeOutcome).toBe('bridge-unavailable');
+        group.updateRecord(record);
+        expect(group.getReference('native-wake-feedback').text).toContain('reconnect Fleet');
+        expect(group.getReference('native-wake-setup').disabled).toBe(true);
+        await Adapter.handleFleetLifecycleIntent(intent, record, {bridge: {startAgent: async () => ({})}});
         expect(record.nativeWakeOutcome).toBe('unconfirmed');
         group.updateRecord(record);
         expect(group.getReference('native-wake-feedback').text).toContain('Retry setup');
+        expect(group.getReference('native-wake-setup').disabled).toBe(false);
     }
 });
 

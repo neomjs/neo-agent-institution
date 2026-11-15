@@ -132,6 +132,7 @@ class SeatRuntimeContainer extends Container {
             ready        : `Native route ready. ${nextStep} Delivery is not yet confirmed.`,
             'not-ready'  : 'Native route is not ready. Retry setup; delivery is not confirmed.',
             'seat-changed': 'The seat stopped or restarted. Refresh and try again.',
+            'bridge-unavailable': 'Fleet bridge is unavailable. Connect or reconnect Fleet, then retry setup. No delivery was requested.',
             unconfirmed  : 'Native delivery setup could not be confirmed. Retry setup; delivery is not confirmed.'
         }[hasCurrentOutcome ? record.nativeWakeOutcome : null] || '';
         this.getReference('native-wake-feedback').set({hidden: !feedbackText, text: feedbackText});
