@@ -66,11 +66,9 @@ class ViewerWakeController extends ComponentController {
             }
 
             me.stampViewerWake({
-                stream: {
-                    alive     : 'unknown',
-                    reason    : 'wake push not wired — this composition carries no direct-browser wake capability',
-                    capturedAt: Date.now()
-                }
+                alive     : 'unknown',
+                reason    : 'wake push not wired — this composition carries no direct-browser wake capability',
+                capturedAt: Date.now()
             });
             return
         }
@@ -120,27 +118,32 @@ class ViewerWakeController extends ComponentController {
 
 
     /**
-     * @summary Write the consumer's OWN observations into the provider (`viewerWake`) — the
-     * telltale binds and renders itself: one writer, zero re-judging, liveness vocabulary and
-     * catch-up states pass through verbatim.
-     * @param {Object} [override] `{stream}` for the not-wired stamp, when no consumer exists.
+     * @summary Write the consumer's OWN observations into the provider (`viewerWake`) so the
+     * Wake routes diagnostics surface binds and renders from one writer.
+     * @param {Object|null} [streamOverride=null] Optional stream liveness override when unwired.
      * @protected
      */
-    stampViewerWake(override = null) {
+    stampViewerWake(streamOverride = null) {
         const
             me       = this,
             provider = me.component.getStateProvider(),
-            consumer = me.viewerWakeConsumer;
+            consumer = me.viewerWakeConsumer,
+            snapshot = consumer?.describe() ?? null,
+            liveness = streamOverride ?? (consumer
+                ? {...consumer.resolveDeliveryLiveness(), capturedAt: Date.now()}
+                : {alive: 'unknown', reason: 'wake stream not started', capturedAt: Date.now()}),
+            armed    = !me.bridge?.openWakeStream
+                ? false
+                : snapshot?.lastState
+                    ? snapshot.lastState.armedForViewer === true
+                    : null;
 
         if (!provider) return;
 
         provider.setData('viewerWake', {
-            stream: override?.stream ?? (consumer
-                ? {...consumer.resolveDeliveryLiveness(), capturedAt: Date.now()}
-                : {alive: 'unknown', reason: 'wake stream not started', capturedAt: Date.now()}),
-            catchUp: consumer?.describe().lastCatchUp ?? {state: null, at: null, pending: null},
-            // the bounded signal window rides the stamp so the telltale FORMULA derives the chip
-            // from data alone (formulas receive data, never the provider)
+            armed,
+            stream : liveness,
+            catchUp: snapshot?.lastCatchUp ?? {state: null, at: null, pending: null},
             signals: (me.getViewerWakeFeed()?.items ?? []).slice(0, 5).map(record => ({
                 kind      : record.kind,
                 emittedAt : record.emittedAt,

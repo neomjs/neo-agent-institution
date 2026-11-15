@@ -3,7 +3,6 @@ import FleetActivityEvents from '../../../store/FleetActivityEvents.mjs';
 import FleetAdmission      from '../../../util/FleetAdmission.mjs';
 import Provider            from '../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 import SpineBanner         from '../../../util/SpineBanner.mjs';
-import TelltaleDeriver     from '../../../util/ViewerWakeTelltale.mjs';
 import ViewerWakeFeed      from '../../../store/ViewerWakeFeed.mjs';
 
 /**
@@ -37,8 +36,8 @@ const deriveBannerVerdict = data => SpineBanner.deriveSpineBanner({
  *   activity counts.
  * - **formulas** — `spineBanner` (the one banner verdict; the banner and the reconnect
  *   affordance bind it), `instanceState` (the chrome dot's mirror of the same verdict, written
- *   to the VIEWPORT-owned key through setData's closest-owner walk), `daemonFault` (the grid
- *   header's fold) and `viewerWakeTelltale` (the wake chip). Reactivity is PULL-based,
+ *   to the VIEWPORT-owned key through setData's closest-owner walk) and `daemonFault` (the grid
+ *   header's fold). Reactivity is PULL-based,
  *   source-exact: `Provider.onConstructed` performs the initial formula run; during that run
  *   each formula pulls its dependencies through the hierarchical data proxy, the Effect
  *   subscribes to those Configs (child and parent alike), and later dependency changes schedule
@@ -190,6 +189,7 @@ class StateProvider extends Provider {
              * @member {Object} viewerWake
              */
             viewerWake: {
+                armed  : null,
                 stream : {alive: 'unknown', reason: 'wake stream not started', capturedAt: null},
                 catchUp: {state: null, at: null, pending: null},
                 signals: []
@@ -217,13 +217,7 @@ class StateProvider extends Provider {
              * `'retry-plane'`, `'recheck'`, or `null` for the reconnect).
              * @member {Object} spineBanner
              */
-            spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', lead: '', text: '', title: ''},
-            /**
-             * Formula-owned — the wake chip's derivation; leaf-declared for the same reason.
-             * Re-derives on every `viewerWake` stamp beat (the cadence the observations move on).
-             * @member {Object} viewerWakeTelltale
-             */
-            viewerWakeTelltale: {ariaLabel: '', cls: [], text: 'wake off', title: 'wake stream not started'}
+            spineBanner: {action: null, ariaLabel: '', hidden: false, kind: 'cold', lead: '', text: '', title: ''}
         },
         /**
          * The derivations, as REAL formulas — pull-based: the initial run at `onConstructed`
@@ -256,18 +250,7 @@ class StateProvider extends Provider {
              * @param {Object} data
              * @returns {Object}
              */
-            spineBanner: data => deriveBannerVerdict(data),
-            /**
-             * The wake chip `{ariaLabel, cls, text, title}` from the stamped consumer
-             * observations (bounded signal window included).
-             * @param {Object} data
-             * @returns {Object}
-             */
-            viewerWakeTelltale: data => TelltaleDeriver.describeViewerWakeTelltale({
-                stream : data.viewerWake.stream ?? null,
-                catchUp: data.viewerWake.catchUp?.state ? data.viewerWake.catchUp : null,
-                signals: data.viewerWake.signals ?? []
-            })
+            spineBanner: data => deriveBannerVerdict(data)
         },
         /**
          * @member {Object} stores

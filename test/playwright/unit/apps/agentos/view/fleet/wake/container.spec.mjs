@@ -74,6 +74,65 @@ test.describe('WakeRoutePane — decomposed per-seat honesty (never fused)', () 
         expect(requests).toEqual([]);
         expect(pane.seatStore.count).toBe(0);
         expect(pane.getReference('wakeroutes-meta').text).toBe('Read the routes to see each seat’s wake path.');
+        expect(pane.getReference('viewer-wake-line').hidden).toBe(true);
+
+        pane.destroy()
+    });
+
+    test('viewerWake derives the viewer push diagnostics line in one place across pre-stamp, not-armed, live, and off states', () => {
+        const {pane} = createPane();
+        const line   = pane.getReference('viewer-wake-line');
+
+        expect(line.hidden).toBe(true);
+        expect(WakeRoutePane.describeViewerWake(null)).toEqual({hidden: true, state: null, text: '', title: null});
+
+        pane.viewerWake = {
+            armed  : null,
+            stream : {alive: 'unknown', reason: 'wake stream not started'},
+            catchUp: {state: null, at: null, pending: null},
+            signals: []
+        };
+
+        expect(line.hidden).toBe(false);
+        expect(line.text).toBe('viewer push: off — wake stream not started');
+        expect(line.vdom.title).toContain('catch-up: no observation');
+        expect(line.vdom.title).toContain('no signals observed on this stream');
+
+        pane.viewerWake = {
+            armed  : false,
+            stream : {alive: true, reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)'},
+            catchUp: {state: null, at: null, pending: null},
+            signals: []
+        };
+
+        expect(line.hidden).toBe(false);
+        expect(line.text).toBe('viewer push: not armed — composed wake stream connected · not armed for this viewer (missing class-3 mint)');
+        expect(line.vdom.title).toContain('composed wake stream connected · not armed for this viewer (missing class-3 mint)');
+
+        pane.viewerWake = {
+            armed  : true,
+            stream : {alive: true, reason: 'composed wake stream connected · armed for this viewer'},
+            catchUp: {state: 'fresh', at: 2000, pending: 4},
+            signals: [{kind: 'wake/digest'}]
+        };
+
+        expect(line.text).toBe('viewer push: live — composed wake stream connected · armed for this viewer');
+        expect(line.vdom.title).toContain('catch-up: fresh (4 pending drained)');
+        expect(line.vdom.title).toContain('last signals: wake/digest');
+
+        pane.viewerWake = {
+            armed  : true,
+            stream : {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane'},
+            catchUp: {state: 'failed', at: 3000, pending: null},
+            signals: []
+        };
+
+        expect(line.text).toBe('viewer push: off — wake stream disconnected — poll remains the truth lane');
+        expect(line.vdom.title).toContain('catch-up: failed');
+
+        pane.viewerWake = null;
+        expect(line.hidden).toBe(true);
+        expect(line.vdom.title).toBeUndefined();
 
         pane.destroy()
     });

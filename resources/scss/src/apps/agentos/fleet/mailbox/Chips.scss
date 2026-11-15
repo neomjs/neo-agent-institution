@@ -1,12 +1,12 @@
 /* THE CHIP FAMILY — one designed anatomy (mark + text + optional detail affordance) for every
    status/kind surface, on one class axis with three members:
      exception-only   — nominal earns zero pixels (spine banner = reference; per-agent telltale)
-     always-rendered  — furniture that must be findable before it matters (viewer-wake = reference;
-                        event chips = the kind-axis reference; state dot = the mark-only member)
+     always-rendered  — furniture that must be findable before it matters (event chips = the kind-axis
+                        reference; state dot = the mark-only member)
      affordance       — an action, never an observation (THIS file's selector chip = reference)
    The shared parts are the geometry tokens (--fm-chip-mark-w/pad-y/pad-x/radius/gap, declared at
    the shell root); each idiom binds COLOR through one local indirection (--fm-spine-mark /
-   --fm-viewer-wake-mark / --fm-chip / --fm-telltale-mark / --fm-dot) — a state/kind class rebinds
+   --fm-chip / --fm-telltale-mark / --fm-dot) — a state/kind class rebinds
    that one property, an unmatched class renders quiet, never a borrowed severity.
    Family laws: never hue-alone (WCAG 1.4.1 — every chip carries text or geometry beside color);
    motion is decoration, never information (reduced-motion loses zero signal). */

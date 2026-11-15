@@ -125,9 +125,7 @@ class AgentFreshness extends Base {
      * @summary Compact relative-age label from a millisecond age. Pure; negative (future / clock-skew)
      * ages clamp to `0s ago` rather than rendering a nonsensical future time.
      *
-     * Exported as a shared chrome primitive: pane freshness and the viewer-wake telltale
-     * ({@link module:apps/agentos/util/ViewerWakeTelltale}) must word relative ages identically —
-     * one formatter, two consumers, no drift.
+     * Exported as a shared chrome primitive so freshness surfaces word relative ages identically.
      * @param {Number} ageMs
      * @returns {String}
      */

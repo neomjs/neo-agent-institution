@@ -13,19 +13,21 @@ setup({
     }
 });
 
-import {test, expect} from '@playwright/test';
-import Neo            from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
-import * as core      from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
-import ViewerWakeFeed from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
+import {test, expect}  from '@playwright/test';
+import Neo             from '../../../../../../../../node_modules/neo.mjs/src/Neo.mjs';
+import * as core       from '../../../../../../../../node_modules/neo.mjs/src/core/_export.mjs';
+import ViewerWakeFeed  from '../../../../../../../../apps/agentos/store/ViewerWakeFeed.mjs';
 import LivenessCadence from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
+import WakeRoutePane   from '../../../../../../../../apps/agentos/view/fleet/wake/Container.mjs';
 
 /**
  * The viewer-wake wiring: `ensureViewerWakeStream` keeps the per-viewer wake stream bound to the
- * CURRENT bridge capability, and every observation lands in the provider VERBATIM. The unit here is
- * the composition root's routing decision — capability honesty (no capability → the not-wired
- * stamp, never a fabricated stream), custody-heal rebuild (a REPLACED bridge object retires the
- * consumer built from the old closure), and the observation path (wake frame → bounded feed +
- * stamp). The consumer itself is pinned by `fleetWakeStreamConsumer.spec.mjs`; here it is a spy.
+ * CURRENT bridge capability, and every observation lands in the provider VERBATIM for the Wake
+ * routes diagnostics line (`WakeRoutePane.describeViewerWake`). The unit here is the composition
+ * root's routing decision — capability honesty (no capability → the not-wired stamp, never a
+ * fabricated stream), custody-heal rebuild (a REPLACED bridge object retires the consumer built
+ * from the old closure), and the observation path (wake frame → bounded feed + stamp). The
+ * consumer itself is pinned by `fleetWakeStreamConsumer.spec.mjs`; here it is a spy.
  */
 test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () => {
     let CockpitStateProvider, ComponentContainer, FleetCockpitController;
@@ -43,14 +45,24 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
             openWakeStream(opts) {
                 const consumer = {
                     opts,
-                    started    : 0,
-                    stopped    : 0,
-                    liveness   : {alive: true, reason: 'composed wake stream connected · armed for this viewer'},
-                    lastCatchUp: null,
+                    connected       : true,
+                    consecutiveDrops: 0,
+                    started         : 0,
+                    stopped         : 0,
+                    liveness        : {alive: true, reason: 'composed wake stream connected · armed for this viewer'},
+                    lastCatchUp     : null,
+                    lastState       : {armedForViewer: true, subscriptionId: 'sub-1'},
                     start() { this.started++ },
                     stop()  { this.stopped++ },
                     resolveDeliveryLiveness() { return this.liveness },
-                    describe() { return {lastCatchUp: this.lastCatchUp} }
+                    describe() {
+                        return {
+                            connected       : this.connected,
+                            consecutiveDrops: this.consecutiveDrops,
+                            lastCatchUp     : this.lastCatchUp,
+                            lastState       : this.lastState
+                        }
+                    }
                 };
 
                 factory.created.push(consumer);
@@ -89,19 +101,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         return cockpit
     };
 
-    // the chip over the stamped truth: the REAL provider derivation (the same
-    // `deriveViewerWakeTelltale` the hook keeps live) over the fake provider's stamped
-    // `viewerWake` — the chip surface is `{ariaLabel, cls, text, title}`, with `title` living
-    // on `vdom.title` in production via the component's afterSetText pull.
-    const renderSlot = cockpit => {
-        // the REAL formula over the stamped truth (pull-based — it reads the viewerWake leaves
-        // it derives from)
-        const chip = CockpitStateProvider.config.formulas.viewerWakeTelltale({
-            viewerWake: cockpit.provider.getData('viewerWake')
-        });
-
-        return {text: chip.text, vdom: {title: chip.title, 'aria-label': chip.ariaLabel}}
-    };
+    const renderLine = cockpit => WakeRoutePane.describeViewerWake(cockpit.provider.getData('viewerWake'));
 
     test.beforeAll(async () => {
         [
@@ -117,6 +117,20 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
     test.afterEach(() => clearBridge());
 
+    test('StateProvider defaults viewerWake.armed to null so pre-stamp diagnostics read off, never not armed', () => {
+        const initial = CockpitStateProvider.config.data.viewerWake;
+
+        expect(initial.armed).toBe(null);
+        expect('everAlive' in initial).toBe(false);
+        expect(Object.hasOwn(CockpitStateProvider.config.data, 'viewerWakeTelltale')).toBe(false);
+        expect(Object.hasOwn(CockpitStateProvider.config.formulas, 'viewerWakeTelltale')).toBe(false);
+        expect(WakeRoutePane.describeViewerWake(initial)).toMatchObject({
+            hidden: false,
+            state : 'off',
+            text  : 'viewer push: off — wake stream not started'
+        })
+    });
+
     test('no bridge at all → the honest not-wired stamp, no consumer, no fabricated stream', () => {
         clearBridge();
 
@@ -128,18 +142,21 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         const stamped = cockpit.provider.getData('viewerWake');
 
+        expect(stamped.armed).toBe(false);
         expect(stamped.stream.alive).toBe('unknown');
         expect(stamped.stream.reason).toContain('wake push not wired');
         expect(stamped.catchUp).toEqual({state: null, at: null, pending: null});
-        const slot = renderSlot(cockpit);
-        // The slot wears the word pair; the stamped reason reaches the reader via title/aria.
-        expect(slot.text).toBe('wake off');
-        expect(slot.vdom.title).toContain('wake push not wired');
+
+        const line = renderLine(cockpit);
+        expect(line.hidden).toBe(false);
+        expect(line.state).toBe('not armed');
+        expect(line.text).toContain('viewer push: not armed — wake push not wired');
+        expect(line.title).toContain('wake push not wired');
 
         cockpit.feed.destroy()
     });
 
-    test('a bridge WITHOUT the capability (packaged shell) → the same honest absence', () => {
+    test('a bridge WITHOUT the capability (packaged shell) → armed: false from missing capability', () => {
         setBridge({fleetRoster: async () => ({})});
 
         const cockpit = makeCockpit();
@@ -147,7 +164,9 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         cockpit.ensureViewerWakeStream();
 
         expect(cockpit.viewerWakeConsumer).toBe(null);
+        expect(cockpit.provider.getData('viewerWake').armed).toBe(false);
         expect(cockpit.provider.getData('viewerWake').stream.reason).toContain('no direct-browser wake capability');
+        expect(renderLine(cockpit).state).toBe('not armed');
 
         cockpit.feed.destroy()
     });
@@ -169,11 +188,14 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         const stamped = cockpit.provider.getData('viewerWake');
 
+        expect(stamped.armed).toBe(true);
         expect(stamped.stream.alive).toBe(true);
         expect(stamped.stream.reason).toBe('composed wake stream connected · armed for this viewer');
-        const slot = renderSlot(cockpit);
-        expect(slot.text).toContain('wake live');
-        expect(slot.vdom.title).toContain('wake push live');
+
+        const line = renderLine(cockpit);
+        expect(line.hidden).toBe(false);
+        expect(line.state).toBe('live');
+        expect(line.text).toBe('viewer push: live — composed wake stream connected · armed for this viewer');
 
         cockpit.feed.destroy()
     });
@@ -196,7 +218,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         expect(cockpit.feed.getCount()).toBe(2);
         expect(cockpit.feed.items.map(record => record.eventId)).toEqual(['01H-2', '01H-1']);
         expect(cockpit.feed.getAt(0).kind).toBe('wake/digest');
-        expect(renderSlot(cockpit).vdom.title).toContain('last signals: wake/digest');
+        expect(renderLine(cockpit).title).toContain('last signals: wake/digest | wake/digest');
 
         cockpit.feed.destroy()
     });
@@ -239,6 +261,7 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
 
         expect(factory.created[0].stopped).toBe(1);
         expect(cockpit.viewerWakeConsumer).toBe(null);
+        expect(cockpit.provider.getData('viewerWake').armed).toBe(false);
         expect(cockpit.provider.getData('viewerWake').stream.reason).toContain('wake push not wired');
 
         cockpit.feed.destroy()
@@ -321,7 +344,84 @@ test.describe('FleetCockpit — viewer wake stream wiring (#17130 leg 2)', () =>
         cockpit.stampViewerWake();
 
         expect(cockpit.provider.getData('viewerWake').catchUp).toEqual({state: 'fresh', at: 5000, pending: 3});
-        expect(renderSlot(cockpit).vdom.title).toContain('catch-up: fresh (3 pending drained)');
+        expect(renderLine(cockpit).title).toContain('catch-up: fresh (3 pending drained)');
+
+        cockpit.feed.destroy()
+    });
+
+    test('before handshake armed is null (off); an unarmed handshake stamps armed: false on the liveness pass with no poll timer', () => {
+        const stateConsumer = {
+            connected       : false,
+            consecutiveDrops: 0,
+            lastCatchUp     : null,
+            lastState       : null,
+            liveness        : {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane'},
+            start() {},
+            stop() {},
+            resolveDeliveryLiveness() { return this.liveness },
+            describe() {
+                return {
+                    connected       : this.connected,
+                    consecutiveDrops: this.consecutiveDrops,
+                    lastCatchUp     : this.lastCatchUp,
+                    lastState       : this.lastState
+                }
+            }
+        };
+
+        setBridge({openWakeStream: () => stateConsumer});
+
+        const cockpit = makeCockpit();
+
+        cockpit.ensureViewerWakeStream();
+
+        expect(cockpit.provider.getData('viewerWake').armed).toBe(null);
+        expect(renderLine(cockpit)).toMatchObject({
+            state: 'off',
+            text : 'viewer push: off — wake stream disconnected — poll remains the truth lane'
+        });
+
+        stateConsumer.connected = true;
+        stateConsumer.lastState = {armedForViewer: false, reason: 'missing class-3 mint'};
+        stateConsumer.liveness  = {
+            alive : true,
+            reason: 'composed wake stream connected · not armed for this viewer (missing class-3 mint)'
+        };
+
+        cockpit.ensureViewerWakeStream();
+
+        const stamped = cockpit.provider.getData('viewerWake');
+
+        expect(stamped.armed).toBe(false);
+        expect(stamped.stream.reason).toContain('not armed for this viewer (missing class-3 mint)');
+        expect(renderLine(cockpit)).toMatchObject({
+            state: 'not armed',
+            text : 'viewer push: not armed — composed wake stream connected · not armed for this viewer (missing class-3 mint)'
+        });
+
+        cockpit.feed.destroy()
+    });
+
+    test('an armed stream dropping transport transitions Wake routes from live to off without inferring arming from alive', () => {
+        const factory = makeConsumerFactory();
+
+        setBridge(factory);
+
+        const cockpit  = makeCockpit(),
+              consumer = (() => { cockpit.ensureViewerWakeStream(); return factory.created[0] })();
+
+        expect(renderLine(cockpit).state).toBe('live');
+
+        consumer.connected        = false;
+        consumer.consecutiveDrops = 1;
+        consumer.liveness         = {alive: 'unknown', reason: 'wake stream disconnected — poll remains the truth lane'};
+        cockpit.ensureViewerWakeStream();
+
+        expect(cockpit.provider.getData('viewerWake').armed).toBe(true);
+        expect(renderLine(cockpit)).toMatchObject({
+            state: 'off',
+            text : 'viewer push: off — wake stream disconnected — poll remains the truth lane'
+        });
 
         cockpit.feed.destroy()
     })
