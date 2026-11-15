@@ -106,6 +106,27 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
         expect(diffStamp(parseStamp(text), stamp), 'parse inverts serialize').toEqual([])
     });
 
+    test('a CRLF checkout parses to the same stamp — the engine line stays put, nothing drifts (#949)', () => {
+        const
+            stamp     = stampOf(goldenA, goldenB, goldenC),
+            text      = serializeStamp(stamp),
+            // Git for Windows with core.autocrlf=true checks the stamp out with CRLF line endings
+            crlf      = text.replace(/\n/g, '\r\n'),
+            lfParsed  = parseStamp(text),
+            crlfParse = parseStamp(crlf);
+
+        // AC-1: the stamp and its CRLF copy parse to the same {engine, entries}
+        expect(crlfParse.engine).toBe(lfParsed.engine);
+        expect([...crlfParse.entries]).toEqual([...lfParsed.entries]);
+        expect(crlfParse.entries.size, 'no key keeps a trailing carriage return').toBe(lfParsed.entries.size);
+
+        // AC-2: with no golden changed, the CRLF stamp keeps its engine through nextStampEngine…
+        expect(nextStampEngine(crlfParse, {engine: '990669e5', entries: lfParsed.entries})).toBe('e1');
+
+        // …and diffStamp against matching entries reports nothing (it once reported every input drifted)
+        expect(diffStamp(crlfParse, lfParsed)).toEqual([])
+    });
+
     test('pull requests that stamp different files merge cleanly, even as neighbours; the same file conflicts', () => {
         const
             folder   = 'test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs',
