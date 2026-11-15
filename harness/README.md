@@ -481,6 +481,35 @@ checkout smoke keeps the fully isolated dev profile (`checkout-isolated`).
 Known unsigned-leg limitation: a quarantined zip (browser download) may App-Translocate;
 `xattr -d com.apple.quarantine` or moving the app clears it — signing (E7) dissolves this.
 
+## Signed release (the publisher's Developer ID)
+
+The release build is the same pipeline plus two names from the publisher's one-time setup: the
+**Developer ID Application** certificate in the login keychain, and a `notarytool store-credentials`
+profile made from an App Store Connect team key. Neither is a secret, and neither enters the repo
+(ADR 0034 §2.5.2). Only this build reads the hardened runtime and `entitlements.mac.plist`:
+
+```bash
+cd harness
+NEO_AGENTOS_RUNTIME_ROOT=/absolute/path/to/neo-agent-brain APPLE_KEYCHAIN_PROFILE=neo-harness-notary \
+    npm run dist -- -c.mac.identity="Developer ID Application: <Name> (<TEAMID>)"
+```
+
+The first run asks the certificate's owner, once, to let `codesign` use its key. Without
+`APPLE_KEYCHAIN_PROFILE`, electron-builder skips notarization with only a warning, so verify
+before any install:
+
+```bash
+app="dist-artifacts/mac-arm64/Neo Harness.app"
+codesign --verify --deep --strict --verbose=2 "$app"
+codesign -dv "$app" 2>&1 | grep -E '^(Identifier|Authority|TeamIdentifier)='  # mjs.neo.harness, Developer ID, the team
+codesign -d --entitlements - "$app"                                           # the two keys of entitlements.mac.plist
+spctl -a -vv -t exec "$app"                                                   # accepted, source=Notarized Developer ID
+xcrun stapler validate "$app"
+```
+
+The first signed install changes the app's designated requirement, so macOS asks once more for the
+`Neo Harness Safe Storage` keychain item and the privacy grants; later signed updates keep them.
+
 ## Why the window loads DEV MODE (operator decision, 2026-07-10)
 
 The harness window loads the zero-build SOURCE app (`app://neo/apps/agentos/index.html`), not

@@ -1,6 +1,7 @@
-# The E6 packaging pipeline — the UNSIGNED leg (ADR 0034 §2.5.2: signing material is a
+# The E6 packaging pipeline — UNSIGNED by default (ADR 0034 §2.5.2: signing material is a
 # release-line concern and never enters repo tooling; `identity: null` skips code-signing so the
-# artifact stays CI/dev-verifiable). The organism (allowlist-derived source graph + Brain tree +
+# artifact stays CI/dev-verifiable, and only the release invocation names the publisher's identity,
+# README "Signed release"). The organism (allowlist-derived source graph + Brain tree +
 # generated dependency install) is staged by pack.mjs and shipped verbatim as extraResources.
 appId: mjs.neo.harness
 productName: Neo Harness
@@ -57,4 +58,10 @@ mac:
         - target: zip
           arch: arm64
     identity: null
+    # Read only when the release invocation sets an identity.
+    hardenedRuntime: true
+    entitlements: entitlements.mac.plist
+    entitlementsInherit: entitlements.mac.plist
+    extendInfo:
+        NSAppleEventsUsageDescription: Neo Harness places your agents' windows and types their wake prompts.
     category: public.app-category.developer-tools
