@@ -14,8 +14,8 @@ const
     MANIFEST         = '/Users/operator/Library/Application Support/Neo/AgentOS/wake/routes.json',
     LOCAL_PLANE      = 'http://127.0.0.1:3102',
     NO_ENV           = {},
-    SETTLED          = Object.freeze({origin: 'launch-agent', manifest: MANIFEST, base: 'http://host.docker.internal:3199', reason: null}),
-    DECLINED         = Object.freeze({origin: 'launch-agent', manifest: null, base: null, reason: 'declined'}),
+    SETTLED          = Object.freeze({origin: 'launch-agent', manifest: MANIFEST, base: 'http://host.docker.internal:3199', stateDir: '/tmp/wake/state', reason: null}),
+    DECLINED         = Object.freeze({origin: 'launch-agent', manifest: null, base: null, stateDir: null, reason: 'declined'}),
     PSEUDO_ARGUMENTS = '<key>ProgramArguments</key><array><string>--manifest</string><string>/tmp/pseudo/routes.json</string><string>--port</string><string>4299</string></array>';
 
 /** @summary The parts of a spawned child that `startBrainChild` touches after the spawn. */
@@ -68,6 +68,7 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
             origin  : 'environment',
             manifest: '/srv/wake/routes.json',
             base    : 'http://host.docker.internal:4199',
+            stateDir: null,
             reason  : null
         });
     });
@@ -80,6 +81,7 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
                 origin  : 'launch-agent',
                 manifest: MANIFEST,
                 base    : 'http://host.docker.internal:3199',
+                stateDir: '/tmp/wake/state',
                 reason  : null
             });
         }
@@ -89,6 +91,46 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
         const receiver = settleWakeReceiver({env: {NEO_WAKE_RECEIVER_MANIFEST: '/srv/wake/routes.json'}, planeBase: LOCAL_PLANE, plistPath: launchAgent(launchAgentXml())});
 
         expect(receiver).toMatchObject({origin: 'launch-agent', manifest: MANIFEST, base: 'http://host.docker.internal:3199'});
+        expect(receiver.stateDir).toBe('/tmp/wake/state');
+    });
+
+    test('the chosen declaration owns its state directory; absent or unsafe state never breaks legacy coordinates', () => {
+        const custom = '/srv/private/receiver-records', plistPath = launchAgent(launchAgentXml([
+            'node', 'receiver.mjs', '--manifest', MANIFEST, '--state-dir', custom, '--port', '3199'
+        ]));
+        expect(settleWakeReceiver({env:NO_ENV, planeBase:LOCAL_PLANE, plistPath}).stateDir).toBe(custom);
+        const env = {NEO_WAKE_RECEIVER_MANIFEST:'/other/routes.json', NEO_WAKE_RECEIVER_BASE:'http://host.docker.internal:4199'};
+        expect(settleWakeReceiver({env:{...env, NEO_WAKE_RECEIVER_STATE_DIR:'/other/custom-state'}, planeBase:LOCAL_PLANE, plistPath}))
+            .toMatchObject({origin:'environment',manifest:env.NEO_WAKE_RECEIVER_MANIFEST,base:env.NEO_WAKE_RECEIVER_BASE,stateDir:'/other/custom-state'});
+        for (const state of [undefined, '', 'relative/state', '/tmp/../wrong', '/']) {
+            const result = settleWakeReceiver({env:{...env, NEO_WAKE_RECEIVER_STATE_DIR:state}, planeBase:LOCAL_PLANE, plistPath});
+            expect(result).toMatchObject({origin:'environment',manifest:env.NEO_WAKE_RECEIVER_MANIFEST,base:env.NEO_WAKE_RECEIVER_BASE,stateDir:null});
+            expect(wakeReceiverEnv(result).NEO_WAKE_RECEIVER_STATE_DIR).toBe('')
+        }
+        for (const partial of [{NEO_WAKE_RECEIVER_STATE_DIR:'/other/state'}, {NEO_WAKE_RECEIVER_BASE:'http://other:4199'},
+            {NEO_WAKE_RECEIVER_MANIFEST:'/other/routes.json',NEO_WAKE_RECEIVER_STATE_DIR:'/other/state'}]) {
+            const selected = settleWakeReceiver({env:partial, planeBase:LOCAL_PLANE, plistPath});
+            expect(selected).toMatchObject({origin:'launch-agent',manifest:MANIFEST,base:'http://host.docker.internal:3199',stateDir:custom});
+            expect(wakeReceiverEnv(selected)).toEqual({NEO_WAKE_RECEIVER_MANIFEST:MANIFEST,
+                NEO_WAKE_RECEIVER_BASE:'http://host.docker.internal:3199',NEO_WAKE_RECEIVER_STATE_DIR:custom})
+        }
+        for (const altered of [{NEO_WAKE_RECEIVER_MANIFEST:'relative/routes.json'}, {NEO_WAKE_RECEIVER_BASE:'not a URL'},
+            {NEO_WAKE_RECEIVER_BASE:'http://host.docker.internal:4199/a-path'}]) {
+            expect(settleWakeReceiver({env:{...env,...altered,NEO_WAKE_RECEIVER_STATE_DIR:'/other/state'},planeBase:LOCAL_PLANE,plistPath}).stateDir).toBeNull()
+        }
+    });
+
+    test('missing, duplicate, alternate or invalid state declarations never arm native delivery', () => {
+        const base = ['node','receiver.mjs','--manifest',MANIFEST,'--port','3199'];
+        for (const tail of [[], ['--state-dir'], ['--state-dir','relative'], ['--state-dir','/tmp/../wrong'],
+            ['--state-dir','/tmp/one','--state-dir','/tmp/two'], ['--state-dir=/tmp/one'],
+            ['--state-dir','/tmp/one','--state-dir=/tmp/two'], ['--state-dir','/tmp/one','--manifest','/tmp/other'],
+            ['--state-dir','/tmp/one','--port','4299']]) {
+            const receiver = settleWakeReceiver({env:NO_ENV,planeBase:LOCAL_PLANE,plistPath:launchAgent(launchAgentXml([...base,...tail]))});
+            expect(receiver).toMatchObject({origin:'launch-agent',manifest:MANIFEST,base:'http://host.docker.internal:3199',stateDir:null});
+            expect(wakeReceiverEnv(receiver)).toMatchObject({NEO_WAKE_RECEIVER_MANIFEST:MANIFEST,
+                NEO_WAKE_RECEIVER_BASE:'http://host.docker.internal:3199',NEO_WAKE_RECEIVER_STATE_DIR:''})
+        }
     });
 
     test('a plane that is not on this host cannot reach the host receiver, so nothing is settled', () => {
@@ -99,6 +141,7 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
                 origin  : 'launch-agent',
                 manifest: null,
                 base    : null,
+                stateDir: null,
                 reason  : 'the Fleet attaches to no plane on this host, and only a local plane reaches the host receiver'
             });
         }
@@ -111,6 +154,7 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
             origin  : 'none',
             manifest: null,
             base    : null,
+            stateDir: null,
             reason  : `neither the launch environment nor ${plistPath} declares a wake receiver`
         });
     });
@@ -148,14 +192,14 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
         const manifest = '/Users/operator/R&D <wake>/routes.json';
 
         expect(readReceiverLaunchAgent({plistPath: launchAgent(launchAgentXml(['node', '--manifest', '/Users/operator/R&amp;D &lt;wake&gt;/routes.json', '--port', '3199']))}))
-            .toEqual({manifest, port: 3199});
+            .toEqual({manifest, port: 3199, stateDir: null});
     });
 
     test('a settled receiver passes both coordinates, a declined one clears both, and an unpackaged launch adds none', () => {
-        expect(wakeReceiverEnv(SETTLED)).toEqual({NEO_WAKE_RECEIVER_BASE: 'http://host.docker.internal:3199', NEO_WAKE_RECEIVER_MANIFEST: MANIFEST});
+        expect(wakeReceiverEnv(SETTLED)).toEqual({NEO_WAKE_RECEIVER_BASE: 'http://host.docker.internal:3199', NEO_WAKE_RECEIVER_MANIFEST: MANIFEST, NEO_WAKE_RECEIVER_STATE_DIR: '/tmp/wake/state'});
 
         for (const declined of [DECLINED, {origin: 'environment', manifest: MANIFEST, base: '', reason: null}]) {
-            expect(wakeReceiverEnv(declined)).toEqual({NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: ''});
+            expect(wakeReceiverEnv(declined)).toEqual({NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: '', NEO_WAKE_RECEIVER_STATE_DIR: ''});
         }
 
         expect(wakeReceiverEnv(null)).toEqual({});
@@ -175,14 +219,14 @@ test.describe('harness/wakeReceiver — the host receiver the installed Fleet ar
             return options.env
         };
 
-        for (const half of ['NEO_WAKE_RECEIVER_MANIFEST', 'NEO_WAKE_RECEIVER_BASE']) {
+        for (const half of ['NEO_WAKE_RECEIVER_MANIFEST', 'NEO_WAKE_RECEIVER_BASE', 'NEO_WAKE_RECEIVER_STATE_DIR']) {
             const saved = process.env[half];
 
             process.env[half] = 'stale-half-declaration';
 
             try {
-                expect(childEnv(DECLINED)).toMatchObject({NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: ''});
-                expect(childEnv(SETTLED)).toMatchObject({NEO_WAKE_RECEIVER_BASE: SETTLED.base, NEO_WAKE_RECEIVER_MANIFEST: MANIFEST});
+                expect(childEnv(DECLINED)).toMatchObject({NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: '', NEO_WAKE_RECEIVER_STATE_DIR: ''});
+                expect(childEnv(SETTLED)).toMatchObject({NEO_WAKE_RECEIVER_BASE: SETTLED.base, NEO_WAKE_RECEIVER_MANIFEST: MANIFEST, NEO_WAKE_RECEIVER_STATE_DIR: SETTLED.stateDir});
                 expect(childEnv(null)[half]).toBe('stale-half-declaration');
             } finally {
                 saved === undefined ? delete process.env[half] : process.env[half] = saved;

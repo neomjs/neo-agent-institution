@@ -9,11 +9,12 @@ import path from 'node:path';
  *
  * Settled once per launch, in this order:
  * - the launch environment, when it carries both `NEO_WAKE_RECEIVER_MANIFEST` and `NEO_WAKE_RECEIVER_BASE`
- *   (origin `environment`);
+ *   (origin `environment`); its optional state directory comes only from that same environment;
  * - else the receiver's LaunchAgent (origin `launch-agent`). Its `--manifest` is the manifest, and its
  *   `--port` gives the base the dockerized plane reaches, `http://host.docker.internal:<port>`. That base
  *   applies only while the Fleet attaches to a plane on this host: a remote plane cannot reach a host
- *   receiver, and a plane running natively on the host declares its base through the environment;
+ *   receiver, and a plane running natively on the host declares its base through the environment. Its
+ *   optional `--state-dir` is read from this same declaration, never inferred from the manifest;
  * - else none (origin `none`).
  *
  * Anything short of both coordinates passes neither, and the Fleet's seats report `unarmed` with the
@@ -136,12 +137,27 @@ function isLocalPlane(planeBase) {
     }
 }
 
+/** @summary An explicit, unambiguous absolute native receiver state directory, or null. */
+function stateDirectory(value) {
+    return typeof value === 'string' && path.isAbsolute(value) && path.normalize(value) === value &&
+        value !== path.parse(value).root ? value : null
+}
+
+/** @summary A native receiver base must be an HTTP(S) origin, not an inherited path or credentials. */
+function isReceiverOrigin(value) {
+    try {
+        const url = new URL(value);
+        return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password &&
+            url.pathname === '/' && !url.search && !url.hash
+    } catch { return false }
+}
+
 /**
- * @summary The receiver's own declaration: the `--manifest` and `--port` its LaunchAgent runs it with.
+ * @summary The receiver's own declaration: the manifest, port and optional native state directory.
  * @param {Object} options
  * @param {String} options.plistPath
  * @param {Object} [options.fsModule=fs]
- * @returns {{manifest: String, port: Number}|null} `null` when no LaunchAgent is installed.
+ * @returns {{manifest: String, port: Number, stateDir: String|null}|null} `null` when no LaunchAgent is installed.
  * @throws {Error} When the LaunchAgent exists but does not readably declare both.
  */
 export function readReceiverLaunchAgent({plistPath, fsModule = fs}) {
@@ -174,13 +190,17 @@ export function readReceiverLaunchAgent({plistPath, fsModule = fs}) {
         args     = Array.isArray(declared) && declared.every(arg => typeof arg === 'string') ? declared : [],
         after    = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined,
         manifest = after('--manifest'),
-        port     = Number(after('--port'));
+        port     = Number(after('--port')),
+        // The receiver uses first-occurrence flags. Any duplicate or alternate spelling makes the
+        // native tuple ambiguous even when the legacy manifest/port remain usable.
+        unique   = flag => args.filter(arg => arg === flag).length === 1 && !args.some(arg => arg.startsWith(flag + '=')),
+        stateDir = unique('--manifest') && unique('--port') && unique('--state-dir') ? stateDirectory(after('--state-dir')) : null;
 
     if (!path.isAbsolute(manifest ?? '') || !Number.isInteger(port) || port < 1 || port > 65535) {
         throw new Error(`${plistPath} declares no absolute --manifest and valid --port in its ProgramArguments`)
     }
 
-    return {manifest, port}
+    return {manifest, port, stateDir}
 }
 
 /**
@@ -190,14 +210,16 @@ export function readReceiverLaunchAgent({plistPath, fsModule = fs}) {
  * @param {String} [options.planeBase] The plane the Fleet attaches to, as the Brain resolved it.
  * @param {String} options.plistPath The receiver's LaunchAgent.
  * @param {Object} [options.fsModule=fs]
- * @returns {{origin: String, manifest: String|null, base: String|null, reason: String|null}}
+ * @returns {{origin: String, manifest: String|null, base: String|null, stateDir: String|null, reason: String|null}}
  */
 export function settleWakeReceiver({env, planeBase, plistPath, fsModule = fs}) {
     if (env.NEO_WAKE_RECEIVER_MANIFEST && env.NEO_WAKE_RECEIVER_BASE) {
-        return {origin: 'environment', manifest: env.NEO_WAKE_RECEIVER_MANIFEST, base: env.NEO_WAKE_RECEIVER_BASE, reason: null}
+        return {origin: 'environment', manifest: env.NEO_WAKE_RECEIVER_MANIFEST, base: env.NEO_WAKE_RECEIVER_BASE,
+            stateDir: stateDirectory(env.NEO_WAKE_RECEIVER_MANIFEST) && isReceiverOrigin(env.NEO_WAKE_RECEIVER_BASE)
+                ? stateDirectory(env.NEO_WAKE_RECEIVER_STATE_DIR) : null, reason: null}
     }
 
-    const unsettled = (origin, reason) => ({origin, manifest: null, base: null, reason});
+    const unsettled = (origin, reason) => ({origin, manifest: null, base: null, stateDir: null, reason});
     let agent;
 
     try {
@@ -211,14 +233,15 @@ export function settleWakeReceiver({env, planeBase, plistPath, fsModule = fs}) {
     }
 
     return isLocalPlane(planeBase)
-        ? {origin: 'launch-agent', manifest: agent.manifest, base: `http://host.docker.internal:${agent.port}`, reason: null}
+        ? {origin: 'launch-agent', manifest: agent.manifest, base: `http://host.docker.internal:${agent.port}`,
+            stateDir: agent.stateDir, reason: null}
         : unsettled('launch-agent', 'the Fleet attaches to no plane on this host, and only a local plane reaches the host receiver')
 }
 
 /**
- * @summary The Fleet child's environment fragment. A settled receiver passes both coordinates. A packaged
- * launch that settled none clears both: the child inherits the launch environment beneath this fragment,
- * and half a declaration there would otherwise reach the Fleet while the log says none. `null` (an
+ * @summary The Fleet child's environment fragment. A settled receiver passes its legacy coordinates and
+ * independently its proven state directory. An unsettled packaged launch clears all three: the child inherits
+ * the launch environment beneath this fragment, and a stale declaration must not reach the Fleet. `null` (an
  * unpackaged launch) leaves the inherited environment alone.
  * @param {Object|null} receiver A {@link settleWakeReceiver} result, or `null` for an unpackaged launch.
  * @returns {Object}
@@ -227,6 +250,7 @@ export function wakeReceiverEnv(receiver) {
     if (!receiver) return {};
 
     return receiver.manifest && receiver.base
-        ? {NEO_WAKE_RECEIVER_BASE: receiver.base, NEO_WAKE_RECEIVER_MANIFEST: receiver.manifest}
-        : {NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: ''}
+        ? {NEO_WAKE_RECEIVER_BASE: receiver.base, NEO_WAKE_RECEIVER_MANIFEST: receiver.manifest,
+            NEO_WAKE_RECEIVER_STATE_DIR: stateDirectory(receiver.stateDir) || ''}
+        : {NEO_WAKE_RECEIVER_BASE: '', NEO_WAKE_RECEIVER_MANIFEST: '', NEO_WAKE_RECEIVER_STATE_DIR: ''}
 }
