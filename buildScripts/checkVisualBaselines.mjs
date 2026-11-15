@@ -187,7 +187,7 @@ export function serializeStamp({engine, entries}) {
 /**
  * @summary The inverse of {@link serializeStamp}: an indented line is the value of the key above it;
  * comment and blank lines carry no data. Lines split on /\r?\n/, so a CRLF checkout (Git for Windows
- * with core.autocrlf) parses exactly like an LF one — a trailing \r must never become part of a key (#949).
+ * with core.autocrlf) parses exactly like an LF one — a trailing \r must never become part of a key.
  * @param {String} text
  * @returns {{engine: String|null, entries: Map<String, String>}}
  */
