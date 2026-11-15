@@ -127,6 +127,9 @@ export const PEER_QUIT_WARNING =
 /** A running executable inside any bundle named `Neo Harness….app`: the canonical one, a renamed copy, a staging twin. */
 const HARNESS_BUNDLE_PATTERN = new RegExp(`/${APP_NAME.replace(/ /g, '\\s')}[^/]*\\.app/`);
 
+/** A retained helper's executable has the same name as its own nested macOS bundle. */
+const GENERATION_HELPER_PATH = /^([a-f0-9]{64})\/host\.runtime\/Contents\/Frameworks\/(Neo Harness Helper(?: \([\w -]+\))?)\.app\/Contents\/MacOS\/\2$/;
+
 /**
  * @summary The pure plan: ordered steps for one install or restore, or one refusal. Nothing here
  * touches the filesystem — callers pass what they read, tests pass what they mean.
@@ -408,11 +411,15 @@ function assertFirstInstallCustody(userDataDir, {held = false} = {}) {
  * @returns {Promise<{custody: Object|null, generation: Object|null}>}
  */
 export async function executePlan(steps, {
-    runFn = run, runningFn = () => runningHarnessPaths(), quitTimeoutMs = 30000,
+    runFn = run, runningFn, quitTimeoutMs = 30000,
     materializeFn = materializeRuntimeGeneration, continuityFn = prepareInstallContinuity,
     recoveryFn = probeRuntimeRecovery, verifyRuntimeFn = runtimeVerifier.readRuntimeGeneration,
     transactionFn = holdInstallTransaction, publishSlotsFn = publishPackageSlots
 } = {}) {
+    if (!runningFn) {
+        const binding = steps.find(step => step.type === 'bind-slots');
+        runningFn = await prepareBundleProcessCensus(binding?.custodyDir, binding?.slots);
+    }
     const custody        = {before: undefined, after: undefined};
     let   generation     = null, bindings = null, requireStopped = false;
     let   continuity     = null, guard = null, transaction = null;
@@ -925,6 +932,50 @@ export function runningHarnessPaths(psText = execFileSync('ps', ['-axo', 'comm='
         .filter(line => HARNESS_BUNDLE_PATTERN.test(line))
 }
 
+/** @summary Identifies the executable file itself. A link or an unreadable path cannot establish an exemption. */
+function executableIdentity(file) {
+    try {
+        if (fs.realpathSync(file) !== file) return null;
+        const stat = fs.statSync(file, {bigint: true});
+        if (stat.isFile() && (stat.mode & 0o111n)) return `${stat.dev}:${stat.ino}:${stat.ctimeNs}`
+    } catch { /* An unknown process still counts as a bundle user. */ }
+    return null
+}
+
+/**
+ * @summary Builds the installer's live process reader. A retained Electron Helper has its own nested
+ * .app, although its enclosing package is a sealed generation outside the slots being swapped.
+ * Verify the payload once and recheck the file identity on each fresh census, including after Quit.
+ * @param {String} custodyDir The selected Fleet userData directory.
+ * @param {Object[]} slots Package slots for this operation, with the installed slot first.
+ * @param {Function} [readProcesses=runningHarnessPaths] Fresh kernel executable paths.
+ * @returns {Promise<Function>} A synchronous reader suitable for the final pre-mutation guard.
+ */
+export async function prepareBundleProcessCensus(custodyDir, slots, readProcesses = runningHarnessPaths) {
+    if (!custodyDir || !path.isAbsolute(custodyDir) || !slots?.length) return readProcesses;
+    const root = path.join(custodyDir, 'brain', 'runtime');
+    if (HARNESS_BUNDLE_PATTERN.test(root + path.sep)) return readProcesses;
+
+    const helpers      = new Map();
+    const generations  = new Map();
+    const packagePaths = [...slots.map(slot => slot.path), `${slots[0].path}.installing`];
+    for (const file of new Set(readProcesses())) {
+        const match = GENERATION_HELPER_PATH.exec(path.relative(root, file));
+        if (!match || packagePaths.some(slot => isInside(file, slot))) continue;
+        const identity = executableIdentity(file);
+        if (!identity) continue;
+
+        const directory = path.join(root, match[1]);
+        if (!generations.has(directory)) {
+            const generation = await runtimeVerifier.readRuntimeGeneration({directory}).catch(() => null);
+            generations.set(directory, generation);
+        }
+        if (generations.get(directory) && executableIdentity(file) === identity) helpers.set(file, identity);
+    }
+
+    return () => readProcesses().filter(file => !helpers.has(file) || executableIdentity(file) !== helpers.get(file))
+}
+
 /**
  * @summary Default child-process runner: inherit stdio so `ditto` progress and errors reach the operator.
  * @param {String} command
@@ -1016,7 +1067,8 @@ async function main() {
         parked     = readSlot(`${installed.path}.restoring`),
         rollback   = readSlot(path.join(options.rollbackDir, ROLLBACK_BUNDLE_NAME)),
         artifact   = options.mode === 'install' ? readSlot(options.artifactPath ?? resolveArtifactPath()) : null,
-        running    = runningHarnessPaths(),
+        runningFn  = await prepareBundleProcessCensus(custodyDir, [installed, rollback, parked, artifact].filter(Boolean)),
+        running    = runningFn(),
         legacy     = legacyCopies(options.applicationsDir),
         plan       = planInstall({artifact, custodyDir, flags: {open: options.open, quit: options.quit, legacyMigration: options.legacyMigration}, installed, mode: options.mode, parked, rollback, running});
 
@@ -1054,7 +1106,7 @@ async function main() {
 
     console.log('');
 
-    const {custody, generation} = await executePlan(plan.steps);
+    const {custody, generation} = await executePlan(plan.steps, {runningFn});
 
     console.log(`\n${describeSlot('installed', readSlot(installed.path), 'absent')}`);
     console.log(describeSlot('rollback', readSlot(rollback.path), 'empty'));

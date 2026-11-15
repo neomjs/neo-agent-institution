@@ -11,7 +11,10 @@ import * as runtimeVerifier                                                     
 import * as runtimeReferences                                                                                                         from 'neo-agent-brain/runtime-generation-lease';
 import {inspectPackageProtection, readPackageSlotRecord}                                                                              from '../../../../harness/packageSlots.mjs';
 import {resolveLauncherRuntime}                                                                                                       from '../../../../harness/brain.mjs';
-import {executePlan as executePlanImpl, holdInstallTransaction, prepareInstallContinuity, planInstall, readSlot, runningHarnessPaths} from '../../../../harness/install.mjs';
+import {
+    executePlan as executePlanImpl, holdInstallTransaction, planInstall, prepareBundleProcessCensus,
+    prepareInstallContinuity, readSlot, runningHarnessPaths
+} from '../../../../harness/install.mjs';
 import {
     acquireHostRuntimeGeneration,
     loadRuntimeGenerationVerifier,
@@ -608,6 +611,41 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         const canonical = '/Applications/Neo Harness.app/Contents/MacOS/Neo Harness';
         expect(runningHarnessPaths([canonical, input.executable, generation.executable].join('\n')))
             .toEqual([canonical, input.executable]);
+    });
+
+    test('the installer keeps package users but lets a verified retained Electron Helper survive the update', async () => {
+        const input      = await fixture(root);
+        const relative   = 'Contents/Frameworks/Neo Harness Helper.app/Contents/MacOS/Neo Harness Helper';
+        const bundleUser = path.join(input.bundlePath, relative);
+        await fs.mkdir(path.dirname(bundleUser), {recursive: true});
+        await fs.writeFile(bundleUser, 'fixture sidecar executable', {mode: 0o755});
+        input.directory = path.join(root, 'brain', 'runtime');
+        const generation = await materializeRuntimeGeneration(input);
+        const retained   = path.join(generation.directory, 'host.runtime', relative);
+        const foreign    = path.join(root, 'foreign', generation.id, 'host.runtime', relative);
+        const invalid    = path.join(input.directory, '0'.repeat(64), 'host.runtime', relative);
+        const linked     = path.join(input.directory, '1'.repeat(64));
+        for (const file of [foreign, invalid]) {
+            await fs.mkdir(path.dirname(file), {recursive: true});
+            await fs.copyFile(retained, file);
+        }
+        await fs.symlink(generation.directory, linked);
+        const escaped = path.join(linked, 'host.runtime', relative);
+        const rows    = [bundleUser, retained, retained, foreign, invalid, escaped];
+        const slots   = [{path: input.bundlePath}];
+        const list    = () => runningHarnessPaths(rows.join('\n'));
+        const census  = await prepareBundleProcessCensus(root, slots, list);
+        expect(census()).toEqual([bundleUser, foreign, invalid, escaped]);
+        const overlapping = await prepareBundleProcessCensus(root, [...slots, {path: input.directory}], list);
+        expect(overlapping()).toEqual(rows);
+
+        rows.splice(0, rows.length, retained);
+        expect(census()).toEqual([]);
+        rows.push(path.join(root, 'Neo Harness.previous.app', relative));
+        expect(census()).toEqual(rows.slice(1));
+        // A changed executable loses the exemption even when the path and the PID list stay the same.
+        await fs.chmod(retained, 0o755);
+        expect(census()).toEqual(rows)
     });
 
     test('install waits for a verified runtime before changing either slot, then restore selects the old payload', async () => {
