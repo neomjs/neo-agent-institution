@@ -247,7 +247,7 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
         } finally { await fleet.close() }
     });
 
-    test('Codex setup keeps the same seat-local guidance before and after preparation', async ({page, neuralLink}, testInfo) => {
+    test('Codex setup shows seat-local guidance for prepared and incompatible hooks', async ({page, neuralLink}, testInfo) => {
         const fleet = await startLifecycleFleetBridge({runtimeChoice: true});
         try {
             const app = await bootWiredCockpit(page, neuralLink, fleet);
@@ -266,6 +266,15 @@ test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
             await expect(runtime).toContainText('Delivery is not yet confirmed');
             await expect(runtime.getByText('If prompted, review this seat’s Hooks settings, then send an ordinary message in the seat.', {exact: false})).toBeVisible();
             await testInfo.attach('codex-setup-ready', {body: await runtime.screenshot(), contentType: 'image/png'});
+
+            await setup.click();
+            await expect.poll(() => fleet.requests.filter(request => request.method === 'startAgent').length).toBe(2);
+            fleet.settleNative({state: 'running', nativeWakePreparation: {state: 'refused', reason: 'codex-wake-compatibility-unproven'},
+                wakeRoute: {state: 'unarmed'}});
+            await expect(runtime.getByText('Keep this chat running.', {exact: false})).toBeVisible();
+            await expect(runtime).not.toContainText('Retry setup');
+            expect((await getRosterRecord(app)).nativeWakeOutcome).toBe('next-managed-start');
+            await testInfo.attach('codex-setup-next-start', {body: await runtime.screenshot(), contentType: 'image/png'});
         } finally { await fleet.close() }
     });
 

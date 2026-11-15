@@ -210,7 +210,7 @@ class FleetLifecycleIntentAdapter extends Base {
      * Late reconciliation needs the live promise. Reloaded cockpits recreate this transient record
      * overlay from their roster read; they do not persist or resume a previous timeout's promise.
      * @param {Object} intent
-     * @param {'start'|'stop'|'restart'} intent.action
+     * @param {'start'|'stop'|'restart'|'setupNativeWake'} intent.action
      * @param {String} intent.agentId Durable fleet agent id.
      * @param {Object} record The target card's roster record (see writeLifecycleControlState).
      * @param {Object} [options]
@@ -284,10 +284,16 @@ class FleetLifecycleIntentAdapter extends Base {
             let nativeOutcome = null;
             if (action === 'setupNativeWake') {
                 const preparation = result?.nativeWakePreparation;
-                nativeOutcome = preparation?.reason === 'running-seat-changed' ? 'seat-changed'
-                    : preparation?.state === 'prepared' ? result?.wakeRoute?.adapter === 'primary-session' && result.wakeRoute.state === 'ready'
-                        ? 'ready' : 'not-ready'
-                        : 'unconfirmed';
+                if (preparation?.reason === 'running-seat-changed') {
+                    nativeOutcome = 'seat-changed';
+                } else if (record.harnessType === 'codex-desktop' && preparation?.state === 'refused' &&
+                    preparation.reason === 'codex-wake-compatibility-unproven') {
+                    nativeOutcome = 'next-managed-start';
+                } else if (preparation?.state === 'prepared') {
+                    nativeOutcome = result.wakeRoute?.adapter === 'primary-session' && result.wakeRoute.state === 'ready' ? 'ready' : 'not-ready';
+                } else {
+                    nativeOutcome = 'unconfirmed';
+                }
                 record.set({nativeWakeOutcome: nativeOutcome, nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
                 // Native setup failures use the view's bounded guidance, not raw backend prose.
                 controlReason = null;

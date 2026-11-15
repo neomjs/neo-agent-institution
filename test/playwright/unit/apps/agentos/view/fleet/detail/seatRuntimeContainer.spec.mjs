@@ -92,6 +92,8 @@ test('native outcomes have family-specific, actionable view guidance without con
             [{nativeWakePreparation: {state: 'prepared'}, wakeRoute: {state: 'ready', adapter: 'primary-session'}}, 'ready'],
             [{nativeWakePreparation: {state: 'prepared'}, wakeRoute: {state: 'unarmed'}}, 'not-ready'],
             [{nativeWakePreparation: {state: 'refused', reason: 'running-seat-changed'}}, 'seat-changed'],
+            [{nativeWakePreparation: {state: 'refused', reason: 'codex-wake-compatibility-unproven', nextStep: '/private/secret/path'}},
+                family === 'codex-desktop' ? 'next-managed-start' : 'unconfirmed'],
             [{nativeWakePreparation: {state: 'refused', reason: 'receiver-mismatch'}}, 'unconfirmed'],
             [{status: 'rejected', reason: '/private/secret/path'}, 'unconfirmed'],
             [{}, 'unconfirmed']
@@ -105,6 +107,12 @@ test('native outcomes have family-specific, actionable view guidance without con
                 expect(text).toContain('not yet confirmed');
                 expect(text).toContain(family === 'codex-desktop' ? 'Hooks settings' : 'new main Antigravity session');
                 expect(group.getReference('native-wake-description').hidden).toBe(family === 'codex-desktop');
+            } else if (expected === 'next-managed-start') {
+                expect(text).toContain('Keep this chat running');
+                expect(text).toContain('next planned managed Start');
+                expect(text).toContain('Settings → Hooks');
+                expect(text).toContain('ordinary message');
+                expect(text).not.toMatch(/retry|delivered|delivery confirmed/i);
             } else if (expected === 'seat-changed') expect(text).toContain('Refresh');
             else expect(text).toContain('Retry setup');
         }
