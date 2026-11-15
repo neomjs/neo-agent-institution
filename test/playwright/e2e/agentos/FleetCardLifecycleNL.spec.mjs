@@ -12,6 +12,7 @@ const {NeuralLink_DataService} = await loadNeuralLinkModules();
 
 const TEST_AGENT_ID  = 'nl-lifecycle-agent';
 const OLD_RUNTIME_ID = 'a'.repeat(64), NEXT_RUNTIME_ID = 'b'.repeat(64);
+const NATIVE_STARTED_AT = '2026-11-15T09:00:00.000Z';
 
 const WIRED_SOURCES = {
     roster    : {source: 'fleet:listAgents',    state: 'wired', confidence: 'observed'},
@@ -62,7 +63,7 @@ async function startLifecycleFleetBridge({rejectStart = false, cohort = false, r
         running                  = new Set(cohort ? ids.slice(0, 8) : []),
         benched                  = new Set(cohort ? ids.slice(8) : []);
 
-    let runtimeId = OLD_RUNTIME_ID, settleRestart;
+    let runtimeId = OLD_RUNTIME_ID, settleRestart, settleNative, nativeFamily = null;
     if (runtimeChoice) running.add(TEST_AGENT_ID);
 
     const options = authenticatedFleetOptions({
@@ -70,6 +71,9 @@ async function startLifecycleFleetBridge({rejectStart = false, cohort = false, r
             requests.push(request);
 
             if (request.method === 'startAgent') {
+                if (request.params?.activateNativeWake) {
+                    return new Promise(resolve => settleNative = result => resolve(fleetE2ESuccess(result)))
+                }
                 if (rejectStart) {
                     return fleetE2EFailure('fleet: start rejected by lifecycle witness')
                 }
@@ -90,6 +94,7 @@ async function startLifecycleFleetBridge({rejectStart = false, cohort = false, r
             if (request.method === 'fleetRoster') {
                 return fleetE2ESuccess({rows: ids.map(id => ({
                     ...rosterRow(running.has(id) ? 'running' : 'stopped', id, benched.has(id) ? 'operator_benched' : 'active'),
+                    ...(nativeFamily && {harnessType: nativeFamily, nativeWakeSetup: {expectedStartedAt: NATIVE_STARTED_AT}}),
                     ...(runtimeChoice && {runtimeGeneration: {id: runtimeId, pin: 'held'},
                         nextRuntimeGeneration: {id: NEXT_RUNTIME_ID}, installedGeneration: {state: 'observed', id: NEXT_RUNTIME_ID}})
                 }))})
@@ -112,6 +117,8 @@ async function startLifecycleFleetBridge({rejectStart = false, cohort = false, r
     return {
         requests,
         settleRestart : result => { const settle = settleRestart; settleRestart = null; settle(result) },
+        settleNative  : result => { const settle = settleNative; settleNative = null; settle(result) },
+        enableNative  : (family='antigravity') => { nativeFamily = family },
         observeRuntime: id => { runtimeId = id },
         unbench       : () => { const id = ids[8]; benched.delete(id); return id },
         bearerToken   : options.bearerToken,
@@ -200,6 +207,67 @@ async function getRosterRecord(app, agentId = TEST_AGENT_ID) {
  */
 test.describe('AgentOS fleet card lifecycle controls (Neural Link)', () => {
     test.setTimeout(90000);
+
+    test('native setup is capability-gated and crosses the authenticated bridge for the displayed running seat', async ({page, neuralLink}, testInfo) => {
+        const fleet = await startLifecycleFleetBridge({runtimeChoice: true});
+        try {
+            const app = await bootWiredCockpit(page, neuralLink, fleet);
+            await page.locator('.fm-fleet-cards .fm-card-name').click();
+            const runtime = page.locator('.fm-agent-detail .fm-seat-runtime');
+            const setup = runtime.getByRole('button', {name: 'Set up native message delivery', exact: true});
+            await expect(runtime).toBeVisible();
+            await expect(setup).toBeHidden();
+            fleet.enableNative();
+            await reloadRoster(app);
+            await expect(setup).toBeEnabled();
+            await expect(runtime).toContainText('shared Antigravity sidecar');
+            await testInfo.attach('native-setup-before', {body: await runtime.screenshot(), contentType: 'image/png'});
+            await setup.click();
+            const requests = () => fleet.requests.filter(request => request.method === 'startAgent');
+            await expect.poll(() => requests().length).toBe(1);
+            expect(requests()[0]).toEqual({method: 'startAgent', params: {agentId: TEST_AGENT_ID,
+                activateNativeWake: true, expectedStartedAt: NATIVE_STARTED_AT}, protocol: createFleetWireOffer()});
+            await expect(setup).toBeDisabled();
+            await expect(runtime).toContainText('Lifecycle request in progress');
+            fleet.settleNative({state: 'running', nativeWakePreparation: {state: 'prepared'},
+                wakeRoute: {state: 'ready', adapter: 'primary-session', recipientState: 'unknown'}});
+            await expect(runtime).toContainText('Start a new main Antigravity session');
+            await expect(runtime).toContainText('Delivery is not yet confirmed');
+            await testInfo.attach('native-setup-ready', {body: await runtime.screenshot(), contentType: 'image/png'});
+            expect(requests()).toHaveLength(1);
+            // View-only fixture: the adapter's unavailable result is covered by the unit test.
+            const [runtimeComponent] = await app.queryComponent({className: 'AgentOS.view.fleet.detail.SeatRuntimeContainer'}, ['id']);
+            await app.callMethod(runtimeComponent.properties.id, 'record.set', [{nativeWakeOutcome: 'bridge-unavailable',
+                nativeWakeOutcomeStartedAt: NATIVE_STARTED_AT, controlReason: {action: 'setupNativeWake', kind: 'unauthorized', reason: ''}}]);
+            await expect(setup).toBeDisabled();
+            await expect(runtime).toContainText('Fleet bridge is unavailable');
+            await expect(runtime).toContainText('Connect or reconnect Fleet');
+            await testInfo.attach('native-setup-unavailable', {body: await runtime.screenshot(), contentType: 'image/png'});
+            expect(requests()).toHaveLength(1);
+        } finally { await fleet.close() }
+    });
+
+    test('Codex setup keeps the same seat-local guidance before and after preparation', async ({page, neuralLink}, testInfo) => {
+        const fleet = await startLifecycleFleetBridge({runtimeChoice: true});
+        try {
+            const app = await bootWiredCockpit(page, neuralLink, fleet);
+            await page.locator('.fm-fleet-cards .fm-card-name').click();
+            const runtime = page.locator('.fm-agent-detail .fm-seat-runtime');
+            const setup = runtime.getByRole('button', {name: 'Set up native message delivery', exact: true});
+            fleet.enableNative('codex-desktop');
+            await reloadRoster(app);
+            await expect(setup).toBeEnabled();
+            await expect(runtime).toContainText('review this seat’s Hooks settings');
+            await testInfo.attach('codex-setup-before', {body: await runtime.screenshot(), contentType: 'image/png'});
+            await setup.click();
+            await expect.poll(() => fleet.requests.filter(request => request.method === 'startAgent').length).toBe(1);
+            fleet.settleNative({state: 'running', nativeWakePreparation: {state: 'prepared', trust: 'unverified'},
+                wakeRoute: {state: 'ready', adapter: 'primary-session', recipientState: 'unknown'}});
+            await expect(runtime).toContainText('Delivery is not yet confirmed');
+            await expect(runtime.getByText('If prompted, review this seat’s Hooks settings, then send an ordinary message in the seat.', {exact: false})).toBeVisible();
+            await testInfo.attach('codex-setup-ready', {body: await runtime.screenshot(), contentType: 'image/png'});
+        } finally { await fleet.close() }
+    });
 
     test('Detail exact restart crosses the wire once, exposes pending/refusal, and waits for the observed new pin', async ({page, neuralLink}, testInfo) => {
         const fleet = await startLifecycleFleetBridge({runtimeChoice: true});

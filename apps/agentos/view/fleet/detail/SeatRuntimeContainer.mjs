@@ -42,6 +42,13 @@ class SeatRuntimeContainer extends Container {
                 text  : 'Show generation IDs', handler: 'up.onToggleIds'
             }]
         }, {
+            ntype: 'component', reference: 'native-wake-description', flex: 'none', hidden: true
+        }, {
+            module: Button, reference: 'native-wake-setup', cls: ['fm-chip'], hidden: true,
+            text: 'Set up native message delivery', handler: 'up.onNativeWakeClick'
+        }, {
+            ntype: 'component', reference: 'native-wake-feedback', flex: 'none', hidden: true, vdom: {'aria-live': 'polite'}
+        }, {
             ntype: 'component', reference: 'runtime-control-feedback', cls: ['fm-runtime-feedback'], flex: 'none', hidden: true,
             vdom : {'aria-live': 'polite'}
         }, {
@@ -109,6 +116,26 @@ class SeatRuntimeContainer extends Container {
         restart.set({hidden: !matched || record.state === 'off' || current?.pin === 'released' || currentId === nextId && current?.pin === 'held',
             disabled: !wired || !record.agentId || Boolean(record.pendingAction) || record.controlReason?.kind === 'unauthorized' ||
                 record.launchable === false || Boolean(record.launchRefusal)});
+        const capability = record.nativeWakeSetup, family = record.harnessType;
+        const eligible = wired && record.state === 'ok' && !record.launchRefusal &&
+            ['codex-desktop', 'antigravity'].includes(family) && typeof capability?.expectedStartedAt === 'string' &&
+            Boolean(capability.expectedStartedAt);
+        const nextStep = family === 'antigravity'
+            ? 'Start a new main Antigravity session.'
+            : 'If prompted, review this seat’s Hooks settings, then send an ordinary message in the seat.';
+        const hasCurrentOutcome = eligible && record.nativeWakeOutcomeStartedAt === capability?.expectedStartedAt && Boolean(record.nativeWakeOutcome);
+        this.getReference('native-wake-description').set({hidden: !eligible || hasCurrentOutcome && family === 'codex-desktop', text: family === 'antigravity'
+            ? 'This configures a shared Antigravity sidecar for this macOS user; other Antigravity instances may load it.'
+            : `This prepares native delivery for this managed Codex seat. ${nextStep}`});
+        this.getReference('native-wake-setup').set({hidden: !eligible, disabled: Boolean(record.pendingAction) || record.controlReason?.kind === 'unauthorized'});
+        const feedbackText = {
+            ready        : `Native route ready. ${nextStep} Delivery is not yet confirmed.`,
+            'not-ready'  : 'Native route is not ready. Retry setup; delivery is not confirmed.',
+            'seat-changed': 'The seat stopped or restarted. Refresh and try again.',
+            'bridge-unavailable': 'Fleet bridge is unavailable. Connect or reconnect Fleet, then retry setup. No delivery was requested.',
+            unconfirmed  : 'Native delivery setup could not be confirmed. Retry setup; delivery is not confirmed.'
+        }[hasCurrentOutcome ? record.nativeWakeOutcome : null] || '';
+        this.getReference('native-wake-feedback').set({hidden: !feedbackText, text: feedbackText});
         const exitText = wired && record.state === 'off' && record.participationStatus !== 'operator_benched'
             ? SeatExitReason.detailText(record.exitReason) : null;
         const feedback = record.pendingAction ? 'Lifecycle request in progress…' : record.controlReason?.reason || record.launchRefusal || exitText || '';
@@ -121,6 +148,16 @@ class SeatRuntimeContainer extends Container {
         this.getReference('current-runtime-id').text = `${current?.pin === 'released' ? 'Last' : current?.pin === 'held' && wired ? 'Current' : 'Recorded'}: ${currentId ?? 'not observed'}`;
         this.getReference('next-runtime-id').text = `Next Start: ${nextId ?? 'not reported'}`;
         this.getReference('installed-runtime-id').text = `Installed: ${installedId ?? 'not verified'}`;
+    }
+
+    /** @summary Requests setup for the exact running process shown to the operator. */
+    onNativeWakeClick() {
+        if (!this.record) return;
+        this.applyRecord();
+        const button = this.getReference('native-wake-setup');
+        if (button.hidden || button.disabled) return;
+        this.fire('lifecycleIntent', {action: 'setupNativeWake', agentId: this.record.agentId,
+            expectedStartedAt: this.record.nativeWakeSetup.expectedStartedAt});
     }
 
     /** @summary Opens the complete IDs in the reading surface, rather than a tooltip. */

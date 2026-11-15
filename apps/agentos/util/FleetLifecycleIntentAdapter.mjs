@@ -17,6 +17,7 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 const DEFAULT_LIFECYCLE_TIMEOUT_MS = 30_000;
 
 const LIFECYCLE_ACTION_METHODS = Object.freeze({
+    setupNativeWake: 'startAgent',
     restart: 'restartAgent',
     start  : 'startAgent',
     stop   : 'stopAgent'
@@ -231,6 +232,13 @@ class FleetLifecycleIntentAdapter extends Base {
             isCurrent         = () => !record.isDestroyed && FleetLifecycleIntentAdapter.#attempts.get(record) === attempt &&
                 (!options.isCurrent || options.isCurrent());
 
+        if (action === 'setupNativeWake' && (record.pendingAction || record.agentId !== agentId ||
+            record.state !== 'ok' || record.launchRefusal || !['codex-desktop', 'antigravity'].includes(record.harnessType) ||
+            typeof intent.expectedStartedAt !== 'string' || !intent.expectedStartedAt ||
+            intent.expectedStartedAt !== record.nativeWakeSetup?.expectedStartedAt)) {
+            return {accepted: false, action, method, ok: false, status: 'rejected', isCurrent};
+        }
+
         FleetLifecycleIntentAdapter.#attempts.set(record, attempt);
 
         if (!method) {
@@ -252,11 +260,17 @@ class FleetLifecycleIntentAdapter extends Base {
         if (typeof bridge?.[method] !== 'function') {
             const controlReason = FleetLifecycleIntentAdapter.createControlReason(action, 'unauthorized', 'Fleet Registry bridge unavailable');
 
+            if (action === 'setupNativeWake') {
+                record.set({nativeWakeOutcome: 'bridge-unavailable', nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
+                FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason: {...controlReason, reason: ''}});
+                return {accepted: false, action, method, ok: false, status: 'unauthorized', isCurrent}
+            }
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {pendingAction: null, controlReason});
 
             return {accepted: false, action, method, ok: false, status: 'unauthorized', controlReason, isCurrent}
         }
 
+        if (action === 'setupNativeWake') record.set({nativeWakeOutcome: null, nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
         FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {
             controlReason: null,
             pendingAction: action
@@ -267,8 +281,22 @@ class FleetLifecycleIntentAdapter extends Base {
                 return {accepted: true, action, method, ok: false, status: 'superseded', isCurrent}
             }
 
+            let nativeOutcome = null;
+            if (action === 'setupNativeWake') {
+                const preparation = result?.nativeWakePreparation;
+                nativeOutcome = preparation?.reason === 'running-seat-changed' ? 'seat-changed'
+                    : preparation?.state === 'prepared' ? result?.wakeRoute?.adapter === 'primary-session' && result.wakeRoute.state === 'ready'
+                        ? 'ready' : 'not-ready'
+                        : 'unconfirmed';
+                record.set({nativeWakeOutcome: nativeOutcome, nativeWakeOutcomeStartedAt: intent.expectedStartedAt});
+                // Native setup failures use the view's bounded guidance, not raw backend prose.
+                controlReason = null;
+            }
             FleetLifecycleIntentAdapter.writeLifecycleControlState(record, {controlReason, pendingAction: null});
 
+            if (nativeOutcome && nativeOutcome !== 'ready') {
+                return {accepted: true, action, method, ok: false, status: 'rejected', nativeOutcome, isCurrent}
+            }
             return controlReason
                 ? {accepted: true, action, method, ok: false, status: controlReason.kind, controlReason, isCurrent}
                 : {accepted: true, action, method, ok: true, status: 'settled', result, isCurrent}
@@ -277,8 +305,9 @@ class FleetLifecycleIntentAdapter extends Base {
         let answer;
 
         // Observe the operation itself: Promise.race only bounds how long the caller waits.
-        const params = action === 'restart' && Object.hasOwn(intent, 'expectedRuntimeGeneration')
-            ? {agentId, expectedRuntimeGeneration: intent.expectedRuntimeGeneration} : agentId;
+        const params = action === 'setupNativeWake' ? {agentId, activateNativeWake: true, expectedStartedAt: intent.expectedStartedAt}
+            : action === 'restart' && Object.hasOwn(intent, 'expectedRuntimeGeneration')
+                ? {agentId, expectedRuntimeGeneration: intent.expectedRuntimeGeneration} : agentId;
         const settlement = Promise.resolve().then(() => bridge[method](params)).then(
             result => answer = complete(result, result?.status === 'rejected'
                 ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason) : null),
@@ -289,6 +318,11 @@ class FleetLifecycleIntentAdapter extends Base {
             return await FleetLifecycleIntentAdapter.#withTimeout(settlement, action, options)
         } catch (error) {
             if (!error?.isFleetLifecycleTimeout) throw error;
+
+            // Setup may still be changing host state. Keep it busy until its actual answer arrives.
+            if (action === 'setupNativeWake' && !answer) {
+                return {accepted: true, action, method, ok: false, status: 'timeout', settlement, isCurrent}
+            }
 
             return answer || {...complete(null, FleetLifecycleIntentAdapter.createControlReason(action, 'timeout', error.message)), settlement}
         }
