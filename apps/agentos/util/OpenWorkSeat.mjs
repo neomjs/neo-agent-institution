@@ -6,12 +6,13 @@ import Base           from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * @type {Object}
  */
 const KIND_WORDS = Object.freeze({
-    'red'              : 'red',
-    'changes-requested': 'changes requested',
-    'rebase'           : 'rebase required',
-    'review-due'       : 'review due',
-    'route-review'     : 'request review',
-    'unknown'          : 'next action unknown'
+    'red'               : 'red',
+    'changes-requested' : 'changes requested',
+    'rebase'            : 'rebase required',
+    'review-due'        : 'review due',
+    'route-review'      : 'request review',
+    'await-prerequisite': 'waits on a blocked ticket',
+    'unknown'           : 'next action unknown'
 });
 
 /**
@@ -19,11 +20,12 @@ const KIND_WORDS = Object.freeze({
  * @type {Object}
  */
 const DISPLAY_KIND = Object.freeze({
-    'repair-ci'      : 'red',
-    'address-changes': 'changes-requested',
-    'rebase'         : 'rebase',
-    'review'         : 'review-due',
-    'route-review'   : 'route-review'
+    'repair-ci'         : 'red',
+    'address-changes'   : 'changes-requested',
+    'rebase'            : 'rebase',
+    'review'            : 'review-due',
+    'route-review'      : 'route-review',
+    'await-prerequisite': 'await-prerequisite'
 });
 
 /**
@@ -52,7 +54,8 @@ const PANE_WORDS = Object.freeze({
  * the operator's queue is the fleet head's awaiting-merge button, and an unknown holder is nobody's to act
  * on yet.
  *
- * Worst first: red, requested changes, rebase, review due, reviewer routing, then an unknown action.
+ * Worst first: red, requested changes, rebase, review due, reviewer routing, a wait on a blocked ticket, then
+ * an unknown action. The wait asks nothing of the seat now, so every action the seat can take outranks it.
  * Explicit producer kinds own these words; only an absent field uses the legacy role/CI vocabulary.
  *
  * The chip keeps the open-lane badge's rule: nothing held is no chip, never "0 PRs", and an unanswered or
@@ -194,7 +197,8 @@ class OpenWorkSeat extends Base {
 
     /**
      * @summary The card chip for one seat's held open work: its words, its accessible name and its title,
-     * as one unit, so the visible text and the spoken one cannot diverge.
+     * as one unit, so the visible text and the spoken one cannot diverge. The count says which pull requests
+     * are on the seat, not that each waits on it: a wait on a blocked ticket asks nothing of the seat.
      * @param {Object|null} openWork One {@link #summarize} result, or `null`.
      * @param {Number} [now=Date.now()] The viewer's clock, for a stale chip's age.
      * @returns {{hidden: Boolean, stale: Boolean, text: String, ariaLabel: String|null, title: String|null}}
@@ -215,8 +219,8 @@ class OpenWorkSeat extends Base {
             hidden   : false,
             stale,
             text     : `${count} ${count === 1 ? 'PR' : 'PRs'} · ${word}`,
-            ariaLabel: `Open work: ${count} ${prs} waiting on this seat, worst: ${word}${stale ? ', stale' : ''}.`,
-            title    : `${count} ${prs} waiting on this seat · worst: ${word}${stale ? ' · stale' : ''}${age}`
+            ariaLabel: `Open work: ${count} ${prs} on this seat, worst: ${word}${stale ? ', stale' : ''}.`,
+            title    : `${count} ${prs} on this seat · worst: ${word}${stale ? ' · stale' : ''}${age}`
         }
     }
 }
