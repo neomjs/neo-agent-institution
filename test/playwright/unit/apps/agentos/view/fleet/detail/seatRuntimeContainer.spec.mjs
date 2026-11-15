@@ -8,6 +8,7 @@ import SeatRuntimeContainer from '../../../../../../../../apps/agentos/view/flee
 import Detail               from '../../../../../../../../apps/agentos/view/fleet/detail/Container.mjs';
 import Cockpit              from '../../../../../../../../apps/agentos/view/fleet/cockpit/Container.mjs';
 import RosterRow            from '../../../../../../../../apps/agentos/util/RosterRow.mjs';
+import Adapter              from '../../../../../../../../apps/agentos/util/FleetLifecycleIntentAdapter.mjs';
 
 const appName = 'FleetSeatRuntimeTest';
 setup({neoConfig: {unitTestMode: true}, appConfig: {name: appName, isMounted: () => true, vnodeInitialising: false}});
@@ -25,6 +26,68 @@ function createRecord(values = {}) {
 }
 
 test.afterEach(() => { detail?.destroy(); group?.destroy(); store?.destroy(); detail = group = store = null });
+
+test('native setup uses the shown running seat and stays busy until its answer', async () => {
+    const startedAt = '2026-11-15T09:00:00.000Z', calls = [];
+    const record = createRecord({harnessType: 'antigravity', nativeWakeSetup: {expectedStartedAt: startedAt}});
+    let resolve, request;
+    const bridge = {startAgent: params => { calls.push(params); return new Promise(r => { resolve = r }) }};
+    const controller = {id: 'native-owner', rosterObservedAt: null,
+        onAgentLifecycleIntent(data) { request = Adapter.handleFleetLifecycleIntent(data, record, {bridge, timeoutMs: -1}) }};
+    const host = {getController: () => controller, resolveProviderStore: () => null, detailRecord: record, buildDetailWindowToggle: () => ({})};
+    const config = Cockpit.prototype.seedPane.call(host, 'detail', {...Cockpit.prototype.panes.detail, appName});
+    delete config.reference;
+    detail = Neo.create(Detail, config);
+    detail.parentId = null;
+    const runtime = detail.getReference('seat-runtime');
+    expect(runtime.getReference('native-wake-description').text).toContain('shared Antigravity sidecar');
+    runtime.onNativeWakeClick();
+    runtime.onNativeWakeClick();
+    await Promise.resolve();
+    expect(calls).toEqual([{agentId: 'seat', activateNativeWake: true, expectedStartedAt: startedAt}]);
+    resolve({state: 'running', nativeWakePreparation: {state: 'prepared'}, wakeRoute: {state: 'ready', adapter: 'primary-session'}});
+    await request;
+    expect(record.nativeWakeFeedback).toContain('not yet confirmed');
+    record.set({nativeWakeSetup: null}); runtime.updateRecord(record);
+    expect(runtime.getReference('native-wake-setup').hidden).toBe(true);
+    runtime.onNativeWakeClick();
+    expect(calls).toHaveLength(1);
+    detail.getController().onRuntimeLifecycleIntent({action: 'setupNativeWake', agentId: 'previous-seat', expectedStartedAt: startedAt});
+    expect(calls).toHaveLength(1);
+});
+
+test('native setup refuses a stale selection or launch and reports backend refusal', async () => {
+    const startedAt = '2026-11-15T09:00:00.000Z', calls = [];
+    const record = createRecord({harnessType: 'codex-desktop', nativeWakeSetup: {expectedStartedAt: startedAt}});
+    const bridge = {startAgent: async params => { calls.push(params); return {state: 'running',
+        nativeWakePreparation: {state: 'refused', reason: 'running-seat-changed'}} }};
+    const stale = await Adapter.handleFleetLifecycleIntent({action: 'setupNativeWake', agentId: 'seat',
+        expectedStartedAt: 'old'}, record, {bridge});
+    expect(stale.accepted).toBe(false);
+    const wrongSeat = await Adapter.handleFleetLifecycleIntent({action: 'setupNativeWake', agentId: 'other',
+        expectedStartedAt: startedAt}, record, {bridge});
+    expect(wrongSeat.accepted).toBe(false);
+    expect(calls).toEqual([]);
+    await Adapter.handleFleetLifecycleIntent({action: 'setupNativeWake', agentId: 'seat', expectedStartedAt: startedAt}, record, {bridge});
+    expect(record.nativeWakeFeedback).toContain('stopped or restarted');
+    expect(calls).toHaveLength(1);
+});
+
+test('native setup times out without admitting a second in-flight request', async () => {
+    const startedAt = '2026-11-15T09:00:00.000Z', calls = [];
+    const record = createRecord({harnessType: 'codex-desktop', nativeWakeSetup: {expectedStartedAt: startedAt}});
+    let resolve;
+    const bridge = {startAgent: params => { calls.push(params); return new Promise(r => { resolve = r }) }};
+    const intent = {action: 'setupNativeWake', agentId: 'seat', expectedStartedAt: startedAt};
+    const first = await Adapter.handleFleetLifecycleIntent(intent, record, {bridge, timeoutMs: 0});
+    expect(first.status).toBe('timeout');
+    expect(record.pendingAction).toBe('setupNativeWake');
+    expect((await Adapter.handleFleetLifecycleIntent(intent, record, {bridge})).accepted).toBe(false);
+    expect(calls).toHaveLength(1);
+    resolve({state: 'running', nativeWakePreparation: {state: 'refused'}});
+    await first.settlement;
+    expect(record.pendingAction).toBeNull();
+});
 
 test('current, next Start and installed identity remain separate; expansion reads the complete IDs', () => {
     const record = createRecord();

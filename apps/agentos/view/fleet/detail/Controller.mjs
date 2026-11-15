@@ -130,9 +130,12 @@ class Controller extends ComponentController {
     }
 
     /** @summary Relays a matching selected-seat intent without replacing its displayed target. */
-    onRuntimeLifecycleIntent({agentId, expectedRuntimeGeneration}) {
-        if (!agentId || agentId !== this.component.record?.agentId) return;
-        this.component.fire('lifecycleIntent', {action: 'restart', agentId, expectedRuntimeGeneration});
+    onRuntimeLifecycleIntent({action='restart', agentId, expectedRuntimeGeneration, expectedStartedAt}) {
+        const record = this.component.record;
+        if (!agentId || agentId !== record?.agentId) return;
+        if (action === 'setupNativeWake' && expectedStartedAt !== record.nativeWakeSetup?.expectedStartedAt) return;
+        if (!['restart', 'setupNativeWake'].includes(action)) return;
+        this.component.fire('lifecycleIntent', {action, agentId, expectedRuntimeGeneration, expectedStartedAt});
     }
 
     /**

@@ -70,6 +70,7 @@ class RosterRow extends Base {
             // why a supervised seat exited without a Stop from Fleet Manager
             exitReason           : row.exitReason ?? null,
             launchAdmission      : row.launchAdmission ?? null,
+            nativeWakeSetup       : row.nativeWakeSetup ?? null,
             runtimeGeneration    : row.runtimeGeneration ?? null,
             installedGeneration  : row.installedGeneration ?? null,
             nextRuntimeGeneration: row.nextRuntimeGeneration ?? null,

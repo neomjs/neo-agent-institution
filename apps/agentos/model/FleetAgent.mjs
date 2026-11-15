@@ -193,6 +193,14 @@ class FleetAgent extends Model {
             name        : 'launchAdmission',
             defaultValue: null
         }, {
+            // Positive setup capability from the connected Fleet; null on older or unavailable backends.
+            name        : 'nativeWakeSetup',
+            defaultValue: null
+        }, {
+            // Local feedback for the last explicit setup attempt.
+            name        : 'nativeWakeFeedback',
+            defaultValue: null
+        }, {
             // The original Start's generation and held/released/unknown pin, never inferred from installed state.
             name        : 'runtimeGeneration',
             defaultValue: null
