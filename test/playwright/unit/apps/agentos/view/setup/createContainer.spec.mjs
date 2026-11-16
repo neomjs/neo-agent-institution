@@ -869,23 +869,24 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         store.destroy()
     });
 
-    test('desktop-wake: darwin asks inside Where it runs, toggles on Change, and dispatches step answers; linux auto-skips with no action chip', async () => {
+    test('desktop-wake: darwin asks inside Where it runs, toggles both ways on Change, and dispatches step answers; linux auto-skips with no action chip even on Change', async () => {
         const
-            calls  = [],
-            darwin = coldEvaluation();
+            calls      = [],
+            darwinHost = await pinnedSetupHost({machine: MACHINES.roomy, platform: 'darwin'});
 
-        put(darwin, row('plane-credential', 'question', 'ok', 'consented', {answer: '/kept/pat'}));
-        put(darwin, row('preset', 'question', 'ok', 'consented', {answer: 'local-small'}));
-        put(darwin, row('provider-key', 'question', 'ok', 'not needed', {answer: null}));
+        await darwinHost.broker.evaluate(TRUSTED, {});
+        await darwinHost.broker.credential(TRUSTED, {stepId: 'plane-credential'});
+        await darwinHost.broker.answer(TRUSTED, {stepId: 'preset', answer: 'local-small'});
+
+        const initialEval = (await darwinHost.broker.evaluate(TRUSTED, {})).evaluation;
 
         stubShell({
-            setupEvaluate: () => ({ok: true, evaluation: structuredClone(darwin)}),
+            setupEvaluate: () => ({ok: true, evaluation: structuredClone(initialEval)}),
             setupProbe   : {ok: true, probe: PROBE},
             setupPresets : {ok: true, presets: PRESETS},
             setupAnswer  : ({stepId, answer}) => {
                 calls.push({stepId, answer});
-                put(darwin, row(stepId, 'question', 'ok', 'consented', {answer, capability: {supported: true}}));
-                return {ok: true, evaluation: structuredClone(darwin)}
+                return darwinHost.broker.answer(TRUSTED, {stepId, answer})
             }
         });
 
@@ -901,7 +902,9 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await door.onWakeEnableClick();
         expect(calls.at(-1)).toEqual({stepId: 'desktop-wake', answer: 'enabled'});
-        expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(door.store.get('desktop-wake')).toMatchObject({status: 'ok', answer: 'enabled', skipped: false});
+        expect(SetupAsks.describeAsks(door.store, door.reopened)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(door.getReference('placement-line').text).toContain('· desktop wakes enabled');
         expect(actionsFor(door.store.get('desktop-wake'))).toEqual(['decline']);
 
         door.onChangeClick({component: {askId: 'where'}});
@@ -910,20 +913,38 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
 
         await door.onWakeDeclineClick();
         expect(calls.at(-1)).toEqual({stepId: 'desktop-wake', answer: 'declined'});
+        expect(door.store.get('desktop-wake')).toMatchObject({status: 'ok', answer: 'declined', skipped: true});
+        expect(SetupAsks.describeAsks(door.store, door.reopened)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(door.getReference('placement-line').text).toContain('· without desktop wakes');
         expect(actionsFor(door.store.get('desktop-wake'))).toEqual(['enable']);
 
-        const
-            linuxHost = await pinnedSetupHost({machine: MACHINES.laptop, platform: 'linux'}),
-            linuxEval = (await linuxHost.broker.evaluate(TRUSTED, {})).evaluation;
+        door.onChangeClick({component: {askId: 'where'}});
+        expect(SetupAsks.describeAsks(door.store, door.reopened)).toMatchObject({token: 'answered', where: 'open', start: 'next'});
+        expect(door.getReference('wake-enable-button').hidden).toBe(false);
+        expect(door.getReference('wake-decline-button').hidden).toBe(true);
 
-        put(linuxEval, row('plane-credential', 'question', 'ok', 'consented', {answer: '/kept/pat'}));
-        put(linuxEval, row('preset', 'question', 'ok', 'consented', {answer: 'local-small'}));
-        put(linuxEval, row('provider-key', 'question', 'ok', 'not needed', {answer: null}));
-        door.evaluation = linuxEval;
+        await door.onWakeEnableClick();
+        expect(calls.at(-1)).toEqual({stepId: 'desktop-wake', answer: 'enabled'});
+        expect(door.store.get('desktop-wake')).toMatchObject({status: 'ok', answer: 'enabled', skipped: false});
+        expect(SetupAsks.describeAsks(door.store, door.reopened)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(door.getReference('placement-line').text).toContain('· desktop wakes enabled');
+        expect(actionsFor(door.store.get('desktop-wake'))).toEqual(['decline']);
 
-        expect(door.store.get('desktop-wake')).toMatchObject({status: 'ok', skipped: true});
+        const linuxHost = await pinnedSetupHost({machine: MACHINES.roomy, platform: 'linux'});
+
+        await linuxHost.broker.evaluate(TRUSTED, {});
+        await linuxHost.broker.credential(TRUSTED, {stepId: 'plane-credential'});
+        await linuxHost.broker.answer(TRUSTED, {stepId: 'preset', answer: 'local-small'});
+
+        door.evaluation = (await linuxHost.broker.evaluate(TRUSTED, {})).evaluation;
+
+        expect(door.store.get('desktop-wake')).toMatchObject({status: 'ok', skipped: true, capability: {supported: false}});
         expect(actionsFor(door.store.get('desktop-wake'))).toEqual([]);
-        expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(SetupAsks.describeAsks(door.store, door.reopened)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(door.getReference('wake-enable-button').hidden).toBe(true);
+        expect(door.getReference('wake-decline-button').hidden).toBe(true);
+
+        door.onChangeClick({component: {askId: 'where'}});
         expect(door.getReference('wake-enable-button').hidden).toBe(true);
         expect(door.getReference('wake-decline-button').hidden).toBe(true);
 

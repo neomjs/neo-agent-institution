@@ -175,10 +175,10 @@ class SetupAsks extends Base {
             chosen         = preset?.answer ?? null,
             recommended    = placement?.recommended?.[0] ?? null,
             keyNeeded      = Boolean(key) && key.status !== 'ok' && !key.waitsFor,
-            wakeSupported  = Boolean(wake) && wake.capability?.supported !== false && !wake.skipped,
+            wakeSupported  = Boolean(wake) && wake.capability?.supported !== false,
             wakeNeeded     = Boolean(chosen) && !keyNeeded && Boolean(wake) && wake.status !== 'ok' && !wake.waitsFor,
             wakeFlipAnswer = reopened === 'where' && !wakeNeeded && wakeSupported && wake?.status === 'ok'
-                ? (wake.answer === 'declined' ? 'enabled' : 'declined')
+                ? (wake.answer === 'declined' ? 'enabled' : wake.answer === 'enabled' ? 'declined' : null)
                 : null,
             keySuffix      = keyNeeded ? ' · needs a provider key' : key?.status === 'ok' && key.answer ? ' · provider key kept' : '',
             wakeSuffix     = wakeNeeded ? ' · needs a desktop wake choice' : wake?.answer === 'enabled' ? ' · desktop wakes enabled' : wake?.answer === 'declined' ? ' · without desktop wakes' : '';
