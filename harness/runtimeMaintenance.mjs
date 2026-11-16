@@ -23,6 +23,26 @@ const idPattern = /^[a-f0-9]{64}$/, transactionPattern = /^[a-f0-9]{8}-[a-f0-9]{
 export const RUNTIME_MAINTENANCE_DEADLINE_MS = 120000;
 const HALTS = new Set(['pass-deadline', 'pass-aborted']);
 
+/**
+ * @summary Reports removals and each active deferral reason once until it clears.
+ * @param {Object} logger Shell log sink.
+ * @returns {Function} The ordinary scheduled maintenance result observer.
+ */
+export function runtimeMaintenanceReporter(logger = console) {
+    let previous = new Set();
+    return result => {
+        const removed = result.generations.filter(row => row.state === 'removed').map(row => row.id);
+        if (removed.length) logger.log('HARNESS_RUNTIME_RETIRED ' + JSON.stringify(removed));
+        const reasons = new Set((result.artifacts || []).filter(row => row.state === 'retained' && row.reason !== 'process-held').map(row => row.reason));
+        if (result.phase) logger.warn(`HARNESS_RUNTIME_MAINTENANCE_DEFERRED ${result.reason} ${result.phase.step} ${result.phase.id ?? '-'}`);
+        else if (result.state === 'deferred') reasons.add(result.reason);
+        for (const reason of reasons) {
+            if (!previous.has(reason)) logger.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + reason)
+        }
+        previous = reasons
+    }
+}
+
 /** @summary Requires an owner-controlled canonical directory without repairing its custody. */
 function ownedDirectory(directory) {
     const stat = fs.lstatSync(directory, {bigint: true});

@@ -502,7 +502,9 @@ The bundle-use guard correctly refused replacement while seat processes used its
    selects a new immutable address for Codex to review. Fleet preserves the vendor's trust file.
    The unsigned packaging path emits the declaration after the native modules are staged.
    A release configured for an outer app signature keeps the generation-bound hook until it ships
-   an independently signed complete hook carrier. Older packages also retain their original behavior.
+   an independently signed complete hook carrier. [The signed carrier](https://github.com/neomjs/neo-agent-institution/issues/1007)
+   owns its release packaging, genuine signature checks and cross-update approval witness.
+   Older packages also retain their original behavior.
    The package and runtime-reference leases protect publication and collection. Any retained
    declaring generation or observed artifact process keeps the artifact alive. Unknown references
    or process observations defer removal. A missing or invalid declared artifact cannot authorize

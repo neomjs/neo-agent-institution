@@ -94,10 +94,14 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
     try { await ownedDirectory(parent) } catch (error) { if (error.code === 'ENOENT') return []; throw error }
     const names = await fs.readdir(directory);
     if (names.some(name => name.startsWith('.retiring-'))) throw Error('wake-artifact-retirement-pending');
-    const ids = names.filter(name => digestName.test(name)).sort(), artifacts = await fs.readdir(parent);
-    if (!artifacts.length) return [];
+    const ids = names.filter(name => digestName.test(name)).sort(), artifacts = [], result = [];
+    for (const name of await fs.readdir(parent)) {
+        if (digestName.test(name) || stagingName.test(name)) artifacts.push(name);
+        else result.push({id:name,state:'retained',reason:'wake-artifact-unrecognized-entry'})
+    }
+    if (!artifacts.length) return result;
     const key = directory + '\n' + ids.join('\n');
-    if (lastScan?.key === key && artifacts.every(name => lastScan.live.has(name))) return [];
+    if (lastScan?.key === key && artifacts.every(name => lastScan.live.has(name))) return result;
     if (!protectedIds || !snapshot || protectedIds.some(id => !ids.includes(id))) throw Error('wake-artifact-references-unknown');
     const roots = [
         ...snapshot.seats.filter(s => !['stopped','exited'].includes(s.state) || s.ownershipUnresolved !== false || s.cleanupUnresolved !== false)
@@ -127,13 +131,12 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
         return live
     }
     lastScan = {key,live:await referenced(false)};
-    if (artifacts.every(name => lastScan.live.has(name))) return [];
+    if (artifacts.every(name => lastScan.live.has(name))) return result;
     lastScan = {key,live:await referenced(true)};
     const unreferenced = artifacts.filter(name => !lastScan.live.has(name));
-    if (!unreferenced.length) return [];
-    if (unreferenced.some(name => !digestName.test(name) && !stagingName.test(name))) throw Error('wake-artifact-storage-unknown');
-    const result = [], directories = unreferenced.map(name => path.join(parent,name));
-    const census = await bounded('wake-census',null,inspectProcesses({directories}));
+    if (!unreferenced.length) return result;
+    const directories = unreferenced.map(name => path.join(parent,name));
+    const census      = await bounded('wake-census',null,inspectProcesses({directories}));
     if (census?.state !== 'observed' || !Array.isArray(census.processes) || census.processes.some(p =>
         !Number.isSafeInteger(p?.pid) || p.pid <= 0 || !Array.isArray(p.directories) || p.directories.some(dir => !directories.includes(dir)))) {
         throw Error('wake-artifact-processes-unknown')
@@ -143,18 +146,24 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
         if (census.processes.some(p => p.directories.includes(dir))) {
             result.push({id:name,state:'retained',reason:'process-held'}); continue
         }
-        await ownedDirectory(dir);
-        if (digestName.test(name)) {
-            await bounded('wake-verify',name,verified(dir,name,verifier));
-            const quarantine = path.join(parent,'.removing-' + randomUUID());
+        try {
+            await ownedDirectory(dir);
+            if (digestName.test(name)) {
+                await bounded('wake-verify',name,verified(dir,name,verifier));
+                const quarantine = path.join(parent,'.removing-' + randomUUID());
+                assertCurrent();
+                // Synchronous rename keeps the exclusion check adjacent to removing the public address.
+                nodeFs.renameSync(dir,quarantine);
+                dir = quarantine
+            }
             assertCurrent();
-            // Synchronous rename keeps the exclusion check adjacent to removing the public address.
-            nodeFs.renameSync(dir,quarantine);
-            dir = quarantine
+            await removeTree(dir);
+            result.push({id:name,state:'removed'})
+        } catch (error) {
+            if (error.code === 'pass-aborted' || error.code === 'pass-deadline') throw error;
+            assertCurrent();
+            result.push({id:name,state:'retained',reason:error.code || error.message})
         }
-        assertCurrent();
-        await removeTree(dir);
-        result.push({id:name,state:'removed'})
     }
     return result
 }
