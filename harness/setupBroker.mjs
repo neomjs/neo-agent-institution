@@ -136,13 +136,16 @@ async function newestRecord({setupRoot, record, fsModule}) {
  * @param {Function} options.promptCredential `({event, method}) => Promise<String|null>` in main custody.
  * @param {String} options.setupRoot The setup records' directory.
  * @param {String} options.stateRoot The host state root the recipe's layout derives from.
+ * @param {String|null} [options.homeDir=null] Optional home directory override passed to `cli.hostLayout`.
  * @param {String|null} [options.configSourcePath=null] The Brain's `ai/configBase.mjs` under the runtime root; `null` without a Brain root.
  * @param {Object} [options.fsModule=fs]
  * @param {Function} [options.now=Date.now]
  * @returns {Object} One handler per {@link SETUP_CHANNELS} key: `(event, request) => Promise<Object>`.
  */
-export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, configSourcePath = null, fsModule = fs, now = Date.now}) {
-    const refuse = (reason, extra = {}) => ({ok: false, reason, ...extra});
+export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, homeDir = null, configSourcePath = null, fsModule = fs, now = Date.now}) {
+    const
+        refuse    = (reason, extra = {}) => ({ok: false, reason, ...extra}),
+        layoutFor = cli => cli.hostLayout({stateRoot, ...(homeDir ? {homeDir} : {})});
 
     // the broker holds the run's BINDING only — the path of its record. The record itself is read
     // from disk by every operation: a write the host rejected may or may not have landed (an
@@ -212,7 +215,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
         const
             {cli, hostEffects, record: recordModule, recipe} = modules,
             host                                             = hostEffects.createHost({fsModule, now}),
-            targetOf                                         = record => recordModule.runTarget({record, named: requested ?? {}, profile: cli.hostLayout({stateRoot}).target});
+            targetOf                                         = record => recordModule.runTarget({record, named: requested ?? {}, profile: layoutFor(cli).target});
 
         let record, recordPath = boundRecordPath;
 
@@ -295,7 +298,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
     async function evaluateRun(modules, {host, record, recordPath, target}) {
         const
             {cli, presets, recipe} = modules,
-            layout                 = cli.hostLayout({stateRoot}),
+            layout                 = layoutFor(cli),
             observers              = cli.productionObservers({layout, host}),
             evaluation             = await recipe.evaluateRecipe({target, record, observers, presets: presets.presets, now});
 
@@ -479,7 +482,7 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
                     const
                         {evaluation, resolved}             = await settleThenEvaluate(admitted.modules, null),
                         {host, record, recordPath, target} = resolved,
-                        layout                             = cli.hostLayout({stateRoot}),
+                        layout                             = layoutFor(cli),
                         reported                           = [];
 
                     if (newAttempt && !evaluation.steps.find(step => step.effectId === effectId)?.exits?.includes(verify.VERIFY_EXITS.newAttempt)) {

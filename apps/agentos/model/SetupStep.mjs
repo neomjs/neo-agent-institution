@@ -88,6 +88,18 @@ class SetupStep extends Model {
             type        : 'Object',
             convert     : value => value && typeof value === 'object' ? value : null,
             defaultValue: null
+        }, {
+            // whether an optional or host-unsupported question/effect was skipped by evaluation
+            name        : 'skipped',
+            type        : 'Boolean',
+            convert     : value => value === true,
+            defaultValue: false
+        }, {
+            // step-specific host capability descriptor (such as desktop-wake support metadata)
+            name        : 'capability',
+            type        : 'Object',
+            convert     : value => value && typeof value === 'object' ? value : null,
+            defaultValue: null
         }]
     }
 }

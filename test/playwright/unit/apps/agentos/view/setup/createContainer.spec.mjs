@@ -35,6 +35,7 @@ async function stuckHost() {
 
     await run.broker.answer(TRUSTED, {stepId: 'preset', answer: 'local-small'});
     await run.broker.credential(TRUSTED, {stepId: 'plane-credential'});
+    await run.broker.answer(TRUSTED, {stepId: 'desktop-wake', answer: 'enabled'});
     await run.broker.effect(TRUSTED, {effectId: 'write-secrets'});
 
     const
@@ -64,13 +65,14 @@ async function witnessStates() {
             await broker.evaluate(TRUSTED, {});
             await broker.answer(TRUSTED, {stepId: 'preset', answer: 'local-small'});
             await broker.credential(TRUSTED, {stepId: 'plane-credential'});
+            await broker.answer(TRUSTED, {stepId: 'desktop-wake', answer: 'enabled'});
 
             return (await broker.evaluate(TRUSTED, {})).evaluation
         },
         effects  = async ({broker}, request = {}) => {
             let reply;
 
-            for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'verify']) {
+            for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver', 'verify']) {
                 reply = await broker.effect(TRUSTED, effectId === 'verify' ? {effectId, ...request} : {effectId})
             }
 
@@ -184,7 +186,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         // nothing decided yet: the advanced fold is a default, never a decision; the plane is the run's own
         // binding, there from the first evaluation because the broker binds the profile's
         expect(COLD.target.planeId, 'the cold run names its plane').toBeTruthy();
-        expect(run()).toEqual({runId: COLD.runId, recipeVersion: 1, preset: null, planeId: COLD.target.planeId, dataRoot: COLD.target.dataRoot, decisions: 0, manualActions: 0});
+        expect(run()).toEqual({runId: COLD.runId, recipeVersion: COLD.recipeVersion, preset: null, planeId: COLD.target.planeId, dataRoot: COLD.target.dataRoot, decisions: 0, manualActions: 0});
         expect(door.getReference('quiet-line').hidden).toBe(true);
         expect(door.getReference('served').hidden, 'a shell answered: the served path stays hidden').toBe(true);
 
@@ -304,8 +306,8 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
         expect(SetupAsks.describeAsks(door.store).startRow.id).toBe('write-secrets');
         expect(door.getReference('ask-start').cls).toContain('is-open');
-        expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[1].label}`);
-        expect(door.getReference('start-line').text).toBe(`${door.store.get('write-secrets').summary} · 5 of ${COLD.steps.length}`);
+        expect(door.getReference('placement-line').text).toBe(`This machine, ${PRESETS[1].label} · desktop wakes enabled`);
+        expect(door.getReference('start-line').text).toBe(`${door.store.get('write-secrets').summary} · 6 of ${COLD.steps.length}`);
         expect(door.getReference('start-help').text).toBe(`pending · ${door.store.get('write-secrets').reason}`);
         expect(door.getReference('start-button')).toMatchObject({hidden: false, text: 'Run next step'});
 
@@ -473,7 +475,7 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('status-line').text).toBe('write-secrets could not run: the preset \'hosted\' declares an env key the profile does not consume');
         expect(door.manualActions).toBe(0);
         expect(door.store.get('write-secrets').status).toBe('pending');
-        expect(progress()).toEqual({ok: 5, total: COLD.steps.length, next: 'write-secrets', blocking: null});
+        expect(progress()).toEqual({ok: 6, total: COLD.steps.length, next: 'write-secrets', blocking: null});
 
         host.destroy()
     });
@@ -746,15 +748,14 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(door.getReference('quiet-line').hidden).toBe(false);
         expect(door.getReference('quiet-line').text).toBe('a query was answered and a first memory persisted · local-small · 1024-dim · the set-up card stays in the rail');
         expect(progress()).toEqual({ok: COLD.steps.length, total: COLD.steps.length, next: null, blocking: null});
-        // the three consents and every effect the recipe runs, each a recorded decision
-        expect(run()).toMatchObject({preset: 'local-small', decisions: 3 + COLD.steps.filter(step => step.kind === 'effect').length, manualActions: 0});
+        // the four non-optional consents and every effect the recipe runs, each a recorded decision
+        expect(run()).toMatchObject({preset: 'local-small', decisions: 4 + COLD.steps.filter(step => step.kind === 'effect').length, manualActions: 0});
 
-        // the counting definition: three answered questions (the fold stays a default) + four
-        // consented effects = 7 decisions, 0 manual actions on a host where every effect ran
-        expect(SetupAsks.countDensity(finished)).toEqual({decisions: 3 + COLD.steps.filter(step => step.kind === 'effect').length, manualActions: 0});
+        // the counting definition: four answered questions (the fold stays a default) + consented effects
+        expect(SetupAsks.countDensity(finished)).toEqual({decisions: 4 + COLD.steps.filter(step => step.kind === 'effect').length, manualActions: 0});
 
         door.evaluation = {...finished};
-        expect(fired, 'fired once, with the count').toEqual([{density: {decisions: 3 + COLD.steps.filter(step => step.kind === 'effect').length, manualActions: 0}, evaluation: expect.any(Object), source: door.id}]);
+        expect(fired, 'fired once, with the count').toEqual([{density: {decisions: 4 + COLD.steps.filter(step => step.kind === 'effect').length, manualActions: 0}, evaluation: expect.any(Object), source: door.id}]);
 
         host.destroy()
     });
@@ -866,5 +867,66 @@ test.describe('AgentOS.view.setup.CreateContainer — the recipe projected inlin
         expect(SetupAsks.presetVerdict(null, 'hosted')).toEqual({verdict: 'unknown', reason: 'the placement step has not answered', margins: null});
 
         store.destroy()
+    });
+
+    test('desktop-wake: darwin asks inside Where it runs, toggles on Change, and dispatches step answers; linux auto-skips with no action chip', async () => {
+        const
+            calls  = [],
+            darwin = coldEvaluation();
+
+        put(darwin, row('plane-credential', 'question', 'ok', 'consented', {answer: '/kept/pat'}));
+        put(darwin, row('preset', 'question', 'ok', 'consented', {answer: 'local-small'}));
+        put(darwin, row('provider-key', 'question', 'ok', 'not needed', {answer: null}));
+
+        stubShell({
+            setupEvaluate: () => ({ok: true, evaluation: structuredClone(darwin)}),
+            setupProbe   : {ok: true, probe: PROBE},
+            setupPresets : {ok: true, presets: PRESETS},
+            setupAnswer  : ({stepId, answer}) => {
+                calls.push({stepId, answer});
+                put(darwin, row(stepId, 'question', 'ok', 'consented', {answer, capability: {supported: true}}));
+                return {ok: true, evaluation: structuredClone(darwin)}
+            }
+        });
+
+        const {host, door} = createDoor();
+
+        await settle();
+
+        expect(SetupAsks.describeAsks(door.store)).toEqual({token: 'answered', where: 'open', start: 'next', startRow: null});
+        expect(door.getReference('wake-enable-button').hidden).toBe(false);
+        expect(door.getReference('wake-decline-button').hidden).toBe(false);
+        expect(door.getReference('wake-line').hidden).toBe(false);
+        expect(actionsFor(door.store.get('desktop-wake'))).toEqual(['enable', 'decline']);
+
+        await door.onWakeEnableClick();
+        expect(calls.at(-1)).toEqual({stepId: 'desktop-wake', answer: 'enabled'});
+        expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(actionsFor(door.store.get('desktop-wake'))).toEqual(['decline']);
+
+        door.onChangeClick({component: {askId: 'where'}});
+        expect(door.getReference('wake-decline-button').hidden).toBe(false);
+        expect(door.getReference('wake-enable-button').hidden).toBe(true);
+
+        await door.onWakeDeclineClick();
+        expect(calls.at(-1)).toEqual({stepId: 'desktop-wake', answer: 'declined'});
+        expect(actionsFor(door.store.get('desktop-wake'))).toEqual(['enable']);
+
+        const
+            linuxHost = await pinnedSetupHost({machine: MACHINES.laptop, platform: 'linux'}),
+            linuxEval = (await linuxHost.broker.evaluate(TRUSTED, {})).evaluation;
+
+        put(linuxEval, row('plane-credential', 'question', 'ok', 'consented', {answer: '/kept/pat'}));
+        put(linuxEval, row('preset', 'question', 'ok', 'consented', {answer: 'local-small'}));
+        put(linuxEval, row('provider-key', 'question', 'ok', 'not needed', {answer: null}));
+        door.evaluation = linuxEval;
+
+        expect(door.store.get('desktop-wake')).toMatchObject({status: 'ok', skipped: true});
+        expect(actionsFor(door.store.get('desktop-wake'))).toEqual([]);
+        expect(SetupAsks.describeAsks(door.store)).toMatchObject({token: 'answered', where: 'answered', start: 'open'});
+        expect(door.getReference('wake-enable-button').hidden).toBe(true);
+        expect(door.getReference('wake-decline-button').hidden).toBe(true);
+
+        host.destroy()
     })
 });
