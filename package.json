@@ -67,7 +67,7 @@
         "watch-themes": "node ./node_modules/neo.mjs/buildScripts/helpers/watchThemes.mjs"
     },
     "dependencies": {
-        "neo-agent-brain": "github:neomjs/neo-agent-brain#fef1702adaf95081320b479f4bc036b81718bf1c",
+        "neo-agent-brain": "github:neomjs/neo-agent-brain#d6469d3b9679a28eac67893badcaa9ee8ae6b68b",
         "neo.mjs": "github:neomjs/neo#dev"
     },
     "devDependencies": {
@@ -90,7 +90,7 @@
         "marked": "^18.2.0",
         "mermaid": "^12.3.0",
         "monaco-editor": "0.57.0",
-        "neo-agent-skills": "^1.9.9",
+        "neo-agent-skills": "^1.10.0",
         "parse5": "^8.1.1",
         "postcss": "^8.5.32",
         "sass": "^1.108.2",

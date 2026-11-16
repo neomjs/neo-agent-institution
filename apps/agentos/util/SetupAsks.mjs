@@ -118,12 +118,175 @@ class SetupAsks extends Base {
     }
 
     /**
+     * @summary The budgets line: both budgets as numbers with the pressure verdict.
+     * @param {Object|null} probe
+     * @returns {String}
+     */
+    static budgetText(probe) {
+        if (!probe?.host) return 'not probed yet';
+
+        const
+            {guest, host} = probe,
+            hostText      = `host ${SetupAsks.gibText(host.totalBytes)} total · ${SetupAsks.gibText(host.availableBytes)} available · pressure ${host.pressure ?? 'unknown'}`,
+            guestText     = guest ? ` · VM ${SetupAsks.gibText(guest.capBytes)} cap · ${SetupAsks.gibText(guest.availableBytes)} available` : ' · no VM observed';
+
+        return `${hostText}${guestText}`
+    }
+
+    /**
+     * @summary The lede names a fresh or resumed run and its binding; a cold run keeps the door's words.
+     * @param {Object|null} evaluation
+     * @param {Object|null} freshRun
+     * @param {String} coldLede
+     * @returns {String}
+     */
+    static ledeText(evaluation, freshRun, coldLede) {
+        if (evaluation?.runId && freshRun?.runId === evaluation.runId) {
+            return `Fresh run ${evaluation.runId}${freshRun.retiredRunId ? ` — the run ${freshRun.retiredRunId} stays on disk as history` : ''}. Nothing was deleted; a step whose result the host shows reads ok, the others ask again.`
+        }
+
+        if (evaluation?.binding && evaluation.binding !== 'bound' && evaluation.binding !== 'no-record') {
+            return `Resumed from the run record (${evaluation.runId ?? 'unknown run'}): ${evaluation.bindingReason ?? evaluation.binding}. Prior consents and receipts are history now; every step reads fresh.`
+        }
+
+        if (evaluation?.runId && evaluation.steps?.some(step => step.kind === 'effect' && step.receipt)) {
+            return `Resumed from the run record (${evaluation.runId}, bound to ${evaluation.target?.planeId ?? 'this plane'} at ${evaluation.target?.dataRoot ?? 'its data root'}). An interrupted effect is never run again; a fresh observation that matches the plane settles it.`
+        }
+
+        return coldLede
+    }
+
+    /**
+     * @summary Derives the Where block's projection from the store: recommendation vs chosen preset,
+     * provider key requirement, and desktop-wake consent/toggle state.
+     * @param {Neo.data.Store|null} store
+     * @param {Object[]} [presets=[]]
+     * @param {String|null} [reopened=null]
+     * @returns {Object}
+     */
+    static describeWhere(store, presets = [], reopened = null) {
+        const
+            step           = id => store?.get(id) ?? null,
+            preset         = step('preset'),
+            key            = step('provider-key'),
+            wake           = step('desktop-wake'),
+            placement      = step('placement')?.placement ?? null,
+            label          = id => presets?.find(row => row.id === id)?.label ?? id,
+            chosen         = preset?.answer ?? null,
+            recommended    = placement?.recommended?.[0] ?? null,
+            keyNeeded      = Boolean(key) && key.status !== 'ok' && !key.waitsFor,
+            wakeSupported  = Boolean(wake) && wake.capability?.supported !== false,
+            wakeNeeded     = Boolean(chosen) && !keyNeeded && Boolean(wake) && wake.status !== 'ok' && !wake.waitsFor,
+            wakeFlipAnswer = reopened === 'where' && !wakeNeeded && wakeSupported && wake?.status === 'ok'
+                ? (wake.answer === 'declined' ? 'enabled' : wake.answer === 'enabled' ? 'declined' : null)
+                : null,
+            keySuffix      = keyNeeded ? ' · needs a provider key' : key?.status === 'ok' && key.answer ? ' · provider key kept' : '',
+            wakeSuffix     = wakeNeeded ? ' · needs a desktop wake choice' : wake?.answer === 'enabled' ? ' · desktop wakes enabled' : wake?.answer === 'declined' ? ' · without desktop wakes' : '';
+
+        return {
+            chosen,
+            keyNeeded,
+            keyText          : keyNeeded ? `This preset needs a provider key — ${key.reason ?? 'unanswered'}` : '',
+            line             : chosen ? `This machine, ${label(chosen)}${keySuffix}${wakeSuffix}` : SetupAsks.recommendationText(placement, presets),
+            placement,
+            recommended,
+            useHidden        : !recommended || chosen === recommended.id,
+            useText          : recommended ? `Use ${label(recommended.id)}` : 'Use this',
+            wakeDeclineHidden: !(wakeNeeded || wakeFlipAnswer === 'declined'),
+            wakeEnableHidden : !(wakeNeeded || wakeFlipAnswer === 'enabled'),
+            wakeNeeded,
+            wakeText         : wakeNeeded ? `Desktop wakes — ${wake.reason ?? 'unanswered'}` : ''
+        }
+    }
+
+    /**
+     * @summary Derives the Token block's display line from the `plane-credential` step.
+     * @param {Object|null} credential
+     * @returns {String}
+     */
+    static tokenLine(credential) {
+        return credential?.status === 'ok'
+            ? `consented · ${credential.answer ?? 'a kept file'}${credential.consentedAt ? ` · ${credential.consentedAt}` : ''}`
+            : 'One token. It lets your agents read and write your repositories, and it signs you in here.'
+    }
+
+    /**
+     * @summary Derives the Start block's line, help text, and primary button label from the current step state.
+     * @param {Object} options
+     * @returns {{buttonText: String, help: String, line: String}}
+     */
+    static describeStart({action = null, confirmLines = {}, confirming = false, confirmingAction = null, done = null, progress, start, startRow}) {
+        const
+            line = done?.status === 'ok'
+                ? 'Your institution is running. Add your first agent.'
+                : startRow
+                    ? `${startRow.summary ?? startRow.id} · ${progress.ok} of ${progress.total}`
+                    : start === 'open'
+                        ? `${progress.ok} of ${progress.total} — waiting for the plane`
+                        : 'Two answers, then one action at a time.',
+            help = startRow
+                ? confirming
+                    ? confirmLines[confirmingAction] ?? confirmLines['write again']
+                    : `${startRow.status} · ${startRow.reason ?? ''}`
+                : '';
+
+        return {
+            buttonText: SetupAsks.START_VERBS[action] ?? action ?? 'Run next step',
+            help,
+            line
+        }
+    }
+
+    /**
+     * @summary Derives the quiet first-persistence confirmation banner state from the `done` and `preset` rows.
+     * @param {Neo.data.Store|null} store
+     * @param {Object[]|null} presets
+     * @returns {{finished: Boolean, text: String}}
+     */
+    static describeQuiet(store, presets) {
+        const
+            done     = store?.get('done'),
+            preset   = store?.get('preset'),
+            table    = presets?.find(row => row.id === preset?.answer),
+            finished = done?.status === 'ok';
+
+        return {
+            finished,
+            text: finished ? `${done.reason}${table ? ` · ${table.id} · ${table.vectorDimension}-dim` : ''} · the set-up card stays in the rail` : ''
+        }
+    }
+
+    /**
+     * @summary Builds the leaf-complete `setupProgress` and `setupRun` state-provider payload.
+     * @param {Neo.data.Store} store
+     * @param {Object|null} evaluation
+     * @param {Number} manualActions
+     * @returns {{setupProgress: Object, setupRun: Object}}
+     */
+    static describePublishedRun(store, evaluation, manualActions) {
+        const density = SetupAsks.countDensity(evaluation, manualActions);
+
+        return {
+            setupProgress: store.describeProgress(),
+            setupRun     : {
+                dataRoot     : evaluation?.target?.dataRoot ?? null,
+                decisions    : evaluation ? density.decisions : null,
+                manualActions: evaluation ? density.manualActions : null,
+                planeId      : evaluation?.target?.planeId ?? null,
+                preset       : store.get('preset')?.answer ?? null,
+                recipeVersion: evaluation?.recipeVersion ?? null,
+                runId        : evaluation?.runId ?? null
+            }
+        }
+    }
+
+    /**
      * @summary The three question blocks' states, from the rows alone: **token** is the plane
-     * credential, **where** the preset with its provider key when the preset needs one, **start** the
-     * first row that is not ok and waits for nothing. The blocks read in order — the first one not
-     * answered is open, the ones before it answered, the ones after it next — and `reopened` names an
-     * answered block the operator opened again with Change: it becomes the one open block, and the
-     * blocks after it read next until it settles, so one progression is active at a time.
+     * credential, **where** the preset with its provider key and desktop-wake consent when required,
+     * **start** the first row that is not ok and waits for nothing. The blocks read in order — the
+     * first one not answered is open, the ones before it answered, the ones after it next — and
+     * `reopened` names an answered block the operator opened again with Change: it becomes the one
+     * open block, and the blocks after it read next until it settles, so one progression is active at a time.
      * @param {Neo.data.Store|null} store The door's projection store
      * @param {String|null} [reopened=null] `token` | `where`
      * @returns {{token: String, where: String, start: String, startRow: Object|null}} Each state is
@@ -136,8 +299,10 @@ class SetupAsks extends Base {
             credential = step('plane-credential'),
             preset     = step('preset'),
             key        = step('provider-key'),
+            wake       = step('desktop-wake'),
             keyDone    = !key || key.status === 'ok' || Boolean(key.waitsFor),
-            answered   = {token: credential?.status === 'ok', where: preset?.status === 'ok' && keyDone},
+            wakeDone   = !wake || wake.status === 'ok' || Boolean(wake.waitsFor),
+            answered   = {token: credential?.status === 'ok', where: preset?.status === 'ok' && keyDone && wakeDone},
             order      = ['token', 'where', 'start'],
             normal     = order.indexOf(order.find(id => id === 'start' || !answered[id])),
             reopenedAt = order.indexOf(reopened),

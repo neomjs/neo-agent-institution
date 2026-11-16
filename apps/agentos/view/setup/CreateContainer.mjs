@@ -196,10 +196,13 @@ class CreateContainer extends Container {
                     controls('where', [
                         {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-use-button'], handler: 'up.onUseClick', hidden: true, reference: 'use-button', text: 'Use this'},
                         {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-key-button'], handler: 'up.onProviderKeyClick', hidden: true, reference: 'provider-key-button', text: 'Enter the provider key'},
+                        {module: Button, cls: ['agent-plane-setup-connect', 'fm-setup-wake-enable'], handler: 'up.onWakeEnableClick', hidden: true, reference: 'wake-enable-button', text: 'Enable desktop wakes'},
+                        {module: Button, cls: ['fm-setup-link', 'fm-setup-wake-decline'], handler: 'up.onWakeDeclineClick', hidden: true, reference: 'wake-decline-button', text: 'Continue without wakes'},
                         {module: Button, cls: ['fm-setup-link', 'fm-setup-other-choices-toggle'], handler: 'up.onOtherChoicesClick', reference: 'other-choices-toggle', text: 'Other choices'},
                         changeLink('where')
                     ]),
                     {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-key-line'], flex: 'none', hidden: true, reference: 'provider-key-line', text: ''},
+                    {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-wake-line'], flex: 'none', hidden: true, reference: 'wake-line', text: ''},
                     {ntype: 'component', cls: ['fm-setup-ask-help', 'fm-setup-budget'], flex: 'none', reference: 'budget-line', text: 'not probed yet'},
                     {module: PresetCardsContainer, reference: 'presets'}
                 ]),
@@ -519,20 +522,13 @@ class CreateContainer extends Container {
      * @returns {String}
      */
     static budgetText(probe) {
-        if (!probe?.host) return 'not probed yet';
-
-        const
-            {guest, host} = probe,
-            hostText      = `host ${SetupAsks.gibText(host.totalBytes)} total · ${SetupAsks.gibText(host.availableBytes)} available · pressure ${host.pressure ?? 'unknown'}`,
-            guestText     = guest ? ` · VM ${SetupAsks.gibText(guest.capBytes)} cap · ${SetupAsks.gibText(guest.availableBytes)} available` : ' · no VM observed';
-
-        return `${hostText}${guestText}`
+        return SetupAsks.budgetText(probe)
     }
 
     /**
      * @summary The three blocks read their rows: each block's state, the token's kept path, the
-     * Where line and its choices, the provider key when the preset needs one, and the Start block's
-     * row with its one action.
+     * Where line and its choices, the provider key and desktop-wake controls when needed, and the
+     * Start block's row with its one action.
      * @protected
      */
     applyAsks() {
@@ -544,68 +540,51 @@ class CreateContainer extends Container {
 
         const
             {token, where, start, startRow} = SetupAsks.describeAsks(store, me.reopened),
-            step        = id => store.get(id),
-            credential  = step('plane-credential'),
-            preset      = step('preset'),
-            key         = step('provider-key'),
-            done        = step('done'),
-            placement   = step('placement')?.placement ?? null,
-            presets     = me.presets ?? [],
-            label       = id => presets.find(row => row.id === id)?.label ?? id,
-            chosen      = preset?.answer ?? null,
-            keyNeeded   = Boolean(key) && key.status !== 'ok' && !key.waitsFor,
-            recommended = placement?.recommended?.[0] ?? null,
-            progress    = store.describeProgress(),
-            list        = me.getReference('step-list'),
-            confirming  = list.confirmingId,
-            // a pending confirmation is the row's one open question: the block's action is its second
-            // press — write again, or the card's fresh run — never the row's first exit beside it
-            action      = startRow ? (confirming === startRow.id ? list.confirmingAction : actionsFor(startRow)[0] ?? null) : null;
+            step       = id => store.get(id),
+            presets    = me.presets ?? [],
+            whereState = SetupAsks.describeWhere(store, presets, me.reopened),
+            progress   = store.describeProgress(),
+            list       = me.getReference('step-list'),
+            action     = startRow ? (list.confirmingId === startRow.id ? list.confirmingAction : actionsFor(startRow)[0] ?? null) : null,
+            startState = SetupAsks.describeStart({
+                action,
+                confirmLines    : BLOCK_CONFIRM_LINES,
+                confirming      : Boolean(startRow && list.confirmingId === startRow.id),
+                confirmingAction: list.confirmingAction,
+                done            : step('done'),
+                progress,
+                start,
+                startRow
+            });
 
         me.applyAskState('token', token);
         me.applyAskState('where', where);
         me.applyAskState('start', start);
 
-        // the token: the kept file's path, never a value
-        me.getReference('credential-line').text = credential?.status === 'ok'
-            ? `consented · ${credential.answer ?? 'a kept file'}${credential.consentedAt ? ` · ${credential.consentedAt}` : ''}`
-            : 'One token. It lets your agents read and write your repositories, and it signs you in here.';
+        me.getReference('credential-line').text = SetupAsks.tokenLine(step('plane-credential'));
         me.getReference('token-change').hidden = token !== 'answered';
 
-        // where it runs: the choice once made, the recipe's recommendation until then; a placement
-        // that recommends nothing opens the choices, since the operator has to pick there
-        if (placement && !recommended && !chosen) {
+        if (whereState.placement && !whereState.recommended && !whereState.chosen) {
             me.otherChoicesOpen = true
         }
 
-        me.getReference('placement-line').text = chosen
-            ? `This machine, ${label(chosen)}${keyNeeded ? ' · needs a provider key' : key?.status === 'ok' && key.answer ? ' · provider key kept' : ''}`
-            : SetupAsks.recommendationText(placement, presets);
-        me.getReference('use-button').set({hidden: !recommended || chosen === recommended.id, presetId: recommended?.id ?? null, text: recommended ? `Use ${label(recommended.id)}` : 'Use this'});
-        me.getReference('provider-key-button').hidden = !keyNeeded;
-        me.getReference('provider-key-line').set({hidden: !keyNeeded, text: keyNeeded ? `This preset needs a provider key — ${key.reason ?? 'unanswered'}` : ''});
+        me.getReference('placement-line').text = whereState.line;
+        me.getReference('use-button').set({hidden: whereState.useHidden, presetId: whereState.recommended?.id ?? null, text: whereState.useText});
+        me.getReference('provider-key-button').hidden = !whereState.keyNeeded;
+        me.getReference('provider-key-line').set({hidden: !whereState.keyNeeded, text: whereState.keyText});
+        me.getReference('wake-enable-button').hidden = whereState.wakeEnableHidden;
+        me.getReference('wake-decline-button').hidden = whereState.wakeDeclineHidden;
+        me.getReference('wake-line').set({hidden: !whereState.wakeNeeded, text: whereState.wakeText});
         me.getReference('other-choices-toggle').text = me.otherChoicesOpen ? 'Fewer choices' : 'Other choices';
         me.getReference('presets').hidden = !me.otherChoicesOpen;
         me.getReference('where-change').hidden = where !== 'answered';
-        me.getReference('presets').project({placement, chosen, presets});
+        me.getReference('presets').project({placement: whereState.placement, chosen: whereState.chosen, presets});
 
-        // start: the row that is not ok and waits for nothing, its action in the operator's words
         me.startRow    = startRow;
         me.startAction = action;
-
-        me.getReference('start-line').text = done?.status === 'ok'
-            ? 'Your institution is running. Add your first agent.'
-            : startRow
-                ? `${startRow.summary ?? startRow.id} · ${progress.ok} of ${progress.total}`
-                : start === 'open'
-                    ? `${progress.ok} of ${progress.total} — waiting for the plane`
-                    : 'Two answers, then one action at a time.';
-        me.getReference('start-help').text = startRow
-            ? confirming === startRow.id
-                ? BLOCK_CONFIRM_LINES[list.confirmingAction] ?? BLOCK_CONFIRM_LINES['write again']
-                : `${startRow.status} · ${startRow.reason ?? ''}`
-            : '';
-        me.getReference('start-button').set({hidden: !action, text: SetupAsks.START_VERBS[action] ?? action ?? 'Run next step'})
+        me.getReference('start-line').text = startState.line;
+        me.getReference('start-help').text = startState.help;
+        me.getReference('start-button').set({hidden: !action, text: startState.buttonText})
     }
 
     /**
@@ -628,19 +607,7 @@ class CreateContainer extends Container {
      * @protected
      */
     applyLede() {
-        const
-            me         = this,
-            evaluation = me.evaluation;
-
-        if (evaluation?.runId && me.freshRun?.runId === evaluation.runId) {
-            me.getReference('lede').text = `Fresh run ${evaluation.runId}${me.freshRun.retiredRunId ? ` — the run ${me.freshRun.retiredRunId} stays on disk as history` : ''}. Nothing was deleted; a step whose result the host shows reads ok, the others ask again.`
-        } else if (evaluation?.binding && evaluation.binding !== 'bound' && evaluation.binding !== 'no-record') {
-            me.getReference('lede').text = `Resumed from the run record (${evaluation.runId ?? 'unknown run'}): ${evaluation.bindingReason ?? evaluation.binding}. Prior consents and receipts are history now; every step reads fresh.`
-        } else if (evaluation?.runId && evaluation.steps?.some(step => step.kind === 'effect' && step.receipt)) {
-            me.getReference('lede').text = `Resumed from the run record (${evaluation.runId}, bound to ${evaluation.target?.planeId ?? 'this plane'} at ${evaluation.target?.dataRoot ?? 'its data root'}). An interrupted effect is never run again; a fresh observation that matches the plane settles it.`
-        } else {
-            me.getReference('lede').text = COLD_LEDE
-        }
+        this.getReference('lede').text = SetupAsks.ledeText(this.evaluation, this.freshRun, COLD_LEDE)
     }
 
     /**
@@ -651,17 +618,10 @@ class CreateContainer extends Container {
      */
     applyQuietLine() {
         const
-            me       = this,
-            done     = me.store.get('done'),
-            preset   = me.store.get('preset'),
-            table    = me.presets?.find(row => row.id === preset?.answer),
-            quiet    = me.getReference('quiet-line'),
-            finished = done?.status === 'ok';
+            me                = this,
+            {finished, text}  = SetupAsks.describeQuiet(me.store, me.presets);
 
-        quiet.set({
-            hidden: !finished,
-            text  : finished ? `${done.reason}${table ? ` · ${table.id} · ${table.vectorDimension}-dim` : ''} · the set-up card stays in the rail` : ''
-        });
+        me.getReference('quiet-line').set({hidden: !finished, text});
 
         if (finished && !me.firstPersistenceFired) {
             me.firstPersistenceFired = true;
@@ -676,28 +636,10 @@ class CreateContainer extends Container {
      */
     publishRun() {
         const
-            me         = this,
-            provider   = me.getStateProvider(),
-            evaluation = me.evaluation;
+            me       = this,
+            provider = me.getStateProvider();
 
-        if (!provider) return;
-
-        const density = SetupAsks.countDensity(evaluation, me.manualActions);
-
-        // leaf-complete blocks: the provider's data is a tree of leaves, so every key is written
-        // with a value (null for "no run"), never a block replaced wholesale
-        provider.setData({
-            setupProgress: me.store.describeProgress(),
-            setupRun     : {
-                dataRoot     : evaluation?.target?.dataRoot ?? null,
-                decisions    : evaluation ? density.decisions : null,
-                manualActions: evaluation ? density.manualActions : null,
-                planeId      : evaluation?.target?.planeId ?? null,
-                preset       : me.store.get('preset')?.answer ?? null,
-                recipeVersion: evaluation?.recipeVersion ?? null,
-                runId        : evaluation?.runId ?? null
-            }
-        })
+        provider?.setData(SetupAsks.describePublishedRun(me.store, me.evaluation, me.manualActions))
     }
 
     /**
@@ -753,6 +695,10 @@ class CreateContainer extends Container {
         switch (action) {
             case 'open window':
                 return me.onCredentialClick(record.id);
+            case 'enable':
+                return me.onWakeChoice('enabled');
+            case 'decline':
+                return me.onWakeChoice('declined');
             case 'run':
                 return me.runEffect(record.effectId);
             case 'write again':
@@ -886,6 +832,36 @@ class CreateContainer extends Container {
      */
     onProviderKeyClick() {
         return this.onCredentialClick('provider-key')
+    }
+
+    /**
+     * @summary Records the operator's desktop-wake choice, re-evaluated by main.
+     * @param {String} answer `enabled` | `declined`
+     * @returns {Promise<void>}
+     */
+    async onWakeChoice(answer) {
+        const
+            me     = this,
+            ticket = me.takeTicket(),
+            reply  = await me.callShell('setupAnswer', {answer, stepId: 'desktop-wake'});
+
+        me.isDestroyed || me.admitReply(reply, `Desktop wake '${answer}' was refused`, {ticket})
+    }
+
+    /**
+     * @summary Consents to enabling the user-owned macOS wake receiver service.
+     * @returns {Promise<void>}
+     */
+    onWakeEnableClick() {
+        return this.onWakeChoice('enabled')
+    }
+
+    /**
+     * @summary Declines the desktop wake receiver for a receiver-less local plane.
+     * @returns {Promise<void>}
+     */
+    onWakeDeclineClick() {
+        return this.onWakeChoice('declined')
     }
 
     /**
