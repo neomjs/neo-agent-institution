@@ -343,10 +343,12 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             live   = {state: 'live'},
             derive = (cause, grid = stale) => SpineBanner.deriveSpineBanner({daemon: {state: 'running'}, grid, plane: {cause}, stream: live});
 
-        test('the shell\'s answer speaks the card\'s words over a failed roster read, and offers Connect', () => {
-            expect(derive('plane-credential-refused')).toMatchObject({action: 'connect-plane', hidden: false, kind: 'degraded', text: 'pat refused'});
+        test('the shell\'s answer speaks the card\'s words in the cold action-required tone across stale, live, and cold rosters, and offers Connect', () => {
+            expect(derive('plane-credential-refused')).toMatchObject({action: 'connect-plane', hidden: false, kind: 'cold', text: 'pat refused'});
+            expect(derive('plane-credential-refused', live)).toMatchObject({action: 'connect-plane', hidden: false, kind: 'cold', text: 'pat refused'});
             expect(derive('plane-credential-refused').title.startsWith(PlaneVerdict.sentences.rejected)).toBe(true);
-            expect(derive('plane-identity-changed')).toMatchObject({action: 'connect-plane', kind: 'degraded', text: 'account changed'});
+            expect(derive('plane-identity-changed')).toMatchObject({action: 'connect-plane', kind: 'cold', text: 'account changed'});
+            expect(derive('plane-identity-changed', live)).toMatchObject({action: 'connect-plane', kind: 'cold', text: 'account changed'});
             expect(derive('plane-credential-refused', {state: 'cold'}).kind, 'a roster that never answered').toBe('cold')
         });
 
@@ -354,6 +356,7 @@ test.describe('fleet/spineBanner — the per-spine honesty derivation', () => {
             const verdict = derive(null);
 
             expect(verdict.action).toBe(null);
+            expect(verdict.kind).toBe('degraded');
             expect(verdict.text).toBe('fleet failed')
         });
 
