@@ -1,11 +1,11 @@
 import {expect, test}                                       from '@playwright/test';
 import * as yaml                                            from 'js-yaml';
-import {mkdtemp, readFile, rm}                              from 'node:fs/promises';
+import {copyFile, mkdtemp, readFile, rm}                    from 'node:fs/promises';
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {tmpdir}                                             from 'node:os';
-import {fileURLToPath}                                      from 'node:url';
+import {fileURLToPath, pathToFileURL}                       from 'node:url';
 import {execFileSync}                                       from 'node:child_process';
-import {runtimeGenerationIdentity}                          from 'neo-agent-brain/runtime-generation';
+import {inventoryRuntimePayload, runtimeGenerationIdentity} from 'neo-agent-brain/runtime-generation';
 import {buildCodexWakeDeclaration, stageCodexWakeArtifact}  from '../../../../harness/packCodexWake.mjs';
 import {
     BRAIN_TREES,
@@ -287,6 +287,65 @@ test.describe('pack Brain source assessment', () => {
 });
 
 test.describe('harness pack stage', () => {
+    test('afterPack omits only node-gyp metadata from physical SQLite package copies', async () => {
+        const root        = await mkdtemp(path.join(tmpdir(), 'pack-sqlite-')),
+              staged      = path.join(root, '.stage/organism/node_modules'),
+              packed      = path.join(root, 'out/Neo Harness.app/Contents/Resources/organism/node_modules'),
+              sqliteRoots = ['better-sqlite3', '@scope/outer/node_modules/better-sqlite3'],
+              omitted     = sqliteRoots.flatMap(pkg => [`${pkg}/build/Makefile`, `${pkg}/build/config.gypi`]),
+              retained    = [
+                  'better-sqlite3/prebuilds/darwin-arm64.node',
+                  '@scope/outer/node_modules/better-sqlite3/build/Release/better_sqlite3.node',
+                  'better-sqlite3/build/Release/Makefile',
+                  'better-sqlite3/build/config.gypi.in',
+                  'other/build/Makefile',
+                  '@scope/better-sqlite3/build/config.gypi',
+                  'other/fixtures/node_modules/better-sqlite3/build/Makefile',
+                  'other/node_modules/better-sqlite3/build/Makefile/payload.mjs'
+              ];
+
+        try {
+            for (const file of [...omitted, ...retained]) {
+                mkdirSync(path.dirname(path.join(staged, file)), {recursive: true});
+                writeFileSync(path.join(staged, file), file)
+            }
+            for (const name of ['afterPack.cjs', 'packCodexWake.mjs']) {
+                await copyFile(new URL(`../../../../harness/${name}`, import.meta.url), path.join(root, name))
+            }
+
+            const {default: afterPack} = await import(pathToFileURL(path.join(root, 'afterPack.cjs')).href);
+            const context = {
+                appOutDir: path.join(root, 'out'),
+                packager : {appInfo: {productFilename: 'Neo Harness'}, config: {mac: {identity: null}}}
+            };
+
+            await afterPack(context);
+            const {digest} = await inventoryRuntimePayload(packed);
+
+            for (const file of omitted) {
+                expect(existsSync(path.join(packed, file)), file).toBe(false);
+                expect(await readFile(path.join(staged, file), 'utf8')).toBe(file)
+            }
+            for (const file of retained) {
+                expect(await readFile(path.join(packed, file), 'utf8')).toBe(file)
+            }
+
+            for (const file of omitted) {
+                writeFileSync(path.join(staged, file), 'generated in another checkout')
+            }
+            await afterPack(context);
+            expect((await inventoryRuntimePayload(packed)).digest).toBe(digest);
+
+            const native = 'better-sqlite3/prebuilds/darwin-arm64.node';
+            writeFileSync(path.join(staged, native), 'changed executable bytes');
+            await afterPack(context);
+            expect(await readFile(path.join(packed, native), 'utf8')).toBe('changed executable bytes');
+            expect((await inventoryRuntimePayload(packed)).digest).not.toBe(digest)
+        } finally {
+            await rm(root, {recursive: true, force: true})
+        }
+    });
+
     test('the hook declaration follows dynamic literal imports and entire installed dependencies', async () => {
         const root  = await mkdtemp(path.join(tmpdir(),'wake-closure-'));
         const write = (name,source) => {
