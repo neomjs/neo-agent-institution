@@ -21,7 +21,17 @@ module.exports = async function afterPack(context) {
 
     fs.rmSync(targetModules, {force: true, recursive: true});
     // verbatimSymlinks keeps npm's .bin links intact (the chroma CLI resolution rides them).
-    fs.cpSync(stagedModules, targetModules, {recursive: true, verbatimSymlinks: true});
+    // node-gyp writes checkout paths into these two build recipes. Omit them from actual package
+    // directories, including scoped and nested installs, before the complete runtime payload is sealed.
+    const sqliteBuildMetadata = /^(?:(?:@[^/]+\/)?[^/@][^/]*\/node_modules\/)*better-sqlite3\/build\/(?:Makefile|config\.gypi)$/;
+    fs.cpSync(stagedModules, targetModules, {
+        recursive       : true,
+        verbatimSymlinks: true,
+        filter(source) {
+            const relative = path.relative(stagedModules, source).split(path.sep).join('/');
+            return !sqliteBuildMetadata.test(relative) || !fs.lstatSync(source).isFile()
+        }
+    });
 
     // A signed outer app needs its own independently signed hook carrier. Keep native per-Start review there.
     const {stageCodexWakeArtifact} = await import('./packCodexWake.mjs');
