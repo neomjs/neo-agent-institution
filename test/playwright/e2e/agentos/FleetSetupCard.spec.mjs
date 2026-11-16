@@ -116,21 +116,25 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await expect(progress).toHaveText(`3 of ${TOTAL} observed ok · next: preset`);
 
         // where it runs: the recipe's recommendation is the one primary action; the hosted preset then
-        // needs a provider key, which the block asks for before it reads answered
+        // needs a provider key and a desktop-wake consent before it reads answered
         await expect(where).toHaveClass(/is-open/);
         await expect(where.locator('.fm-setup-ask-line')).toContainText('fits with 13.0 GiB host margin');
         await card.locator('.fm-setup-use-button').click();
         await expect(where.locator('.fm-setup-ask-line')).toContainText('· needs a provider key');
         await expect(where).toHaveClass(/is-open/);
         await card.locator('.fm-setup-key-button').click();
-        await expect(where, 'the provider key consented').toHaveClass(/is-answered/);
-        await expect(progress).toHaveText(`5 of ${TOTAL} observed ok · next: write-secrets`);
+        await expect(where.locator('.fm-setup-ask-line')).toContainText('· needs a desktop wake choice');
+        await expect(where).toHaveClass(/is-open/);
+        await card.locator('.fm-setup-wake-enable').click();
+        await expect(where, 'desktop wakes consented').toHaveClass(/is-answered/);
+        await expect(progress).toHaveText(`${before('write-secrets')} of ${TOTAL} observed ok · next: write-secrets`);
 
         // the ledger under Details agrees, row for row
         await card.locator('.fm-setup-details-toggle').click();
         await expect(row('preset')).toHaveClass(/is-ok/);
         await expect(row('plane-credential')).toHaveClass(/is-ok/);
         await expect(row('provider-key')).toHaveClass(/is-ok/);
+        await expect(row('desktop-wake')).toHaveClass(/is-ok/);
 
         // start: the first effect through the block's one button — the secret files land under the run's
         // state root, and nothing has left the host's files
@@ -153,6 +157,11 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         // the plane's forge connection is the recipe's own row, run through the same button, so seats can be owned
         await card.locator('.fm-setup-start-button').click();
         await expect(row('register-forge'), 'the forge connection is registered').toHaveClass(/is-ok/);
+        await expect(progress).toHaveText(`${before('verify') - 1} of ${TOTAL} observed ok · next: start-wake-receiver`);
+
+        // start-wake-receiver installs and verifies the per-user LaunchAgent and /wake listener
+        await card.locator('.fm-setup-start-button').click();
+        await expect(row('start-wake-receiver'), 'the wake receiver service is running').toHaveClass(/is-ok/);
         await expect(progress).toHaveText(`${before('verify')} of ${TOTAL} observed ok · next: verify`);
 
         // the witness: written once, read back and recalled; the card retires in the same tick, so the
@@ -164,16 +173,15 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
 
         const calls = await page.evaluate(() => window.__neoShellCalls);
 
-        expect(calls.filter(([name]) => name === 'setupAnswer')).toEqual([['setupAnswer', {stepId: 'preset', answer: 'hosted'}]]);
+        expect(calls.filter(([name]) => name === 'setupAnswer')).toEqual([['setupAnswer', {stepId: 'preset', answer: 'hosted'}], ['setupAnswer', {stepId: 'desktop-wake', answer: 'enabled'}]]);
         expect(calls.filter(([name]) => name === 'setupCredential')).toEqual([['setupCredential', {stepId: 'plane-credential'}], ['setupCredential', {stepId: 'provider-key'}]]);
-        expect(calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request.effectId), 'one consent per effect, in the recipe\'s order').toEqual(['write-secrets', 'write-env', 'compose-up', 'register-forge', 'verify']);
+        expect(calls.filter(([name]) => name === 'setupEffect').map(([, request]) => request.effectId), 'one consent per effect, in the recipe\'s order').toEqual(['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver', 'verify']);
         expect(calls.filter(([name]) => name === 'setupEvaluate').every(([, request]) => !request?.target), 'the card never names a target').toBe(true);
-        expect(run.world.commands, 'one command reached the host').toHaveLength(1);
+        expect(run.world.commands, 'two host commands reached the runner').toHaveLength(2);
         expect(run.world.rows, 'one witness row').toHaveLength(1);
 
-        // the completed run's density on the mounted provider: three answered questions and four consented
-        // effects, no instruction handed to the operator, and the plane it is bound to
-        expect(await readSetupRun(page)).toMatchObject({decisions: 3 + RECIPE_STEPS.filter(step => step.kind === 'effect').length, manualActions: 0, preset: 'hosted', planeId: run.profile.planeId, dataRoot: run.profile.dataRoot})
+        // the completed run's density on the mounted provider: four non-optional answered questions and six consented effects
+        expect(await readSetupRun(page)).toMatchObject({decisions: 4 + RECIPE_STEPS.filter(step => step.kind === 'effect').length, manualActions: 0, preset: 'hosted', planeId: run.profile.planeId, dataRoot: run.profile.dataRoot})
     });
 
     test('a witness that does not land has a way out through the card: a waiting row says what it waits for, re-check searches and writes nothing, write again asks once where a second row is possible, and the run reaches done over one row', async ({page}) => {
@@ -203,13 +211,15 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await expect(row('plane-credential')).toHaveClass(/is-ok/);
         await chip('provider-key', 'open window').click();
         await expect(row('provider-key')).toHaveClass(/is-ok/);
+        await chip('desktop-wake', 'enable').click();
+        await expect(row('desktop-wake')).toHaveClass(/is-ok/);
 
         // every effect behind the next one waits, and says for which step, in place of a chip
         await expect(row('write-env').locator('.fm-setup-step-wait')).toHaveText('waits for write-secrets');
         await expect(row('verify').locator('.fm-setup-step-wait')).toHaveText('waits for write-secrets');
         await expect(row('verify').locator('.fm-setup-step-action')).toHaveCount(0);
 
-        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver']) {
             await chip(id, 'run').click();
             await expect(row(id), `${id} re-reads ok`).toHaveClass(/is-ok/)
         }
@@ -267,6 +277,7 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
         await card.locator('.fm-setup-use-button').click();
         await card.locator('.fm-setup-key-button').click();
+        await card.locator('.fm-setup-wake-enable').click();
         await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-answered/);
         await card.locator('.fm-setup-details-toggle').click();
         await chip('write-secrets', 'run').click();
@@ -287,7 +298,7 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await expect(row('write-secrets')).toHaveClass(/is-reconcile-required/);
         await expect(row('write-secrets').locator('.fm-setup-step-action')).toHaveText(['re-check']);
         await expect(row('write-env').locator('.fm-setup-step-wait')).toHaveText('waits for write-secrets');
-        await expect(progress).toHaveText(`5 of ${TOTAL} observed ok · write-secrets needs attention`);
+        await expect(progress).toHaveText(`${before('write-secrets')} of ${TOTAL} observed ok · write-secrets needs attention`);
 
         const retired = readFileSync(recordPath, 'utf8');
 
@@ -322,9 +333,10 @@ test.describe('AgentOS first run — the setup card projects the recipe inline, 
         await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
         await card.locator('.fm-setup-use-button').click();
         await card.locator('.fm-setup-key-button').click();
+        await card.locator('.fm-setup-wake-enable').click();
         await expect(card.locator('.fm-setup-ask-start')).toHaveClass(/is-open/);
 
-        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver']) {
             await chip(id, 'run').click();
             await expect(row(id), `${id} re-reads ok`).toHaveClass(/is-ok/)
         }

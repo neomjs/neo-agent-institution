@@ -49,10 +49,10 @@ export const BLOCK_CONFIRM_LINES = Object.freeze({
  * @summary The row's actions, from the step's data alone: none while it waits for another step, the
  * exits it names in the recipe's order, otherwise the one its kind and status decide. An empty list
  * means no chip (the exception-only rule).
- * @param {Object} step `{id, kind, status, waitsFor, exits}`
+ * @param {Object} step `{id, kind, status, waitsFor, exits, answer, capability}`
  * @returns {String[]}
  */
-export function actionsFor({id, kind, status, waitsFor, exits}) {
+export function actionsFor({id, kind, status, waitsFor, exits, answer, capability}) {
     if (waitsFor) return [];
 
     if (Array.isArray(exits)) {
@@ -60,6 +60,13 @@ export function actionsFor({id, kind, status, waitsFor, exits}) {
     }
 
     if (kind === 'question') {
+        if (id === 'desktop-wake') {
+            if (capability?.supported === false) return [];
+            if (status === 'ok') return [answer === 'declined' ? 'enable' : 'decline'];
+
+            return ['enable', 'decline']
+        }
+
         if (status === 'ok') return [id === 'advanced' ? 'unfold' : 'change'];
 
         return [id === 'plane-credential' || id === 'provider-key' ? 'open window' : 'choose']

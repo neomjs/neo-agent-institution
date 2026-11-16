@@ -142,13 +142,15 @@ function fakeModules({evaluations = []} = {}) {
 
 const trusted = TRUSTED;
 
-function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', fsModule} = {}) {
+function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), homeDir = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', fsModule} = {}) {
     return {
         setupRoot,
         stateRoot,
+        homeDir,
         broker: createSetupBroker({
             configSourcePath,
             fsModule,
+            homeDir,
             isTrustedSender : event => event === trusted,
             loadModules     : loadModules === undefined ? (modules ? async () => modules : null) : loadModules,
             packaged,
@@ -545,32 +547,39 @@ function countingDisk({setupRoot, stateRoot}) {
  * replay guard these arms read is theirs, never a double's. Only the host is scripted — what each
  * observer reports (`observed`, read at every evaluation) and the counting disk.
  */
-async function brainBacked({setupRoot = tempDir(), stateRoot = tempDir(), disk = countingDisk({setupRoot, stateRoot}), observed = {}} = {}) {
+async function brainBacked({setupRoot = tempDir(), stateRoot = tempDir(), homeDir = tempDir(), disk = countingDisk({setupRoot, stateRoot}), observed = {}} = {}) {
     const
         real      = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
         observers = {
+            desktopWake : async () => observed.desktopWake  ?? {supported: true, action: 'install and start'},
             envCarrier  : async () => observed.envCarrier   ?? {present: false, reason: 'not performed'},
             runningPlane: async () => observed.runningPlane ?? {present: false, reason: 'the compose project is not running'},
             secretFiles : async () => observed.secretFiles  ?? {present: false, reason: 'no secret files observed'},
-            servedPlane : async () => observed.servedPlane  ?? {id: 'another-plane', dataRoot: '/srv/another'}
+            servedPlane : async () => observed.servedPlane  ?? {id: 'another-plane', dataRoot: '/srv/another'},
+            wakeReceiver: async () => observed.wakeReceiver ?? {present: false, running: false, reason: 'not installed'}
         },
         modules   = {...real, cli: {...real.cli, productionObservers: () => observers}},
-        {broker}  = createBroker({modules, setupRoot, stateRoot, fsModule: disk.fsModule, configSourcePath: path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), prompt: async () => 'ghp_fixtureValueNeverReal0123456789abcdefgh'});
+        {broker}  = createBroker({modules, setupRoot, stateRoot, homeDir, fsModule: disk.fsModule, configSourcePath: path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), prompt: async () => 'ghp_fixtureValueNeverReal0123456789abcdefgh'});
 
-    return {broker, disk, observed, setupRoot, stateRoot}
+    return {broker, disk, homeDir, observed, setupRoot, stateRoot}
 }
 
 /**
- * Starts the run and consents to the preset and the plane credential.
+ * Starts the run and consents to the preset, plane credential, and desktop wake choice.
  * @param {Object} run
  * @param {Object|null} [target=TARGET] The target bound by hand; `null` is the card's own request, which names none
+ * @param {String|null} [desktopWake='enabled']
  * @returns {Promise<String>} The run's record path
  */
-async function consented({broker}, target = TARGET) {
+async function consented({broker}, target = TARGET, desktopWake = 'enabled') {
     const first = await broker.evaluate(trusted, {target});
 
     expect((await broker.answer(trusted, {stepId: 'preset', answer: 'local-small'})).ok).toBe(true);
     expect((await broker.credential(trusted, {stepId: 'plane-credential'})).ok).toBe(true);
+
+    if (desktopWake !== null) {
+        expect((await broker.answer(trusted, {stepId: 'desktop-wake', answer: desktopWake})).ok).toBe(true)
+    }
 
     return first.evaluation.recordPath
 }
@@ -632,7 +641,7 @@ test.describe('harness/setupBroker over the Brain\'s own modules — every opera
 
         const record = JSON.parse(readFileSync(recordPath, 'utf8'));
 
-        expect(record.consents.map(row => row.stepId)).toEqual(['preset', 'plane-credential', 'advanced']);
+        expect(record.consents.map(row => row.stepId)).toEqual(['preset', 'plane-credential', 'desktop-wake', 'advanced']);
         expect(receiptsOnDisk(recordPath), 'the consent did not overwrite the guard').toEqual([['write-secrets', 'pending']]);
 
         await broker.effect(trusted, {effectId: 'write-secrets'});
@@ -785,7 +794,7 @@ const rowOf = (reply, id) => reply.evaluation?.steps.find(step => step.id === id
  * @returns {Promise<void>}
  */
 async function toTheWitness({broker}) {
-    for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+    for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver']) {
         expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
     }
 }
@@ -802,7 +811,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(record.target, 'the run is bound to it, with nothing bound by hand').toEqual(profile);
         expect(record.history, 'bound when it was created: a first run retires nothing').toEqual([]);
 
-        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver']) {
             expect(rowOf(await broker.effect(trusted, {effectId}), effectId), effectId).toMatchObject({status: 'ok'})
         }
 
@@ -929,18 +938,23 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         const
             setupRoot  = tempDir(),
             stateRoot  = tempDir(),
+            homeDir    = tempDir(),
             envFile    = path.join(stateRoot, 'config', 'local-agent-os.env'),
-            secretsDir = path.join(stateRoot, 'secrets');
+            secretsDir = path.join(stateRoot, 'secrets'),
+            recordsDir = path.join(stateRoot, 'wake-receiver', 'records'),
+            initialEnv = `NEO_PLANE_ID=the-live-plane\nNEO_WAKE_RECEIVER_RECORDS_HOST_DIR=${recordsDir}\n`;
 
         mkdirSync(path.dirname(envFile), {recursive: true});
         mkdirSync(secretsDir, {mode: 0o700, recursive: true});
-        writeFileSync(envFile, 'NEO_PLANE_ID=the-live-plane\n', {mode: 0o600});
+        mkdirSync(path.dirname(recordsDir), {mode: 0o700, recursive: true});
+        mkdirSync(recordsDir, {mode: 0o700, recursive: true});
+        writeFileSync(envFile, initialEnv, {mode: 0o600});
 
         for (const name of ['fleet-plane-token', 'mcp-auth-token']) {
             writeFileSync(path.join(secretsDir, name), `the live ${name}`, {mode: 0o600})
         }
 
-        const run = await pinnedSetupHost({setupRoot, stateRoot, running: true, served: {id: 'the-live-plane', dataRoot: '/srv/live'}});
+        const run = await pinnedSetupHost({setupRoot, stateRoot, homeDir, running: true, served: {id: 'the-live-plane', dataRoot: '/srv/live'}});
 
         await consented(run);
 
@@ -949,12 +963,12 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         }
 
         expect(rowOf(await run.broker.evaluate(trusted, {}), 'served-plane')).toMatchObject({status: 'failed', reason: expect.stringContaining('a different plane is answering')});
-        expect(readFileSync(envFile, 'utf8'), 'the env file is as it was').toBe('NEO_PLANE_ID=the-live-plane\n');
+        expect(readFileSync(envFile, 'utf8'), 'the env file is as it was').toBe(initialEnv);
         expect(readFileSync(path.join(secretsDir, 'fleet-plane-token'), 'utf8'), 'so is the plane token').toBe('the live fleet-plane-token');
         expect(run.world.commands, 'no command reached the host').toEqual([])
     });
 
-    test('the scripted host flatters no target: the plane that comes up is the profile\'s, the one command is recorded and never run, and every file lands under the run\'s temp roots', async () => {
+    test('the scripted host flatters no target: the plane that comes up is the profile\'s, the host commands are recorded and never run, and every file lands under the run\'s temp roots', async () => {
         const run = await pinnedSetupHost();
 
         await consented(run);
@@ -965,6 +979,7 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
 
         // bound by hand to another id, the run reads the profile's plane as a different one
         expect(rowOf(await run.broker.evaluate(trusted, {}), 'served-plane')).toMatchObject({status: 'failed', reason: "served plane id is 'neo-local-canonical', expected 'plane-a': a different plane is answering"});
+        expect((await run.broker.effect(trusted, {effectId: 'start-wake-receiver'})).ok, 'receiver waits behind mismatched served-plane').toBe(false);
         expect(run.world.commands).toHaveLength(1);
         expect(run.world.commands[0]).toMatch(/^docker compose -p neo-local-agent-os --env-file .+ up -d --wait$/);
         expect(run.world.commands[0]).toContain(path.join(run.stateRoot, 'config', 'local-agent-os.env'));
@@ -972,8 +987,44 @@ test.describe('harness/setupBroker over the pinned recipe — the run to done, w
         expect(readdirSync(run.setupRoot).some(name => name.endsWith('.json')), 'the record is in the temp setup root').toBe(true);
 
         // a later boot resumes that record: a request that names nothing keeps its binding, never the profile's
-        const resumed = await pinnedSetupHost({setupRoot: run.setupRoot, stateRoot: run.stateRoot});
+        const resumed = await pinnedSetupHost({setupRoot: run.setupRoot, stateRoot: run.stateRoot, homeDir: run.homeDir});
 
         expect((await resumed.broker.evaluate(trusted, {target: null})).evaluation.target).toEqual(TARGET)
+    });
+
+    test('declining desktop-wake on darwin and running on linux both skip start-wake-receiver, bind wake-receiver-disabled, and reach done without touching LaunchAgents', async () => {
+        const declined = await pinnedSetupHost({platform: 'darwin'});
+
+        await consented(declined, null, 'declined');
+        declined.world.recallLands = true;
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'verify']) {
+            expect((await declined.broker.effect(trusted, {effectId})).ok, `declined:${effectId}`).toBe(true)
+        }
+
+        const declinedEval = await declined.broker.evaluate(trusted, {});
+
+        expect(rowOf(declinedEval, 'start-wake-receiver')).toMatchObject({status: 'ok', skipped: true});
+        expect(rowOf(declinedEval, 'done')).toMatchObject({status: 'ok'});
+        expect(existsSync(path.join(declined.stateRoot, 'wake-receiver-disabled', 'records'))).toBe(true);
+        expect(existsSync(path.join(declined.homeDir, 'Library'))).toBe(false);
+        expect(declined.world.commands.some(cmd => cmd.startsWith('launchctl'))).toBe(false);
+
+        const linux = await pinnedSetupHost({platform: 'linux'});
+
+        await consented(linux, null, null);
+        linux.world.recallLands = true;
+
+        for (const effectId of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'verify']) {
+            expect((await linux.broker.effect(trusted, {effectId})).ok, `linux:${effectId}`).toBe(true)
+        }
+
+        const linuxEval = await linux.broker.evaluate(trusted, {});
+
+        expect(rowOf(linuxEval, 'desktop-wake')).toMatchObject({status: 'ok', skipped: true});
+        expect(rowOf(linuxEval, 'start-wake-receiver')).toMatchObject({status: 'ok', skipped: true});
+        expect(rowOf(linuxEval, 'done')).toMatchObject({status: 'ok'});
+        expect(existsSync(path.join(linux.stateRoot, 'wake-receiver-disabled', 'records'))).toBe(true);
+        expect(existsSync(path.join(linux.homeDir, 'Library'))).toBe(false)
     })
 });

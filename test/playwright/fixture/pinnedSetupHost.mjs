@@ -1,7 +1,7 @@
-import {mkdtempSync}  from 'node:fs';
-import {tmpdir}       from 'node:os';
-import path           from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {mkdtempSync, readFileSync} from 'node:fs';
+import {tmpdir}                   from 'node:os';
+import path                       from 'node:path';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 import {CONFIG_SOURCE_PATH, createSetupBroker, loadSetupModules} from '../../../harness/setupBroker.mjs';
 
 /**
@@ -56,16 +56,30 @@ const tempDir = () => mkdtempSync(path.join(tmpdir(), 'pinned-setup-'));
  * @param {Object}       [options]
  * @param {String}       [options.setupRoot] The setup records' temp directory
  * @param {String}       [options.stateRoot] The host state root, a temp directory
+ * @param {String}       [options.homeDir] The home directory root, a temp directory (never the real home)
  * @param {String}       [options.configSourcePath] The config a preset's env set is checked against
  * @param {Object}       [options.machine=MACHINES.roomy] The placement probe's facts
+ * @param {String}       [options.platform='darwin'] Scripted host OS platform (`'darwin'` | `'linux'`)
  * @param {Boolean|null} [options.running=null] The compose project's state; `null` follows the recorded `up`
  * @param {Object|null}  [options.served=null] A plane that answers whatever the run did; `null` follows the run: nothing answers until the project is up, then the profile's plane
- * @returns {Promise<{broker: Object, profile: Object, setupRoot: String, stateRoot: String, world: Object}>} `profile` is the target the pinned Brain's layout declares
+ * @returns {Promise<{broker: Object, homeDir: String, profile: Object, setupRoot: String, stateRoot: String, world: Object}>} `profile` is the target the pinned Brain's layout declares
  */
-export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), machine = MACHINES.roomy, running = null, served = null} = {}) {
+export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDir(), homeDir = tempDir(), configSourcePath = path.join(BRAIN_ROOT, CONFIG_SOURCE_PATH), machine = MACHINES.roomy, platform = 'darwin', running = null, served = null} = {}) {
     const
-        real    = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
-        world   = {commands: [], dropWrite: false, forgeCalls: [], recallLands: false, refuseWrite: false, rows: []},
+        real                    = await loadSetupModules({runtimeRoot: BRAIN_ROOT}),
+        {parseLaunchAgentPlist} = await import(pathToFileURL(path.join(BRAIN_ROOT, 'ai/services/fleet/wakeReceiverSetup.mjs')).href),
+        world                   = {commands: [], dropWrite: false, forgeCalls: [], recallLands: false, refuseWrite: false, rows: []},
+        layout                  = real.cli.hostLayout({stateRoot, homeDir}),
+        wakeService             = {loaded: false, plistPath: null, running: false},
+        envRecordsDir           = () => {
+            try {
+                const match = readFileSync(layout.envFile, 'utf8').match(/^NEO_WAKE_RECEIVER_RECORDS_HOST_DIR=(.+)$/m);
+
+                return match ? path.resolve(match[1].trim()) : null
+            } catch {
+                return null
+            }
+        },
         plane   = {
             addMemory  : async content => {
                 if (world.refuseWrite) {
@@ -111,23 +125,88 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
                 default:
                     return {ok: false, refused: 'unscripted', reason: `the pinned host scripts no '${command}'`}
             }
-        },
+        };
+
+    let composeRecordsDir = null;
+
+    const
+        isUp    = () => running ?? world.commands.some(command => command.startsWith('docker compose ') && command.includes(' up ')),
         run     = async (command, args = []) => {
             // the registry's CLI is the plane answering, not a command asked of the host: the tests count those
             if (args.includes(FORGE_CLI)) {
                 return {stdout: JSON.stringify(forgeAnswer(args)), stderr: ''}
             }
 
+            if (command === 'docker' && args[0] === 'ps' && args.includes('label=com.docker.compose.service=mc-server')) {
+                return {stdout: isUp() ? 'pinned-mc-server\n' : '', stderr: ''}
+            }
+
+            if (command === 'docker' && args[0] === 'inspect' && args.includes('{{json .Mounts}}')) {
+                const source = composeRecordsDir ?? (running ? envRecordsDir() : null);
+
+                return {stdout: JSON.stringify(source ? [{Destination: '/app/wake-receiver-records', Source: source}] : []), stderr: ''}
+            }
+
+            if (command === 'launchctl') {
+                if (args[0] === 'print') {
+                    if (!wakeService.loaded || !wakeService.plistPath) {
+                        throw new Error('Could not find service "com.neomjs.agent-os-wake" in domain')
+                    }
+
+                    const
+                        parsed   = parseLaunchAgentPlist(readFileSync(wakeService.plistPath, 'utf8'), {allowComments: false}),
+                        argLines = (parsed.ProgramArguments ?? []).map(arg => `\t\t${arg}`),
+                        envLines = Object.entries(parsed.EnvironmentVariables ?? {}).map(([key, value]) => `\t\t${key} => ${value}`);
+
+                    return {
+                        stdout: [
+                            `\tstate = ${wakeService.running ? 'running' : 'not running'}`,
+                            ...(wakeService.running ? ['\tpid = 4242'] : []),
+                            `\tpath = ${wakeService.plistPath}`,
+                            `\tprogram = ${parsed.ProgramArguments?.[0] ?? ''}`,
+                            `\tworking directory = ${parsed.WorkingDirectory ?? ''}`,
+                            '\targuments = {',
+                            ...argLines,
+                            '\t}',
+                            '\tenvironment = {',
+                            ...envLines,
+                            '\t}'
+                        ].join('\n'),
+                        stderr: ''
+                    }
+                }
+
+                if (args[0] === 'bootstrap') {
+                    wakeService.loaded    = true;
+                    wakeService.running   = true;
+                    wakeService.plistPath = args[2] ?? wakeService.plistPath;
+                } else if (args[0] === 'bootout') {
+                    wakeService.loaded  = false;
+                    wakeService.running = false;
+                }
+            }
+
+            if (command === 'docker' && args[0] === 'compose' && args.includes('up')) {
+                composeRecordsDir = envRecordsDir()
+            }
+
             world.commands.push([command, ...args].join(' '));
 
             return {stdout: '', stderr: ''}
         },
-        layout  = real.cli.hostLayout({stateRoot}),
-        isUp    = () => running ?? world.commands.some(command => command.startsWith('docker compose ') && command.includes(' up ')),
         probe   = async () => ({...machine, observed: {}, runningPlane: isUp() ? {project: layout.composeProject} : null}),
         modules = {
             ...real,
-            hostEffects  : {...real.hostEffects, createHost: options => real.hostEffects.createHost({...options, run})},
+            hostEffects  : {...real.hostEffects, createHost: options => real.hostEffects.createHost({
+                ...options,
+                platform             : () => platform,
+                probeWakeListener    : async ({host, port}) => wakeService.running
+                    ? {listening: true, wakeReceiver: true, statusCode: 404, reason: null}
+                    : {listening: false, wakeReceiver: false, statusCode: null, reason: `connect ECONNREFUSED ${host}:${port}`},
+                run,
+                wakeReadinessAttempts: 2,
+                wakeReadinessDelayMs : 0
+            })},
             orchestration: {...real.orchestration, performEffects: options => real.orchestration.performEffects({...options, createPlaneClient: () => plane})},
             probe        : {...real.probe, probePlacement: probe},
             cli          : {...real.cli, productionObservers: ({layout, host}) => real.cli.productionObservers({
@@ -147,6 +226,7 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
         },
         broker  = createSetupBroker({
             configSourcePath,
+            homeDir,
             isTrustedSender : event => event === TRUSTED,
             loadModules     : async () => modules,
             packaged        : true,
@@ -156,7 +236,7 @@ export async function pinnedSetupHost({setupRoot = tempDir(), stateRoot = tempDi
             now             : () => 1_700_000_000_000
         });
 
-    return {broker, profile: layout.target, setupRoot, stateRoot, world}
+    return {broker, homeDir, profile: layout.target, setupRoot, stateRoot, world}
 }
 
 /**

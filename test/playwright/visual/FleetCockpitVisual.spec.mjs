@@ -2200,8 +2200,10 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(row('plane-credential')).toHaveClass(/is-ok/);
         await chip('provider-key', 'open window').click();
         await expect(row('provider-key')).toHaveClass(/is-ok/);
+        await chip('desktop-wake', 'enable').click();
+        await expect(row('desktop-wake')).toHaveClass(/is-ok/);
 
-        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge']) {
+        for (const id of ['write-secrets', 'write-env', 'compose-up', 'register-forge', 'start-wake-receiver']) {
             await chip(id, 'run').click();
             await expect(row(id)).toHaveClass(/is-ok/)
         }
@@ -2286,6 +2288,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-open/);
         await card.locator('.fm-setup-use-button').click();
         await card.locator('.fm-setup-key-button').click();
+        await card.locator('.fm-setup-wake-enable').click();
         await expect(card.locator('.fm-setup-ask-where')).toHaveClass(/is-answered/);
         await card.locator('.fm-setup-details-toggle').click();
         await chip('write-secrets', 'run').click();
