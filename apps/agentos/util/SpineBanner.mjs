@@ -362,13 +362,11 @@ class SpineBanner extends Base {
             return verdict('cold', text, lead, daemon.reason, action)
         }
 
-        // The same answers while the shell runs: a roster read failed, and the shell's probe named the
-        // launched PAT. A roster that was live keeps its last-known rows, so its skin is degraded. The
-        // probe names only the credential's own two, whose action is Connect.
+        // Runtime credential refusals require operator Connect, so they wear the cold tone even over last-known rows.
         if (Object.hasOwn(PLANE_REFUSALS, plane?.cause ?? '')) {
             const {action, lead, text} = PLANE_REFUSALS[plane.cause];
 
-            return verdict(grid?.state === 'cold' ? 'cold' : 'degraded', text, lead, null, action)
+            return verdict('cold', text, lead, null, action)
         }
 
         // Only a cold GRID enters the cold family: its copy asserts server facts, and a cold sibling

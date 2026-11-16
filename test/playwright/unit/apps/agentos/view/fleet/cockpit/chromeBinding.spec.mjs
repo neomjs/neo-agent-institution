@@ -426,3 +426,51 @@ test('a boot refusal binds the banner button to its way back: Retry, then Connec
     }
 });
 
+test('runtime credential refusals render cold over stale or live last-known rosters while transport degradations stay degraded', async () => {
+    const
+        parent  = createShellProvider(),
+        cockpit = Neo.create(FleetCockpit, {
+            stateProvider: {
+                module: CockpitStateProvider,
+                parent,
+                stores: {
+                    fleetActivityEvents: {module: FleetActivityEvents},
+                    viewerWakeFeed     : {module: ViewerWakeFeed}
+                }
+            }
+        });
+
+    try {
+        await cockpit.refreshPromise;
+
+        const
+            provider = cockpit.getStateProvider(),
+            banner   = cockpit.getReference('fleet-spine-banner'),
+            button   = cockpit.getReference('fleet-reconnect-button');
+
+        provider.setData({daemonState: 'running', gridAdapterState: 'stale', gridDegradedReason: 'read timed out', streamAdapterState: 'live'});
+        expect(banner.cls).toContain('fm-spine-banner-degraded');
+        expect(parent.getData('instanceState')).toBe('limited');
+
+        provider.setData({planeCause: 'plane-credential-refused'});
+        expect(banner.text).toBe('pat refused');
+        expect(banner.cls).toContain('fm-spine-banner-cold');
+        expect(banner.cls).not.toContain('fm-spine-banner-degraded');
+        expect(provider.getData('spineBanner').kind).toBe('cold');
+        expect(parent.getData('instanceState')).toBe('off');
+        expect(button.text).toBe('Connect');
+
+        provider.setData({gridAdapterState: 'live', gridDegradedReason: null, planeCause: 'plane-identity-changed'});
+        expect(banner.text).toBe('account changed');
+        expect(banner.cls).toContain('fm-spine-banner-cold');
+        expect(parent.getData('instanceState')).toBe('off');
+
+        provider.setData({gridAdapterState: 'stale', gridDegradedReason: 'read timed out', planeCause: null});
+        expect(banner.cls).toContain('fm-spine-banner-degraded');
+        expect(parent.getData('instanceState')).toBe('limited')
+    } finally {
+        cockpit.destroy();
+        parent.destroy()
+    }
+});
+

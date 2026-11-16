@@ -342,7 +342,7 @@ apps/agentos/util/SpineAction.mjs
     ff9fc70ac251297a94fb6cf2d8c7cbdd47112647
 
 apps/agentos/util/SpineBanner.mjs
-    551dadc866c4b3cf3788e3b0fc85b90f0c14d112
+    bc810ac06d0eab9ecc397d1c475b9722df032f66
 
 apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
