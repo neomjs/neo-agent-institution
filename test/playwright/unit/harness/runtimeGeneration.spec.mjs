@@ -1,16 +1,18 @@
-import {expect, test}                                                                                                                 from '@playwright/test';
-import {execFile}                                                                                                                     from 'node:child_process';
-import {cpSync}                                                                                                                       from 'node:fs';
-import fs                                                                                                                             from 'node:fs/promises';
-import {tmpdir}                                                                                                                       from 'node:os';
-import path                                                                                                                           from 'node:path';
-import {pathToFileURL}                                                                                                                from 'node:url';
-import {promisify}                                                                                                                    from 'node:util';
-import {createRequire}                                                                                                                from 'node:module';
-import * as runtimeVerifier                                                                                                           from 'neo-agent-brain/runtime-generation';
-import * as runtimeReferences                                                                                                         from 'neo-agent-brain/runtime-generation-lease';
-import {inspectPackageProtection, readPackageSlotRecord}                                                                              from '../../../../harness/packageSlots.mjs';
-import {resolveLauncherRuntime}                                                                                                       from '../../../../harness/brain.mjs';
+import {expect, test}                                    from '@playwright/test';
+import {execFile}                                        from 'node:child_process';
+import {cpSync}                                          from 'node:fs';
+import {createHash}                                      from 'node:crypto';
+import fs                                                from 'node:fs/promises';
+import {tmpdir}                                          from 'node:os';
+import path                                              from 'node:path';
+import {pathToFileURL}                                   from 'node:url';
+import {promisify}                                       from 'node:util';
+import {createRequire}                                   from 'node:module';
+import * as runtimeVerifier                              from 'neo-agent-brain/runtime-generation';
+import * as runtimeReferences                            from 'neo-agent-brain/runtime-generation-lease';
+import {inspectPackageProtection, readPackageSlotRecord} from '../../../../harness/packageSlots.mjs';
+import {resolveLauncherRuntime}                          from '../../../../harness/brain.mjs';
+import {retireCodexWakeArtifacts}                        from '../../../../harness/codexWakeArtifact.mjs';
 import {
     executePlan as executePlanImpl, holdInstallTransaction, planInstall, prepareBundleProcessCensus,
     prepareInstallContinuity, readSlot, runningHarnessPaths
@@ -64,6 +66,9 @@ async function fixture(root, info = receipt()) {
     await fs.mkdir(path.join(brainPackage, 'ai/services/fleet'), {recursive: true});
     await fs.copyFile(verifierFile, path.join(brainPackage, 'ai/services/fleet/runtimeGeneration.mjs'));
     for (const base of [runtimeRoot, brainPackage]) {
+        if (typeof runtimeVerifier.describeCodexWakeArtifact === 'function') {
+            await fs.copyFile(path.join(path.dirname(verifierFile),'codexWakeArtifact.mjs'),path.join(base,'ai/services/fleet/codexWakeArtifact.mjs'))
+        }
         await fs.copyFile(path.join(path.dirname(verifierFile), 'mcpLaunchAdmission.mjs'), path.join(base, 'ai/services/fleet/mcpLaunchAdmission.mjs'));
         await fs.mkdir(path.join(base, 'src/fleet/contract'), {recursive: true});
         await fs.copyFile(path.resolve(path.dirname(verifierFile), '../../../src/fleet/contract/launchAdmission.mjs'),
@@ -344,6 +349,58 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
     let root;
     test.beforeEach(async () => { root = await fs.realpath(await fs.mkdtemp(path.join(tmpdir(), 'runtime-generation-'))); });
     test.afterEach(async () => { await cleanup(root); });
+
+    test('fresh generations share only a verified hook artifact and retain it through a sibling package', async () => {
+        const input = await fixture(root), info = receipt(), directory = input.directory;
+        const dir   = path.join(input.runtimeRoot,'ai/daemons/wake'), hook = 'Contents/Resources/organism/ai/daemons/wake/codexWakeHook.mjs';
+        // The Brain owns selection. This producer test binds its one-file contract double to the real physical inventory.
+        let   scans    = 0;
+        const verifier = {...runtimeVerifier, readRuntimeGeneration:async options => { scans++; return runtimeVerifier.readRuntimeGeneration(options) },
+            describeCodexWakeArtifact({declaration,entries}) {
+                if (declaration.version !== 1) throw Error('invalid-declaration');
+                const selected = entries.filter(([name]) => !name || name === hook || hook.startsWith(name + '/'));
+                return {entries:selected,digest:createHash('sha256').update(JSON.stringify(selected)).digest('hex')}
+            }};
+        await fs.mkdir(dir,{recursive:true});
+        await fs.writeFile(path.join(dir,'codexWakeHook.mjs'),'original');
+        const declare = version => fs.writeFile(path.join(input.runtimeRoot,'codex-wake-artifact.json'),JSON.stringify({version}));
+        await declare(1);
+        const generate = async id => {
+            info.owners.product.revision = id.repeat(40);
+            await fs.writeFile(path.join(input.runtimeRoot,'organism-build-info.json'),JSON.stringify(info));
+            return materializeRuntimeGeneration({...input,verifier})
+        };
+        const a = await generate('a'), store = path.join(directory,'wake-artifacts-v1'), [one] = await fs.readdir(store);
+        const b = await generate('b');
+        expect(b.id).not.toBe(a.id);
+        expect(await fs.readdir(store)).toEqual([one]);
+        await fs.writeFile(path.join(dir,'codexWakeHook.mjs'),'changed');
+        const c = await generate('c');
+        expect((await fs.readdir(store)).length).toBe(2);
+        await declare(9);
+        await expect(generate('d')).rejects.toThrow(/invalid-declaration/);
+        await declare(1);
+        const options = {directory,verifier,assertCurrent(){},removeTree:cleanup,bounded:(step,id,promise)=>promise,
+            protectedIds:[c.id],snapshot:{seats:[],generations:[]},inspectProcesses:async()=>({state:'observed',processes:[]})};
+        await cleanup(a.directory);
+        const firstScan = scans;
+        expect(await retireCodexWakeArtifacts(options)).toEqual([]);
+        expect(await retireCodexWakeArtifacts(options)).toEqual([]);
+        expect(scans).toBe(firstScan);
+        await cleanup(b.directory);
+        const missingPin = runtimeVerifier.runtimeGenerationPin(b);
+        await expect(retireCodexWakeArtifacts({...options,snapshot:{seats:[],generations:[{state:'active',runtime:missingPin}]}}))
+            .rejects.toThrow(/journal-reference-unknown/);
+        const held = await retireCodexWakeArtifacts({...options,inspectProcesses:async()=>({state:'observed',processes:[{pid:42,directories:[path.join(store,one)]}]})});
+        expect(held).toEqual([{id:one,state:'retained',reason:'process-held'}]);
+        await expect(retireCodexWakeArtifacts({...options,inspectProcesses:async()=>({state:'unknown',processes:[]})}))
+            .rejects.toThrow(/processes-unknown/);
+        expect(await retireCodexWakeArtifacts(options)).toEqual([{id:one,state:'removed'}]);
+        const [last] = await fs.readdir(store), altered = path.join(store,last,hook);
+        await fs.chmod(altered,0o600); await fs.writeFile(altered,'changed outside'); await fs.chmod(altered,0o444);
+        await expect(generate('c')).rejects.toThrow(/wake-artifact-integrity-failed/);
+        expect(await fs.readFile(altered,'utf8')).toBe('changed outside');
+    });
 
     test('host file acquisition spans publication and releases reference exclusion before child recovery', async () => {
         const input   = await fixture(root);
@@ -978,6 +1035,7 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         const shell = path.join(root, 'isolated-shell'), file = path.join(shell, 'runtimeGeneration.mjs');
         await fs.mkdir(shell);
         await fs.copyFile(new URL('../../../../harness/runtimeGeneration.mjs', import.meta.url), file);
+        await fs.copyFile(new URL('../../../../harness/codexWakeArtifact.mjs', import.meta.url), path.join(shell, 'codexWakeArtifact.mjs'));
         const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e',
             `const owner=await import(${JSON.stringify(pathToFileURL(file).href)}); console.log(typeof owner.probeRuntimeRecovery);`
         ], {cwd: shell, env: {}});

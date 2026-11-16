@@ -15,6 +15,7 @@ files:
     - appLifecycle.mjs
     - brain.mjs
     - contentPolicy.mjs
+    - codexWakeArtifact.mjs
     - credentialPrompt.mjs
     - credentialPrompt.preload.cjs
     - fixturePlane.mjs

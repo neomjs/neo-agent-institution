@@ -1,6 +1,7 @@
 import {randomUUID}                                                                                    from 'node:crypto';
 import fs                                                                                              from 'node:fs';
 import path                                                                                            from 'node:path';
+import {retireCodexWakeArtifacts}                                                                      from './codexWakeArtifact.mjs';
 import {classifyRuntimeGenerationRetention, inspectRuntimeGenerationProcesses, removeOwnedRuntimeTree} from './runtimeGeneration.mjs';
 import {holdPackageTransaction, inspectPackageProtection}                                              from './packageSlots.mjs';
 
@@ -94,7 +95,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
 } = {}) {
     const generations = [];
     let packageGuard, referenceGuard, timer, halt, phase = {step: 'acquire', id: null};
-    const halted = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
+    const halted  = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
     const onAbort = () => halt('pass-aborted');
     halted.catch(() => {});
     /** @summary Records where the pass is, then lets its deadline or its owner's abort end a step that never settles. */
@@ -224,7 +225,8 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                 generations.push({id, directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
             }
         }
-        return {state: 'observed', generations};
+        const artifacts = await retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,...evidence()});
+        return {state: 'observed', generations, ...(artifacts.length ? {artifacts} : {})};
     } catch (error) {
         return {state: 'deferred', reason: error.code || error.message, ...(HALTS.has(error.code) ? {phase} : {}), generations};
     } finally {
