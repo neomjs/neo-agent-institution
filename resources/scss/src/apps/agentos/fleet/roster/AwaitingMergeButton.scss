@@ -53,6 +53,8 @@
 
     border-radius: 6px;
     box-shadow   : var(--fm-shadow-overlay);
+    // Leave the aligner room to open a scrollable queue above or below the trigger.
+    max-height   : 45dvh;
     max-width    : 360px;
     min-width    : 240px;
     padding      : var(--fm-space-1);

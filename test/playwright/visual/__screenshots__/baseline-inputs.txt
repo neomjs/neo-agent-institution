@@ -786,7 +786,7 @@ resources/scss/src/apps/agentos/fleet/perspectives/Container.scss
     ebd226f7f44bd6bca6a78ab5a361d051c093a660
 
 resources/scss/src/apps/agentos/fleet/roster/AwaitingMergeButton.scss
-    f80afdaa7687e402b9b73a54c7a6631056e6f646
+    12c1498f9cffa706b3106c96446165becb3de806
 
 resources/scss/src/apps/agentos/fleet/roster/Container.scss
     fcc36aa714d4d9f54bdd4973e17c7d85daf2b12d
