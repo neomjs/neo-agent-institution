@@ -28,7 +28,7 @@ import {
 } from './adapterWitness.mjs';
 import {createAppLifecycle}                                                                              from './appLifecycle.mjs';
 import {loadRuntimeGenerationReferences, loadRuntimeGenerationVerifier, loadRuntimeMaintenanceContracts} from './runtimeGeneration.mjs';
-import {retireRuntimeGenerations, startRuntimeMaintenance}                                               from './runtimeMaintenance.mjs';
+import {retireRuntimeGenerations, runtimeMaintenanceReporter, startRuntimeMaintenance}                   from './runtimeMaintenance.mjs';
 import {createCredentialPrompt}                                                                          from './credentialPrompt.mjs';
 import {createAbsentFleetCapability, createFleetCapability}                                              from './fleetCapability.mjs';
 import {createNoticePresenter, createOperatorNotifier}                                                   from './operatorNotifications.mjs';
@@ -2052,13 +2052,8 @@ app.whenReady().then(async () => {
                     journalDirectory: path.join(app.getPath('userData'), 'brain', 'fleet', 'launch-admission'),
                     verifier, references, ...contracts, signal
                 }), {
-                    onResult: result => {
-                        const removed = result.generations.filter(row => row.state === 'removed');
-                        if (removed.length) console.log('HARNESS_RUNTIME_RETIRED ' + JSON.stringify(removed.map(row => row.id)));
-                        // A halted pass names the step it stopped in, once per pass rather than every minute.
-                        if (result.phase) console.warn(`HARNESS_RUNTIME_MAINTENANCE_DEFERRED ${result.reason} ${result.phase.step} ${result.phase.id ?? '-'}`);
-                    },
-                    onError: error => console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message))
+                    onResult: runtimeMaintenanceReporter(),
+                    onError : error => console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message))
                 });
             } catch (error) {
                 console.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + (error.code || error.message));

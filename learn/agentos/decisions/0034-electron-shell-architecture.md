@@ -493,6 +493,22 @@ The bundle-use guard correctly refused replacement while seat processes used its
    surviving seat. Its next explicit managed Start selects the installed generation. The existing
    host lifecycle owns the pin and re-adopts it with the seat's verified process lease; a second
    process supervisor or a filesystem-only inference is not a substitute.
+
+   The packaged macOS Codex submit hook may be shared by two Starts when both of their sealed
+   generations declare the same complete wake execution payload. Its path is derived from the
+   digest of that payload's canonical inventory (file bytes, modes and contained links).
+   The artifact includes the packaged executable and frameworks, wake protocol, imported Brain
+   modules and complete selected npm packages including native libraries. A change to any of these
+   selects a new immutable address for Codex to review. Fleet preserves the vendor's trust file.
+   The unsigned packaging path emits the declaration after the native modules are staged.
+   A release configured for an outer app signature keeps the generation-bound hook until it ships
+   an independently signed complete hook carrier. [The signed carrier](https://github.com/neomjs/neo-agent-institution/issues/1007)
+   owns its release packaging, genuine signature checks and cross-update approval witness.
+   Older packages also retain their original behavior.
+   The package and runtime-reference leases protect publication and collection. Any retained
+   declaring generation or observed artifact process keeps the artifact alive. Unknown references
+   or process observations defer removal. A missing or invalid declared artifact cannot authorize
+   a fallback to different code.
 4. **Keep runtime identity distinct from admission authority.** A runtime generation identifies
    immutable code; an admission generation is the revocable authority of one managed Start.
    [ADR 0038 §2.5.2](0038-fm-client-topology.md#252-native-launch-admission-generation-custody-and-recovery)

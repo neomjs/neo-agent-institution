@@ -1,6 +1,7 @@
 import {randomUUID}                                                                                    from 'node:crypto';
 import fs                                                                                              from 'node:fs';
 import path                                                                                            from 'node:path';
+import {retireCodexWakeArtifacts}                                                                      from './codexWakeArtifact.mjs';
 import {classifyRuntimeGenerationRetention, inspectRuntimeGenerationProcesses, removeOwnedRuntimeTree} from './runtimeGeneration.mjs';
 import {holdPackageTransaction, inspectPackageProtection}                                              from './packageSlots.mjs';
 
@@ -21,6 +22,26 @@ const idPattern = /^[a-f0-9]{64}$/, transactionPattern = /^[a-f0-9]{8}-[a-f0-9]{
  */
 export const RUNTIME_MAINTENANCE_DEADLINE_MS = 120000;
 const HALTS = new Set(['pass-deadline', 'pass-aborted']);
+
+/**
+ * @summary Reports removals and each active deferral reason once until it clears.
+ * @param {Object} logger Shell log sink.
+ * @returns {Function} The ordinary scheduled maintenance result observer.
+ */
+export function runtimeMaintenanceReporter(logger = console) {
+    let previous = new Set();
+    return result => {
+        const removed = result.generations.filter(row => row.state === 'removed').map(row => row.id);
+        if (removed.length) logger.log('HARNESS_RUNTIME_RETIRED ' + JSON.stringify(removed));
+        const reasons = new Set((result.artifacts || []).filter(row => row.state === 'retained' && row.reason !== 'process-held').map(row => row.reason));
+        if (result.phase) logger.warn(`HARNESS_RUNTIME_MAINTENANCE_DEFERRED ${result.reason} ${result.phase.step} ${result.phase.id ?? '-'}`);
+        else if (result.state === 'deferred') reasons.add(result.reason);
+        for (const reason of reasons) {
+            if (!previous.has(reason)) logger.warn('HARNESS_RUNTIME_MAINTENANCE_DEFERRED ' + reason)
+        }
+        previous = reasons
+    }
+}
 
 /** @summary Requires an owner-controlled canonical directory without repairing its custody. */
 function ownedDirectory(directory) {
@@ -94,7 +115,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
 } = {}) {
     const generations = [];
     let packageGuard, referenceGuard, timer, halt, phase = {step: 'acquire', id: null};
-    const halted = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
+    const halted  = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
     const onAbort = () => halt('pass-aborted');
     halted.catch(() => {});
     /** @summary Records where the pass is, then lets its deadline or its owner's abort end a step that never settles. */
@@ -224,7 +245,8 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                 generations.push({id, directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
             }
         }
-        return {state: 'observed', generations};
+        const artifacts = await retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,...evidence()});
+        return {state: 'observed', generations, ...(artifacts.length ? {artifacts} : {})};
     } catch (error) {
         return {state: 'deferred', reason: error.code || error.message, ...(HALTS.has(error.code) ? {phase} : {}), generations};
     } finally {

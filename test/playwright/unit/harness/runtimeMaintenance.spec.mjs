@@ -1,14 +1,14 @@
-import {expect, test}                                                    from '@playwright/test';
-import fs                                                                from 'node:fs/promises';
-import path                                                              from 'node:path';
-import os                                                                from 'node:os';
-import * as verifier                                                     from 'neo-agent-brain/runtime-generation';
-import * as references                                                   from 'neo-agent-brain/runtime-generation-lease';
-import * as journal                                                      from 'neo-agent-brain/launch-admission-journal';
-import * as leases                                                       from 'neo-agent-brain/file-lease';
-import {materializeRuntimeGeneration, removeOwnedRuntimeTree}            from '../../../../harness/runtimeGeneration.mjs';
-import {holdPackageTransaction, inspectPackageSlot, publishPackageSlots} from '../../../../harness/packageSlots.mjs';
-import {retireRuntimeGenerations, startRuntimeMaintenance}               from '../../../../harness/runtimeMaintenance.mjs';
+import {expect, test}                                                                  from '@playwright/test';
+import fs                                                                              from 'node:fs/promises';
+import path                                                                            from 'node:path';
+import os                                                                              from 'node:os';
+import * as verifier                                                                   from 'neo-agent-brain/runtime-generation';
+import * as references                                                                 from 'neo-agent-brain/runtime-generation-lease';
+import * as journal                                                                    from 'neo-agent-brain/launch-admission-journal';
+import * as leases                                                                     from 'neo-agent-brain/file-lease';
+import {materializeRuntimeGeneration, removeOwnedRuntimeTree}                          from '../../../../harness/runtimeGeneration.mjs';
+import {holdPackageTransaction, inspectPackageSlot, publishPackageSlots}               from '../../../../harness/packageSlots.mjs';
+import {retireRuntimeGenerations, runtimeMaintenanceReporter, startRuntimeMaintenance} from '../../../../harness/runtimeMaintenance.mjs';
 
 /** @summary Builds a real sealed generation using the production publisher and a fixture binary probe. */
 async function generation(root, directory, revision) {
@@ -61,6 +61,35 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         } finally { referenceGuard.release(); packageGuard.release() }
     });
     test.afterEach(async () => { owner.close(); await removeOwnedRuntimeTree(root) });
+
+    test('a foreign artifact and a corrupt digest are reported without stranding a verified orphan', async () => {
+        const pool = path.join(directory,'wake-artifacts-v1'), incoming = path.join(pool,'orphan');
+        await fs.mkdir(pool,{mode:0o700});
+        await fs.mkdir(incoming,{mode:0o700});
+        await fs.writeFile(path.join(incoming,'hook'),'hook',{mode:0o444});
+        await fs.chmod(incoming,0o555);
+        const {digest} = await verifier.inventoryRuntimePayload(incoming);
+        await fs.rename(incoming,path.join(pool,digest));
+        await fs.writeFile(path.join(pool,'.DS_Store'),'foreign');
+        const corrupt = 'f'.repeat(64);
+        await fs.mkdir(path.join(pool,corrupt),{mode:0o555});
+        const result = await maintain();
+        expect(result.state).toBe('observed');
+        expect(result.artifacts).toEqual(expect.arrayContaining([
+            {id:'.DS_Store',state:'retained',reason:'wake-artifact-unrecognized-entry'},
+            {id:corrupt,state:'retained',reason:'wake-artifact-integrity-failed'}, {id:digest,state:'removed'}
+        ]));
+        expect((await fs.readdir(pool)).sort()).toEqual(['.DS_Store',corrupt]);
+        const warnings = [], report = runtimeMaintenanceReporter({warn:message => warnings.push(message),log(){}});
+        report(result); report(await maintain());
+        expect(warnings.sort()).toEqual(['HARNESS_RUNTIME_MAINTENANCE_DEFERRED wake-artifact-integrity-failed',
+            'HARNESS_RUNTIME_MAINTENANCE_DEFERRED wake-artifact-unrecognized-entry']);
+        owner.write(snapshot([seat(unused.value,'running')]));
+        const blocked = await maintain();
+        expect(blocked).toMatchObject({state:'deferred',reason:'wake-artifact-journal-reference-unknown'});
+        report(blocked); report(await maintain());
+        expect(warnings.filter(line => line.endsWith('wake-artifact-journal-reference-unknown'))).toHaveLength(1);
+    });
 
     test('normal maintenance removes only a verified unused generation and protects installed, rollback and host', async () => {
         const result = await maintain({inspectProcesses: async input => {
@@ -214,7 +243,7 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         const inRemoval = new Promise(resolve => { entered = resolve });
         const pending   = retireRuntimeGenerations({...options(), signal: controller.signal, deadlineMs: 50}, {transactionFn,
             inspectProcesses: emptyCensus, removeTree: async target => { entered(target); await paused; return removeOwnedRuntimeTree(target) }});
-        const target    = await inRemoval;
+        const target = await inRemoval;
         controller.abort();
         await new Promise(resolve => setTimeout(resolve, 100)); // past the deadline as well
         // a successor reaches neither lease, so it cannot retain or replace the tree under the removal

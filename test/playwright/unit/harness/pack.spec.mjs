@@ -6,6 +6,7 @@ import {tmpdir}                                             from 'node:os';
 import {fileURLToPath}                                      from 'node:url';
 import {execFileSync}                                       from 'node:child_process';
 import {runtimeGenerationIdentity}                          from 'neo-agent-brain/runtime-generation';
+import {buildCodexWakeDeclaration, stageCodexWakeArtifact}  from '../../../../harness/packCodexWake.mjs';
 import {
     BRAIN_TREES,
     ENGINE_THEME_BUILD,
@@ -191,7 +192,7 @@ test.describe('pack Brain source assessment', () => {
     test('a fresh fetch observes equal and ahead source cuts without confusing them', () => {
         expect(observe(history)).toEqual({
             revision: history.revision, originDev: history.revision, checkedAt: '2026-11-02T16:00:00.000Z',
-            state: 'verified', relation: 'equal', aheadBy: 0, behindBy: 0, override: false
+            state   : 'verified', relation: 'equal', aheadBy: 0, behindBy: 0, override: false
         });
         writeFileSync(path.join(brain, 'local.txt'), 'local improvement');
         history.revision = commitFixture(brain, 'feat: local improvement (#857)');
@@ -286,6 +287,32 @@ test.describe('pack Brain source assessment', () => {
 });
 
 test.describe('harness pack stage', () => {
+    test('the hook declaration follows dynamic literal imports and entire installed dependencies', async () => {
+        const root  = await mkdtemp(path.join(tmpdir(),'wake-closure-'));
+        const write = (name,source) => {
+            const file = path.join(root,name);
+            mkdirSync(path.dirname(file),{recursive:true});
+            writeFileSync(file,source)
+        };
+        try {
+            write('package.json','{"name":"fixture"}');
+            const hook = 'ai/daemons/wake/codexWakeHook.mjs';
+            write(hook,"export default () => import('./fleetPrimarySessionWake.mjs')");
+            write('ai/daemons/wake/fleetPrimarySessionWake.mjs',"import 'node:fs'; import 'outer/submodule.js'");
+            write('node_modules/outer/package.json','{"dependencies":{"inside":"1"}}');
+            write('node_modules/outer/node_modules/inside/package.json','{}');
+            const build = () => buildCodexWakeDeclaration(root, text => extractLiteralImportSpecifiers(text,true));
+            expect(build()).toEqual({version:1,wire:'neo-codex-primary-wake-v1',
+                files:[hook,'ai/daemons/wake/fleetPrimarySessionWake.mjs'],packages:['node_modules/outer','node_modules/outer/node_modules/inside']});
+            write(hook,"export default url => import(url)");
+            expect(build).toThrow(/literal/);
+            write(hook,"import '#mutable-target'");
+            expect(build).toThrow(/Unsupported/);
+            expect(await stageCodexWakeArtifact(root,'Developer ID')).toContain('generation-bound');
+            expect(await stageCodexWakeArtifact(root,null)).toContain('legacy');
+            expect(existsSync(path.join(root,'codex-wake-artifact.json'))).toBe(false);
+        } finally { await rm(root,{recursive:true,force:true}) }
+    });
     test('packaged main imports are closed over app.asar and parent-root contracts are forbidden', async () => {
         const
             harnessRoot                 = fileURLToPath(new URL('../../../../harness/', import.meta.url)),
@@ -303,6 +330,7 @@ test.describe('harness pack stage', () => {
             'adapterWitness.mjs',
             'appLifecycle.mjs',
             'brain.mjs',
+            'codexWakeArtifact.mjs',
             'contentPolicy.mjs',
             'credentialPrompt.mjs',
             'fixturePlane.mjs',
@@ -628,13 +656,13 @@ test.describe('harness pack stage', () => {
 
     test('a verified stale Brain refuses before deleting the previous stage or running a build', async () => {
         const {brain, product, root} = await scaffoldCut(), stageDir = path.join(root, 'stage');
-        const history = attachBrainHistory(brain, root), calls = [];
+        const history                = attachBrainHistory(brain, root), calls = [];
         advanceUpstream(history, 2);
         mkdirSync(stageDir);
         writeFileSync(path.join(stageDir, 'sentinel'), 'previous complete stage');
         try {
             expect(() => stageOrganism({
-                electronVersion: '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
+                electronVersion : '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
                 engineRevisionOf: () => ENGINE_A, runFn: (...args) => calls.push(args), stageDir
             })).toThrow(/behind origin\/dev by 2: fix: upstream repair 2/);
             expect(calls).toEqual([]);
@@ -647,12 +675,12 @@ test.describe('harness pack stage', () => {
     for (const arm of ['equal', 'override', 'offline']) {
         test(`${arm}: the full stage writes the selected Brain revision and its one assessment`, async () => {
             const {brain, product, root} = await scaffoldCut(), stageDir = path.join(root, 'stage');
-            const history = attachBrainHistory(brain, root);
+            const history                = attachBrainHistory(brain, root);
             if (arm === 'override') advanceUpstream(history, 2);
             if (arm === 'offline') await rm(history.remote, {force: true, recursive: true});
             try {
                 const info = stageOrganism({
-                    electronVersion: '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
+                    electronVersion : '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
                     engineRevisionOf: () => ENGINE_A, allowStaleBrain: arm === 'override', stageDir,
                     runFn(command, args, options) {
                         if (command === 'npm') {
@@ -686,7 +714,7 @@ test.describe('harness pack stage', () => {
                 mkdirSync(stageDir, {recursive: true});
                 writeFileSync(path.join(stageDir, 'sentinel'), 'previous stage');
                 expect(() => stageOrganism({
-                    electronVersion: '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
+                    electronVersion : '43.8.1', env: {NEO_AGENTOS_RUNTIME_ROOT: brain}, productRoot: product,
                     engineRevisionOf: () => ENGINE_A, revisionOf: () => observed, stageDir,
                     freshnessOf({revision}) {
                         if (boundary === 'assessment') observed = ENGINE_B;

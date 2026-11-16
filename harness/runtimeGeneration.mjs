@@ -5,6 +5,7 @@ import path                           from 'node:path';
 import {isDeepStrictEqual, promisify} from 'node:util';
 import {pathToFileURL}                from 'node:url';
 import {createRequire}                from 'node:module';
+import {publishCodexWakeArtifact}     from './codexWakeArtifact.mjs';
 
 /**
  * @module harness/runtimeGeneration
@@ -13,7 +14,7 @@ import {createRequire}                from 'node:module';
  * format and read-only verifier. A generation is never repaired or overwritten in place.
  */
 
-const execute            = promisify(execFile);
+const execute = promisify(execFile);
 // Publication, sealing and removal operate on physical archives, matching the shared verifier.
 const fs                 = (process.versions.electron ? createRequire(import.meta.url)('original-fs') : nodeFs).promises;
 const VERIFIER_FUNCTIONS = ['runtimeGenerationIdentity', 'runtimeGenerationArguments', 'readRuntimeGeneration', 'inventoryRuntimePayload',
@@ -562,6 +563,8 @@ export async function materializeRuntimeGeneration({
         const existing = await readRuntimeGeneration({directory: target, platform, arch});
         if (existing) {
             if (existing.payloadDigest !== expected.digest) throw refusal('non-reproducible-build', 'one package identity has different payload bytes, modes or links');
+            await publishCodexWakeArtifact({directory,payload:path.join(target,PAYLOAD),entries:expected.entries,verifier,
+                assertCurrent:() => references.assertRuntimeGenerationReferences(guard,directory),removeTree:removeOwnedRuntimeTree});
             references.assertRuntimeGenerationReferences(guard, directory);
             return existing
         }
@@ -588,6 +591,8 @@ export async function materializeRuntimeGeneration({
             }
             record = completeRuntimeGenerationRecord(record, observed);
             if ((await inventory(payload)).digest !== copied.digest) throw refusal('runtime-integrity-failed', 'the probe changed the sealed payload');
+            await publishCodexWakeArtifact({directory,payload,entries:copied.entries,verifier,
+                assertCurrent:() => references.assertRuntimeGenerationReferences(guard,directory),removeTree:removeOwnedRuntimeTree});
             await fs.writeFile(path.join(stage, RECORD), JSON.stringify(record) + '\n', {mode: 0o400});
             await fs.chmod(stage, 0o500);
             references.assertRuntimeGenerationReferences(guard, directory);

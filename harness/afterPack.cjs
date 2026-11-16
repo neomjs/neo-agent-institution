@@ -23,6 +23,10 @@ module.exports = async function afterPack(context) {
     // verbatimSymlinks keeps npm's .bin links intact (the chroma CLI resolution rides them).
     fs.cpSync(stagedModules, targetModules, {recursive: true, verbatimSymlinks: true});
 
+    // A signed outer app needs its own independently signed hook carrier. Keep native per-Start review there.
+    const {stageCodexWakeArtifact} = await import('./packCodexWake.mjs');
+    console.log('  • wake hook: ' + await stageCodexWakeArtifact(organismDir, context.packager.config?.mac?.identity));
+
     const entryCount = fs.readdirSync(targetModules).length;
 
     console.log(`  • afterPack: organism node_modules completed (${entryCount} top-level entries)`)

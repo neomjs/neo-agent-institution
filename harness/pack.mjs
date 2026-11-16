@@ -226,9 +226,10 @@ const PACKAGE_NAME_RE = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/
  * text, comments, and non-literal dynamic expressions remain inert. Module syntax is attempted
  * first; a script fallback covers staged CommonJS sources. Unparseable source fails the pack loudly.
  * @param {String} source
+ * @param {Boolean} [closed] Require an entirely literal ESM graph for a content-addressed executable.
  * @returns {String[]}
  */
-export function extractLiteralImportSpecifiers(source) {
+export function extractLiteralImportSpecifiers(source, closed = false) {
     const
         options = {allowHashBang: true, ecmaVersion: 'latest'},
         text    = String(source);
@@ -249,6 +250,11 @@ export function extractLiteralImportSpecifiers(source) {
 
     const visit = node => {
         if (!node || typeof node !== 'object') return;
+        if (closed && (node.type === 'ImportExpression' && (node.source?.type !== 'Literal' || typeof node.source.value !== 'string') ||
+            node.type === 'Identifier' && ['require', 'createRequire', 'eval'].includes(node.name) ||
+            node.type === 'NewExpression' && node.callee?.name === 'URL' && node.arguments?.length > 1)) {
+            throw new Error('Codex wake payload requires a literal, package-contained module graph')
+        }
 
         if ((node.type === 'ImportDeclaration' || node.type === 'ExportNamedDeclaration' || node.type === 'ExportAllDeclaration') &&
             node.source?.type === 'Literal' && typeof node.source.value === 'string') {
@@ -637,8 +643,8 @@ function readGit(args, {cwd}) {
 export function assessBrainFreshness({brainRoot, revision, allowStaleBrain = false, gitFn = readGit, now = Date.now}) {
     const
         observation = {revision, checkedAt: new Date(now()).toISOString(), originDev: null},
-        git = args => gitFn(args, {cwd: brainRoot}),
-        unverified = reason => ({...observation, state: 'unverified', reason});
+        git         = args => gitFn(args, {cwd: brainRoot}),
+        unverified  = reason => ({...observation, state: 'unverified', reason});
 
     try {
         git(['fetch', '--no-tags', 'origin', '+refs/heads/dev:refs/remotes/origin/dev'])
@@ -930,8 +936,8 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     runFn('node', ['ai/scripts/setup/initServerConfigs.mjs'], {cwd: stageDir});
 
     const
-        trees    = [...product.trees, ...brain.trees],
-        filled   = materializeOverlaySlots({stageDir, trees});
+        trees  = [...product.trees, ...brain.trees],
+        filled = materializeOverlaySlots({stageDir, trees});
 
     filled.length && console.log(`[pack] materialized ${filled.length} overlay slot(s) the setup script left empty: ${filled.join(', ')}`);
 
