@@ -10,12 +10,12 @@ import {installedRevision, readInstalledLock} from './resolveOrgDev.mjs';
  * The pixel goldens under `test/playwright` are rendered-platform artifacts: they are captured on
  * Darwin, and the visual/e2e capture configs are deliberately absent from Ubuntu CI, because a
  * cross-platform pixel comparison would assert authority the renderer does not have. That honesty
- * created a blind spot — an SCSS or view change could merge with stale goldens and nothing on any
+ * created a blind spot — a stylesheet or view change could merge with stale goldens and nothing on any
  * platform would ever say so.
  *
  * This script closes the blind spot WITHOUT granting Ubuntu pixel authority. It never renders and
  * never compares pixels; it compares INPUT IDENTITY. `--stamp` records the staged blob id of every
- * style-owning input file (`resources/scss`, `apps/agentos`, and every screenshot-asserting spec
+ * style-owning input file (`resources/css`, `apps/agentos`, and every screenshot-asserting spec
  * under `test/playwright` with its golden set, derived from source) plus the engine revision they were
  * last verified against; the default check recomputes them and fails
  * when any input file moved past the stamp — the signal that the goldens were left behind and must be
@@ -110,7 +110,7 @@ export function discoverCaptureSpecs(repoRoot = cwd) {
 export function buildInputScopes(repoRoot = cwd) {
     return [
         {key: 'apps/agentos', exclude: ['apps/agentos/design']},
-        {key: 'resources/scss'},
+        {key: 'resources/css'},
         ...discoverCaptureSpecs(repoRoot).flatMap(({spec, goldenDir}) => [
             {key: spec},
             {key: goldenDir, golden: true}

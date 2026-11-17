@@ -668,188 +668,182 @@ apps/agentos/view/system/SeatRootContainer.mjs
 apps/agentos/view/system/SeatRootController.mjs
     11d0ce4be716d394c51f275b56112e2c4aa19fac
 
-resources/scss/src/apps/agentos/NightshiftButton.scss
-    323cbfd4a54217691769fbee3edced0e77202c7a
+resources/css/src/apps/agentos/NightshiftButton.css
+    41d1ad5da9def290bb91375a2aebb758f3d068bc
 
-resources/scss/src/apps/agentos/Viewport.scss
-    58af1b7f3f2969495722e2d3f902c0e439f378e9
+resources/css/src/apps/agentos/Viewport.css
+    a3816bd242db4a768477a1ba3320d0e7ef07e859
 
-resources/scss/src/apps/agentos/accounts/List.scss
+resources/css/src/apps/agentos/accounts/List.css
     94fa05801c3e3642c6586cb2c9072418bfa8081c
 
-resources/scss/src/apps/agentos/accounts/Panel.scss
-    cb6f1b1562ada80f740949e584b38ca08ba0ecb4
+resources/css/src/apps/agentos/accounts/Panel.css
+    408136f6924919169db3974d3a0eea06f83f1224
 
-resources/scss/src/apps/agentos/fleet/activity/ActorChipComponent.scss
-    5e6f2c481596221cca5b1227ffa42406fbcb65a7
+resources/css/src/apps/agentos/fleet/activity/ActorChipComponent.css
+    47e94dd971aeeecff6eaa0ffdc6d615fbba84e14
 
-resources/scss/src/apps/agentos/fleet/activity/Container.scss
-    06e833c55debf3a4b8d5a0103836107cdb17c35b
+resources/css/src/apps/agentos/fleet/activity/Container.css
+    50295aaa651392f8769299e435dcb400897a8e3d
 
-resources/scss/src/apps/agentos/fleet/activity/EventChipComponent.scss
-    32a9f3a84da7c788e06377188ab78644d9cf0b62
+resources/css/src/apps/agentos/fleet/activity/EventChipComponent.css
+    1d6122fabf9eee414c3fbf96c5c3214fd299418f
 
-resources/scss/src/apps/agentos/fleet/activity/RowContainer.scss
-    a5eb9a8e1c73f9891722d33b501b44e5299ab34b
+resources/css/src/apps/agentos/fleet/activity/RowContainer.css
+    b268c7947339b364fcec4ca6477ec0755e963a74
 
-resources/scss/src/apps/agentos/fleet/catchup/Container.scss
-    a2bb58e723c846f130e6a1c3d942440cca6f4d0b
+resources/css/src/apps/agentos/fleet/catchup/Container.css
+    c57d51de384fbf03784cf82468271e1b967baeec
 
-resources/scss/src/apps/agentos/fleet/cockpit/Container.scss
-    a7470543a814e55b6ebdcdb169b637eca91062c3
+resources/css/src/apps/agentos/fleet/cockpit/Container.css
+    3903664952736e19cdd48daa9b83b9bc5d11ed7d
 
-resources/scss/src/apps/agentos/fleet/cockpit/SpineBannerComponent.scss
-    a76f2a2b6be68b4938b5625da00489fbb71a85f7
+resources/css/src/apps/agentos/fleet/cockpit/SpineBannerComponent.css
+    78396fee2f02dc6f9be60acb5144170b269178ce
 
-resources/scss/src/apps/agentos/fleet/detail/AgentConfigComponent.scss
-    f4c6b989675a533ab65d419a1b897e38c64a8153
+resources/css/src/apps/agentos/fleet/detail/AgentConfigComponent.css
+    f58ce0728e7ce12fae4967dea57fb4542ce70c34
 
-resources/scss/src/apps/agentos/fleet/detail/AgentReposContainer.scss
-    b32ec46798ac58bb458c61c428000db96f982ea9
+resources/css/src/apps/agentos/fleet/detail/AgentReposContainer.css
+    e94593ffb3e2c38a5675e9c9a06c0e71cbf358c6
 
-resources/scss/src/apps/agentos/fleet/detail/Container.scss
-    8799210a4ce9bcf5eb9b939630d1efd7cd23f644
+resources/css/src/apps/agentos/fleet/detail/Container.css
+    2df36abdec285e899eacec2fb2f6b5a268aede1f
 
-resources/scss/src/apps/agentos/fleet/detail/ParticipationContainer.scss
-    41bbe1875faf487783c4058c28146e40955c070a
+resources/css/src/apps/agentos/fleet/detail/ParticipationContainer.css
+    101e96244d53a58078db0d2edbeb976aee34d5a9
 
-resources/scss/src/apps/agentos/fleet/detail/PublishSwitchComponent.scss
+resources/css/src/apps/agentos/fleet/detail/PublishSwitchComponent.css
     59a64d75f82a1dc6af52c9c1fc50702e6331be1e
 
-resources/scss/src/apps/agentos/fleet/detail/RepositoryList.scss
+resources/css/src/apps/agentos/fleet/detail/RepositoryList.css
     491ee7d1d3e5ea989a7b42ad63a66e2785c69e47
 
-resources/scss/src/apps/agentos/fleet/detail/SeatMemoryContainer.scss
-    5c79bf0a58cdd15732dd245ce0b34e6b25bb6945
+resources/css/src/apps/agentos/fleet/detail/SeatMemoryContainer.css
+    3e605dbae7eebc8f9c866c04f08ee83aaea115da
 
-resources/scss/src/apps/agentos/fleet/detail/SeatModelContainer.scss
-    fbd22cf7313c0067e74a776f09f21c5eabd15ae1
+resources/css/src/apps/agentos/fleet/detail/SeatModelContainer.css
+    c5d0bb8d432692ab1f25a6f0766a890a8311c6e6
 
-resources/scss/src/apps/agentos/fleet/detail/SeatRuntimeContainer.scss
+resources/css/src/apps/agentos/fleet/detail/SeatRuntimeContainer.css
     4e893b4d867a6fc5f1c7bb0bce909c7b5c0f220d
 
-resources/scss/src/apps/agentos/fleet/goldenpath/Container.scss
-    20e17580a217cff9b06e85c81be2bc840d7765a0
+resources/css/src/apps/agentos/fleet/goldenpath/Container.css
+    dfa7158c05ade82f8e247e77eb1f1ed720e51695
 
-resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.scss
-    51812a9f7e83ce565257040e92bb184ba19ce252
+resources/css/src/apps/agentos/fleet/goldenpath/ObservatoryContainer.css
+    a4534d1b9e445c170cb161798b9b82e0f7186697
 
-resources/scss/src/apps/agentos/fleet/goldenpath/ObservatoryHeadComponent.scss
+resources/css/src/apps/agentos/fleet/goldenpath/ObservatoryHeadComponent.css
     f1bd142f2b509afab2a53fdf01b0e5a5c266478a
 
-resources/scss/src/apps/agentos/fleet/health/Container.scss
+resources/css/src/apps/agentos/fleet/health/Container.css
     6cf9d98d3805266f4e9d974197fb6502d76b14f6
 
-resources/scss/src/apps/agentos/fleet/health/SwatchComponent.scss
+resources/css/src/apps/agentos/fleet/health/SwatchComponent.css
     6250d529db45caf4e535d8279d9f5b3cc738c538
 
-resources/scss/src/apps/agentos/fleet/instances/AddAgentForm.scss
-    3d83849e6874e552a91af7a47577bf0341895316
+resources/css/src/apps/agentos/fleet/instances/AddAgentForm.css
+    56ab29b5258cec79536a955a0b4ef67a40708e10
 
-resources/scss/src/apps/agentos/fleet/instances/ManagerContainer.scss
+resources/css/src/apps/agentos/fleet/instances/ManagerContainer.css
     536374ecba673b0de06f733ddcf731238f746494
 
-resources/scss/src/apps/agentos/fleet/instances/MemoryCandidateList.scss
-    e268c61b565b18a957b068d68d7b99c379f45a83
+resources/css/src/apps/agentos/fleet/instances/MemoryCandidateList.css
+    ae6905f80caec6c8f51d2e489077b9408f035c95
 
-resources/scss/src/apps/agentos/fleet/instances/SwitcherButton.scss
-    15743959d3ab65e1e5732c333be9db3432667dc4
+resources/css/src/apps/agentos/fleet/instances/SwitcherButton.css
+    85d9fc9693b6d4f58883ee34c800d00a9c1481c0
 
-resources/scss/src/apps/agentos/fleet/mailbox/Chips.scss
-    db490bc092a2009b9926a8bdeaa2d08455c16a29
+resources/css/src/apps/agentos/fleet/mailbox/Chips.css
+    7daa2a8656ff2888161132561ac522f084ab97be
 
-resources/scss/src/apps/agentos/fleet/mailbox/ComposeForm.scss
-    911485c152a176b6252412802bc0b441aec2b0c9
+resources/css/src/apps/agentos/fleet/mailbox/ComposeForm.css
+    e3d1bd9315d2718239d9c340d37ee88dbc1c7a23
 
-resources/scss/src/apps/agentos/fleet/mailbox/Container.scss
-    d6f18eb4ce5908aa3fa12ff89b3f33be72000765
+resources/css/src/apps/agentos/fleet/mailbox/Container.css
+    7b5b76995a1318d3632a0445ca84c4fab468a2b3
 
-resources/scss/src/apps/agentos/fleet/mailbox/DetailContainer.scss
+resources/css/src/apps/agentos/fleet/mailbox/DetailContainer.css
     b957f6484f8bd5105f14324469377f16bf284292
 
-resources/scss/src/apps/agentos/fleet/mailbox/Grid.scss
+resources/css/src/apps/agentos/fleet/mailbox/Grid.css
     d4cad1576bd09ed5ec93b7c3b46e715f12e24add
 
-resources/scss/src/apps/agentos/fleet/mailbox/OperatorContainer.scss
-    9f6319dfbd483b6b548a1fdfd985d6af2714e1f8
+resources/css/src/apps/agentos/fleet/mailbox/OperatorContainer.css
+    f761abb78bc44e99d0ac91292529eea1da313dac
 
-resources/scss/src/apps/agentos/fleet/mailbox/PublishRequestComponent.scss
+resources/css/src/apps/agentos/fleet/mailbox/PublishRequestComponent.css
     fe194acc9a93326400c7d0011182fcfc0cf36e0a
 
-resources/scss/src/apps/agentos/fleet/memories/Container.scss
-    0cd72b5cce626d6c3160c2478f482066823ab48d
+resources/css/src/apps/agentos/fleet/memories/Container.css
+    b45a6d9ffbe24de76387477531829aaa8294fb33
 
-resources/scss/src/apps/agentos/fleet/memories/ReaderComponent.scss
-    3049137e41605023cbfe0ed9d15f9a12cfe9e41e
+resources/css/src/apps/agentos/fleet/memories/ReaderComponent.css
+    691adfdff1650e0e9c6f014f86d83ff3b8613bbd
 
-resources/scss/src/apps/agentos/fleet/perspectives/Container.scss
-    ebd226f7f44bd6bca6a78ab5a361d051c093a660
+resources/css/src/apps/agentos/fleet/perspectives/Container.css
+    2bc481a75ccbc00a9912cd6a9d77fdf7b0221fd6
 
-resources/scss/src/apps/agentos/fleet/roster/AwaitingMergeButton.scss
-    f80afdaa7687e402b9b73a54c7a6631056e6f646
+resources/css/src/apps/agentos/fleet/roster/AwaitingMergeButton.css
+    962f2f3b23c3415d29a575dce9f139ff7312a25f
 
-resources/scss/src/apps/agentos/fleet/roster/Container.scss
-    fcc36aa714d4d9f54bdd4973e17c7d85daf2b12d
+resources/css/src/apps/agentos/fleet/roster/Container.css
+    a0cf9ed5d90795828dd23c8ed1d02e7f068c6d87
 
-resources/scss/src/apps/agentos/fleet/roster/card/Container.scss
-    42aa518aa3db04288e41dc55fb9fbc7a89e88e7e
+resources/css/src/apps/agentos/fleet/roster/card/Container.css
+    08f647ea5628a5202063388e4e20f4bf28e2027f
 
-resources/scss/src/apps/agentos/fleet/shared/FamilyRailComponent.scss
-    a44934170253161f3d0067031116e88e141223b3
+resources/css/src/apps/agentos/fleet/shared/FamilyRailComponent.css
+    0246c9c483e98038b066ad35a8481a200a48f84f
 
-resources/scss/src/apps/agentos/fleet/shared/GitIdentityContainer.scss
-    f8f32884e337f66a5ffed550132ef1517315bf4e
+resources/css/src/apps/agentos/fleet/shared/GitIdentityContainer.css
+    fafa94378a18a73cdc20b39e607f361ecc893a7c
 
-resources/scss/src/apps/agentos/fleet/shared/StateDotComponent.scss
-    7b1a39e5721d51f045a2332840bea1b5a23a5fea
+resources/css/src/apps/agentos/fleet/shared/StateDotComponent.css
+    3a5973a67fb554173d0bd3f8afc585031c181a46
 
-resources/scss/src/apps/agentos/fleet/shared/_family-ink.scss
-    edf5e67d351f557e8c7d162efecd80b7da8cb8ef
+resources/css/src/apps/agentos/fleet/tasks/Container.css
+    f214b01fbd9bee2ceef9b3f67bae820d12eb4e8c
 
-resources/scss/src/apps/agentos/fleet/tasks/Container.scss
-    44d54c95a50fe6add2db030d056866d6e0a3a621
-
-resources/scss/src/apps/agentos/fleet/tasks/List.scss
+resources/css/src/apps/agentos/fleet/tasks/List.css
     bf6984641d02672e8b30a50672a5fcc6468d268b
 
-resources/scss/src/apps/agentos/fleet/wake/Container.scss
-    7c1ce12e34436cc2da14a4448c472f09cd5f4f5e
+resources/css/src/apps/agentos/fleet/wake/Container.css
+    2746ef522437d9d225ad176edc8ae00202f73041
 
-resources/scss/src/apps/agentos/home/Container.scss
+resources/css/src/apps/agentos/home/Container.css
     bc44e702a8c4791e4f4ee03e11259eb6d451430b
 
-resources/scss/src/apps/agentos/setup/CreateContainer.scss
-    fe6f38beeb0e578107750454626b99fdc1759ef8
+resources/css/src/apps/agentos/setup/CreateContainer.css
+    5e0e443302dd3fd9aee3e5eb83b21815d0344ba1
 
-resources/scss/src/apps/agentos/setup/Panel.scss
-    4a972881273aff33833156e1028afd16f92b8d12
+resources/css/src/apps/agentos/setup/Panel.css
+    9bf7a7122b8f961ea0e2bad2e0d1c880cb964b76
 
-resources/scss/src/apps/agentos/setup/StepList.scss
+resources/css/src/apps/agentos/setup/StepList.css
     68faed959998f4ed49dc26ba712353b6eb3f57f9
 
-resources/scss/src/apps/agentos/shared/_scroll-fade.scss
-    2150ec6a0de9f779d6c7695554f65cb2d0b34ee2
+resources/css/src/apps/agentos/system/Container.css
+    30be28afb7cb7ecfef03b4393544a7facc970952
 
-resources/scss/src/apps/agentos/system/Container.scss
-    6032f0c02a929b03721e70f4b053e7e97cde48bc
+resources/css/src/apps/agentos/system/List.css
+    bd33b7eea1219a134104244e34d1cbc3cfa40dfe
 
-resources/scss/src/apps/agentos/system/List.scss
-    2c884c4386b03edc287f2c6a996dd68a6ff509e7
-
-resources/scss/src/apps/agentos/system/SeatRootContainer.scss
+resources/css/src/apps/agentos/system/SeatRootContainer.css
     aee94690c38ae9e974d9df80d976b2834fc647e6
 
-resources/scss/theme-neo-dark/apps/agentos/Viewport.scss
-    60ed53504494b2b243d070e7a2fdabd47264a218
+resources/css/theme-neo-dark/apps/agentos/Viewport.css
+    832109720f4fff0d0e50ab58d294839496244448
 
-resources/scss/theme-neo-dark/apps/agentos/childapps/missioncontrol/Viewport.scss
-    b1313950373502219f7ed16e6da8ba50e907d36b
+resources/css/theme-neo-dark/apps/agentos/childapps/missioncontrol/Viewport.css
+    8160ba8e91a2f9396ed177712c77ea3ee87fe988
 
-resources/scss/theme-neo-light/apps/agentos/Viewport.scss
-    de672d2319acd0f07e75c89d9f2db9eab7c7dc21
+resources/css/theme-neo-light/apps/agentos/Viewport.css
+    9b864a0f8102370bb2f8a63bc3de5f835fbdfd14
 
-resources/scss/theme-neo-light/apps/agentos/childapps/missioncontrol/Viewport.scss
-    fd2e29588ece473d851eab77e9a4ccd09a29f220
+resources/css/theme-neo-light/apps/agentos/childapps/missioncontrol/Viewport.css
+    fbba7cc49dc455bb7fb511d0516da18d8a354cbf
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs
     b9af4ad73dab4c86bfa9ab287eea3de5a9af88c9

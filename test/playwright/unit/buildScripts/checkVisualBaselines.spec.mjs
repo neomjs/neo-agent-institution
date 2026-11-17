@@ -275,7 +275,7 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
 
             expect(buildInputScopes(repo)).toEqual([
                 {key: 'apps/agentos', exclude: ['apps/agentos/design']},
-                {key: 'resources/scss'},
+                {key: 'resources/css'},
                 {key: 'test/playwright/e2e/agentos/NewJourneyNL.spec.mjs'},
                 {key: 'test/playwright/e2e/agentos/NewJourneyNL.spec.mjs-snapshots', golden: true},
                 {key: 'test/playwright/visual/NewSurfaceVisual.spec.mjs'},
@@ -289,7 +289,7 @@ test.describe('checkVisualBaselines — the render-free drift gate\'s sensitivit
     test('stamp header and drift recovery guidance name npm run test-goldens (#911)', () => {
         expect(stampHeader.join('\n')).toContain('npm run test-goldens');
         expect(formatMissingStampMessage()).toContain('npm run test-goldens');
-        expect(formatDriftRecoveryMessage(['resources/scss/theme-neo-dark/apps/agentos/Viewport.scss (changed)']))
+        expect(formatDriftRecoveryMessage(['resources/css/theme-neo-dark/apps/agentos/Viewport.css (changed)']))
             .toContain('npm run test-goldens')
     });
 

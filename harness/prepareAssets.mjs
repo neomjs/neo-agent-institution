@@ -36,7 +36,7 @@ async function assetExists(relativePath) {
  * @summary The one theme-build argv a WORKSPACE may run, shared with the pack stage: every theme in
  * one dev build. The engine builder regenerates `resources/theme-map.json` on each run from the
  * engine's own map plus the themes it was asked for, so a single-theme run leaves the product's
- * classes with rows for that theme only — and `-f` (`--framework`) parses the engine's SCSS alone,
+ * classes with rows for that theme only — and `-f` (`--framework`) reads the engine's sheets alone,
  * leaving the map without one `apps.agentos` row. The App worker inserts CSS only for classes the
  * map names: either shape renders the cockpit in the engine's default looks.
  * @type {String[]}
@@ -63,17 +63,17 @@ export function buildThemes({spawnFn = spawn} = {}) {
 }
 
 /**
- * @summary True when any SCSS source is newer than the built theme css — the exact failure the
+ * @summary True when any theme source is newer than the built theme css — the exact failure the
  * harness cannot see otherwise: a merged theming change leaves EXISTING but WRONG css on disk,
  * and the window renders fully broken while every existence probe stays green.
  * @returns {Boolean}
  */
 function themesAreStale() {
-    const newestScss = newestMtime(path.join(repoRoot, 'resources', 'scss'), '.scss');
+    const newestSource = newestMtime(path.join(repoRoot, 'resources', 'css'), '.css');
 
     return [assets.dark, assets.light, assets.source].some(asset => {
         try {
-            return fs.statSync(path.join(repoRoot, asset)).mtimeMs < newestScss
+            return fs.statSync(path.join(repoRoot, asset)).mtimeMs < newestSource
         } catch {
             return true
         }
@@ -82,7 +82,7 @@ function themesAreStale() {
 
 /**
  * @summary Materializes the generated assets the source-mode Agent OS boot requires — and
- * REBUILDS the themes when any SCSS source is newer than the built css (staleness, not just
+ * REBUILDS the themes when any theme source is newer than the built css (staleness, not just
  * existence: the fully-broken-visuals class ships through existence-only checks).
  * @param {Object} [options]
  * @param {Function} [options.spawnFn=spawn] Injection seam for tests.
@@ -98,7 +98,7 @@ export async function prepareAssets({spawnFn = spawn} = {}) {
     }
 
     if (Object.values(state).every(Boolean)) {
-        console.log('[harness] built themes are older than the SCSS sources — rebuilding');
+        console.log('[harness] built themes are older than the theme sources — rebuilding');
         await buildThemes({spawnFn});
         return
     }

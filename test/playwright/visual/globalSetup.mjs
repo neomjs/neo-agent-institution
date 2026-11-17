@@ -11,7 +11,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 
 /**
  * The rebuild-before-baseline invariant, enforced mechanically: the dist theme CSS is a
- * gitignored BUILD artifact — merged SCSS is invisible to every rendered surface until the
+ * gitignored BUILD artifact — a merged theme source is invisible to every rendered surface until the
  * theme build runs, so a golden captured over stale artifacts is a poisoned baseline that
  * silently locks in the WRONG pixels. A stale tree fails the whole visual run loudly;
  * capturing anyway is never an option.
@@ -46,11 +46,11 @@ const THEME_GUIDANCE =
  * engine a capture renders with is whatever npm last installed, recorded in `node_modules/.package-lock.json`.
  * It must be nameable: the stamp records it beside the goldens, and a red capture run is traced through it.
  *
- * The old failure this guards is a theme build compiled from a different engine's SCSS than the one on
- * disk: the run passed its CSS-vs-SCSS check, and a capture committed the wrong engine's pixels as goldens
- * (two Observatory arms read as a `dev` regression for an hour). An engine install rewrites its SCSS with
- * fresh mtimes, so the CSS-vs-SCSS check below covers the engine's SCSS too: a new engine on disk with an
- * old theme build fails the run before any browser opens.
+ * The old failure this guards is a theme build made from a different engine's sources than the one on
+ * disk: the run passed its built-vs-source check, and a capture committed the wrong engine's pixels as
+ * goldens (two Observatory arms read as a `dev` regression for an hour). An engine install rewrites its
+ * sources with fresh mtimes, so the built-vs-source check below covers the engine's sources too: a new
+ * engine on disk with an old theme build fails the run before any browser opens.
  */
 const ENGINE_GUIDANCE = '  npm run resolve-org-dev';
 
@@ -83,11 +83,11 @@ export default function globalSetup() {
 
     console.log(`visual harness: rendering with engine ${installedEngine}`);
 
-    const newestScss = Math.max(
-              newestMtime(path.join(repoRoot, 'resources/scss'), '.scss'),
-              newestMtime(path.join(repoRoot, 'node_modules/neo.mjs/resources/scss'), '.scss')
+    const newestSource = Math.max(
+              newestMtime(path.join(repoRoot, 'resources/css'), '.css'),
+              newestMtime(path.join(repoRoot, 'node_modules/neo.mjs/resources/css'), '.css')
           ),
-          newestCss  = newestMtime(path.join(repoRoot, 'dist/development/css'), '.css');
+          newestCss    = newestMtime(path.join(repoRoot, 'dist/development/css'), '.css');
 
     if (newestCss === 0) {
         throw new Error(
@@ -97,9 +97,9 @@ export default function globalSetup() {
         )
     }
 
-    if (newestScss > newestCss) {
+    if (newestSource > newestCss) {
         throw new Error(
-            'visual harness: the built theme CSS is OLDER than the newest SCSS source — a baseline over ' +
+            'visual harness: the built theme CSS is OLDER than the newest theme source — a baseline over ' +
             'stale artifacts is a poisoned golden:\n' + THEME_GUIDANCE
         )
     }
