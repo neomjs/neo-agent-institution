@@ -57,4 +57,34 @@ test.describe('AgentOS harness shell — left-rail keeper-view nav', () => {
         expect(await page.locator('.fm-agent-card').count()).toBeGreaterThan(0);
         await expect(page.locator('.fm-card-strip:visible')).toHaveCount(0)
     });
+
+    test('the product bar spaces its controls on the 8px step, wide and narrow, in both themes', async ({page}) => {
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.agent-nightshift-button')).toBeVisible({timeout: 60000});
+
+        /** @summary The distance between two product bar items' borders, read from their DOM rects. */
+        const gap = (left, right) => page.evaluate(([l, r]) => {
+            const rect = selector => document.querySelector(`.agent-top-toolbar ${selector}`).getBoundingClientRect();
+
+            return rect(r).left - rect(l).right
+        }, [left, right]);
+
+        for (const theme of ['dark', 'light']) {
+            if (theme === 'light') {
+                // the band's own control, the app's theme API: never a class flipped on the root
+                await page.locator('.agent-theme-button').click();
+                await expect(page.locator('.agent-theme-button .fa-moon')).toHaveCount(1);
+            }
+
+            await page.setViewportSize({width: 1280, height: 800});
+            await expect.poll(() => gap('.agent-nightshift-button', '.agent-theme-button'), `${theme}: Nightshift → theme switch`).toBeCloseTo(8, 1);
+            expect(await gap('.agent-shell-title', '.fm-instance-switcher'), `${theme}: title → instance switcher`).toBeCloseTo(8, 1);
+            expect(await gap('.agent-logo', '.agent-shell-title'), `${theme}: logo → title`).toBeCloseTo(15, 1);
+
+            // ≤ 560px: the title hides and the toggle shows its glyph only
+            await page.setViewportSize({width: 520, height: 800});
+            await expect.poll(() => gap('.agent-nightshift-button', '.agent-theme-button'), `${theme}, narrow: Nightshift → theme switch`).toBeCloseTo(8, 1);
+            expect(await gap('.agent-logo', '.fm-instance-switcher'), `${theme}, narrow: logo → instance switcher`).toBeCloseTo(8, 1)
+        }
+    });
 });

@@ -106,7 +106,8 @@ test.describe('AgentOS product bar — the Nightshift toggle (Neural Link)', () 
             expect(spanMs).toBeLessThan(8 * 3_600_000 + 60_000);
 
             await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-            await expect(toggle).toHaveAttribute('aria-label', /^Nightshift on since \d\d:\d\d, ends \d\d:\d\d$/);
+            // an 8-hour span started after 16:00 ends tomorrow, and the label then names the day
+            await expect(toggle).toHaveAttribute('aria-label', /^Nightshift on since \d\d:\d\d, ends (?:\d{1,2} \w{3} )?\d\d:\d\d$/);
             await expect(toggle).not.toHaveAttribute('aria-haspopup', 'menu');
 
             // the engine's truth: the toggle holds the plane's record, not a local flip
