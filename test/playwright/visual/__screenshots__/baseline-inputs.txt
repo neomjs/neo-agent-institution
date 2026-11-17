@@ -348,7 +348,7 @@ apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    d1eca9dc32e8b6330198aaadd5f7e00d4303aa0e
+    858d6873ebb2d5d434b3f321e523a94a6ed71c94
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -405,10 +405,10 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    59a52433e842e8a447c2a81fafeb919bd2b03e70
+    6a009dffda5cd98d6e573e041aea546d7a61ce23
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    d0dc4a838d05d3c3a8dd2ea611952fcf17b4c289
+    d8f4bde9b6e6789e7da665ffec4c6ccc4841f2ad
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
