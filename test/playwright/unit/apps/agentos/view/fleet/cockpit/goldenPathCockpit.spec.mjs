@@ -11,6 +11,8 @@ import * as core              from '../../../../../../../../node_modules/neo.mjs
 import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 import GoldenPathEnvelope     from '../../../../../../../../apps/agentos/util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope     from '../../../../../../../../apps/agentos/util/GraphSceneEnvelope.mjs';
+import LivenessCadence        from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
+import Provider               from '../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 
 // the load is a CONTROLLER method: a prototype host with a recording provider on the component seat
 // drives it as production code, like the catch-up owner spec
@@ -18,12 +20,24 @@ const makeHost = () => {
     const writes = [];
 
     return Object.assign(Object.create(FleetCockpitController.prototype), {
-        component               : {getStateProvider: () => ({setData: data => writes.push(data)})},
+        component               : {getStateProvider: () => ({getData: () => undefined, setData: data => writes.push(data)})},
         goldenPathReadGeneration: 0,
+        goldenPathReadInFlight  : 0,
         graphSceneReadGeneration: 0,
         isDestroyed             : false,
         writes
     })
+};
+
+// the same host on a real provider: the failed re-read reads the landed leaf back through the engine
+const makeProviderHost = () => {
+    const
+        provider = Neo.create(Provider, {data: {goldenPathEnvelope: GoldenPathEnvelope.blank()}}),
+        host     = makeHost();
+
+    host.component = {getStateProvider: () => provider, livenessCadence: LivenessCadence.DEFAULT_INTERVALS};
+
+    return {host, provider}
 };
 
 const clearBridge = () => { delete globalThis.AgentOS?.fleet };
@@ -79,6 +93,67 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         await first;
 
         expect(host.writes.map(({goldenPathEnvelope}) => goldenPathEnvelope.capability.reason)).toEqual(['new'])
+    });
+
+    test('a failed re-read keeps the route in the real provider leaf, withheld with the read\'s reason (#898 AC-4)', async () => {
+        const
+            {host, provider} = makeProviderHost(),
+            items            = [{id: 'neo#210', title: 'Golden Path pane', score: 0.87, rank: 1, citations: []}],
+            route            = {status: 'fresh', expiresAt: new Date(Date.now() + 3600000).toISOString(), expired: false, items};
+
+        let fail = false;
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: async () => {
+            if (fail) throw new Error('secret read detail');
+            return {capability: {state: 'wired'}, admission: {admitted: true}, route}
+        }}};
+
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(provider.getData('goldenPathEnvelope'))).toBe('current');
+
+        fail = true;
+
+        const kept = await host.loadGoldenPath(),
+              leaf = provider.getData('goldenPathEnvelope');
+
+        expect(GoldenPathEnvelope.currency(leaf), 'never current').toBe('withheld');
+        expect(GoldenPathEnvelope.withheldReason(leaf)).toBe('fleet golden path read failed');
+        expect(leaf.route.items, 'never an empty pane').toEqual(items);
+        expect(kept.read).toEqual({state: 'failed', reason: 'fleet golden path read failed'});
+
+        fail = false;
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(provider.getData('goldenPathEnvelope')), 'the next answer clears the mark').toBe('current');
+
+        provider.destroy()
+    });
+
+    test('a landed route sets the next read: at a current route\'s expiry, else one interval out; one read counts in flight (#898 AC-3)', async () => {
+        const
+            {host, provider} = makeProviderHost(),
+            now              = Date.now(),
+            expiresAt        = now + 3600000;
+
+        host.livenessSchedule = LivenessCadence.create(now, LivenessCadence.DEFAULT_INTERVALS);
+
+        host.writeGoldenPath({capability: {state: 'wired'}, admission: {admitted: true}, route: {status: 'fresh', expiresAt: new Date(expiresAt).toISOString(), items: []}}, now);
+        expect(host.livenessSchedule.goldenPath, 'an hour-long route is read again at its expiry, not every two minutes').toBe(expiresAt);
+
+        host.writeGoldenPath({capability: {state: 'degraded', reason: 'route-sidecar-missing'}}, now);
+        expect(host.livenessSchedule.goldenPath).toBe(now + LivenessCadence.DEFAULT_INTERVALS.goldenPath);
+
+        let resolve;
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: () => new Promise(done => { resolve = done })}};
+
+        const read = host.loadGoldenPath();
+
+        expect(host.goldenPathReadInFlight).toBe(1);
+        resolve({capability: {state: 'unavailable', reason: 'fleet golden path source not wired'}});
+        await read;
+        expect(host.goldenPathReadInFlight).toBe(0);
+
+        provider.destroy()
     });
 });
 

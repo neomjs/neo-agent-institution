@@ -6,12 +6,12 @@ import ClosedShape from './ClosedShape.mjs';
  * @summary The cockpit's one reading of the `fleetGoldenPath` envelope, shared by every Golden Path
  * pane: the closed shape of the provider's `goldenPathEnvelope` leaf ({@link AgentOS.util.ClosedShape}
  * says why it is closed), the landing every read passes through, and the currency derived from the
- * producer's words.
+ * producer's words, measured against the viewer's clock.
  */
 
 /**
  * The declared shape of the Brain's `fleetGoldenPath` wire: `null` marks a leaf, `[]` an atomic list, and
- * an object a block.
+ * an object a block. `read` is the cockpit's own: the wire never carries it, so every landing clears it.
  * @type {Object}
  */
 const SHAPE = {
@@ -35,7 +35,8 @@ const SHAPE = {
         admission: {state: null, reason: null},
         rem      : {state: null, reason: null, detail: null},
         route    : {state: null, reason: null, detail: null}
-    }
+    },
+    read   : {state: null, reason: null}
 };
 
 /**
@@ -108,12 +109,13 @@ class GoldenPathEnvelope extends Base {
      * - `unavailable`: the source is not wired, or its read failed.
      * - `degraded`: the source answered, but its route file is missing, unreadable or invalid.
      * - `withheld`: a route exists but is not current. It is shown as the last known good route, which
-     *   is the admission contract's fallback.
+     *   is the admission contract's fallback. A re-read that failed keeps the route this way too.
      * - `current`: the admission admits the route, the route is `fresh`, and it has not expired.
      * @param {Object|null} envelope
+     * @param {Number} [now=Date.now()] The viewer's clock, epoch ms.
      * @returns {'unobserved'|'unavailable'|'degraded'|'withheld'|'current'}
      */
-    static currency(envelope) {
+    static currency(envelope, now = Date.now()) {
         const state = envelope?.capability?.state ?? null;
 
         if (state === null)       return 'unobserved';
@@ -124,7 +126,43 @@ class GoldenPathEnvelope extends Base {
 
         if (!route) return 'degraded';
 
-        return envelope.admission?.admitted === true && route.status === 'fresh' && route.expired !== true ? 'current' : 'withheld'
+        return envelope.read?.state !== 'failed' && envelope.admission?.admitted === true && route.status === 'fresh' &&
+            !GoldenPathEnvelope.isExpired(route, now) ? 'current' : 'withheld'
+    }
+
+    /**
+     * @summary Whether a route has expired. The wire's `expired` is true only for the instant of its read,
+     * and a pane outlives that instant, so `expiresAt` is measured against the viewer's clock as well.
+     * @param {Object|null} route
+     * @param {Number} [now=Date.now()] Epoch ms.
+     * @returns {Boolean}
+     */
+    static isExpired(route, now = Date.now()) {
+        return route?.expired === true || Date.parse(route?.expiresAt) <= now
+    }
+
+    /**
+     * @summary Until when a current route stays current: its `expiresAt` in epoch ms. `null` when the
+     * route is not current now or names no parseable expiry.
+     * @param {Object|null} envelope
+     * @param {Number} [now=Date.now()] Epoch ms.
+     * @returns {Number|null}
+     */
+    static currentUntil(envelope, now = Date.now()) {
+        const until = Date.parse(GoldenPathEnvelope.routeOf(envelope)?.expiresAt);
+
+        return GoldenPathEnvelope.currency(envelope, now) === 'current' && Number.isFinite(until) ? until : null
+    }
+
+    /**
+     * @summary The envelope a failed read leaves behind. With a route already landed, the route stays on
+     * screen, withheld with the read's reason; without one, the read lands as unavailable.
+     * @param {Object|null} previous The landed envelope before the read.
+     * @param {String} reason The read's failure.
+     * @returns {Object} A wire envelope for {@link #fromWire}.
+     */
+    static afterFailedRead(previous, reason) {
+        return GoldenPathEnvelope.routeOf(previous) ? {...previous, read: {state: 'failed', reason}} : {capability: {state: 'unavailable', reason}}
     }
 
     /**
@@ -135,11 +173,12 @@ class GoldenPathEnvelope extends Base {
      * formatter has nothing to say.
      * @param {Object|null} envelope The landed envelope.
      * @param {Function} [formatStamp] `(isoString) → String|null`
+     * @param {Number} [now=Date.now()] The viewer's clock, epoch ms.
      * @returns {{currency: String, text: String}}
      */
-    static describeCurrency(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`) {
+    static describeCurrency(envelope, formatStamp = at => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')}Z`, now = Date.now()) {
         const
-            currency = GoldenPathEnvelope.currency(envelope),
+            currency = GoldenPathEnvelope.currency(envelope, now),
             route    = GoldenPathEnvelope.routeOf(envelope),
             count    = route && Array.isArray(route.items) ? route.items.length : 0,
             items    = `${count} item${count === 1 ? '' : 's'}`,
@@ -155,7 +194,7 @@ class GoldenPathEnvelope extends Base {
                 unobserved : () => ['Unobserved'],
                 unavailable: () => ['Unavailable', reason],
                 degraded   : () => ['Degraded', reason],
-                withheld   : () => ['Withheld', GoldenPathEnvelope.withheldReason(envelope), 'last known good route', stamp(route.capturedAt), items],
+                withheld   : () => ['Withheld', GoldenPathEnvelope.withheldReason(envelope, now), 'last known good route', stamp(route.capturedAt), items],
                 current    : () => ['Current', stamp(route.capturedAt), items]
             }[currency]();
 
@@ -163,14 +202,16 @@ class GoldenPathEnvelope extends Base {
     }
 
     /**
-     * @summary The producer's reason a route is withheld: the admission's reason code first, then the
-     * route's own expiry or status.
+     * @summary The reason a route is withheld: a failed re-read first, then the admission's reason code,
+     * then the route's own expiry or status.
      * @param {Object} envelope
+     * @param {Number} [now=Date.now()] The viewer's clock, epoch ms.
      * @returns {String}
      */
-    static withheldReason({admission, route} = {}) {
-        if (admission?.admitted !== true) return admission?.reasonCode || 'admission-unavailable';
-        if (route?.expired === true)      return 'route-expired';
+    static withheldReason({admission, read, route} = {}, now = Date.now()) {
+        if (read?.state === 'failed')                 return read.reason || 'read-failed';
+        if (admission?.admitted !== true)             return admission?.reasonCode || 'admission-unavailable';
+        if (GoldenPathEnvelope.isExpired(route, now)) return 'route-expired';
 
         return `route-${route?.status || 'unknown'}`
     }

@@ -36,7 +36,8 @@ test.describe('goldenPathEnvelope — one closed shape, one currency', () => {
     test('the blank declares every key and reads unobserved', () => {
         const blank = GoldenPathEnvelope.blank();
 
-        expect(Object.keys(blank)).toEqual(['capability', 'handoff', 'admission', 'route', 'rem', 'sources']);
+        expect(Object.keys(blank)).toEqual(['capability', 'handoff', 'admission', 'route', 'rem', 'sources', 'read']);
+        expect(blank.read, 'the cockpit\'s own read block starts unobserved').toEqual({state: null, reason: null});
         expect(blank.handoff).toEqual({markdown: null, mtimeMs: null, ageMs: null, staleAfterMs: null, stale: null, reason: null});
         expect(blank.route.items).toEqual([]);
         expect(blank.route.provenance).toEqual({producer: null, runId: null, algorithmVersion: null});
@@ -91,6 +92,45 @@ test.describe('goldenPathEnvelope — one closed shape, one currency', () => {
         expect(GoldenPathEnvelope.withheldReason(land({...wired, admission: {admitted: false, reasonCode: 'freshness-sla-breached'}}))).toBe('freshness-sla-breached');
         expect(GoldenPathEnvelope.withheldReason(land({...wired, route: {...wired.route, expired: true}}))).toBe('route-expired');
         expect(GoldenPathEnvelope.withheldReason(land({...wired, route: {...wired.route, status: 'stale'}}))).toBe('route-stale')
+    });
+
+    test('the viewer\'s clock past expiresAt withholds the route, whatever the wire\'s expired says (#898 AC-1)', () => {
+        const
+            expiresAt = '2026-09-25T18:00:00.000Z',
+            at        = Date.parse(expiresAt),
+            land      = expired => GoldenPathEnvelope.fromWire({...wired, route: {...wired.route, expiresAt, expired}});
+
+        expect(GoldenPathEnvelope.currency(land(false), at - 1), 'a millisecond before its expiry, the read-time word holds').toBe('current');
+        expect(GoldenPathEnvelope.currentUntil(land(false), at - 1)).toBe(at);
+
+        for (const expired of [false, true]) {
+            expect(GoldenPathEnvelope.currency(land(expired), at), `expired: ${expired}`).toBe('withheld');
+            expect(GoldenPathEnvelope.withheldReason(land(expired), at)).toBe('route-expired');
+            expect(GoldenPathEnvelope.currentUntil(land(expired), at), 'a withheld route is current until nothing').toBeNull()
+        }
+
+        expect(GoldenPathEnvelope.currency(land(true), at - 1), 'the wire\'s own expiry still counts').toBe('withheld');
+        expect(GoldenPathEnvelope.currentUntil(GoldenPathEnvelope.fromWire(wired), at), 'a route without an expiry has no instant to reschedule to').toBeNull();
+        expect(GoldenPathEnvelope.describeCurrency(land(false), undefined, at).text).toBe('Withheld · route-expired · last known good route · 1 item')
+    });
+
+    test('a failed re-read keeps the landed route, withheld with the read\'s reason; with none it lands unavailable (#898 AC-4)', () => {
+        const
+            handoff  = {markdown: '## Computed Golden Path', mtimeMs: 1758780300000, ageMs: 0, staleAfterMs: 1, stale: false, reason: null},
+            previous = GoldenPathEnvelope.fromWire({...wired, handoff}),
+            kept     = GoldenPathEnvelope.fromWire(GoldenPathEnvelope.afterFailedRead(previous, 'fleet golden path read failed'));
+
+        expect(GoldenPathEnvelope.currency(kept), 'never current').toBe('withheld');
+        expect(GoldenPathEnvelope.withheldReason(kept), 'the read\'s reason comes before every producer word').toBe('fleet golden path read failed');
+        expect(kept.route.items, 'never an empty pane').toEqual(items);
+        expect(kept.handoff.markdown).toBe('## Computed Golden Path');
+        expect(GoldenPathEnvelope.fromWire(wired).read, 'the next answered read clears the cockpit\'s mark').toEqual({state: null, reason: null});
+
+        const first = GoldenPathEnvelope.fromWire(GoldenPathEnvelope.afterFailedRead(GoldenPathEnvelope.blank(), 'fleet golden path verb not wired'));
+
+        expect(GoldenPathEnvelope.currency(first)).toBe('unavailable');
+        expect(first.capability.reason).toBe('fleet golden path verb not wired');
+        expect(GoldenPathEnvelope.currency(GoldenPathEnvelope.fromWire(GoldenPathEnvelope.afterFailedRead(undefined, 'x')))).toBe('unavailable')
     });
 
     test('a citation is labelled as written, or left out', () => {

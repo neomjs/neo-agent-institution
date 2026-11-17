@@ -11,7 +11,9 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
  * then queued every other seat behind it. The open work reads the fleet server's own producer, which
  * observes GitHub once a minute, so a faster read would only repeat its answer. The shown seat's recent
  * turns (the Agent Detail's Thought stream) read on the open work's interval and only while the detail
- * shows a seat: an idle cockpit launches nothing for them.
+ * shows a seat: an idle cockpit launches nothing for them. The Golden Path changes once per producer
+ * pass, and each read costs three Memory Core calls, so a current route reschedules its read to its own
+ * expiry ({@link #reschedule}); its interval only paces the retries while no route is current.
  *
  * A due read still launches while an earlier one of its wires hangs, up to the in-flight cap: that
  * probe is what notices a recovered transport. The bounded read window is far shorter than any
@@ -36,7 +38,8 @@ class LivenessCadence extends Base {
         deploymentState: 120000,
         openWork       : 60000,
         operatorInbox  : 60000,
-        recentTurns    : 60000
+        recentTurns    : 60000,
+        goldenPath     : 120000
     })
 
     /**
@@ -71,7 +74,8 @@ class LivenessCadence extends Base {
         deploymentState: Object.freeze({load: 'loadDeploymentState', inFlight: 'deploymentStateReadInFlight'}),
         openWork       : Object.freeze({load: 'loadOpenWork',        inFlight: 'openWorkReadInFlight'}),
         operatorInbox  : Object.freeze({load: 'refreshOperatorInbox', inFlight: 'operatorInboxReadInFlight', cap: 1}),
-        recentTurns    : Object.freeze({load: 'loadRecentTurns',     inFlight: 'recentTurnsReadInFlight'})
+        recentTurns    : Object.freeze({load: 'loadRecentTurns',     inFlight: 'recentTurnsReadInFlight'}),
+        goldenPath     : Object.freeze({load: 'loadGoldenPath',      inFlight: 'goldenPathReadInFlight', cap: 1})
     })
 
     static config = {
@@ -128,6 +132,18 @@ class LivenessCadence extends Base {
      */
     static expedite(dueAt, key, at) {
         return {...dueAt, [key]: Math.min(dueAt[key], at)}
+    }
+
+    /**
+     * @summary Set one read's next due time to `at`, earlier or later than it was: a read whose answer
+     * names its own expiry comes due at that expiry, not on its interval.
+     * @param {Object<String, Number>} dueAt The current schedule.
+     * @param {String} key A read key, as in {@link #READS}.
+     * @param {Number} at Epoch ms.
+     * @returns {Object<String, Number>} The next schedule.
+     */
+    static reschedule(dueAt, key, at) {
+        return {...dueAt, [key]: at}
     }
 
     /**

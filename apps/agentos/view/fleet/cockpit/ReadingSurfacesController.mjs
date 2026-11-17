@@ -2,6 +2,7 @@ import ActivityObserver        from '../../../util/ActivityObserver.mjs';
 import FleetAdmission          from '../../../util/FleetAdmission.mjs';
 import GoldenPathEnvelope      from '../../../util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope      from '../../../util/GraphSceneEnvelope.mjs';
+import LivenessCadence         from '../../../util/LivenessCadence.mjs';
 import TargetBinding           from '../../../util/TargetBinding.mjs';
 import LivenessController      from './LivenessController.mjs';
 import {FLEET_COCKPIT_SOURCES} from '../../../../../node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
@@ -101,6 +102,12 @@ class ReadingSurfacesController extends LivenessController {
      * @protected
      */
     goldenPathReadGeneration = 0
+    /**
+     * The Golden Path's unsettled wire reads, which the liveness cadence caps.
+     * @member {Number} goldenPathReadInFlight=0
+     * @protected
+     */
+    goldenPathReadInFlight = 0
     /**
      * Read-fence for the graph scene surface.
      * @member {Number} graphSceneReadGeneration=0
@@ -455,7 +462,8 @@ class ReadingSurfacesController extends LivenessController {
 
     /**
      * @summary READ: the computed Golden Path through the fleet bridge. The read fence lets the latest
-     * read win. The unavailable envelope is used when the verb is absent or the read throws.
+     * read win. When the verb is absent or the read throws, a landed route stays on screen, withheld with
+     * the read's reason, and with none the read lands as unavailable.
      * @returns {Promise<Object>} The landed envelope.
      */
     async loadGoldenPath() {
@@ -463,14 +471,18 @@ class ReadingSurfacesController extends LivenessController {
             me         = this,
             {bridge}   = me,
             generation = ++me.goldenPathReadGeneration,
-            fallback   = reason => ({capability: {state: 'unavailable', reason}});
+            failed     = reason => GoldenPathEnvelope.afterFailedRead(me.component.getStateProvider()?.getData('goldenPathEnvelope'), reason);
 
         let envelope;
 
+        me.goldenPathReadInFlight++;
+
         try {
-            envelope = typeof bridge?.fleetGoldenPath === 'function' ? await bridge.fleetGoldenPath({}) : fallback('fleet golden path verb not wired')
+            envelope = typeof bridge?.fleetGoldenPath === 'function' ? await bridge.fleetGoldenPath({}) : failed('fleet golden path verb not wired')
         } catch (error) {
-            envelope = fallback('fleet golden path read failed')
+            envelope = failed('fleet golden path read failed')
+        } finally {
+            me.goldenPathReadInFlight--
         }
 
         return generation === me.goldenPathReadGeneration && !me.isDestroyed ? me.writeGoldenPath(envelope) : GoldenPathEnvelope.fromWire(envelope)
@@ -478,14 +490,21 @@ class ReadingSurfacesController extends LivenessController {
 
     /**
      * @summary WRITE: lands one envelope in the provider's `goldenPathEnvelope` leaf, in the closed shape
-     * every Golden Path pane binds.
+     * every Golden Path pane binds, and sets the cadence's next read: at a current route's expiry,
+     * otherwise one interval out.
      * @param {Object|null} envelope The wire envelope.
+     * @param {Number} [now=Date.now()] Epoch ms.
      * @returns {Object} The landed envelope.
      */
-    writeGoldenPath(envelope) {
-        const landed = GoldenPathEnvelope.fromWire(envelope);
+    writeGoldenPath(envelope, now = Date.now()) {
+        const
+            me     = this,
+            landed = GoldenPathEnvelope.fromWire(envelope);
 
-        this.component.getStateProvider()?.setData({goldenPathEnvelope: landed});
+        me.component.getStateProvider()?.setData({goldenPathEnvelope: landed});
+
+        me.livenessSchedule && (me.livenessSchedule = LivenessCadence.reschedule(me.livenessSchedule, 'goldenPath',
+            GoldenPathEnvelope.currentUntil(landed, now) ?? now + me.component.livenessCadence.goldenPath));
 
         return landed
     }

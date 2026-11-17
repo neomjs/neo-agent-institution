@@ -76,7 +76,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             // the view-owned cadence configs live on the component seat now; a zero interval makes
             // every read due on every pass, so these balance fixtures drive each seam per tick
             component              : {livenessCadence: EVERY_PASS, livenessPollInterval: 50, maxReadsInFlight: 2,
-                getOperatorMailboxPane: () => null, getStateProvider: () => null},
+                getGoldenPathPane: () => null, getOperatorMailboxPane: () => null, getStateProvider: () => null},
             gridReadGeneration     : 0,
             gridReadInFlight       : 0,
             isDestroyed            : false,
@@ -148,6 +148,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
             Object.assign(host.component, {
                 getCatchUpPane: () => null,
+                getGoldenPathPane: () => null,
                 getMemoriesPane: () => null,
                 getOperatorMailboxPane: () => null,
                 getStateProvider: () => provider,
@@ -952,26 +953,30 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
     const makeCadenceHost = () => {
         const
             host     = makeTimerHost(),
-            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0, openWork: 0, operatorInbox: 0},
+            launched = {activity: 0, roster: 0, brainHealth: 0, tasks: 0, deploymentState: 0, openWork: 0, operatorInbox: 0, goldenPath: 0},
             ticks    = [],
             mailboxTicks = [],
-            mailbox = {set({now}) { mailboxTicks.push(now) }};
+            mailbox = {set({now}) { mailboxTicks.push(now) }},
+            goldenPathTicks = [],
+            goldenPath = {set({now}) { goldenPathTicks.push(now) }};
 
         host.component.livenessCadence  = LivenessCadence.DEFAULT_INTERVALS;
         host.component.windowId         = 7;
         host.component.getStateProvider = () => ({setData: ({systemTickAt}) => ticks.push(systemTickAt)});
         host.component.getOperatorMailboxPane = () => mailbox;
+        host.component.getGoldenPathPane      = () => goldenPath;
+        host.goldenPathReadInFlight           = 0;
 
         Object.keys(launched).forEach(key => {
             host[LivenessCadence.READS[key].load] = () => { launched[key]++; return Promise.resolve() }
         });
 
-        return {host, launched, ticks, mailboxTicks}
+        return {host, launched, ticks, mailboxTicks, goldenPathTicks}
     };
 
     test('each read comes due on its own interval, never on the shared pass', () => {
         const
-            {host, launched, ticks, mailboxTicks} = makeCadenceHost(),
+            {host, launched, ticks, mailboxTicks, goldenPathTicks} = makeCadenceHost(),
             originalSetInterval     = globalThis.setInterval;
 
         globalThis.setInterval = () => 1;
@@ -982,7 +987,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             const start = Date.now();
 
             expect(launched, 'arming the owner is the Brain and plane pictures\' first read')
-                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 0, operatorInbox: 0});
+                .toEqual({activity: 0, roster: 0, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 0, operatorInbox: 0, goldenPath: 0});
 
             host.onLivenessTick(start + 15000);
 
@@ -992,12 +997,13 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
 
             host.onLivenessTick(start + 60000);
 
-            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 1, operatorInbox: 1});
+            expect(launched).toEqual({activity: 1, roster: 1, brainHealth: 1, tasks: 0, deploymentState: 1, openWork: 1, operatorInbox: 1, goldenPath: 0});
 
             host.onLivenessTick(start + 120000);
 
-            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2});
-            expect(mailboxTicks).toEqual([start + 15000, start + 60000, start + 120000])
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2, goldenPath: 1});
+            expect(mailboxTicks).toEqual([start + 15000, start + 60000, start + 120000]);
+            expect(goldenPathTicks, 'the Golden Path pane ages on every pass, a new envelope or not').toEqual([start + 15000, start + 60000, start + 120000])
         } finally {
             globalThis.setInterval = originalSetInterval;
             host.livenessTimerId   = null
@@ -1038,7 +1044,7 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
             now = start + 180000;
             host.onLivenessVisibility({hidden: false, windowId: 7});
 
-            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2});
+            expect(launched).toEqual({activity: 2, roster: 2, brainHealth: 2, tasks: 1, deploymentState: 2, openWork: 2, operatorInbox: 2, goldenPath: 1});
             expect(mailboxTicks, 'resume immediately publishes the current clock').toEqual([start + 60000, now]);
 
             host.onLivenessVisibility({hidden: false, windowId: 7});
