@@ -1,9 +1,9 @@
 /**
  * @module apps/agentos/canvas/fmPalette
  * @summary The FM ink tiers a canvas-worker renderer draws in, per theme — the values of the `--fm-*`
- * tokens the cockpit's stylesheets bind (the dark and light `apps/agentos/Viewport.scss` theme files).
+ * tokens the cockpit's stylesheets bind (the dark and light `apps/agentos/Viewport.css` theme files).
  * A canvas worker has no stylesheet to read, so the mirror lives here, once, and is named as one: a
- * token value changes in the SCSS and here, together.
+ * token value changes in the CSS and here, together.
  */
 
 /**

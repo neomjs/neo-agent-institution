@@ -8,7 +8,7 @@ import SharedCanvas from '../../../../node_modules/neo.mjs/src/app/SharedCanvas.
  * worker alone; a canvas that becomes ready receives both.
  *
  * Stillness is the motion vocabulary's own verdict: `--motion-base` collapses to `0ms` under
- * `prefers-reduced-motion: reduce` (`resources/scss/_motion.scss`), and the canvas reads it from its node each time
+ * `prefers-reduced-motion: reduce` (the engine's `resources/css/src/Global.css`), and the canvas reads it from its node each time
  * it mounts. Every mount starts still, and a read that fails or answers nothing keeps it still.
  *
  * @class AgentOS.view.home.Canvas

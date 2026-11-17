@@ -28,7 +28,7 @@
 
     /* Fleet Manager cockpit design tokens — the skin for the FM primitives, extracted 1:1 from the
        design SSOT (apps/agentos/design/fleet-manager-cockpit-plan.html). Any delta = a recorded design
-       decision, never silent drift. Structure lives in src/apps/agentos/fleet/*.scss (var()-only). */
+       decision, never silent drift. Structure lives in src/apps/agentos/fleet/*.css (var()-only). */
     --fm-ground        : #0b0e13;
     --fm-panel         : #141a23;
     --fm-panel-2       : #1a212c;

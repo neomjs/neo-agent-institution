@@ -22,7 +22,7 @@ const SPINE_ACTIONS = Object.freeze({
  * handlers on the cockpit's controller, the closest ones up the tree, and register their references
  * there, so the cockpit reads `fleet-spine-banner` and its siblings as its own. The buttons keep their
  * width: a narrow bar takes its pixels from the state block, whose lead ellipsizes first, never from a
- * verb. The collapse order below 760 px is a container query in the cockpit SCSS, never measured here.
+ * verb. The collapse order below 760 px is a container query in the cockpit CSS, never measured here.
  * @class AgentOS.view.fleet.cockpit.ControlToolbar
  * @extends Neo.toolbar.Base
  */

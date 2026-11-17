@@ -45,7 +45,7 @@ class FamilyRail extends Component {
     /**
      * Triggered after the family config changed — data-driven rebind. A family swap re-renders the
      * rail in place for the SAME resident (anti-lock-in). Known → its `fm-family-*` class (which
-     * binds the `--fm-rail` token in the component SCSS — zero inline styles); unknown or absent →
+     * binds the `--fm-rail` token in the component CSS — zero inline styles); unknown or absent →
      * the `unclassified` marker class, which carries the neutral rail binding (never a guessed
      * family).
      * @param {String|null} value

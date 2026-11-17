@@ -7,7 +7,7 @@ import {test, expect} from '../../fixtures.mjs';
  *
  * Run: NEO_E2E_PORT=8121 npx playwright test agentos/AddAgentForm -c test/playwright/playwright.config.e2e.mjs --workers=1
  *
- * @see resources/scss/src/apps/agentos/fleet/instances/AddAgentForm.scss
+ * @see resources/css/src/apps/agentos/fleet/instances/AddAgentForm.css
  */
 test.describe('AgentOS Add agent form — a reason line takes its own room (#374)', () => {
     test.setTimeout(90000);

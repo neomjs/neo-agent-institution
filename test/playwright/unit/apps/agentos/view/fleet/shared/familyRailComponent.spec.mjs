@@ -66,7 +66,7 @@ test.describe('Fleet cockpit FamilyRail — data-driven era attribute, unclassif
 
         expect(rail.vdom.cls).toContain('fm-family-rail');
         expect(rail.vdom.cls).not.toContain('fm-family-unclassified');
-        // the class carries the rail binding (SCSS maps it onto --fm-rail); no inline style write
+        // the class carries the rail binding (CSS maps it onto --fm-rail); no inline style write
         expect(rail.vdom.cls).toContain('fm-family-claude');
         expect(rail.vdom.style?.['--fm-rail']).toBeUndefined();
 

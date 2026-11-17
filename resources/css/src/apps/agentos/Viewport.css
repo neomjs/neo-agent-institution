@@ -44,7 +44,7 @@
     --fm-text-chrome: 11px/1 var(--fm-font-mono);
     --fm-text-chrome-tracking: .08em;
     /* The §04 spacing rhythm: 4/8/12/16 (#17265). On-ladder literals bind these; a padding/gap
-       value outside the rhythm is a recorded exception in its file's SCSS header — never silent. */
+       value outside the rhythm is a recorded exception in its file's CSS header — never silent. */
     --fm-space-1: 4px;
     --fm-space-2: 8px;
     --fm-space-3: 12px;
@@ -56,7 +56,7 @@
     --fm-frame-gutter: 20px;
     /* FM motion aliases (§04 T4): the FM-scoped re-timing knob over the product motion
        vocabulary — pointing at the standards tiers, never at dock-scoped aliases. The
-       vocabulary-layer reduced-motion collapse (_motion.scss) flows through the alias by
+       vocabulary-layer reduced-motion collapse (the engine's src/Global.css) flows through the alias by
        construction, so the accessibility contract is inherited, not re-implemented. */
     --fm-motion-panel: var(--motion-panel, 280ms);
     --fm-motion-fast: var(--motion-fast, 120ms);
@@ -916,7 +916,7 @@
 
 /* The direct-paint owner — deliberately OUTSIDE the shared token group above (RA-1, PR #17544
    round 1): that comma group exists to carry structural FM tokens to the floating instance menu,
-   and Sass emits every direct declaration in it for the menu root too — the menu's surface is its
+   and every direct declaration in it applies to the menu root too — the menu's surface is its
    own `--fm-panel-2` story (InstanceSwitcher.css). Only the shell viewport paints the ground, and
    only its containers give up the stock surface. */
 .agent-os-viewport.neo-viewport {

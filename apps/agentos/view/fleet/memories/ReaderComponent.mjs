@@ -276,7 +276,7 @@ class ReaderComponent extends Component {
 
         me.vdom.cn = [
             ...records.length > 0 ? [{
-                // shown by the narrow regime only (ReaderComponent.scss), where the rail yields its room
+                // shown by the narrow regime only (ReaderComponent.css), where the rail yields its room
                 tag : 'button',
                 type: 'button',
                 cls : ['fm-memories-read-back'],

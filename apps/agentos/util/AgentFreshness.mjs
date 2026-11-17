@@ -102,7 +102,7 @@ class AgentFreshness extends Base {
      * the relative observation age, `stale` shows it with the state word, `lost` states the claim is
      * too old to trust, and `unobserved` states plainly that no live source has reported — the honest
      * empty, never a blank that could read as current. The cls tokens (`is-fresh` / `is-stale` /
-     * `is-lost` / `is-unobserved`) are the only styling surface; color/motion live in SCSS tokens.
+     * `is-lost` / `is-unobserved`) are the only styling surface; color/motion live in CSS tokens.
      * @param {{freshness: String, ageMs: (Number|null)}} classification From {@link classifyPaneFreshness}.
      * @returns {{freshness: String, cls: String[], label: String}}
      */

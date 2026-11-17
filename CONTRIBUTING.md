@@ -10,7 +10,7 @@ Three different things get called "getting started", and picking the wrong one c
   [`ROADMAP.md`](ROADMAP.md) for a tour of the cockpit, its data states, and the native vessel.
 * **Building an app *with* the Neo.mjs UI Engine or changing the Engine itself?** See [`neomjs/neo`](https://github.com/neomjs/neo)
   and its [Contributing Guide](https://github.com/neomjs/neo/blob/dev/CONTRIBUTING.md).
-* **Changing Agent Institution *itself* — fixing a bug in `apps/agentos/` or `src/`, updating styles in `resources/scss/`,
+* **Changing Agent Institution *itself* — fixing a bug in `apps/agentos/` or `src/`, updating styles in `resources/css/`,
   working on the Electron shell in `harness/`, or adding a test?** That is this page, and the loop below is the whole of it.
 
 ## Set up Agent Institution from a clone
@@ -35,8 +35,8 @@ The browser cockpit boots without a Brain checkout, showing its unanswered state
 first-agent call to action when an empty registry connects.
 
 **Your own JavaScript never needs a build** — Neo.mjs runs your edits as native ES modules, so you change a file and
-reload. That does not extend to **SCSS**: styles under `resources/scss/` compile into `dist/development/css`, so run
-`npm run build-themes` after a `.scss` change, or keep `npm run watch-themes` going while you work on one. App file
+reload. That does not extend to **styles**: `build-themes` copies the sheets under `resources/css/` into
+`dist/development/css`, so run it after a `.css` change, or keep `npm run watch-themes` going while you work on one. App file
 sizes are guarded by `npm run check-app-file-sizes`.
 
 Running the isolated test suites:
@@ -61,7 +61,7 @@ npm run test-e2e                # application E2E — uses your system Google Ch
 
 The visual and e2e goldens are captured on macOS across `test-visual`, `test-e2e`, and `test-e2e:nl`, and every spec
 that asserts a screenshot plus its golden directory is covered by `npm run check-visual-baselines`. When a change touches
-a style-owning input (`resources/scss`, `apps/agentos`) or a capture spec, run the single capture command on a Mac with a
+a style-owning input (`resources/css`, `apps/agentos`) or a capture spec, run the single capture command on a Mac with a
 local `neo-agent-brain` checkout:
 
 ```bash
@@ -179,7 +179,7 @@ built on Neo.mjs — making the application readable by humans, and **both reada
    npx -p neo-agent-skills neo-agent-skills-agents-md --repo neo-agent-institution --audience contributor
    ```
    for what an outside agent should know first; the maintainer instruction layer is written for this project's own standing maintainer seats.
-2. **JSON-First Multi-Thread UI:** Neo.mjs components are defined via JSON VDOM blueprints running inside an application worker, not JSX or HTML templates. State lives on `Neo.state.Provider` / `Neo.data.Store`, and styles live in `resources/scss/`.
+2. **JSON-First Multi-Thread UI:** Neo.mjs components are defined via JSON VDOM blueprints running inside an application worker, not JSX or HTML templates. State lives on `Neo.state.Provider` / `Neo.data.Store`, and styles live in `resources/css/`.
 3. **Skills, PR Rules & Neural Link:** `npm install` materializes `.agents/skills/` (including `unit-test`, `whitebox-e2e`, and `pull-request`). Read `.agents/skills/pull-request/SKILL.md` (`.agents/skills/pull-request/references/pull-request-workflow.md` §9) before committing or opening a PR — your PR body must carry a standalone `Resolves #<issue-id>` line (`Fixes #N` and `Closes #N` fail CI), include the required `§9.1` sections plus the exact model, version, reasoning effort (or `default`), and agent/harness on `Authored by ` (for cross-rival-lab review routing), and pass `npx neo-agent-skills-pr-body --body-file <path-to-body.md>`. The Neural Link MCP bridge (`neo-agent-brain:ai/mcp/server/neural-link/`) lets you inspect and drive the live scene graph directly.
 
 <br><br>

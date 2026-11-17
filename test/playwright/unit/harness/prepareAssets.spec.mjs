@@ -21,8 +21,8 @@ function fakeChild() {
 
 /**
  * @summary The harness builds the dev themes the way a WORKSPACE must: one `-t all` run over the
- * product's own SCSS, never per theme (a single-theme run regenerates the theme map with only that
- * theme for workspace classes) and never `-f` (`--framework`, which parses the engine's SCSS only and
+ * product's own CSS, never per theme (a single-theme run regenerates the theme map with only that
+ * theme for workspace classes) and never `-f` (`--framework`, which parses the engine's CSS only and
  * leaves the map without one `apps.agentos` row).
  */
 test.describe('harness theme builds — one workspace-shaped run, shared by prepareAssets and pack', () => {

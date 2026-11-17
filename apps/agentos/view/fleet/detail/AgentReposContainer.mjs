@@ -68,7 +68,7 @@ class AgentReposCard extends Container {
         saveStatus_: null,
         /**
          * Heading · rows · the empty line · the add row · status line. Every row keeps its natural
-         * height (`flex: 'none'`). Skin in `AgentReposContainer.scss`.
+         * height (`flex: 'none'`). Skin in `AgentReposContainer.css`.
          * @member {Object[]} items
          */
         items: [{

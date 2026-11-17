@@ -31,7 +31,7 @@ class SeatMemoryContainer extends Container {
          */
         ntype: 'fm-seat-memory',
         /**
-         * One of the Seat group's rows, in its row skin (`SeatModelContainer.scss`).
+         * One of the Seat group's rows, in its row skin (`SeatModelContainer.css`).
          * @member {String[]} baseCls=['fm-seat-model-row','fm-seat-memory']
          */
         baseCls: ['fm-seat-model-row', 'fm-seat-memory'],

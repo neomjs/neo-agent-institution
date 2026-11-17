@@ -20,7 +20,7 @@ import {MACHINES, TRUSTED, installPinnedSetupShell, pinnedSetupHost}            
  *   get their own arm;
  * - `document.fonts.ready` gates every capture (half-loaded webfonts are the classic
  *   false-diff source);
- * - the globalSetup already refused the run if the built theme CSS trails the SCSS sources.
+ * - the globalSetup already refused the run if the built theme CSS trails the CSS sources.
  *
  * Baselines refresh ONLY via `--update-snapshots` under the visual config — a refreshed
  * golden is a reviewed design decision (the PR diff is the review surface).

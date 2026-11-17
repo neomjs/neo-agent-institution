@@ -3,7 +3,7 @@ import NeoArray  from '../../../../../node_modules/neo.mjs/src/util/Array.mjs';
 
 /**
  * Maps a session-state key to its design token (the `--fm-state-*` values live in the theme skin,
- * `resources/scss/theme-neo-{dark,light}/apps/agentos/`).
+ * `resources/css/theme-neo-{dark,light}/apps/agentos/`).
  * State encodes what a resident is *doing now* — working / idle / wedged / limited / off, plus the
  * transitional `starting` / `stopping` while a lifecycle intent is in flight —
  * and is NEVER identity — session state is what a resident does, not who it is. Unknown keys
@@ -36,7 +36,7 @@ export function stateToken(state) {
 
 /**
  * Pure state → CSS-class mapping — the token name minus its `--` custom-property prefix (e.g.
- * `fm-state-ok`). The class binds `--fm-dot` in the component SCSS, so color stays entirely in the
+ * `fm-state-ok`). The class binds `--fm-dot` in the component CSS, so color stays entirely in the
  * token/skin layer: components swap a class, never write a style. Shares `stateToken`'s closed-set
  * degrade (unknown → `fm-state-off`).
  * @param {String} state
@@ -107,7 +107,7 @@ export function stateMeaning(state, reason = null) {
 /**
  * The atomic session-state indicator: a colored dot whose color is driven entirely by the
  * `--fm-state-*` token layer, with an optional live-pulse gated behind `prefers-reduced-motion`
- * in the component SCSS (`resources/scss/src/apps/agentos/fleet/shared/StateDotComponent.scss`). The color — not the
+ * in the component CSS (`resources/css/src/apps/agentos/fleet/shared/StateDotComponent.css`). The color — not the
  * motion — carries the signal, so the primitive
  * degrades cleanly for reduced-motion users. Composed by every fleet surface.
  *
@@ -149,7 +149,7 @@ class StateDot extends Component {
 
     /**
      * Triggered after the state config changed — swaps the state class from the closed-set
-     * resolver; the class binds the `--fm-dot` color token in the component SCSS (zero inline
+     * resolver; the class binds the `--fm-dot` color token in the component CSS (zero inline
      * styles — color lives only in the token/skin layer). State is session-state, never identity.
      * @param {String} value
      * @param {String} oldValue

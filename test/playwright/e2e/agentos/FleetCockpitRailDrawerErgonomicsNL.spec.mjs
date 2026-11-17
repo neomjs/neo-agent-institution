@@ -14,7 +14,7 @@ import {test, expect} from '../../fixtures.mjs';
  *   - `DockRevealOverlay` sizes the free dimension (width for left/right rails) from
  *     `revealExtent ?? defaultRevealFraction`, as a PERCENTAGE of the workspace extent.
  *   - `defaultRevealFraction` is `0.25` and no application overrides it.
- *   - `src/dashboard/Container.scss` owns the overlay's `position`, per-edge `inset` and z-index.
+ *   - `src/dashboard/Container.css` owns the overlay's `position`, per-edge `inset` and z-index.
  * So a drawer whose content looks undersized cannot be an absent width contract. It is either the
  * fraction being wrong for the surface, or the hosted pane failing to fill what it is handed.
  *

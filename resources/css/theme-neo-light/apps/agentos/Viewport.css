@@ -35,7 +35,7 @@
        its dark-mode identity so operator color-memory transfers across modes. Elevation is "whiter =
        higher" (rail < ground < panel-2 < panel, verified monotonic), structure carried by lines not
        luminance steps. Computed WCAG-2.1 contrast (vs --fm-panel / vs --fm-ground) is recorded on the PR.
-       Structure lives in src/apps/agentos/fleet/*.scss. */
+       Structure lives in src/apps/agentos/fleet/*.css. */
     --fm-ground        : #f2f5f9;
     --fm-panel         : #ffffff;
     --fm-panel-2       : #f7f9fc;

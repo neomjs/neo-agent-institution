@@ -108,7 +108,7 @@ const nameSeparators = /[\s\-_.]+/;
  *   an abnormal source renders its full-word NAME ("Runtime not nominal"), retiring the three 9px
  *   markers; full facts stay reachable via the drill (detail), never hover-only.
  *
- * **Width modes are card-owned** (SCSS `@container`): narrow (<320px) scales the avatar to 32px,
+ * **Width modes are card-owned** (CSS `@container`): narrow (<320px) scales the avatar to 32px,
  * hides the engine tag, and grows the inline lifecycle verbs to a 44px touch target — they stay
  * visible (no overflow menu); regular/wide keep the full identity. Severity changes the state-word's **weight** on a text-safe ink, never the dot's hue as
  * text (the WCAG 1.4.1→1.4.3 trap avoided by construction — the visible state word is always the
@@ -149,7 +149,7 @@ class AgentCard extends Container {
         controller: AgentCardController,
         /**
          * The vbox stacks the three anatomy rows (head / work-row / strip). {@link AgentOS.view.fleet.shared.FamilyRailComponent}
-         * is a child — the family-colour owner — positioned by SCSS as a 3px full-height left accent, out of
+         * is a child — the family-colour owner — positioned by CSS as a 3px full-height left accent, out of
          * the vertical flow, so it costs no row height.
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
@@ -179,7 +179,7 @@ class AgentCard extends Container {
         /**
          * The anatomy — head (avatar · identity[name-line · state-line] · actions) · work-row (lane) ·
          * source strip. Each referenced child is fed from the record by {@link #applyRecord}; FamilyRail
-         * is retained as the family-color owner but rendered as the card's 3px left rail (SCSS).
+         * is retained as the family-color owner but rendered as the card's 3px left rail (CSS).
          * @member {Object[]} items
          */
         items: [{
@@ -215,7 +215,7 @@ class AgentCard extends Container {
                 layout   : {ntype: 'vbox', align: 'stretch'},
 
                 items: [{
-                    // ONE row, the state line's policy: the line wraps and the SCSS shows its first
+                    // ONE row, the state line's policy: the line wraps and the CSS shows its first
                     // row only, so the chip and the engine tag stay where they fit beside the name
                     // and leave WHOLE where they do not. Item order = priority.
                     ntype    : 'container',
@@ -242,17 +242,17 @@ class AgentCard extends Container {
                         flex     : 'none',
                         reference: 'name-provenance'
                     }, {
-                        // the engine tag — lives beside the name at regular+, hides at narrow (SCSS)
+                        // the engine tag — lives beside the name at regular+, hides at narrow (CSS)
                         ntype    : 'component',
                         cls      : ['fm-card-engine'],
                         flex     : 'none',
                         reference: 'card-engine'
                     }]
                 }, {
-                    // ONE row at every width: the line wraps, and the SCSS shows its first row only — a
+                    // ONE row at every width: the line wraps, and the CSS shows its first row only — a
                     // member the row cannot hold leaves WHOLE, from the end, never under the verbs. So
                     // the item order below is the line's priority order, and `flex: 'none'` keeps the
-                    // row's height the SCSS's (the vbox would stretch the line otherwise).
+                    // row's height the CSS's (the vbox would stretch the line otherwise).
                     ntype    : 'container',
                     cls      : ['fm-card-state-line'],
                     flex     : 'none',
@@ -303,7 +303,7 @@ class AgentCard extends Container {
                         // band for an active seat whose beacon is absent or stale, hidden otherwise
                         // (a fresh beacon is the band; an unobserved one is absence of signal). The
                         // band's glyph carries the facet at every width and its aria pair speaks it,
-                        // so these words are presentational — and the SCSS renders them only where
+                        // so these words are presentational — and the CSS renders them only where
                         // the state line has the room to hold them whole
                         ntype    : 'component',
                         cls      : ['fm-card-beacon'],
@@ -313,7 +313,7 @@ class AgentCard extends Container {
                         vdom     : {'aria-hidden': 'true'}
                     }, {
                         // the open-lane count badge (openLaneCount ONLY — never the engine); right-pinned
-                        // in the state-line (SCSS margin-left:auto). null count = no badge (never "0 lanes").
+                        // in the state-line (CSS margin-left:auto). null count = no badge (never "0 lanes").
                         // The line's last member: the first to leave a row that cannot hold it.
                         ntype    : 'component',
                         cls      : ['fm-card-lane-count'],
@@ -354,7 +354,7 @@ class AgentCard extends Container {
             layout: {ntype: 'hbox', align: 'start'},
 
             items: [{
-                // the current lane — two-line clamped (SCSS) with head+tail middle elision (applyRecord),
+                // the current lane — two-line clamped (CSS) with head+tail middle elision (applyRecord),
                 // so two lanes sharing a prefix still distinguish by their preserved tail
                 ntype    : 'component',
                 cls      : ['fm-card-lane'],
@@ -733,7 +733,7 @@ class AgentCard extends Container {
         // seat stayed active: the failure that is invisible on every band) and stale (they went
         // quiet). fresh and unobserved render nothing; an older Brain sends no facet at all and
         // renders nothing either — never a guess. The band's glyph is the carrier present at every
-        // card width; the words beside the band render only where the state line has room (SCSS).
+        // card width; the words beside the band render only where the state line has room (CSS).
         const
             beacon      = presenceObserved && ACTIVE_PRESENCE_BANDS.has(presence.state) ? presence.beacon : null,
             beaconWord  = Object.hasOwn(BEACON_FACETS, beacon) ? beacon : null,
@@ -781,7 +781,7 @@ class AgentCard extends Container {
 
         nameEl.text = nameSlot.text;
         nameEl[nameSlot.isFallback ? 'addCls' : 'removeCls']('fm-card-name-id');
-        // a name the line cannot hold ellipsizes (SCSS) — the title keeps it whole
+        // a name the line cannot hold ellipsizes (CSS) — the title keeps it whole
         nameEl.changeVdomRootKey('title', nameSlot.text);
 
         provenance.set({cls: chip.cls, hidden: chip.hidden, text: chip.text});
@@ -797,7 +797,7 @@ class AgentCard extends Container {
         me.renderRotationLine(record, now);
 
         // a badge only for a REPORTED positive count: null/absent = no stamped count → no badge.
-        // The text is always the whole phrase; `data-count` is the narrow form the SCSS renders where
+        // The text is always the whole phrase; `data-count` is the narrow form the CSS renders where
         // the line cannot hold the noun, and the title and aria pair speak the phrase in both forms.
         const
             laneCount  = Number.isInteger(record.openLaneCount) && record.openLaneCount > 0 ? record.openLaneCount : null,
@@ -813,7 +813,7 @@ class AgentCard extends Container {
         laneBadge.changeVdomRootKey('title', lanePhrase);
 
         // the S2 telltale: both axes passed WHOLE (unknown ≠ null — the card never collapses the two).
-        // `data-mark` is the narrow form, worded by the same resolver and rendered by the SCSS.
+        // `data-mark` is the narrow form, worded by the same resolver and rendered by the CSS.
         const
             telltale                               = me.getReference('card-telltale'),
             {ariaLabel, hidden, mark, text, title} = Telltale.describeTelltale({throttle: record.throttle, wake: record.wake});
@@ -823,7 +823,7 @@ class AgentCard extends Container {
         telltale.changeVdomRootKey('data-mark', hidden ? null : mark);
         telltale.changeVdomRootKey('title', title);
 
-        // the open-work chip, worded whole by its resolver: a stale chip dims (SCSS) and its title
+        // the open-work chip, worded whole by its resolver: a stale chip dims (CSS) and its title
         // carries the age, the aria pair speaks the same words
         const
             openWorkChip = me.getReference('card-open-work'),
@@ -933,7 +933,7 @@ class AgentCard extends Container {
         restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
 
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
-        // (SCSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
+        // (CSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one and the title.
         me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine || exitLine) ? 'addCls' : 'removeCls']('fm-control-live');
 
@@ -974,7 +974,7 @@ class AgentCard extends Container {
             hidden: !pendingAction && !controlReason && !preparation && !sessionLine && !modelRefusal && !admissionLine && !skillsLine && !exitLine,
             text  : controlStatusText
         });
-        // the one-line status ellipsizes (SCSS); the title is the receipt carrying the full words; a preparing
+        // the one-line status ellipsizes (CSS); the title is the receipt carrying the full words; a preparing
         // Start names each checkout's live row there
         controlStatus.changeVdomRootKey('title', timeoutTitle || (cancel
             ? cancel === 'sent'

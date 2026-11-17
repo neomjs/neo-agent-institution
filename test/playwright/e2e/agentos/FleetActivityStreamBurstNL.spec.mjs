@@ -131,7 +131,7 @@ function expectIntrinsicRows(geometry, label) {
     expect(geometry.length, `${label}: rows are mounted`).toBeGreaterThan(0);
 
     for (const row of geometry) {
-        expect(row.display,     `${label}: a pooled row is the grid its SCSS declares`).toBe('grid');
+        expect(row.display,     `${label}: a pooled row is the grid its CSS declares`).toBe('grid');
         expect(row.alignItems,  `${label}: the row centers its cells — no layout class outranks the grid`).toBe('center');
         expect(row.inlineFlex,  `${label}: no cell carries a layout-written inline flex`).toBe(0);
         expect(row.chipHeight,  `${label}: the ${row.kind} chip is as tall as its own word box`).toBeLessThanOrEqual(20);
