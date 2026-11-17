@@ -43,7 +43,7 @@ class RowsGrid extends GridContainer {
         autoDestroyStore: false,
         /**
          * The rail: the register shrinks to titles beside the pane's reading surface. Swaps the
-         * fixed row lattice between {@link #cardRowHeight} and {@link #railRowHeight}; the SCSS
+         * fixed row lattice between {@link #cardRowHeight} and {@link #railRowHeight}; the CSS
          * height-norms the cells under `.is-rail` to the same totals.
          * @member {Boolean} rail_=false
          * @reactive

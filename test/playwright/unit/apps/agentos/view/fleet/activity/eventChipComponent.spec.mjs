@@ -30,7 +30,7 @@ test.describe('Fleet cockpit EventChip — renders a kind via the shared registr
 
         expect(chip.vdom.tag).toBe('span');
         expect(chip.vdom.cls).toContain('fm-event-chip');
-        // the class carries the color binding (SCSS maps it onto --fm-chip); no inline style write
+        // the class carries the color binding (CSS maps it onto --fm-chip); no inline style write
         expect(chip.vdom.cls).toContain('fm-kind-alert');
         expect(chip.vdom.style?.['--fm-chip']).toBeUndefined();
         expect(chip.vdom.text).toBe('stall');

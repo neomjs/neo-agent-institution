@@ -10,14 +10,14 @@ import {test, expect} from '../../fixtures.mjs';
  *   on a real rendered cockpit-bar button's computed `transition-duration`;
  * - `--motion-fast` AND `--motion-base` (the `--motion-base` tier carries the `DemoAWorkspace` pip +
  *   the `HealthBar` count fade), proven by the document-root computed token values — the live cascade
- *   resolution of `_motion.scss`'s `prefers-reduced-motion` override, not a source read.
+ *   resolution of the engine `src/Global.css`'s `prefers-reduced-motion` override, not a source read.
  *
  * A pure-CSS witness (no Neural Link): the collapse is browser cascade behaviour, so `page.emulateMedia`
  * + `getComputedStyle` is the faithful probe. Companion to the merged selector-strip motion witness.
  *
  * Run: NEO_E2E_PORT=8121 npx playwright test agentos/FmReducedMotionCollapse -c test/playwright/playwright.config.e2e.mjs --workers=1
  *
- * @see resources/scss/_motion.scss (the vocabulary + the reduced-motion collapse this witnesses)
+ * @see the engine's resources/css/src/Global.css (the vocabulary + the reduced-motion collapse this witnesses)
  * @see apps/agentos/view/fleet/cockpit/Container.mjs (the cockpit-bar buttons carrying --motion-fast)
  */
 test.describe('AgentOS FM motion vocabulary — reduced-motion collapse witness (#15509)', () => {

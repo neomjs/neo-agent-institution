@@ -2,7 +2,7 @@ import Base from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 
 /**
  * Maps a model-family key to its rail token (the `--fm-family-*` values live in the theme skin,
- * `resources/scss/theme-neo-{dark,light}/apps/agentos/`).
+ * `resources/css/theme-neo-{dark,light}/apps/agentos/`).
  * Family is an attribute of the resident's CURRENT EmbodiedEpisode era — NOT a per-agent
  * constant and NOT identity. A KNOWN family maps to its --fm-family-* token; anything else
  * degrades to the NEUTRAL --fm-state-off token (never silently to `human`), so an unrecognized
@@ -45,7 +45,7 @@ class FamilyTokens extends Base {
     /**
      * Pure family → CSS-class resolver — a known family's token minus its `--` custom-property prefix
      * (e.g. `fm-family-claude`); unknown / absent → `null` (the `fm-family-unclassified` marker class
-     * carries the neutral rail binding in the component SCSS). The class binds `--fm-rail`, so color
+     * carries the neutral rail binding in the component CSS). The class binds `--fm-rail`, so color
      * stays entirely in the token/skin layer: the rail swaps a class, never writes a style.
      * @param {String} family
      * @returns {String|null} the family class name, or null for an unknown / absent family

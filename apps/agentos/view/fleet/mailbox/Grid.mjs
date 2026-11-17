@@ -50,7 +50,7 @@ class Grid extends GridContainer {
          */
         ntype: 'fm-mailbox-grid',
         /**
-         * Keeps the mailbox skin anchors on the grid root; the SCSS hides the header toolbar —
+         * Keeps the mailbox skin anchors on the grid root; the CSS hides the header toolbar —
          * a headerless designed list, not a data table.
          * @member {String[]} baseCls=['fm-mailbox-grid','neo-grid-container']
          */
@@ -59,7 +59,7 @@ class Grid extends GridContainer {
          * The engine grid positions rows on a FIXED row lattice — variable row heights overlap
          * cell content onto itself (measured in the mounted browser: 39–84px designed rows on
          * the 32px default lattice). The row is height-NORMED to the tallest designed case
-         * (sender + 2-line subject clamp + exception strip) in `mailbox/Grid.scss`
+         * (sender + 2-line subject clamp + exception strip) in `mailbox/Grid.css`
          * (`.fm-mail-row`), and THIS value carries the same total: change one, change both.
          * @member {Number} rowHeight=84
          * @reactive

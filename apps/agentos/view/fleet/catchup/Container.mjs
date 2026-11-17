@@ -52,7 +52,7 @@ class CatchUpPane extends Container {
          */
         ntype: 'fm-catch-up-pane',
         /**
-         * The partition choices are selector chips, whose skin (fleet/mailbox/Chips.scss) has no
+         * The partition choices are selector chips, whose skin (fleet/mailbox/Chips.css) has no
          * view class of its own: named here so it loads in every window this pane renders in.
          * @member {String[]} additionalThemeFiles=['AgentOS.view.fleet.mailbox.Chips']
          */

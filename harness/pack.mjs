@@ -68,7 +68,7 @@ export const ENGINE_THEME_BUILD = 'buildScripts/build/themes.mjs';
 /**
  * @summary The stage's theme-build argv: the pinned Engine builder with the workspace argv
  * `prepareAssets` owns — every theme, one dev build, never `-f` (`--framework` parses the engine's
- * SCSS only and the product's classes drop out of the theme map).
+ * CSS only and the product's classes drop out of the theme map).
  * @param {String} enginePackageRoot Absolute root of the pinned `neo.mjs` install.
  * @returns {String[]}
  */
@@ -600,7 +600,7 @@ function readEngineRevision(productRoot) {
 
 /**
  * @summary The cut's org revisions, resolved once before any source is consumed: the Engine the product has
- * installed (the theme build compiles its SCSS, so the stage must ship that same commit) and the Brain runtime
+ * installed (the theme build copies its CSS, so the stage must ship that same commit) and the Brain runtime
  * root's HEAD (the trees the stage copies, so the Brain contract package must be that commit too). The org
  * dependencies track `dev`; a cut is one commit of each. An unknown revision fails before anything is built.
  * @param {Object} options
@@ -900,7 +900,7 @@ export function stageOrganism({electronVersion, env = process.env, productRoot =
     // (live incident: a theming merge landed after the last local theme build). The artifact
     // never trusts checkout state — it rebuilds, with the workspace argv (a second live incident:
     // `-f` here shipped a cockpit without one of its own styles).
-    console.log('[pack] building dev themes from current SCSS');
+    console.log('[pack] building dev themes from current CSS');
     runFn('node', themeBuildArgv(roots.enginePackageRoot), {cwd: roots.productRoot});
 
     assertBrainCut(roots, cut, revisionOf);

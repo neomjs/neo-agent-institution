@@ -1840,7 +1840,7 @@ test.describe('Fleet cockpit AgentCard — resident card rendering its roster re
         expect(monogram().hidden).toBe(true);
 
         // NOTE: width-mode persistence (narrow 294 / regular 360 / roomy 720, both themes) is NOT a unit
-        // concern — those modes are card-owned SCSS @container rules, witnessed by the goldens in
+        // concern — those modes are card-owned CSS @container rules, witnessed by the goldens in
         // test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs. This spec owns the
         // data-driven half only; the checklist entry cites both witnesses, not this one alone.
         card.destroy()

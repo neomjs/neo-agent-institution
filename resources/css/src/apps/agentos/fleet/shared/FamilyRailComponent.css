@@ -1,0 +1,37 @@
+/* Model-family rail — a thin spine bound from the current-era family token via the rail's
+   fm-family-* class (FamilyRail's familyClass resolver — the component swaps a class, never writes a
+   style); an unclassified/absent family renders a hatched neutral rail, visibly distinct from any
+   real family. */
+
+.fm-family-rail {
+    width        : 4px; /* film-legible at 720p — 3px read as absent through the video pipeline */
+    align-self   : stretch;
+    border-radius: 3px 0 0 3px;
+    background   : var(--fm-rail, var(--fm-state-off));
+
+    &.fm-family-unclassified {
+        background: repeating-linear-gradient(
+            135deg,
+            var(--fm-state-off), var(--fm-state-off) 2px,
+            transparent 2px, transparent 4px
+        );
+    }
+}
+
+/* The family class → ink mapping, the closed FAMILY_TOKEN set (apps/agentos/util/FamilyTokens.mjs).
+   Every surface that speaks a resident's family colour — the rail spine, the agent card's monogram —
+   binds `--fm-rail` through the same fm-family-* class FamilyRail's resolver swaps, so the mapping lives
+   once, here, and a new family lands here and in FamilyTokens, nowhere else. The card always mounts a
+   FamilyRail, so this sheet is loaded wherever its monogram is. The neutral fallback stays with each
+   consumer (`var(--fm-rail, var(--fm-state-off))`): an unclassified family reads as no family, never as
+   a guessed one. */
+.fm-family-rail.fm-family-claude,
+.fm-agent-card .fm-card-monogram.fm-family-claude {--fm-rail: var(--fm-family-claude);}
+.fm-family-rail.fm-family-gpt,
+.fm-agent-card .fm-card-monogram.fm-family-gpt    {--fm-rail: var(--fm-family-gpt);}
+.fm-family-rail.fm-family-gemini,
+.fm-agent-card .fm-card-monogram.fm-family-gemini {--fm-rail: var(--fm-family-gemini);}
+.fm-family-rail.fm-family-human,
+.fm-agent-card .fm-card-monogram.fm-family-human  {--fm-rail: var(--fm-family-human);}
+.fm-family-rail.fm-family-kimi,
+.fm-agent-card .fm-card-monogram.fm-family-kimi   {--fm-rail: var(--fm-family-kimi);}

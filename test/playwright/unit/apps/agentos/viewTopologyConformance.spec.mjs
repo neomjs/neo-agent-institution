@@ -149,10 +149,10 @@ test.describe('AgentOS view topology conformance (#17559 laws 1 + 3)', () => {
         expect(offenders).toEqual([])
     });
 
-    test('every additionalThemeFiles entry resolves to a real SCSS chunk', () => {
-        // The worker maps an app namespace to its SCSS path by dropping the `view` segment
+    test('every additionalThemeFiles entry resolves to a real stylesheet', () => {
+        // The worker maps an app namespace to its sheet path by dropping the `view` segment
         // (src/worker/App.mjs insertThemeFiles): `AgentOS.view.fleet.cockpit.SpineBanner` →
-        // resources/scss/src/apps/agentos/fleet/cockpit/SpineBanner.scss. A moved chunk whose
+        // resources/css/src/apps/agentos/fleet/cockpit/SpineBanner.css. A moved chunk whose
         // consumers still request the old namespace is built and never loaded — the runtime
         // styling regression this witness exists to catch.
         const offenders = [];
@@ -171,10 +171,10 @@ test.describe('AgentOS view topology conformance (#17559 laws 1 + 3)', () => {
 
                     segments[0] === 'view' && segments.shift();
 
-                    const scssPath = path.join(ROOT, 'resources/scss/src/apps', root, ...segments) + '.scss';
+                    const cssPath = path.join(ROOT, 'resources/css/src/apps', root, ...segments) + '.css';
 
-                    fs.existsSync(scssPath) ||
-                        offenders.push(`${path.relative(ROOT, file)} — '${ns}' → missing ${path.relative(ROOT, scssPath)}`)
+                    fs.existsSync(cssPath) ||
+                        offenders.push(`${path.relative(ROOT, file)} — '${ns}' → missing ${path.relative(ROOT, cssPath)}`)
                 }
             }
         }
@@ -182,11 +182,11 @@ test.describe('AgentOS view topology conformance (#17559 laws 1 + 3)', () => {
         expect(offenders).toEqual([])
     });
 
-    test('the fleet SCSS tree carries no root-level chunks — every skin lives in its surface folder', () => {
-        const fleetScss = path.join(ROOT, 'resources/scss/src/apps/agentos/fleet');
-        const offenders = fs.readdirSync(fleetScss, {withFileTypes: true})
+    test('the fleet stylesheet tree carries no root-level chunks — every skin lives in its surface folder', () => {
+        const fleetCss  = path.join(ROOT, 'resources/css/src/apps/agentos/fleet');
+        const offenders = fs.readdirSync(fleetCss, {withFileTypes: true})
             .filter(entry => entry.isFile())
-            .map(entry => `resources/scss/src/apps/agentos/fleet/${entry.name}`);
+            .map(entry => `resources/css/src/apps/agentos/fleet/${entry.name}`);
 
         expect(offenders).toEqual([])
     })

@@ -26,13 +26,13 @@ class TurnGrid extends RowsGrid {
          */
         ntype: 'fm-memories-turn-grid',
         /**
-         * Keeps the memories skin anchors on the grid root; the SCSS collapses the header
+         * Keeps the memories skin anchors on the grid root; the CSS collapses the header
          * toolbar — a headerless designed list, not a data table.
          * @member {String[]} baseCls=['fm-memories-turn-grid','neo-grid-container']
          */
         baseCls: ['fm-memories-turn-grid', 'neo-grid-container'],
         /**
-         * Height-normed with `.fm-memories-turn-cell` (`fleet/memories/Container.scss`) — the fixed
+         * Height-normed with `.fm-memories-turn-cell` (`fleet/memories/Container.css`) — the fixed
          * row lattice contract; see {@link AgentOS.view.fleet.memories.SummaryGrid#rowHeight}.
          * @member {Number} rowHeight=104
          * @reactive

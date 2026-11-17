@@ -64,7 +64,7 @@ class AgentConfigCard extends Component {
          */
         baseCls: ['fm-agent-config-card'],
         /**
-         * The selector-chip primitive's skin (fleet/mailbox/Chips.scss) has no view class of its
+         * The selector-chip primitive's skin (fleet/mailbox/Chips.css) has no view class of its
          * own — the harness-type and target chips this card renders load it via the shared-partial
          * mechanism, the same way the dockdemo workspaces pull 'Neo.dashboard.Container'.
          * @member {String[]} additionalThemeFiles=['AgentOS.view.fleet.mailbox.Chips']

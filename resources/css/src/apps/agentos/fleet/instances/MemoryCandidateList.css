@@ -1,0 +1,83 @@
+/* The add-agent form's memory choice: one quiet row per candidate, the name over its notes line, then
+   the empty-memory row, its name alone and dim until chosen, on no stock surface. Selection pairs the
+   signal tint with the name's weight, so a choice never reads by colour alone. */
+
+/* scroll-fade: begin. The foot fade of the bounded candidate list, the idiom described in
+   setup/CreateContainer.css; scrollFadeParity.spec.mjs keeps the two blocks equal. */
+.fm-memory-candidates.neo-list {
+    container-type: scroll-state;
+}
+
+.fm-memory-candidates.neo-list::after {
+    content       : '';
+    display       : block;
+    position      : sticky;
+    bottom        : 0;
+    flex          : none;
+    height        : 28px;
+    margin-top    : -28px;
+    background    : linear-gradient(to bottom, transparent, var(--fm-panel-2));
+    pointer-events: none;
+    opacity       : 0;
+}
+
+@container scroll-state(scrollable: bottom) {
+    .fm-memory-candidates.neo-list::after {
+        opacity: 1;
+    }
+}
+/* scroll-fade: end */
+
+.fm-memory-candidates.neo-list {
+    --list-item-background-color: transparent;
+    --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    --list-item-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    --list-item-focus-outline: none;
+    --list-item-focus-outline-offset: -1px;
+    background: transparent;
+    border: 1px solid var(--fm-line-soft);
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 204px;
+    overflow-y: auto;
+    padding: 2px;
+}
+.fm-memory-candidates.neo-list .neo-list-item {
+    border-radius: 4px;
+    color: var(--fm-ink-dim);
+    cursor: pointer;
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--fm-space-1) var(--fm-space-2);
+}
+.fm-memory-candidates.neo-list .neo-list-item:focus-visible:not(.neo-selected) {
+    outline: 1px solid color-mix(in srgb, var(--fm-signal) 38%, transparent);
+    outline-offset: -1px;
+}
+.fm-memory-candidates.neo-list .neo-list-item .fm-memory-candidate-name {
+    color: var(--fm-ink);
+    font: var(--fm-text-body);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.fm-memory-candidates.neo-list .neo-list-item .fm-memory-candidate-meta {
+    font: var(--fm-text-detail);
+}
+.fm-memory-candidates.neo-list .neo-list-item .fm-memory-candidate-name.is-empty-memory {
+    color: var(--fm-ink-dim);
+}
+.fm-memory-candidates.neo-list .neo-list-item.neo-selected {
+    background: color-mix(in srgb, var(--fm-signal) 16%, transparent);
+}
+.fm-memory-candidates.neo-list .neo-list-item.neo-selected:focus-visible {
+    outline: none;
+}
+.fm-memory-candidates.neo-list .neo-list-item.neo-selected .fm-memory-candidate-name {
+    color: var(--fm-ink);
+    font-weight: 600;
+}

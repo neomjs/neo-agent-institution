@@ -72,7 +72,7 @@ class AddAgentForm extends FormContainer {
          */
         baseCls: ['fm-add-agent-form'],
         /**
-         * The selector-chip primitive's skin (fleet/mailbox/Chips.scss) has no view class of its
+         * The selector-chip primitive's skin (fleet/mailbox/Chips.css) has no view class of its
          * own — the harness chips this form renders load it via the shared-partial mechanism, the
          * same way the dockdemo workspaces pull 'Neo.dashboard.Container'.
          * @member {String[]} additionalThemeFiles=['AgentOS.view.fleet.mailbox.Chips']
@@ -159,7 +159,7 @@ class AddAgentForm extends FormContainer {
          * The form anatomy: pane head · the account (forge chips, the GitLab instance, username,
          * token) · existing memory, only when there is one to offer or the check failed · working
          * repository · harness (product chips, then App / Command line when the product has both) ·
-         * the action slot · status line. Geometry + skin in `AddAgentForm.scss`, colors token-only.
+         * the action slot · status line. Geometry + skin in `AddAgentForm.css`, colors token-only.
          * @member {Object[]} items
          */
         // every row is flex:'none': the vbox default (grow 1) would distribute a stretched host's

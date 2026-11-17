@@ -46,7 +46,7 @@ test.describe('Fleet cockpit StateDot — session-state token mapping + reduced-
         expect(stateToken('__proto__')).toBe('--fm-state-off')
     });
 
-    test('stateClass is the token minus the custom-property prefix — the class the SCSS token binding keys on', () => {
+    test('stateClass is the token minus the custom-property prefix — the class the CSS token binding keys on', () => {
         expect(stateClass('ok')).toBe('fm-state-ok');
         expect(stateClass('wedged')).toBe('fm-state-wedged');
         expect(stateClass('starting')).toBe('fm-state-starting');
@@ -61,7 +61,7 @@ test.describe('Fleet cockpit StateDot — session-state token mapping + reduced-
         const dot = Neo.create(StateDot, {appName, state: 'wedged', live: true});
         await dot.initVnode();
 
-        // the class carries the color binding (SCSS maps it onto --fm-dot); no inline style write
+        // the class carries the color binding (CSS maps it onto --fm-dot); no inline style write
         expect(dot.vdom.cls).toContain('fm-state-wedged');
         expect(dot.vdom.style?.['--fm-dot']).toBeUndefined();
         expect(dot.vdom.cls).toContain('fm-state-dot');

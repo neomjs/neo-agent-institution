@@ -90,7 +90,7 @@ test.describe('nameSlot — display state over the durable id, provenance-honest
         // durable-id renders NO chip — the name slot's mono register already states it
         expect(NameSlot.describeNameProvenance('durable-id').hidden).toBe(true);
 
-        // every chip carries the base class + its state class (the SCSS register contract)
+        // every chip carries the base class + its state class (the CSS register contract)
         NameSlot.NAME_PROVENANCE_STATES.forEach(state => {
             const chip = NameSlot.describeNameProvenance(state);
 

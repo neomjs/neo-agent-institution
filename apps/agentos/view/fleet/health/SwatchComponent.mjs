@@ -11,7 +11,7 @@ export {stateLabel};
 /**
  * A single entry in the fleet health-summary legend / bar: a swatch dot (colored from the same
  * `--fm-state-*` token as {@link StateDot} via the shared `stateClass` — one source of truth on the
- * agent-health axis, bound in the component SCSS), an optional count, and the category label.
+ * agent-health axis, bound in the component CSS), an optional count, and the category label.
  * Composable BOTH ways: a plain legend row (no count) and the count-carrying bar unit the health
  * summary consumes (set `count`). An unknown category renders off-toned with its literal text —
  * never invisible.
@@ -71,7 +71,7 @@ class HealthSwatch extends Component {
     /**
      * Triggered after the state config changed — swaps the root state class (shared `stateClass`
      * vocabulary with StateDot on the agent-health axis; the class binds the dot's `--fm-dot` token
-     * in the component SCSS — zero inline styles) and refreshes the label (when no override is set).
+     * in the component CSS — zero inline styles) and refreshes the label (when no override is set).
      * @param {String} value
      * @param {String} oldValue
      * @protected

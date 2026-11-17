@@ -48,7 +48,7 @@ test.describe('Fleet cockpit HealthSwatch — state-axis legend + count-bar unit
               label = sw.vdom.cn.find(n => n.cls?.includes('fm-sw-label')),
               count = sw.vdom.cn.find(n => n.cls?.includes('fm-sw-count'));
 
-        // the ROOT carries the state class; SCSS binds --fm-dot from it (inherited by the dot) — no inline style
+        // the ROOT carries the state class; CSS binds --fm-dot from it (inherited by the dot) — no inline style
         expect(sw.vdom.cls).toContain('fm-state-wedged');
         expect(dot.style?.['--fm-dot']).toBeUndefined();
         expect(label.text).toBe('stuck');

@@ -33,7 +33,7 @@ class GitIdentityContainer extends Container {
          */
         baseCls: ['fm-git-identity'],
         /**
-         * The actions wear the shared chip skin (fleet/mailbox/Chips.scss), which has no view class of
+         * The actions wear the shared chip skin (fleet/mailbox/Chips.css), which has no view class of
          * its own, so it loads as a shared partial.
          * @member {String[]} additionalThemeFiles=['AgentOS.view.fleet.mailbox.Chips']
          */
@@ -74,7 +74,7 @@ class GitIdentityContainer extends Container {
         status_: {state: 'idle', reason: ''},
         /**
          * Heading · the state line · the repair action · the declaration · the retry · status line.
-         * Skin in `GitIdentityContainer.scss`.
+         * Skin in `GitIdentityContainer.css`.
          * @member {Object[]} items
          */
         items: [{

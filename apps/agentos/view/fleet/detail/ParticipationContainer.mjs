@@ -28,7 +28,7 @@ class ParticipationContainer extends Container {
          */
         ntype: 'fm-participation',
         /**
-         * A Configuration group, drawn like the Seat group (`ParticipationContainer.scss`).
+         * A Configuration group, drawn like the Seat group (`ParticipationContainer.css`).
          * @member {String[]} baseCls=['fm-participation']
          */
         baseCls: ['fm-participation'],

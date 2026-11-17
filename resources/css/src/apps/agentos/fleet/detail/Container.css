@@ -1,0 +1,537 @@
+/* Agent detail — the drill-in inspector: identity header (family rail · avatar · name/engine/id ·
+   availability) over the freshness-labeled panes (thought-stream · lane · repo · PRs), scoped under
+   the component root. Geometry + the avatar frame only; every color reads from the token layer.
+   §04 rhythm record (#17265): off-rhythm survivors — root gap 10, empty-state pad
+   24/8, header gap 10 + pad-bottom 10, identity gap 2, name-row gap 7, pane pad 8/10, freshness
+   pill pad 2/7, mailbox frame-tune 8/2/2, telltale/sources gaps 6×10 — recorded here, deferred to
+   the #17268 pane-composition pass rather than silently snapped. The inner detail-tab strip
+   rides the shell-root tab family (#17269 cut 2 — Viewport.css; the #17265 deferral, resolved).
+   Pill registers keep their site-visible `line-height: 1`. */
+/* the inset is the shell's pane contract (Viewport.css), in every mount */
+.fm-agent-detail {
+    container-type: inline-size;
+    gap           : 10px;
+    overflow      : hidden;
+
+    /* one continuous surface with the panel below — layout containers inside the detail
+       otherwise inherit Neo's stock dark container background, reading as mismatched boxes */
+    .neo-container {
+        background-color: transparent;
+    }
+
+    /* honest empty state — muted, centered; never reads as a loaded-but-blank inspector */
+    .fm-detail-empty {
+        padding   : 24px var(--fm-space-2);
+        text-align: center;
+        font      : var(--fm-text-body);
+        color     : var(--fm-ink-dim);
+    }
+
+    .fm-detail-header {
+        gap          : 10px;
+        align-items  : center;
+        padding-bottom: 10px;
+        border-bottom : 1px solid var(--fm-line-soft);
+    }
+
+    /* 64px, grid-locked: size encodes drill depth — the roster card wears 40px, and the detail
+       is ONE resident's profile surface, so its portrait reads clearly ABOVE the card tier
+       (operator call, 2026-08-30: a detail avatar at-or-below card size inverts the hierarchy).
+       Grid-locked means it can never squeeze the identity text below readability — the text
+       column owns the remaining width, and the NAME is the only ellipsizing line in the pane. */
+    .fm-detail-avatar {
+        width        : 64px;
+        height       : 64px;
+        flex         : none;
+        border-radius: 50%;
+        object-fit   : cover;
+        background   : color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    }
+
+    .fm-detail-identity {
+        gap      : 2px;
+        overflow : hidden;
+        /* a flex child's automatic minimum is its content size: the floor keeps the name
+           ellipsizing to a readable stub instead of the column collapsing under rail pressure.
+           (The window verb left the header for the tab bar's action seam — #23 — so the column
+           no longer shares its width with a trailing control.) */
+        min-width: 12ch;
+    }
+
+    .fm-detail-name-row {
+        gap: 7px;
+    }
+
+    /* the social name — the primary, largest identity surface (display state over the durable id) */
+    .fm-detail-name {
+        flex         : 1;
+        font         : var(--fm-text-display);   /* 15 → display: the ruled 1px migration */
+        color        : var(--fm-ink);
+        overflow     : hidden;
+        white-space  : nowrap;
+        text-overflow: ellipsis;
+    }
+
+    /* engine is session-metadata, not identity — subordinate mono tag beside the name */
+    .fm-detail-engine {
+        flex : none;
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    /* the durable anchor — always shown, smallest + faintest: the name is display state OVER it.
+       Aligned with the NAME's text edge, not the row edge (operator call, 2026-08-30): the handle
+       is the durable form of the same identity, so name + handle read as ONE text column; the
+       state dot is a marker ON the name, never a column anchor. Indent = dot 8px + row gap 7px. */
+    .fm-detail-id {
+        font        : var(--fm-text-micro);
+        color       : var(--fm-ink-dim);
+        padding-left: 15px;
+    }
+
+    /* the Seat row: the harness family in words and, for a Claude Desktop seat, its first-launch
+       step, on the same text column as the name and the handle */
+    .fm-detail-seat {
+        padding-left: 15px;
+        margin-top  : 4px;
+        gap         : 2px;
+    }
+
+    .fm-detail-seat-family {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-detail-seat-launch {
+        font : var(--fm-text-micro);
+        color: var(--fm-ink);
+    }
+
+    /* the session's folder verdict: a short line that still ellipsizes at the narrowest width (the
+       Repository pane holds the whole words), only its state word coloured, the attention token for
+       the wrong folder the operator acts on */
+    .fm-detail-seat-folder {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+
+        .fm-detail-seat-folder-state {
+            color: var(--fm-ink-dim);
+
+            &.is-wrong {
+                color: var(--fm-state-wedged);
+            }
+        }
+    }
+
+    /* THE ONE STATE LEDGER (#23): every liveness/wiring axis once, `axis · pill` per row, in the
+       pane's own freshness-pill vocabulary — the three prior languages (italic telltale prose,
+       coloured source lines, a dangling producer suffix) collapsed into it. Grid-locked columns:
+       axis words never wrap, the pill column owns the rest; NO row exceeds one line-height at
+       rail widths (the #23 falsifier). Tone mapping documented at the renderer: is-fresh =
+       nominal, is-stale = deviating, is-unobserved = absent/unknown/not wired. */
+    .fm-detail-ledger {
+        display              : grid;
+        grid-template-columns: max-content 1fr;
+        gap                  : 5px 12px;
+        align-items          : center;
+        justify-items        : start;
+        padding-bottom       : 10px;
+        border-bottom        : 1px solid var(--fm-line-soft);
+    }
+
+    .fm-ledger-axis {
+        font       : var(--fm-text-detail);
+        color      : var(--fm-ink-dim);
+        white-space: nowrap;
+    }
+
+
+    .fm-detail-panes,
+    .fm-detail-config {
+        gap     : var(--fm-space-2);
+        overflow: auto;
+    }
+
+    .fm-detail-pane {
+        gap          : var(--fm-space-1);
+        padding      : var(--fm-space-2) 10px;
+        background   : var(--fm-panel);
+        border       : 1px solid var(--fm-line-soft);
+        border-radius: 6px;
+    }
+
+    /* a section borrows the pane head's grammar, not its hairline: its card's border frames it */
+    .fm-detail-pane > .fm-detail-pane-head {
+        border-bottom : 0;
+        padding-bottom: 0;
+        /* a flex child's automatic minimum is its content's: a nowrap pill would widen the head
+           past the pane and the pill's percentage cap would then measure the widened head */
+        min-width     : 0;
+
+        /* a pill that carries a producer's reason can outgrow a rail-width head: it wraps under the
+           title (the head's hbox wraps) and elides there, with the full words on its title attribute */
+        .fm-freshness {
+            max-width    : 100%;
+            min-width    : 0;
+            overflow     : hidden;
+            text-overflow: ellipsis;
+        }
+    }
+
+    .fm-detail-pane-body {
+        font : var(--fm-text-detail);   /* 11px readouts → detail: the inspector's mono meta voice */
+        color: var(--fm-ink-dim);
+    }
+
+    /* the repository pane's two lines from the roster row: the slug in the inspector's mono voice,
+       eliding at rail widths, and the WHOLE clone path beneath it, wrapping, never elided, with its
+       Copy action under it. The field the action copies from is present but unseen and
+       unreachable, the Observatory's idiom */
+    .fm-detail-pane-repo {
+        position: relative;
+
+        .fm-detail-pane-body,
+        .fm-detail-repo-facts,
+        .fm-detail-repo-skip-actions {
+            display: grid;
+            gap    : 2px;
+        }
+    }
+
+    .fm-detail-repo-slug {
+        color        : var(--fm-ink);
+        font-family  : var(--fm-font-mono);
+        overflow     : hidden;
+        text-overflow: ellipsis;
+        white-space  : nowrap;
+    }
+
+    .fm-detail-repo-path {
+        min-width : 0;
+        word-break: break-all;
+    }
+
+    /* a desktop session outside the launch's folder: the whole words, wrapping, folders broken
+       anywhere rather than elided; the wrong folder the operator acts on takes the attention token */
+    .fm-detail-repo-session {
+        color        : var(--fm-ink);
+        font         : var(--fm-text-micro);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+        padding-top  : var(--fm-space-1);
+
+        &.is-wrong {
+            color: var(--fm-state-wedged);
+        }
+    }
+
+    /* each checkout's preparation at the latest start: a quiet head naming which start, then the
+       Repositories card's rows, read-only. Here they keep the pane's voice: detail on the row, micro on
+       the reason, the pane's 2px rhythm, and no pointer or hover ink, since a row does nothing */
+    .fm-detail-repo-prep-head {
+        font       : var(--fm-text-micro);
+        padding-top: var(--fm-space-1);
+    }
+
+    .fm-detail-pane-repo .fm-repository-list.neo-list {
+        --list-container-list-color: var(--fm-ink-dim);
+
+        /* a list scrolls its own box; here the pane grows with its rows instead */
+        display : grid;
+        gap     : 2px;
+        overflow: visible;
+
+        .neo-list-item {
+            color  : inherit;
+            cursor : default;
+            font   : var(--fm-text-detail);
+            gap    : 2px var(--fm-space-2);
+            padding: 0;
+        }
+
+        .fm-repo-slug {
+            font       : inherit;
+            font-family: var(--fm-font-mono);
+        }
+
+        .fm-repo-reason {
+            font: var(--fm-text-micro);
+        }
+    }
+
+    /* the live Start's Skip: a quiet button (the Repositories card's Remove idiom) with its consequence
+       beneath it, read before the click, then the Fleet's answer in the pane's own voice */
+    .fm-detail-repo-skip {
+        background   : var(--fm-panel-2);
+        border       : 1px solid var(--fm-line);
+        border-radius: 6px;
+        color        : var(--fm-ink);
+        cursor       : pointer;
+        font         : var(--fm-text-detail);
+        justify-self : start;
+        margin-top   : var(--fm-space-1);
+        padding      : 2px var(--fm-space-2);
+
+        &:hover:not([disabled]) {
+            border-color: var(--fm-ink-dim);
+        }
+
+        &[disabled] {
+            color : var(--fm-ink-dim);
+            cursor: default;
+        }
+    }
+
+    .fm-detail-repo-skip-note,
+    .fm-detail-repo-skip-status {
+        font         : var(--fm-text-detail);
+        min-width    : 0;
+        overflow-wrap: anywhere;
+    }
+
+    .fm-detail-repo-skip-status {
+        color: var(--fm-ink);
+    }
+
+    .fm-detail-repo-copy {
+        align-self: flex-start;
+    }
+
+    .fm-detail-repo-field {
+        border        : none;
+        height        : 1px;
+        opacity       : 0;
+        padding       : 0;
+        pointer-events: none;
+        position      : absolute;
+        width         : 1px;
+    }
+
+    /* the pull requests pane: one list row per held pull request, its reference (an anchor to the
+       forge, in the inspector's mono voice), its title when the producer carries one, and its line
+       in the chip's words; all wrap at rail widths, so the default placement reads every row in
+       full. The rows inform, so the list's row skin (padding, hover, pointer, nowrap) stays off.
+       The thought stream pane's list shares the skin: one row per recent turn, the same rules. */
+    .fm-detail-pr-list.neo-list,
+    .fm-detail-turn-list.neo-list {
+        --list-container-list-color        : var(--fm-ink-dim);
+        --list-item-background-color       : transparent;
+        --list-item-background-color-active: transparent;
+        --list-item-background-color-hover : transparent;
+
+        background: transparent;
+        display   : grid;
+        gap       : var(--fm-space-1);
+
+        .neo-list-item {
+            cursor     : default;
+            padding    : 0;
+            white-space: normal;
+        }
+    }
+
+    .fm-detail-pr {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-pr-ref {
+        color          : var(--fm-ink);
+        font-family    : var(--fm-font-mono);
+        overflow-wrap  : anywhere;
+        text-decoration: none;
+
+        &:hover,
+        &:focus-visible {
+            text-decoration: underline;
+        }
+    }
+
+    .fm-detail-pr-title {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
+    }
+
+    /* the thought stream pane's row: the meta line (the turn's age, and the word for a weaker summary)
+       in the inspector's mono voice over the derived summary, which wraps whole */
+    .fm-detail-turn {
+        display: grid;
+        gap    : 1px;
+    }
+
+    .fm-detail-turn-meta {
+        font-family: var(--fm-font-mono);
+    }
+
+    .fm-detail-turn-summary {
+        color        : var(--fm-ink);
+        overflow-wrap: anywhere;
+    }
+
+    /* the freshness ledger chip: a mono pill whose tone states the observation
+       freshness — never a silent current claim. fresh reuses the live signal, stale the wedged tone
+       (mirroring the ActivityStream adapter states), lost the alert tone, unobserved the honest
+       muted "we don't know" (never alarming — absence is not an error). */
+    .fm-freshness {
+        flex         : none;
+        font         : var(--fm-text-micro);   /* 9px → micro: the ruled deliberate growth (nothing below 10px ships) */
+        line-height  : 1;
+        white-space  : nowrap;
+        padding      : 2px 7px;
+        border-radius: 999px;
+        background   : color-mix(in srgb, currentColor 12%, transparent);
+        color        : var(--fm-ink-dim);
+
+        &.is-fresh {
+            color: var(--fm-signal);
+        }
+
+        &.is-stale {
+            color: var(--fm-state-wedged);
+        }
+
+        /* alert-red TEXT fails AA at 9px (4.26:1); render "lost" as readable ink text on an
+           alert-tinted pill instead — the tint + the label word carry the state, the text stays AA */
+        &.is-lost {
+            color     : var(--fm-ink);
+            background: color-mix(in srgb, var(--fm-kind-alert) 30%, transparent);
+        }
+
+        &.is-unobserved {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    /* A 340px detail leaves 316px of content and is the last exact title + provenance row fit.
+       Below that measured boundary, stack deliberately inside the detail's own width context: the
+       full provenance remains readable and the intrinsic head keeps the body out of its geometry. */
+    @container (max-width: 315px) {
+        .fm-detail-pane-head {
+            align-items   : flex-start;
+            flex-direction: column;
+            gap           : var(--fm-space-1);
+        }
+
+        .fm-detail-pane-title {
+            flex         : none;
+            overflow     : hidden;
+            text-overflow: ellipsis;
+            white-space  : nowrap;
+            width        : 100%;
+        }
+
+        .fm-freshness {
+            align-self: flex-start;
+        }
+
+        /* stacked, the chip sits under the title: the contract's trailing margin would push it right */
+        .fm-detail-pane-head > .fm-freshness {
+            margin-left: 0;
+        }
+    }
+
+    /* the Status/Configuration tab body — the object-permanence seat: geometry only, the tab
+       strip inherits the framework tab theme; content panes keep the detail's spacing rhythm */
+    .fm-detail-tabs {
+        min-height: 0;
+        min-width : 0;
+
+        /* The tab BODY is the containment seat, and it is a DIFFERENT box from .fm-detail-tabs
+           above — which is why the min-height already there did not hold the shell (#17313).
+           A flex item's automatic minimum size is its CONTENT size on the main axis, so the body
+           container once grew to a hosted pane's full 2454px and carried the whole detail rail,
+           pushing the fleet activity stream's top edge to y=1695.8 in a 1084px viewport: present,
+           mounted, unhidden, and entirely below the fold. Both axes are pinned because the pane
+           overran horizontally too (1081.64px inside a 256px slot) — a height-only fix restores
+           the stream and leaves the sideways overrun standing. Scroll belongs INSIDE the tab
+           body's pane, never on the shell; the shell's geometry stays sovereign. */
+        .neo-tab-body-container {
+            min-height: 0;
+            min-width : 0;
+        }
+
+        /* The header row once carried 309.4px of buttons in a 256px bar, so "Configuration"
+           rendered as "Configurat" (operator-reported). Tightened padding lets every label fit at
+           the rail's shipped width; the scroll is the guarantee rather than the mechanism — the
+           rail is resizable, so a padding tune alone would only move the clipping width rather
+           than retire it. No label is ever unreachable, and none is ellipsized at the shipped size. */
+        .neo-tab-header-toolbar {
+            min-width : 0;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+
+            &::-webkit-scrollbar {
+                display: none;
+            }
+        }
+
+        /* #17269 cut 2 resolved the #17265 deferral: the shell-root tab family (Viewport.css)
+           owns this strip's anatomy — chrome role, structural active state, both mounts (it
+           travels to the widget viewport with that sheet). Only the width-pressure padding
+           tune stays local. The former `.neo-tab-button` rule here matched nothing — the live
+           classes are `neo-tab-header-button neo-button` (src/tab/header/Button.mjs baseCls). */
+        .neo-tab-header-button.neo-button {
+            --tab-button-padding: 0 var(--fm-space-2);
+        }
+    }
+
+    .fm-detail-id-row {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-seat-rename {
+        background   : var(--fm-surface-2, rgba(255, 255, 255, 0.03));
+        border-bottom: 1px solid var(--fm-border-subtle, rgba(255, 255, 255, 0.08));
+        gap          : var(--fm-space-2);
+        padding      : var(--fm-space-2) var(--fm-space-3);
+
+        .fm-seat-rename-controls {
+            flex-wrap: wrap;
+            gap      : var(--fm-space-2);
+        }
+
+        .fm-seat-rename-plan {
+            display       : flex;
+            flex-direction: column;
+            font-size     : 12px;
+            gap           : 4px;
+        }
+
+        .fm-seat-rename-row {
+            display: flex;
+            gap    : var(--fm-space-2);
+        }
+
+        .fm-seat-rename-label {
+            color      : var(--fm-text-secondary);
+            flex       : 0 0 120px;
+            font-weight: 600;
+        }
+
+        .fm-seat-rename-value {
+            color     : var(--fm-text-primary);
+            font-family: var(--fm-font-mono);
+            word-break: break-all;
+        }
+
+        .fm-seat-rename-status {
+            font-size: 12px;
+
+            &.is-refused {
+                color: var(--fm-status-danger, #f87171);
+            }
+
+            &.is-settled {
+                color: var(--fm-status-ok, #34d399);
+            }
+        }
+    }
+}
+
+/* The telltale/sources prose stacks retired into the state ledger (#23) — one pill vocabulary
+   per pane. State rides the pill TEXT plus its tone class, never colour alone (WCAG 1.4.1); the
+   producer literal and the consumer's reason ride each pill's title attribute. */

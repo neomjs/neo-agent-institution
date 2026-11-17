@@ -37,4 +37,4 @@ Use these state tokens consistently across settings, chat, transcript, and grid 
 - Use icon buttons with tooltips for compact toolbar actions.
 - Keep repeated pane cards at `8px` radius or less.
 - Keep fixed controls dimensioned so hover, icon, and theme changes do not resize toolbars.
-- Add new pane colors by extending the theme variable contract first, then consuming the variable in component SCSS.
+- Add new pane colors by extending the theme variable contract first, then consuming the variable in component CSS.

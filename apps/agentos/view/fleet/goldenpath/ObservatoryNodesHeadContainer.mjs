@@ -10,7 +10,7 @@ import TextField              from '../../../../../node_modules/neo.mjs/src/form
  * the toggle between the list's two orders on the chrome line, the label/id and kind filter row beneath it, and the
  * order or match summary in the detail role (with `Clear filter` on no match). Typing buffers outside the keystroke
  * (`emitFilterChange`, 120 ms trailing) and flushes synchronously on `ArrowDown` into the rows (`listEnter`), clear,
- * or kind selection. A collapsed section keeps only the chrome line (`ObservatoryContainer.scss`).
+ * or kind selection. A collapsed section keeps only the chrome line (`ObservatoryContainer.css`).
  * @class AgentOS.view.fleet.goldenpath.ObservatoryNodesHeadContainer
  * @extends Neo.container.Base
  */

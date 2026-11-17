@@ -669,7 +669,7 @@ class ActivityStream extends Container {
             stateCell  = me.getReference('state'),
             noteCell   = me.getReference('observer-note'),
             note       = describeActivityObservation(me.mode, me.observation),
-            // a cold feed shows no row (Container.scss): rows a retired authority left for its successor's replace are not held
+            // a cold feed shows no row (Container.css): rows a retired authority left for its successor's replace are not held
             retained   = me.adapterState === 'cold' ? 0 : me.store?.count ?? 0,
             dropped    = me.store?.droppedCount ?? 0,
             countView  = describeActivityCounts(me.counts, ACTIVITY_MODE_LABELS[me.mode]),

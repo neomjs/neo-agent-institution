@@ -50,7 +50,7 @@ class EventChip extends Component {
 
     /**
      * Triggered after the kind config changed — swaps the kind class from the shared registry (the
-     * class binds the `--fm-chip` color token in the chip SCSS — zero inline styles) and refreshes
+     * class binds the `--fm-chip` color token in the chip CSS — zero inline styles) and refreshes
      * the text (when no label override is set).
      * @param {String} value
      * @param {String} oldValue

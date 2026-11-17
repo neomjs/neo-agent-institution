@@ -134,7 +134,7 @@ class SeatModelContainer extends Container {
          */
         layout: {ntype: 'vbox', align: 'stretch'},
         /**
-         * Heading · the two rows · the values on offer · status line · the memory row. Skin in `SeatModelContainer.scss`.
+         * Heading · the two rows · the values on offer · status line · the memory row. Skin in `SeatModelContainer.css`.
          * @member {Object[]} items
          */
         items: [

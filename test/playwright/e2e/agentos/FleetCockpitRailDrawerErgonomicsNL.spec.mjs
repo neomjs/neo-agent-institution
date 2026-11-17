@@ -14,7 +14,7 @@ import {test, expect} from '../../fixtures.mjs';
  *   - `DockRevealOverlay` sizes the free dimension (width for left/right rails) from
  *     `revealExtent ?? defaultRevealFraction`, as a PERCENTAGE of the workspace extent.
  *   - `defaultRevealFraction` is `0.25` and no application overrides it.
- *   - `src/dashboard/Container.scss` owns the overlay's `position`, per-edge `inset` and z-index.
+ *   - `src/dashboard/Container.css` owns the overlay's `position`, per-edge `inset` and z-index.
  * So a drawer whose content looks undersized cannot be an absent width contract. It is either the
  * fraction being wrong for the surface, or the hosted pane failing to fill what it is handed.
  *
@@ -158,8 +158,8 @@ test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neur
         // right after the retarget click the overlay still wears `neo-dashboard-dock-animating`
         // and the click's focus move can land a beat later — an Escape pressed inside that window
         // reaches a machine that is not yet `revealed-focused` and dismisses nothing, so the mark
-        // stays (the Institution CI's isolated job tripped here 2 of 4 runs on 2026-09-01; #73
-        // item 5). Wait for the machine's own precondition, then press the key — a settle-aware
+        // stays (the Institution CI's isolated job tripped here in 2 of 4 runs). Wait for the
+        // machine's own precondition, then press the key — a settle-aware
         // wait, not a retry.
         await expect.poll(() => page.evaluate(() => {
             const overlayEl = document.querySelector('.neo-dashboard-dock-reveal-overlay');

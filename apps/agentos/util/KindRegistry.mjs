@@ -82,7 +82,7 @@ class KindRegistry extends Base {
 
     /**
      * Pure kind → CSS-class resolver — the kind token minus its `--` custom-property prefix (e.g.
-     * `fm-kind-pr`). The class binds `--fm-chip` in the chip SCSS, so color stays entirely in the
+     * `fm-kind-pr`). The class binds `--fm-chip` in the chip CSS, so color stays entirely in the
      * token/skin layer: the chip swaps a class, never writes a style. Shares `kindToken`'s
      * unknown → neutral degrade.
      * @param {String} kind

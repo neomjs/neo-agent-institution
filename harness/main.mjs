@@ -399,7 +399,7 @@ function configureWebContents(contents) {
 /**
  * @summary On macOS the cockpit's top bar is the window's title bar: the traffic lights sit inset in
  * it, and the window-controls overlay tells the bar where its free area starts
- * (`env(titlebar-area-x)` in `Viewport.scss`; a browser reports none, so the cockpit is unchanged
+ * (`env(titlebar-area-x)` in `Viewport.css`; a browser reports none, so the cockpit is unchanged
  * there). Other platforms keep the native frame: their overlay paints window controls in fixed
  * colours that a theme switch could not follow.
  * @type {Object}
