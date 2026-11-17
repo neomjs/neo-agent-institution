@@ -158,8 +158,8 @@ test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neur
         // right after the retarget click the overlay still wears `neo-dashboard-dock-animating`
         // and the click's focus move can land a beat later — an Escape pressed inside that window
         // reaches a machine that is not yet `revealed-focused` and dismisses nothing, so the mark
-        // stays (the Institution CI's isolated job tripped here 2 of 4 runs on 2026-09-01; #73
-        // item 5). Wait for the machine's own precondition, then press the key — a settle-aware
+        // stays (the Institution CI's isolated job tripped here in 2 of 4 runs). Wait for the
+        // machine's own precondition, then press the key — a settle-aware
         // wait, not a retry.
         await expect.poll(() => page.evaluate(() => {
             const overlayEl = document.querySelector('.neo-dashboard-dock-reveal-overlay');
