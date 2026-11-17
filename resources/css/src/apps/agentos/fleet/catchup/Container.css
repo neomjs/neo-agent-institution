@@ -1,0 +1,92 @@
+/* The catch-up reading pane. Source cards remain visually independent so one degraded producer
+   cannot paint the other red; all values come from the Fleet token layer. The shell's pane head
+   (title · authority · the verbs — the pane contract in Viewport.css, which also owns the inset)
+   leads; this root keeps its rhythm and its inner-body scroll ownership. The partition choices
+   are the chip family's selector chips (Chips.css).
+   §04 rhythm record (#17265): off-rhythm survivors — partitions row-gap 6, sources gap 10,
+   source-card gap 7 + pad 10, citations pad-top 3 — recorded here, deferred to the #17268
+   pane-composition pass. */
+.fm-catch-up-pane {
+    gap     : var(--fm-space-2);
+    overflow: auto;
+
+    .fm-catch-up-first-use,
+    .fm-catch-up-partitions {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-catch-up-source-meta,
+    .fm-catch-up-mark-outcome,
+    .fm-catch-up-citation-overflow {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);   /* 10.5 → micro: the ruled invisible 0.5px migration */
+    }
+
+    /* the agent-scope row is a WRAPPING chip set, never a single squeezed line (#17209 AC — the
+       operator screenshot showed "whole fleet Ada Grace Vega…" overlapping in one clipped row) */
+    .fm-catch-up-partitions {
+        flex-wrap: wrap;
+        row-gap  : 6px;
+    }
+
+    .fm-catch-up-sources {
+        gap: 10px;
+    }
+
+    .fm-catch-up-source {
+        gap          : 7px;
+        padding      : 10px;
+        border       : 1px solid var(--fm-line-soft);
+        border-radius: 6px;
+        background   : var(--fm-panel);
+
+        &.is-degraded {
+            border-color: var(--fm-state-limited);
+        }
+
+        &.is-unavailable {
+            border-color: var(--fm-state-wedged);
+        }
+    }
+
+    .fm-catch-up-source-head {
+        gap: var(--fm-space-2);
+    }
+
+    .fm-catch-up-source-title {
+        color      : var(--fm-ink);
+        font-weight: 650;
+    }
+
+    .fm-catch-up-source-state,
+    .fm-catch-up-source-reason {
+        color: var(--fm-state-limited);
+        font : var(--fm-text-micro);   /* 10.5 → micro: the ruled invisible 0.5px migration */
+    }
+
+    .fm-catch-up-source-body {
+        color      : var(--fm-ink);
+        font       : var(--fm-text-body);   /* 12.5 → body: the ruled invisible 0.5px migration */
+        white-space: pre-wrap;
+    }
+
+    .fm-catch-up-citations {
+        gap        : var(--fm-space-1);
+        padding-top: 3px;
+    }
+
+    .fm-catch-up-citation {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-micro);   /* 10.5 → micro: the ruled invisible 0.5px migration */
+
+        &.is-link {
+            color: var(--fm-signal);
+        }
+    }
+
+    .fm-catch-up-empty {
+        color  : var(--fm-ink-dim);
+        font   : var(--fm-text-body);
+        padding: var(--fm-space-3) 0;   /* on the pane's inset, like every other line */
+    }
+}

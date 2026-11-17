@@ -1,0 +1,188 @@
+/* Fleet roster — a health-summary header and a sort/filter cluster over the ANIMATED card list,
+   all scoped under the component root. Every color from the token layer.
+   §04 density ladder: the fluid column count now derives from the LIST's own measured width
+   (list.plugin.Animate `minItemWidth` — a pane-layout-blind surface measuring its own rendered
+   width), because a vessel window makes the viewport a lie.
+   §04 rhythm record: off-rhythm survivors — head gap 10, presence-cap pill pad 1/8, empty-CTA
+   margin 24 + pad 10/18 — recorded here, deferred to the density-pass epic. */
+.fm-fleet-grid {
+    container-name: fm-fleet-grid;
+    container-type: inline-size;
+    padding       : var(--fm-space-4);   /* the spec-named panel padding */
+    gap           : var(--fm-space-3);
+
+    .fm-fleet-head {
+        flex      : none; /* pinned: the summary must never scroll away with the roster */
+        column-gap: 10px;
+        /* the row wraps (layout wrap, #85): once the pane cannot hold title + legend on one line
+           the legend takes the next line under the title — the wrapped line rides the 8px step */
+        row-gap   : var(--fm-space-2);
+        font      : var(--fm-text-chrome);
+
+        &.is-stale .fm-fleet-stale {
+            color: var(--fm-state-wedged);
+        }
+
+        /* no source has answered yet: the quietest ink — a fact, not an alarm */
+        &.is-cold .fm-fleet-stale {
+            color: var(--fm-ink-faint);
+        }
+    }
+
+    .fm-fleet-title {
+        letter-spacing: .14em;   /* §04 recorded exception (#17265): the fleet eyebrow keeps its wide emphasis tracking over the chrome role's .08em */
+        text-transform: uppercase;
+        color         : var(--fm-ink-dim);
+    }
+
+    .fm-fleet-stale {
+        color: var(--fm-ink-dim);
+    }
+
+    /* the presence-capability chip: names an axis degradation (every band vanished honestly) so
+       absence stops reading as a verdict. Amber-adjacent via the idle token — informational, below
+       the wedged alarm register; renders only while the producer is degraded. */
+    .fm-fleet-presence-cap {
+        border       : 1px solid var(--fm-state-idle);
+        border-radius: 9px;
+        color        : var(--fm-ink-dim);
+        padding      : 1px var(--fm-space-2);
+        white-space  : nowrap;
+    }
+
+    .fm-fleet-plane-admission {
+        border       : 1px solid var(--fm-state-limited);
+        border-radius: 9px;
+        color        : var(--fm-ink-dim);
+        padding      : 1px var(--fm-space-2);
+        white-space  : nowrap;
+
+        &.is-unknown {
+            border-color: var(--fm-line-soft);
+        }
+    }
+
+    /* the sort/filter cluster: the shell's ghost verbs (Viewport.css); the pressed state carries
+       the choice. Wrap-capable: at vessel widths the cluster exceeds the zone and hard-clipped at
+       both edges — wrapping engages only when space runs out, so the wide single-line form is
+       untouched. */
+    .fm-fleet-controls {
+        flex-wrap: wrap;
+        gap      : var(--fm-space-1);
+
+        /* the fold chip carries the honest idle count while the density preset is armed: a dashed
+           hairline in every state, so it reads as a count, not a choice */
+        .fm-roster-fold {
+            --button-ghost-border        : 1px dashed var(--fm-line-soft);
+            --button-ghost-border-hover  : 1px dashed var(--fm-line-soft);
+            --button-ghost-border-pressed: 1px dashed var(--fm-line-soft);
+        }
+    }
+
+    /* the animated card list — the scroll-OWNING region: the derived roster (10+ residents)
+       overflows the zone height at cockpit splits; only the cards scroll, the summary header and
+       the controls stay pinned above (min-height lets the flex chain engage the overflow).
+       Geometry (columns, per-item width, translate positions) is plugin-owned inline style —
+       list.plugin.Animate derives it from THIS list's measured width. */
+    .fm-fleet-cards {
+        /* The list is a geometry/selection primitive here, not the product surface. Rebind the
+           complete item-state token set at the consumer root so stock default / hover / active /
+           selected paint, focus chrome and five-pixel padding cannot bleed through in either
+           theme. The AgentCard below owns the visible surface and interaction treatment. */
+        --list-item-background-color         : transparent;
+        --list-item-background-color-hover   : transparent;
+        --list-item-background-color-active  : transparent;
+        --list-item-background-color-selected: transparent;
+        --list-item-color-selected           : var(--fm-ink);
+        --list-item-focus-outline            : none;
+        --list-item-focus-outline-offset     : 0;
+        --list-item-padding                  : 0;
+
+        list-style: none;
+        margin    : 0;
+        min-height: 0;
+        overflow-y: auto;
+        padding   : 0;
+
+        /* neutralize the base list-item chrome: the AgentCard IS the row's surface, and the li is
+           the plugin's positioned slot (inline height/width/transform) + the selection target */
+        > .neo-list-item {
+            background : transparent;
+            padding    : 0;
+            white-space: normal;
+
+            > .fm-agent-card {
+                height: 100%;
+
+                @media (prefers-reduced-motion: no-preference) {
+                    transition: background-color var(--fm-motion-fast) var(--ease-out-soft),
+                                border-color var(--fm-motion-fast) var(--ease-out-soft),
+                                box-shadow var(--fm-motion-fast) var(--ease-out-soft);
+                }
+            }
+
+            /* The AgentCard owns every visible pixel. `:focus-visible` keeps the strong outline
+               keyboard-only; a pointer click must not stack it onto the quieter selected halo. */
+            &:focus-visible > .fm-agent-card {
+                outline       : 2px solid var(--fm-signal);
+                outline-offset: 1px;
+            }
+
+            /* Persistent selection is a calm context state, not focus or urgency: tint the card
+               surface and shift its existing one-pixel border. Keyboard focus keeps the crisp
+               outline above; no gradient competes with the family rail or status vocabulary. */
+            &[aria-selected="true"] > .fm-agent-card {
+                background-color: color-mix(in srgb, var(--fm-signal) 8%, var(--fm-panel));
+                border-color    : color-mix(in srgb, var(--fm-signal) 24%, var(--fm-line-soft));
+                box-shadow      : var(--fm-shadow-selection);
+            }
+        }
+    }
+}
+
+/* the card region — the list (the scroll owner) and the bootstrap CTA share one box, so the CTA
+   can center over the cards it stands in for. `min-height: 0` keeps the flex chain engaged: only
+   the cards scroll, the head and the controls stay pinned above (#69). */
+.fm-fleet-card-region {
+    min-height: 0;
+    position  : relative;
+}
+
+/* the bootstrap CTA — renders only while the roster is empty (the design ruling's required
+   refinement): a real button in the card region, token-only, gone with the first agent. It is
+   centered over the region's box, both axes, and wears the family plate and ink through the
+   button's own token channel in EVERY state the Engine paints: `.neo-button` reads its plate,
+   border, label and glyph from `--button-*` tokens, and `.neo-button:hover` / `:active` (0,2,0)
+   re-paint all four from the `-hover` / `-active` siblings — so an element-level `background`,
+   `border` or `color` is inert on touch (and `color` never reached the spans at all); the themes'
+   defaults are the reversed ink and the primary surface of a filled button — the #69 defect. The
+   plate deepens one step per state (12 → 16 → 20 % signal) so the press reads as a press. */
+.fm-fleet-empty-cta {
+    --button-background-color        : color-mix(in srgb, var(--fm-signal) 12%, transparent);
+    --button-background-color-hover  : color-mix(in srgb, var(--fm-signal) 16%, transparent);
+    --button-background-color-active : color-mix(in srgb, var(--fm-signal) 20%, transparent);
+    --button-background-image        : none;
+    --button-border                  : 1px dashed var(--fm-signal);
+    --button-border-hover            : 1px dashed var(--fm-signal);
+    --button-border-active           : 1px dashed var(--fm-signal);
+    --button-border-radius           : 8px;
+    --button-text-color              : var(--fm-ink);
+    --button-text-color-hover        : var(--fm-ink);
+    --button-text-color-active       : var(--fm-ink);
+    --button-glyph-color             : var(--fm-ink);
+    --button-glyph-color-hover       : var(--fm-ink);
+    --button-glyph-color-active      : var(--fm-ink);
+
+    font-weight: 600;
+    height     : fit-content;
+    inset      : 0;
+    margin     : auto;
+    padding    : 10px 18px;
+    position   : absolute;
+    width      : fit-content;
+
+    &:focus-visible {
+        outline       : 2px solid var(--fm-signal);
+        outline-offset: 2px;
+    }
+}

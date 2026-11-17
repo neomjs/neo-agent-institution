@@ -1,0 +1,151 @@
+/* System's seat-home block: its title, the status lines, the plan box and the move rows. Every text
+   node picks a --fm-text-* role, never a pixel (TOKENS.md §04). The rows are information, not a
+   selection: they sit on the FM panel at rest, hover and press, with no pointer, the way the plane
+   cards below them do. */
+.fm-seat-root {
+    gap         : var(--fm-space-2);
+    border-top  : 1px solid var(--fm-line);
+    padding     : var(--fm-space-3) 0;
+    color       : var(--fm-ink);
+
+    .fm-seat-root-head,
+    .fm-seat-root-actions {
+        flex-wrap: wrap;
+        gap      : var(--fm-space-2);
+    }
+
+    .fm-seat-root-title {
+        margin: 0;
+        font  : var(--fm-text-display);
+    }
+
+    .fm-seat-root-scope,
+    .fm-seat-root-line,
+    .fm-seat-root-status,
+    .fm-seat-root-feedback {
+        min-width: 0;
+        color    : var(--fm-ink-dim);
+        font     : var(--fm-text-detail);
+        overflow-wrap: anywhere;
+    }
+
+    .fm-seat-root-status,
+    .fm-seat-root-feedback {
+        white-space: pre-wrap;
+    }
+
+    .fm-seat-root-plan {
+        gap: var(--fm-space-2);
+
+        /* the rows scroll in their own box: the plane list below owns the System view's scroll, and a
+           consent review of every seat must never push it out of reach. About two rows show at a laptop
+           height; the review scrolls, the planes keep their room */
+        .fm-seat-move-list {
+            max-height: 24vh;
+            overflow-y: auto;
+        }
+    }
+
+    .fm-seat-root-plan-line {
+        color      : var(--fm-ink-dim);
+        font       : var(--fm-text-micro);
+        overflow-wrap: anywhere;
+    }
+
+    /* the guidance is prose: the body role, never the 16px default an unstyled node inherits */
+    .fm-seat-root-copy-note {
+        color: var(--fm-ink-dim);
+        font : var(--fm-text-body);
+    }
+
+    .fm-seat-root-feedback {
+        border-left: 2px solid var(--fm-state-warn);
+        padding-left: var(--fm-space-2);
+
+        &.is-refused {
+            border-color: var(--fm-state-bad);
+            color       : var(--fm-ink);
+        }
+    }
+}
+
+/* the engine's list paints its rows through these tokens (and colors a hovered row through the
+   container color); bound here, every state stays on the panel */
+.fm-seat-move-list.neo-list {
+    --list-container-list-color        : var(--fm-ink);
+    --list-item-background-color       : var(--fm-panel);
+    --list-item-background-color-active: var(--fm-panel);
+    --list-item-background-color-hover : var(--fm-panel);
+    --list-item-padding                : var(--fm-space-2);
+
+    background    : transparent;
+    display       : flex;
+    flex-direction: column;
+    gap           : var(--fm-space-1);
+    margin        : 0;
+    padding       : 0;
+    list-style    : none;
+
+    .neo-list-item.fm-seat-move-row {
+        display       : flex;
+        flex-direction: column;
+        gap           : var(--fm-space-1);
+        border        : 1px solid var(--fm-line-soft);
+        color         : var(--fm-ink);
+        cursor        : default;
+        overflow-wrap : anywhere;
+        white-space   : normal;
+    }
+
+    .fm-seat-move-head {
+        display        : flex;
+        align-items    : baseline;
+        justify-content: space-between;
+        flex-wrap      : wrap;
+        gap            : var(--fm-space-1);
+    }
+
+    .fm-seat-move-agent {
+        color: var(--fm-ink);
+        font : var(--fm-text-display);
+    }
+
+    .fm-seat-move-state,
+    .fm-seat-move-code {
+        font: var(--fm-text-micro);
+    }
+
+    .fm-seat-move-state,
+    .fm-seat-move-paths,
+    .fm-seat-move-reason,
+    .fm-seat-move-materialized {
+        color: var(--fm-ink-dim);
+    }
+
+    .fm-seat-move-paths,
+    .fm-seat-move-reason,
+    .fm-seat-move-materialized {
+        font: var(--fm-text-detail);
+    }
+
+    .fm-seat-move-paths {
+        display              : grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap                  : 2px var(--fm-space-2);
+        margin               : 0;
+
+        dd {
+            min-width: 0;
+            margin   : 0;
+            overflow-wrap: anywhere;
+            color: var(--fm-ink);
+        }
+    }
+
+    .fm-seat-move-code,
+    .fm-seat-move-reason,
+    .fm-seat-move-materialized {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+}

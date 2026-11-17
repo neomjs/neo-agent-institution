@@ -1,0 +1,63 @@
+/* One fixed-height pooled row. Wide and narrow layouts move the same five child components; no
+   record recycle inserts, removes, or replaces row-local DOM. The inline step keeps the text clear
+   of the open row's tint edge and the keyboard ring (activity/Container.css). */
+.fm-activity-row {
+    align-items          : center;
+    block-size           : 100%;
+    border-bottom        : 1px solid var(--fm-line-soft);
+    box-sizing           : border-box;
+    column-gap           : 10px;
+    display              : grid;
+    grid-template-columns: auto auto auto auto minmax(0, 1fr);
+    padding              : var(--fm-space-1);
+
+    .fm-ev-time {
+        color      : var(--fm-ink-dim);
+        font       : var(--fm-text-micro);
+        white-space: nowrap;
+    }
+
+    /* The recipient is the sender's chip; only a broadcast keeps its signal ink. */
+    .fm-ev-recipient.is-broadcast {
+        .fm-actor-chip-lead,
+        .fm-actor-chip-text {
+            color      : color-mix(in srgb, var(--fm-signal) 70%, var(--fm-ink-dim));
+            font-weight: 600;
+        }
+    }
+
+    .is-empty {
+        pointer-events: none;
+        visibility    : hidden;
+    }
+
+    .fm-ev-object {
+        color          : var(--fm-ink);
+        font           : var(--fm-text-body);
+        min-inline-size: 0;
+        overflow       : hidden;
+        text-overflow  : ellipsis;
+        white-space    : nowrap;
+    }
+}
+
+@container fm-activity-stream (max-width: 560px) {
+    .fm-activity-row {
+        align-content        : center;
+        column-gap           : var(--fm-space-2);
+        grid-template-columns: auto auto minmax(0, 1fr) auto;
+        /* Two lines inside the SAME 32px pool height as the wide grammar: 1px row border +
+           2px vertical padding leave 27px of content, so 13px lines are the ceiling. */
+        grid-template-rows   : 13px 13px;
+        padding              : 2px var(--fm-space-1);
+
+        .fm-ev-object {
+            grid-column: 1 / -1;
+            grid-row   : 2;
+        }
+
+        .fm-event-chip {
+            padding-block: 0;
+        }
+    }
+}

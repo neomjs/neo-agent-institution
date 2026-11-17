@@ -1,0 +1,947 @@
+/* The harness shell — everything scoped under the viewport root (its cls) for isolation:
+   top chrome, the left-rail keeper-view nav, the agent-button hierarchy, and the Home/Chat surfaces.
+   The instance, awaiting-merge and Nightshift menus are framework-floating document.body children, so
+   they join this scope to inherit the SAME structural FM role/spacing/motion tokens without duplicating
+   their definitions. Their feature sheets consume only the relevant vars; the shell selectors below
+   remain descendant-bound.
+   §04 rhythm record (#17265): the 2px tab indicator (the tab-family block) is a recorded exception —
+   an indicator's own measure, not spacing. */
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* Direct paint does NOT live in this comma group: it carries structural FM tokens to the
+       floating instance menu too, so every direct declaration here would be emitted for the menu
+       root as well. The ground paint + container-surface rule live in the viewport-only
+       direct-paint block at the end of this file. */
+    /* Token rebinds for the indicator do NOT live here either: the theme declares the very same tokens
+       on `:root .neo-theme-neo-dark`, and the theme class rides THIS element — an equal-specificity
+       tie on one element that load order hands to the theme. The family re-declares them on the
+       indicator's nearest ancestors instead (the tab-family block below). */
+    /* The chip-family geometry contract (TOKENS.md §04): ONE anatomy for every status/kind
+       idiom — telltale, spine banner, event chips, state dots. The family owns
+       GEOMETRY only; color value-authority stays with the theme twins (--fm-state-* / --fm-kind-*),
+       and each idiom binds it through one local indirection. Theme-neutral by construction, so
+       both skins inherit the same anatomy for free. */
+    --fm-chip-mark-w: 3px;
+    --fm-chip-pad-y: 2px;
+    --fm-chip-pad-x: 8px;
+    --fm-chip-radius: 4px;
+    --fm-chip-gap: 8px;
+    /* The §04 type ladder (TOKENS.md): five roles as font shorthands — a surface picks a ROLE,
+       never a pixel (#17265). Weight rides the shorthand only where the role states it (display
+       600); a site needing a different weight re-declares font-weight AFTER consuming the role,
+       so every deviation is visible at the site. The chrome role's non-font half (tracking) has
+       its own bindable slot because the shorthand cannot carry it; uppercase stays a declaration
+       at the site (binary, self-documenting). Mode-invariant by construction — the stacks
+       resolve from the skin twins at use time, in both viewports this sheet reaches. A type
+       literal outside the ladder (a glyph's scale, prose above the ladder) is a recorded
+       exception at its site — never silent, the rhythm's own rule applied to type. */
+    --fm-text-display: 600 14px/1.3 var(--fm-font-sans);
+    --fm-text-body: 12px/1.45 var(--fm-font-sans);
+    --fm-text-detail: 11px/1.4 var(--fm-font-mono);
+    --fm-text-micro: 10px/1.3 var(--fm-font-mono);
+    --fm-text-chrome: 11px/1 var(--fm-font-mono);
+    --fm-text-chrome-tracking: .08em;
+    /* The §04 spacing rhythm: 4/8/12/16 (#17265). On-ladder literals bind these; a padding/gap
+       value outside the rhythm is a recorded exception in its file's SCSS header — never silent. */
+    --fm-space-1: 4px;
+    --fm-space-2: 8px;
+    --fm-space-3: 12px;
+    --fm-space-4: 16px;
+    /* The frame gutter — the recorded off-rhythm exception: the extent of the dock's edge rails
+       (the §04 proportion record in fleet/cockpit/Container.css says why 20), and the line every
+       full-width chrome row (the top toolbar, the cockpit bar) ends its last control on, where the
+       pane headers' ink already ends. One value: the rails and both rows read it. */
+    --fm-frame-gutter: 20px;
+    /* FM motion aliases (§04 T4): the FM-scoped re-timing knob over the product motion
+       vocabulary — pointing at the standards tiers, never at dock-scoped aliases. The
+       vocabulary-layer reduced-motion collapse (_motion.scss) flows through the alias by
+       construction, so the accessibility contract is inherited, not re-implemented. */
+    --fm-motion-panel: var(--motion-panel, 280ms);
+    --fm-motion-fast: var(--motion-fast, 120ms);
+    /* The liveness pulse period (motion ladder): decoration only — the hue + word carry the
+       fact, and the animation exists only under no-preference (the StateDot inclusion-gate). */
+    --fm-motion-pulse: 2400ms;
+    /* TAB HEADER ACTIONS — the app-wide contract for EVERY tab container (operator direction,
+       2026-08-30: one rule for all tab bars, never per-pane styling). The engine's header
+       toolbar stamps each action with `neo-toolbar-action`, so this targets the seam itself:
+       any pane placing a verb through `headerActions` inherits the same quiet icon form.
+
+       Geometry: a 24px square HIT AREA (an 11px glyph alone is a stray pixel to click), the
+       glyph in the chrome register (12px — one step above the 11px labels, an icon needs the
+       extra optical weight), centered on the toolbar's own axis (height:auto collapses the
+       theme button's 48px default, which floated the old box 9px above the label midline).
+       Quiet at rest, a soft field on hover — body without box weight. */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    width: 24px;
+    height: 24px;
+    /* both minimums: the theme pins .neo-button to min-width var(--cmp-button-height) (48px)
+       with a :root prefix — width alone loses to it, and the glyph centers in the phantom */
+    min-height: 0;
+    min-width: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    box-shadow: none;
+    color: var(--fm-ink-dim);
+    /* the hit field overhangs the content edge by its own half-padding so the icon INK sits
+       on the flush line the pane boxes and ledger pills end on — fields align by ink, boxes
+       by border (measured: without this the glyph reads ~6px shy of the content edge) */
+    margin-right: -6px;
+    transition: background var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action:hover,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action:hover,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action:hover,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    color: var(--fm-ink);
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action {
+    /* The engine collapses a focus-gated action out of layout while its tab container holds
+       no focus (`neo-toolbar-action-context-inactive`, display:none — the zero-gap rail). This
+       contract's `display: inline-flex` outranks that engine rule by specificity, so the
+       collapse is restated here at the higher weight; without it every pane shows its pop-out
+       and maximize verbs at rest, the exact reserved-hole the engine retired. */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action.neo-toolbar-action-context-inactive,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action.neo-toolbar-action-context-inactive,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action.neo-toolbar-action-context-inactive,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action.neo-toolbar-action-context-inactive {
+    display: none;
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-glyph,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-glyph,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-glyph,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-glyph {
+    color: inherit;
+    font-size: 12px; /* §04 recorded exception: glyph scale (T3), one step below the label */
+    line-height: 1;
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action {
+    /* an icon-only action renders an EMPTY text span; any width it takes shoves the glyph
+       off the field's center (measured: 16px of phantom right-side space) */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-text:empty,
+.fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-text:empty,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-text:empty,
+.fm-nightshift-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action .neo-button-text:empty {
+    display: none;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* The window-verb pair — quiet secondary, owned HERE because the skin must travel with the
+       pane: the verbs render in pane chrome (which reparents into the widget vessel, where no
+       FleetCockpit sheet ever loads) and as the cockpit bar's exception-only recall pair. This
+       sheet reaches both viewports by the same opt-in that carries the chip tokens above, so the
+       control reads identically docked, windowed, and recalled. Windowing a pane is a secondary
+       cockpit action everywhere it appears. */
+}
+.agent-os-viewport.neo-viewport .neo-button.fm-detail-window-toggle,
+.agent-os-viewport.neo-viewport .neo-button.fm-memories-window-toggle,
+.fm-instance-menu .neo-button.fm-detail-window-toggle,
+.fm-instance-menu .neo-button.fm-memories-window-toggle,
+.fm-awaiting-merge-menu .neo-button.fm-detail-window-toggle,
+.fm-awaiting-merge-menu .neo-button.fm-memories-window-toggle,
+.fm-nightshift-menu .neo-button.fm-detail-window-toggle,
+.fm-nightshift-menu .neo-button.fm-memories-window-toggle {
+    border: 1px solid var(--fm-line);
+    border-radius: 6px;
+    background: var(--fm-panel-2);
+    color: var(--fm-ink-dim);
+    box-shadow: none;
+    font-weight: 500;
+    transition: background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+}
+.agent-os-viewport.neo-viewport .neo-button.fm-detail-window-toggle:hover,
+.agent-os-viewport.neo-viewport .neo-button.fm-memories-window-toggle:hover,
+.fm-instance-menu .neo-button.fm-detail-window-toggle:hover,
+.fm-instance-menu .neo-button.fm-memories-window-toggle:hover,
+.fm-awaiting-merge-menu .neo-button.fm-detail-window-toggle:hover,
+.fm-awaiting-merge-menu .neo-button.fm-memories-window-toggle:hover,
+.fm-nightshift-menu .neo-button.fm-detail-window-toggle:hover,
+.fm-nightshift-menu .neo-button.fm-memories-window-toggle:hover {
+    border-color: var(--fm-ink-dim);
+    background: var(--fm-panel);
+    color: var(--fm-ink);
+}
+.agent-os-viewport.neo-viewport .neo-button.fm-detail-window-toggle .neo-button-glyph,
+.agent-os-viewport.neo-viewport .neo-button.fm-detail-window-toggle .neo-button-text,
+.agent-os-viewport.neo-viewport .neo-button.fm-memories-window-toggle .neo-button-glyph,
+.agent-os-viewport.neo-viewport .neo-button.fm-memories-window-toggle .neo-button-text,
+.fm-instance-menu .neo-button.fm-detail-window-toggle .neo-button-glyph,
+.fm-instance-menu .neo-button.fm-detail-window-toggle .neo-button-text,
+.fm-instance-menu .neo-button.fm-memories-window-toggle .neo-button-glyph,
+.fm-instance-menu .neo-button.fm-memories-window-toggle .neo-button-text,
+.fm-awaiting-merge-menu .neo-button.fm-detail-window-toggle .neo-button-glyph,
+.fm-awaiting-merge-menu .neo-button.fm-detail-window-toggle .neo-button-text,
+.fm-awaiting-merge-menu .neo-button.fm-memories-window-toggle .neo-button-glyph,
+.fm-awaiting-merge-menu .neo-button.fm-memories-window-toggle .neo-button-text,
+.fm-nightshift-menu .neo-button.fm-detail-window-toggle .neo-button-glyph,
+.fm-nightshift-menu .neo-button.fm-detail-window-toggle .neo-button-text,
+.fm-nightshift-menu .neo-button.fm-memories-window-toggle .neo-button-glyph,
+.fm-nightshift-menu .neo-button.fm-memories-window-toggle .neo-button-text {
+    color: inherit;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* THE VERB SCALE: every ghost button, and every button in a pane's action slot, at the §04
+       chrome role — icon plus word, never a heading's size. The geometry re-values the
+       engine's own variables (the top-toolbar mechanism below); the type is DIRECT, because the
+       engine writes the text's font-size itself under 600px (13px in every vessel window). Both
+       rules below carry zero selector weight, so a surface re-values them in its own sheet. */
+}
+.agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost),
+.agent-os-viewport.neo-viewport .fm-pane-actions :where(.neo-button),
+.fm-instance-menu :where(.neo-button.neo-button-ghost),
+.fm-instance-menu .fm-pane-actions :where(.neo-button),
+.fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost),
+.fm-awaiting-merge-menu .fm-pane-actions :where(.neo-button),
+.fm-nightshift-menu :where(.neo-button.neo-button-ghost),
+.fm-nightshift-menu .fm-pane-actions :where(.neo-button) {
+    --button-glyph-margin: 0 var(--fm-space-1) 0 0;
+    --button-height: auto;
+    --button-min-width: 0;
+    --button-padding: var(--fm-chip-pad-y) var(--fm-space-2);
+}
+.agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost) .neo-button-text,
+.agent-os-viewport.neo-viewport .fm-pane-actions :where(.neo-button) .neo-button-text,
+.fm-instance-menu :where(.neo-button.neo-button-ghost) .neo-button-text,
+.fm-instance-menu .fm-pane-actions :where(.neo-button) .neo-button-text,
+.fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost) .neo-button-text,
+.fm-awaiting-merge-menu .fm-pane-actions :where(.neo-button) .neo-button-text,
+.fm-nightshift-menu :where(.neo-button.neo-button-ghost) .neo-button-text,
+.fm-nightshift-menu .fm-pane-actions :where(.neo-button) .neo-button-text {
+    font: var(--fm-text-chrome);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* THE GHOST SKIN — one for the whole shell: dim ink on no surface, a soft field under the
+       pointer, and a pressed choice carried by ink plus a hairline. Disabled reads faint: the
+       engine's disabled ink (`--sem-color-text-neutral-disabled`) is declared by no theme sheet,
+       so without it a disabled verb inherits the stock near-white text. */
+}
+.agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost),
+.fm-instance-menu :where(.neo-button.neo-button-ghost),
+.fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost),
+.fm-nightshift-menu :where(.neo-button.neo-button-ghost) {
+    --button-background-color-disabled: transparent;
+    --button-border-disabled: 1px solid transparent;
+    --button-border-radius: 999px;
+    --button-glyph-color-disabled: var(--fm-ink-faint);
+    --button-text-color-disabled: var(--fm-ink-faint);
+    --button-ghost-background-color: transparent;
+    --button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, transparent);
+    --button-ghost-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    --button-ghost-border: 1px solid transparent;
+    --button-ghost-border-active: 1px solid transparent;
+    --button-ghost-border-hover: 1px solid transparent;
+    --button-ghost-border-pressed: 1px solid var(--fm-line-soft);
+    --button-ghost-glyph-color: var(--fm-ink-dim);
+    --button-ghost-glyph-color-active: var(--fm-ink);
+    --button-ghost-glyph-color-hover: var(--fm-ink);
+    --button-ghost-text-color: var(--fm-ink-dim);
+    --button-ghost-text-color-active: var(--fm-ink);
+    --button-ghost-text-color-hover: var(--fm-ink);
+}
+.agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost).pressed,
+.fm-instance-menu :where(.neo-button.neo-button-ghost).pressed,
+.fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost).pressed,
+.fm-nightshift-menu :where(.neo-button.neo-button-ghost).pressed {
+    --button-ghost-glyph-color: var(--fm-ink);
+    --button-ghost-text-color: var(--fm-ink);
+}
+.agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost):focus-visible,
+.fm-instance-menu :where(.neo-button.neo-button-ghost):focus-visible,
+.fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost):focus-visible,
+.fm-nightshift-menu :where(.neo-button.neo-button-ghost):focus-visible {
+    outline: 2px solid var(--fm-signal);
+    outline-offset: 1px;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* THE PANE CONTRACT — one head and one inset for every strip and rail pane, declared
+       here so it travels into the vessel window with the pane. The head is the SSOT's `.pane-head`
+       (institution-mailbox-pane.html): a chrome-role title, a micro meta line, the actions at the
+       right. The inset is the rail well's (cockpit/Container.css), at zero weight so the well's
+       reset for the panes it frames wins whichever sheet loads last: a pane reads the same docked,
+       revealed and windowed. */
+}
+.agent-os-viewport.neo-viewport :where(.fm-pane),
+.fm-instance-menu :where(.fm-pane),
+.fm-awaiting-merge-menu :where(.fm-pane),
+.fm-nightshift-menu :where(.fm-pane) {
+    padding: var(--fm-space-3);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* direction, alignment and wrap are the head's layout config (`{ntype: 'hbox', align: 'center',
+       wrap: 'wrap'}`): a narrow pane drops the actions under the title instead of clipping them */
+}
+.agent-os-viewport.neo-viewport .fm-pane-head,
+.fm-instance-menu .fm-pane-head,
+.fm-awaiting-merge-menu .fm-pane-head,
+.fm-nightshift-menu .fm-pane-head {
+    column-gap: var(--fm-chip-gap);
+    row-gap: var(--fm-space-1);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* the SSOT head closes on a hairline, so the pane's own section labels read below it, never
+       beside the title. Zero weight: a surface borrowing the head's grammar re-values it */
+}
+.agent-os-viewport.neo-viewport :where(.fm-pane-head),
+.fm-instance-menu :where(.fm-pane-head),
+.fm-awaiting-merge-menu :where(.fm-pane-head),
+.fm-nightshift-menu :where(.fm-pane-head) {
+    border-bottom: 1px solid var(--fm-line-soft);
+    padding-bottom: var(--fm-space-2);
+}
+.agent-os-viewport.neo-viewport .fm-pane-title,
+.fm-instance-menu .fm-pane-title,
+.fm-awaiting-merge-menu .fm-pane-title,
+.fm-nightshift-menu .fm-pane-title {
+    color: var(--fm-ink-dim);
+    font: var(--fm-text-chrome);
+    letter-spacing: var(--fm-text-chrome-tracking);
+    text-transform: uppercase;
+}
+.agent-os-viewport.neo-viewport .fm-pane-meta,
+.fm-instance-menu .fm-pane-meta,
+.fm-awaiting-merge-menu .fm-pane-meta,
+.fm-nightshift-menu .fm-pane-meta {
+    color: var(--fm-ink-dim);
+    font: var(--fm-text-micro);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* an action slot trails its row — a head's verbs, a form's submit; in a head that states a fact
+       instead (Mailbox, the detail's sections), the freshness chip takes its place. Zero weight: a
+       pane that stacks its head at a narrow width re-values it in its own sheet. */
+}
+.agent-os-viewport.neo-viewport :where(.fm-pane-actions, .fm-pane-head > .fm-freshness),
+.fm-instance-menu :where(.fm-pane-actions, .fm-pane-head > .fm-freshness),
+.fm-awaiting-merge-menu :where(.fm-pane-actions, .fm-pane-head > .fm-freshness),
+.fm-nightshift-menu :where(.fm-pane-actions, .fm-pane-head > .fm-freshness) {
+    margin-left: auto;
+}
+.agent-os-viewport.neo-viewport .fm-pane-actions,
+.fm-instance-menu .fm-pane-actions,
+.fm-awaiting-merge-menu .fm-pane-actions,
+.fm-nightshift-menu .fm-pane-actions {
+    gap: var(--fm-space-1);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* HEIGHT CONTAINMENT FOR THE SHELL'S FLEX SPINE.
+       A flex item's automatic minimum size is its CONTENT size, and `min-height: auto` only
+       resolves to zero when the item's overflow is not `visible`. Every box listed here sits in the
+       shell's column spine with `overflow: visible`, so each one independently refuses to shrink
+       below its content — and one tall pane therefore lifts the whole shell instead of scrolling
+       inside its own slot.
+       Measured, not guessed: with a full mailbox page open, the ancestor chain from the detail rail
+       up to the viewport read 3173 → 3286px against a 720px viewport, and the first box to exceed
+       it was the tab container directly under the viewport root — three levels ABOVE the tab body
+       that a previous attempt pinned. The fleet activity stream was pushed to y=1695 while
+       reporting mounted and unhidden: present, correct, and entirely below the fold.
+       Scoped to the `agent-os-viewport` cls rather than to the framework classes it names — the
+       same boxes serve layouts elsewhere that legitimately size to content.
+
+       That cls reaches TWO viewports, and the second one is deliberate rather than incidental:
+       `AgentOSWidget.view.Viewport` (the multi-window popup host, loaded when a docked panel is
+       promoted into its own browser window) carries the same cls AND declares
+       `additionalThemeFiles: ['AgentOS.view.Viewport']`, so it opts into this sheet by name. The
+       rule is harmless there — an OS window bounds the pane for free, and that childapp hosts no
+       dock or cockpit — and it is the sharing mechanism a future shell would use rather than a leak
+       to be sealed: one declared line, greppable and opt-in per consumer, which is a better
+       property than a framework default nobody can see reaching them.
+
+       The scroll seats already exist one level down in the panes; this only stops the spine growing
+       past the screen so they engage.
+
+       Watch the WIDTH axis if this grows: four of these are `min-width: 0`, nothing in the repo
+       exercises this app below 900px, and per-level `min-*` work across this same spine has
+       collapsed dock zones before (#15657, still open — the direction there was the inverse of this
+       one, so it is a caution rather than a precedent).
+       ticket-ref-ok: #15657 is the open regression this axis has to be checked against, and naming
+       it is the entire value of the caution. */
+}
+.agent-os-viewport.neo-viewport .neo-tab-container,
+.agent-os-viewport.neo-viewport .neo-tab-body-container,
+.agent-os-viewport.neo-viewport .neo-dashboard-dock-tabs,
+.agent-os-viewport.neo-viewport .neo-dashboard-dock-edge-band,
+.agent-os-viewport.neo-viewport .fm-fleet-cockpit,
+.fm-instance-menu .neo-tab-container,
+.fm-instance-menu .neo-tab-body-container,
+.fm-instance-menu .neo-dashboard-dock-tabs,
+.fm-instance-menu .neo-dashboard-dock-edge-band,
+.fm-instance-menu .fm-fleet-cockpit,
+.fm-awaiting-merge-menu .neo-tab-container,
+.fm-awaiting-merge-menu .neo-tab-body-container,
+.fm-awaiting-merge-menu .neo-dashboard-dock-tabs,
+.fm-awaiting-merge-menu .neo-dashboard-dock-edge-band,
+.fm-awaiting-merge-menu .fm-fleet-cockpit,
+.fm-nightshift-menu .neo-tab-container,
+.fm-nightshift-menu .neo-tab-body-container,
+.fm-nightshift-menu .neo-dashboard-dock-tabs,
+.fm-nightshift-menu .neo-dashboard-dock-edge-band,
+.fm-nightshift-menu .fm-fleet-cockpit {
+    min-height: 0;
+}
+.agent-os-viewport.neo-viewport .agent-top-toolbar,
+.fm-instance-menu .agent-top-toolbar,
+.fm-awaiting-merge-menu .agent-top-toolbar,
+.fm-nightshift-menu .agent-top-toolbar {
+    /* the top chrome band speaks the keeper rail's voice — one quiet rail surface around the
+       ground on two edges; without it the stock toolbar neutral sat as a foreign band above
+       every FM pane */
+    background: var(--fm-rail);
+    min-height: 50px;
+    /* §04 recorded exception: see the mark's line below. In the native shell this band is the
+       window's title bar: the window-controls overlay starts its free area after the traffic
+       lights (`env(titlebar-area-x)`), and the band drags the window. A browser reports no
+       overlay, so it keeps the 9px, and the drag region means nothing there. */
+    padding: 0 var(--fm-frame-gutter) 0 max(9px, env(titlebar-area-x, 9px));
+    -webkit-app-region: drag;
+}
+.agent-os-viewport.neo-viewport .agent-top-toolbar .neo-button,
+.fm-instance-menu .agent-top-toolbar .neo-button,
+.fm-awaiting-merge-menu .agent-top-toolbar .neo-button,
+.fm-nightshift-menu .agent-top-toolbar .neo-button {
+    -webkit-app-region: no-drag;
+}
+.agent-os-viewport.neo-viewport .agent-top-toolbar,
+.fm-instance-menu .agent-top-toolbar,
+.fm-awaiting-merge-menu .agent-top-toolbar,
+.fm-nightshift-menu .agent-top-toolbar {
+    /* The band's control scale — the identity row, not a touch surface: the engine's button
+       reads these four at the element (button/Base.css: height, min-width, padding,
+       border-radius), so the theme switch becomes a 32px square centered in the 50px band
+       instead of a 48px tile filling it. The instance switcher keeps its own chip geometry. */
+    --button-height: 32px;
+    --button-min-width: 32px;
+    --button-padding: 0;
+    --button-border-radius: 6px;
+}
+@media (max-width: 560px) {
+    .agent-os-viewport.neo-viewport .agent-top-toolbar,
+    .fm-instance-menu .agent-top-toolbar,
+    .fm-awaiting-merge-menu .agent-top-toolbar,
+    .fm-nightshift-menu .agent-top-toolbar {
+        padding: 0 var(--fm-space-3) 0 max(9px, env(titlebar-area-x, 9px));
+    }
+}
+.agent-os-viewport.neo-viewport .agent-dashboard,
+.fm-instance-menu .agent-dashboard,
+.fm-awaiting-merge-menu .agent-dashboard,
+.fm-nightshift-menu .agent-dashboard {
+    display: flex;
+    gap: 20px;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* the mark heads the keeper rail: its 30px centers on the 48px rail's icon axis below it —
+       the band's 9px left inset is (48 − 30) / 2, where the frame gutter floated it 11px right of
+       that axis */
+}
+.agent-os-viewport.neo-viewport .agent-logo,
+.fm-instance-menu .agent-logo,
+.fm-awaiting-merge-menu .agent-logo,
+.fm-nightshift-menu .agent-logo {
+    align-items: center;
+    display: flex;
+    margin-right: 15px;
+    /* the vessel band's gutter drops to the 8px step so the scope label keeps its whole tail */
+}
+@media (max-width: 560px) {
+    .agent-os-viewport.neo-viewport .agent-logo,
+    .fm-instance-menu .agent-logo,
+    .fm-awaiting-merge-menu .agent-logo,
+    .fm-nightshift-menu .agent-logo {
+        margin-right: var(--fm-space-2);
+    }
+}
+.agent-os-viewport.neo-viewport .agent-logo img,
+.fm-instance-menu .agent-logo img,
+.fm-awaiting-merge-menu .agent-logo img,
+.fm-nightshift-menu .agent-logo img {
+    height: 30px;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* the wordmark reads on the ink tier in both skins (the engine's label ink is one colour) and never
+       shrinks below its word; at the vessel band it yields to the instance scope — the logo is the
+       mark, the window title carries the name, and the scope control keeps its whole label */
+}
+.agent-os-viewport.neo-viewport .agent-shell-title,
+.fm-instance-menu .agent-shell-title,
+.fm-awaiting-merge-menu .agent-shell-title,
+.fm-nightshift-menu .agent-shell-title {
+    flex: none;
+    color: var(--fm-ink);
+}
+@media (max-width: 560px) {
+    .agent-os-viewport.neo-viewport .agent-shell-title,
+    .fm-instance-menu .agent-shell-title,
+    .fm-awaiting-merge-menu .agent-shell-title,
+    .fm-nightshift-menu .agent-shell-title {
+        display: none;
+    }
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* Button hierarchy — a quiet, panel-toned base; only the primary action reaches for the signal. */
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-button,
+.fm-instance-menu .neo-button.agent-button,
+.fm-awaiting-merge-menu .neo-button.agent-button,
+.fm-nightshift-menu .neo-button.agent-button {
+    border: 1px solid var(--fm-line);
+    border-radius: 6px;
+    background: var(--fm-panel-2);
+    color: var(--fm-ink);
+    box-shadow: none;
+    font-family: var(--fm-font-sans);
+    font-weight: 500;
+    transition: background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-button:hover,
+.fm-instance-menu .neo-button.agent-button:hover,
+.fm-awaiting-merge-menu .neo-button.agent-button:hover,
+.fm-nightshift-menu .neo-button.agent-button:hover {
+    border-color: var(--fm-ink-dim);
+    background: var(--fm-panel);
+    color: var(--fm-ink);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-button .neo-button-glyph,
+.agent-os-viewport.neo-viewport .neo-button.agent-button .neo-button-text,
+.fm-instance-menu .neo-button.agent-button .neo-button-glyph,
+.fm-instance-menu .neo-button.agent-button .neo-button-text,
+.fm-awaiting-merge-menu .neo-button.agent-button .neo-button-glyph,
+.fm-awaiting-merge-menu .neo-button.agent-button .neo-button-text,
+.fm-nightshift-menu .neo-button.agent-button .neo-button-glyph,
+.fm-nightshift-menu .neo-button.agent-button .neo-button-text {
+    color: inherit;
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-submit-button,
+.fm-instance-menu .neo-button.agent-submit-button,
+.fm-awaiting-merge-menu .neo-button.agent-submit-button,
+.fm-nightshift-menu .neo-button.agent-submit-button {
+    border-color: color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+    background: color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+    color: var(--fm-signal);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-submit-button:hover,
+.fm-instance-menu .neo-button.agent-submit-button:hover,
+.fm-awaiting-merge-menu .neo-button.agent-submit-button:hover,
+.fm-nightshift-menu .neo-button.agent-submit-button:hover {
+    border-color: var(--fm-signal);
+    background: color-mix(in srgb, var(--fm-signal) 24%, var(--fm-panel-2));
+    color: var(--fm-signal);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* The Nightshift toggle, the bar's one worded control: it widens past the band's square
+       scale, and its word speaks the shell's verb scale (the chrome role, like every ghost verb). On
+       takes the submit voice, and its title says on or off, so the state never rests on hue.
+       Unknown dims the ink; a refused change dashes the plate until the next record or click. Below
+       the vessel band only the glyph stays. */
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button,
+.fm-instance-menu .neo-button.agent-nightshift-button,
+.fm-awaiting-merge-menu .neo-button.agent-nightshift-button,
+.fm-nightshift-menu .neo-button.agent-nightshift-button {
+    --button-glyph-margin: 0 var(--fm-space-1) 0 0;
+    --button-padding: 0 var(--fm-space-2);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button .neo-button-text,
+.fm-instance-menu .neo-button.agent-nightshift-button .neo-button-text,
+.fm-awaiting-merge-menu .neo-button.agent-nightshift-button .neo-button-text,
+.fm-nightshift-menu .neo-button.agent-nightshift-button .neo-button-text {
+    font: var(--fm-text-chrome);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button.pressed,
+.fm-instance-menu .neo-button.agent-nightshift-button.pressed,
+.fm-awaiting-merge-menu .neo-button.agent-nightshift-button.pressed,
+.fm-nightshift-menu .neo-button.agent-nightshift-button.pressed {
+    border-color: color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+    background: color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+    color: var(--fm-signal);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button.pressed:hover,
+.fm-instance-menu .neo-button.agent-nightshift-button.pressed:hover,
+.fm-awaiting-merge-menu .neo-button.agent-nightshift-button.pressed:hover,
+.fm-nightshift-menu .neo-button.agent-nightshift-button.pressed:hover {
+    border-color: var(--fm-signal);
+    background: color-mix(in srgb, var(--fm-signal) 24%, var(--fm-panel-2));
+    color: var(--fm-signal);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button.is-unknown,
+.fm-instance-menu .neo-button.agent-nightshift-button.is-unknown,
+.fm-awaiting-merge-menu .neo-button.agent-nightshift-button.is-unknown,
+.fm-nightshift-menu .neo-button.agent-nightshift-button.is-unknown {
+    color: var(--fm-ink-dim);
+}
+.agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button.is-refused,
+.fm-instance-menu .neo-button.agent-nightshift-button.is-refused,
+.fm-awaiting-merge-menu .neo-button.agent-nightshift-button.is-refused,
+.fm-nightshift-menu .neo-button.agent-nightshift-button.is-refused {
+    border-style: dashed;
+}
+@media (max-width: 560px) {
+    .agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button,
+    .fm-instance-menu .neo-button.agent-nightshift-button,
+    .fm-awaiting-merge-menu .neo-button.agent-nightshift-button,
+    .fm-nightshift-menu .neo-button.agent-nightshift-button {
+        --button-glyph-margin: 0;
+        --button-padding: 0;
+    }
+    .agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button .neo-button-text,
+    .fm-instance-menu .neo-button.agent-nightshift-button .neo-button-text,
+    .fm-awaiting-merge-menu .neo-button.agent-nightshift-button .neo-button-text,
+    .fm-nightshift-menu .neo-button.agent-nightshift-button .neo-button-text {
+        display: none;
+    }
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* Action toolbars wrap so long-text buttons space cleanly instead of colliding. */
+}
+.agent-os-viewport.neo-viewport .neo-toolbar.agent-form-actions,
+.agent-os-viewport.neo-viewport .neo-toolbar.agent-fleet-actions,
+.fm-instance-menu .neo-toolbar.agent-form-actions,
+.fm-instance-menu .neo-toolbar.agent-fleet-actions,
+.fm-awaiting-merge-menu .neo-toolbar.agent-form-actions,
+.fm-awaiting-merge-menu .neo-toolbar.agent-fleet-actions,
+.fm-nightshift-menu .neo-toolbar.agent-form-actions,
+.fm-nightshift-menu .neo-toolbar.agent-fleet-actions {
+    flex-wrap: wrap;
+    gap: var(--fm-space-2);
+    background: transparent;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* ONE tab family for every tier (#17269 cut 2): keeper rail, south content tabs, and the
+       detail's inner strip all speak the §04 chrome role — declared at the shell root so the
+       family travels to the widget viewport with the rest of this sheet (the #17457 lesson:
+       a skin that does not travel with the pane is a mount bug waiting). The active place is
+       structural — signal indicator + full ink + weight — never hue-alone. Type/state land as
+       DIRECT declarations (they out-cascade the stock skin); --tab-button-* rebinds live on
+       the TOOLBAR blocks below, because the theme defines those tokens on the same element
+       this root selector targets — an equal-specificity load-order tie the toolbar level wins
+       by nearest-ancestor instead. Uppercase is declared here, self-owned: the chrome role's
+       case must not depend on a theme token reaching this scope. */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-button.neo-button .neo-button-text,
+.fm-instance-menu .neo-tab-header-button.neo-button .neo-button-text,
+.fm-awaiting-merge-menu .neo-tab-header-button.neo-button .neo-button-text,
+.fm-nightshift-menu .neo-tab-header-button.neo-button .neo-button-text {
+    font: var(--fm-text-chrome);
+    letter-spacing: var(--fm-text-chrome-tracking);
+    text-transform: uppercase;
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-button.neo-button,
+.fm-instance-menu .neo-tab-header-button.neo-button,
+.fm-awaiting-merge-menu .neo-tab-header-button.neo-button,
+.fm-nightshift-menu .neo-tab-header-button.neo-button {
+    /* the glyph decorates, never carries (§04 T3): one step below the label */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-button.neo-button .neo-button-glyph,
+.fm-instance-menu .neo-tab-header-button.neo-button .neo-button-glyph,
+.fm-awaiting-merge-menu .neo-tab-header-button.neo-button .neo-button-glyph,
+.fm-nightshift-menu .neo-tab-header-button.neo-button .neo-button-glyph {
+    font-size: 12px; /* §04 recorded exception: glyph scale is not a type role */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-button.neo-button:hover .neo-button-text,
+.agent-os-viewport.neo-viewport .neo-tab-header-button.neo-button:hover .neo-button-glyph,
+.fm-instance-menu .neo-tab-header-button.neo-button:hover .neo-button-text,
+.fm-instance-menu .neo-tab-header-button.neo-button:hover .neo-button-glyph,
+.fm-awaiting-merge-menu .neo-tab-header-button.neo-button:hover .neo-button-text,
+.fm-awaiting-merge-menu .neo-tab-header-button.neo-button:hover .neo-button-glyph,
+.fm-nightshift-menu .neo-tab-header-button.neo-button:hover .neo-button-text,
+.fm-nightshift-menu .neo-tab-header-button.neo-button:hover .neo-button-glyph {
+    color: var(--fm-ink);
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-button.neo-button.pressed .neo-button-text,
+.fm-instance-menu .neo-tab-header-button.neo-button.pressed .neo-button-text,
+.fm-awaiting-merge-menu .neo-tab-header-button.neo-button.pressed .neo-button-text,
+.fm-nightshift-menu .neo-tab-header-button.neo-button.pressed .neo-button-text {
+    color: var(--fm-ink);
+    font-weight: 600;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* Horizontal strips (south content tabs, the detail's inner strip — .neo-dock-top): the
+       chrome tier's designed density, down from the stock xlarge. The vertical keeper bar
+       deliberately keeps its intrinsic sizing — a rotated label owns its main axis.
+
+       The Engine projects its dock tab containers with `ui: 'inline'`, and every theme states the
+       inline header's paint in full — ground, image and the bottom hairline — because a fallback is
+       not a reset (neomjs/neo#18141). The cockpit's strips are flat panel surfaces in the
+       cockpit's OWN palette (the design gate's goldens): all three paint tokens are declared here,
+       so the theme's neutral-highlighted band (a green-grey on this blue-black surface, #92) and
+       its top-lit gradient never reach a strip; the family's geometry is kept. */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar.neo-dock-top,
+.fm-instance-menu .neo-tab-header-toolbar.neo-dock-top,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar.neo-dock-top,
+.fm-nightshift-menu .neo-tab-header-toolbar.neo-dock-top {
+    --tab-button-height: 30px;
+    --tab-button-height-pressed: 30px;
+    --tab-button-padding: 0 var(--fm-space-3);
+    --tab-button-gap: var(--fm-space-2);
+    --tab-button-text-color: var(--fm-ink-dim);
+    --tab-button-glyph-color: var(--fm-ink-dim);
+    --tab-button-glyph-color-pressed: var(--fm-ink);
+    --tab-button-background-color: transparent;
+    --tab-button-background-color-hover: var(--fm-panel);
+    --tab-header-inline-background-color: var(--fm-panel);
+    --tab-header-inline-background-image: none;
+    --tab-header-inline-box-shadow: inset 0 -1px 0 var(--fm-line);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* The active place is structural: signal indicator, full ink, weight — never hue-alone
+       (§04). The indicator tokens land on the TOOLBAR (the per-button indicator) and the STRIP
+       (the strip-level one), the indicators' nearest ancestors: declared on the shell root they
+       tie with the theme's own declaration and lose on load order (see the root block). 2px is the
+       indicator's own measure — a hairline of signal, not a slab of stock white (recorded §04
+       exception, file header). One declaration serves both orientations: the engine reads the same
+       token as height on a horizontal strip and as width on the vertical keeper rail. */
+}
+.agent-os-viewport.neo-viewport .neo-tab-header-toolbar,
+.agent-os-viewport.neo-viewport .neo-tab-strip,
+.fm-instance-menu .neo-tab-header-toolbar,
+.fm-instance-menu .neo-tab-strip,
+.fm-awaiting-merge-menu .neo-tab-header-toolbar,
+.fm-awaiting-merge-menu .neo-tab-strip,
+.fm-nightshift-menu .neo-tab-header-toolbar,
+.fm-nightshift-menu .neo-tab-strip {
+    --tab-indicator-background-color-active: var(--fm-signal);
+    --tab-strip-height: 2px;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* The keeper rail's active indicator spans its button's full height by engine geometry
+       (inline top/height) and met the fleet zone's horizontal indicator at the shared corner —
+       two independent tab containers, one accidental bracket. The clip keeps the engine's
+       geometry and trims both ends on the rhythm, so the strokes never touch. */
+}
+.agent-os-viewport.neo-viewport .neo-dock-left .neo-tab-button-indicator,
+.agent-os-viewport.neo-viewport .neo-dock-left .neo-active-tab-indicator,
+.fm-instance-menu .neo-dock-left .neo-tab-button-indicator,
+.fm-instance-menu .neo-dock-left .neo-active-tab-indicator,
+.fm-awaiting-merge-menu .neo-dock-left .neo-tab-button-indicator,
+.fm-awaiting-merge-menu .neo-dock-left .neo-active-tab-indicator,
+.fm-nightshift-menu .neo-dock-left .neo-tab-button-indicator,
+.fm-nightshift-menu .neo-dock-left .neo-active-tab-indicator {
+    clip-path: inset(var(--fm-space-2) 0);
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* The keeper-view nav shell — the PRIMARY tier: same family voice, quiet rail surface. */
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar {
+    --tab-button-text-color: var(--fm-ink-dim);
+    --tab-button-glyph-color: var(--fm-ink-dim);
+    --tab-button-glyph-color-pressed: var(--fm-ink);
+    --tab-button-background-color: transparent;
+    --tab-button-background-color-hover: var(--fm-panel);
+    background: var(--fm-rail);
+    border-right: 1px solid var(--fm-line);
+    /* An icon rail (#267): six rotated labels made the nav a column of text competing with the
+       content. The glyph now carries the place, so it takes the icon scale, and the label
+       stays the button's accessible name, hidden visually only (a `display: none` label would
+       leave the tree), spoken on hover by the button's tooltip. */
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button {
+    /* The active place is the button itself, pressed: a raised tile with the signal glyph.
+       An icon has no label to underline, so the rail renders no indicator line. */
+    border-radius: 8px;
+    /* upright, and without the gap a rotated label needed beside it */
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-glyph,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-glyph,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-glyph,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-glyph {
+    font-size: 16px; /* §04 recorded exception: glyph scale is not a type role */
+    margin: 0;
+    transform: none;
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-text,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-text,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-text,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button .neo-button-text {
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed {
+    background-color: var(--fm-panel-2);
+    box-shadow: inset 0 0 0 1px var(--fm-line);
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed .neo-button-glyph,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed .neo-button-glyph,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed .neo-button-glyph,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar .neo-tab-header-button.neo-button.pressed .neo-button-glyph {
+    color: var(--fm-signal);
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar {
+    /* One tile size in both states, centered in the rail: the engine widens a pressed left-dock
+       button to the whole rail and unsets its side margins, which pushed the tile off the edge. */
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button, .agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button.pressed, .agent-os-viewport.neo-viewport .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button:not(:last-child),
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button.pressed,
+.fm-instance-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button:not(:last-child),
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button.pressed,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button:not(:last-child),
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button.pressed,
+.fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar.neo-dock-left .neo-tab-header-button.neo-button:not(:last-child) {
+    align-self: center;
+    margin: 4px auto;
+    min-width: 0; /* the stock button minimum would hold it at the rail's width */
+    width: 36px;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* The shell's tab body is a layout wrapper, never a frame: the stock theme's content border
+       (1px #454B42 on three sides — the cockpit strips the same value from its dock zones) sat as
+       a foreign bracket around every keeper-view that does not paint its own edge-to-edge ground.
+       The rail's hairline above is the ONE boundary; each keeper-view owns its surface. */
+}
+.agent-os-viewport.neo-viewport .agent-shell > .neo-tab-body-container,
+.fm-instance-menu .agent-shell > .neo-tab-body-container,
+.fm-awaiting-merge-menu .agent-shell > .neo-tab-body-container,
+.fm-nightshift-menu .agent-shell > .neo-tab-body-container {
+    border: 0;
+}
+.agent-os-viewport.neo-viewport,
+.fm-instance-menu,
+.fm-awaiting-merge-menu,
+.fm-nightshift-menu {
+    /* Chat — the dockable work-area seam (placeholder until the live-pane lands). */
+}
+.agent-os-viewport.neo-viewport .agent-placeholder,
+.fm-instance-menu .agent-placeholder,
+.fm-awaiting-merge-menu .agent-placeholder,
+.fm-nightshift-menu .agent-placeholder {
+    display: grid;
+    place-items: center;
+    padding: 48px;
+    background: var(--fm-ground);
+}
+.agent-os-viewport.neo-viewport .agent-placeholder .agent-placeholder-inner,
+.fm-instance-menu .agent-placeholder .agent-placeholder-inner,
+.fm-awaiting-merge-menu .agent-placeholder .agent-placeholder-inner,
+.fm-nightshift-menu .agent-placeholder .agent-placeholder-inner {
+    max-width: 520px;
+    text-align: center;
+    font-size: 15px; /* §04 recorded exception: prose above the ladder (the placeholder's line) */
+    line-height: 1.6;
+    color: var(--fm-ink-dim);
+}
+
+/* The direct-paint owner — deliberately OUTSIDE the shared token group above (RA-1, PR #17544
+   round 1): that comma group exists to carry structural FM tokens to the floating instance menu,
+   and Sass emits every direct declaration in it for the menu root too — the menu's surface is its
+   own `--fm-panel-2` story (InstanceSwitcher.css). Only the shell viewport paints the ground, and
+   only its containers give up the stock surface. */
+.agent-os-viewport.neo-viewport {
+    /* The shell paints the designed ground itself. The viewport is not a container, and its stock
+       surface is the theme's neutral default — a foreign tone under every FM pane; the token
+       layer owns the ground exactly like it owns the panels on it. */
+    background: var(--fm-ground);
+
+    /* The FM tonal stack paints only what its token sheets declare. A container inside the shell
+       carries no stock surface of its own: the theme's neutral default was painting every pane's
+       head and rows over the pane's declared tone (the Activity stream's `--fm-rail` with
+       rgb(14,15,13) boxes inside it — read as a box grid, it was a leak). Declared on the
+       container, nearest to itself, so the theme-root declaration cannot tie. */
+    .neo-container {
+        --container-background-color: transparent;
+    }
+}
+
+/* The engine Splitter's drag proxy is a document.body child, outside every pane and the cockpit's
+   splitter mapping: it wears the dock splitter's active formula (cockpit/Container.css) on the FM
+   signal its own theme class declares, and the dock's flat, borderless geometry. */
+.neo-dragproxy.neo-splitter {
+    --splitter-border           : none;
+    --splitter-border-radius    : 0;
+    --splitter-hover-color      : color-mix(in srgb, var(--fm-signal) 45%, transparent);
+    --splitter-margin-horizontal: 0;
+    --splitter-margin-vertical  : 0;
+}

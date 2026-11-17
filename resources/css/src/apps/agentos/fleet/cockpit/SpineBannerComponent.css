@@ -1,0 +1,52 @@
+/* class: exception-only — the chip family's EXCEPTION-CLASS reference member (see Chips.css for
+   the family contract). The spine's honesty pill: a STATUS WORD naming the spine state (#23 —
+   chrome labels are never sentences). Its reason shows beside it as the bar's lead, and title/aria
+   repeat that reason with the retained cause (#533). A live
+   spine sets `hidden`, and the default `hideMode: 'removeDom'` takes the element out of the DOM
+   entirely, so nominal state costs zero pixels without this file guarding against it. That
+   inverts the usual styling brief: this element is only ever on screen when something is wrong,
+   so it has to read as an exception rather than as toolbar furniture.
+
+   Color is supplemental and token-only, per the SourceHealthMarker discipline: the word carries
+   the state, the lead beside it carries the reason, and the accent mark carries severity in
+   geometry — so no single channel is load-bearing alone, and the pill survives a viewer who
+   cannot separate the two state hues. Geometry consumes the family tokens; both-theme adaptation
+   is automatic through the --fm-* token layer. */
+.fm-spine-banner {
+    /* Local indirection so the state classes rebind ONE token instead of restating the ruleset —
+       the StateDot / SourceHealthMarker pattern. The default is the neutral ink: if a future `kind`
+       ever reaches the DOM without a matching class below, it renders quiet and readable rather
+       than borrowing a severity colour it did not earn. */
+    --fm-spine-mark: var(--fm-ink-dim);
+
+    display      : inline-flex;
+    align-items  : center;
+    /* shrinkable on purpose — historical note: the old full-sentence line's nowrap min-content
+       (~536px) once became the whole cockpit's width floor. The #23 cut moved the sentence to
+       title/aria; the visible STATUS WORD is naturally narrow, so no shrink floor is needed and
+       the ellipsis below is a last resort, not the design. */
+    flex         : 0 1 auto;
+    min-width    : 0;
+    max-width    : 100%;
+    padding      : var(--fm-chip-pad-y) var(--fm-chip-pad-x);
+    border-left  : var(--fm-chip-mark-w) solid var(--fm-spine-mark);
+    border-radius: var(--fm-chip-radius);
+    background: color-mix(in srgb, var(--fm-spine-mark) 10%, transparent);
+    color     : var(--fm-ink);
+    font         : var(--fm-text-detail);
+    white-space  : nowrap;
+    overflow     : hidden;
+    text-overflow: ellipsis;
+
+    /* cold — the spine is unreachable and the roster is SAMPLE data. The most severe thing this line
+       can say: everything on screen is fiction, and an operator must not mistake it for the fleet. */
+    &.fm-spine-banner-cold {
+        --fm-spine-mark: var(--fm-state-wedged);
+    }
+
+    /* degraded — reachable, serving last-known data. Real, but behind: a weaker claim than cold, and
+       the colour says so rather than flattening both into one alarm. */
+    &.fm-spine-banner-degraded {
+        --fm-spine-mark: var(--fm-state-idle);
+    }
+}

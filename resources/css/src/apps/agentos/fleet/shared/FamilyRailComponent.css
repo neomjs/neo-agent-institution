@@ -1,0 +1,35 @@
+/* Model-family rail — a thin spine bound from the current-era family token via the rail's
+   fm-family-* class (FamilyRail's familyClass resolver — the component swaps a class, never writes a
+   style); an unclassified/absent family renders a hatched neutral rail, visibly distinct from any
+   real family. */
+/* A copy of the shared rules of src/apps/agentos/fleet/shared/_family-ink.css; the other copy: src/apps/agentos/fleet/roster/card/Container.css. Keep them identical. */
+/* The family class → ink mapping, the closed FAMILY_TOKEN set (apps/agentos/util/FamilyTokens.mjs).
+   Every surface that speaks a resident's family colour — the rail spine, the avatar monogram — binds
+   `--fm-rail` through the same fm-family-* class FamilyRail's resolver swaps, so the mapping lives
+   once and a new family lands here and in FamilyTokens, nowhere else. The neutral fallback stays with
+   each consumer (`var(--fm-rail, var(--fm-state-off))`): an unclassified family reads as no family,
+   never as a guessed one. */
+
+.fm-family-rail {
+    width        : 4px; /* film-legible at 720p — 3px read as absent through the video pipeline */
+    align-self   : stretch;
+    border-radius: 3px 0 0 3px;
+    background   : var(--fm-rail, var(--fm-state-off));
+
+    /* family class → rail token: the shared mapping (`_family-ink.scss`), bound once for every
+       family-coloured surface */
+    /* A copy of the shared family-ink block; the other copy: src/apps/agentos/fleet/roster/card/Container.css. Keep them identical. */
+    &.fm-family-claude { --fm-rail: var(--fm-family-claude); }
+    &.fm-family-gpt    { --fm-rail: var(--fm-family-gpt); }
+    &.fm-family-gemini { --fm-rail: var(--fm-family-gemini); }
+    &.fm-family-human  { --fm-rail: var(--fm-family-human); }
+    &.fm-family-kimi   { --fm-rail: var(--fm-family-kimi); }
+
+    &.fm-family-unclassified {
+        background: repeating-linear-gradient(
+            135deg,
+            var(--fm-state-off), var(--fm-state-off) 2px,
+            transparent 2px, transparent 4px
+        );
+    }
+}

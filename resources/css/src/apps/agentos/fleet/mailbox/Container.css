@@ -1,0 +1,141 @@
+/* AgentOS.view.fleet.MailboxPane — the read-only A2A inbox mirror, skinned mount-agnostically.
+   The rules live here unscoped because the pane is host-generic by contract: today's one host is
+   the south pane's operator drawer (composed by OperatorMailbox), and the mount-agnostic skin is
+   what lets a future selection-scoped subject host (or a pop-out) compose it without a re-skin.
+   Per the drawer-shell contract (#17209): no outer padding, no
+   surface — the host owns the frame; every color reads from the --fm-* token layer.
+   §04 rhythm record (#17265): off-rhythm survivors — root gap 6, state pad 12/10, row pad 6/8 +
+   row gaps 6/4, thread indent 14, meta top 3, pill pads 2/7 — recorded here, deferred to the
+   #17268 pane-composition pass. Pill registers keep their site-visible `line-height: 1`. */
+.fm-mailbox-pane {
+    container-name: fm-mailbox-pane;   /* the narrow regime below stacks the list over the detail */
+    container-type: inline-size;
+    gap       : 6px;
+    min-height: 0;
+    /* The sibling of the min-height above, and mount-agnostic for the same reason: a flex item's
+       automatic minimum size is its content size, so without this the pane cannot shrink below its
+       rows' intrinsic width. A retired rail-tab host once measured 1081.64px inside a 256px slot
+       (#17313) — the pop-out host never showed it, because an OS window viewport bounds the pane
+       for free. Same defect, two geometries, only one of them forgiving. */
+    min-width : 0;
+
+    /* the freshness ledger chip — the S1 vocabulary, verbatim from the AgentDetail sibling so the
+       cockpit speaks ONE freshness language in both mounts (values must not drift; see
+       AgentDetail.css for the tone rationale incl. the .is-lost AA treatment) */
+    .fm-freshness {
+        flex         : none;
+        font         : var(--fm-text-micro);   /* 9px → micro: the ruled deliberate growth (nothing below 10px ships) */
+        line-height  : 1;
+        white-space  : nowrap;
+        padding      : 2px 7px;
+        border-radius: 999px;
+        background   : color-mix(in srgb, currentColor 12%, transparent);
+        color        : var(--fm-ink-dim);
+
+        &.is-fresh {
+            color: var(--fm-signal);
+        }
+
+        &.is-stale {
+            color: var(--fm-state-wedged);
+        }
+
+        &.is-lost {
+            color     : var(--fm-ink);
+            background: color-mix(in srgb, var(--fm-kind-alert) 30%, transparent);
+        }
+
+        &.is-unobserved {
+            color: var(--fm-ink-dim);
+        }
+    }
+
+    /* the honest-state line: unobserved/empty stay muted (absence is not an error);
+       a denial is a NAMED access fact — readable ink on an alert-tinted panel, mirroring
+       the freshness .is-lost AA treatment; a degrade uses the wedged tone */
+    .fm-mailbox-state {
+        padding      : var(--fm-space-3) 10px;
+        font         : var(--fm-text-detail);
+        color        : var(--fm-ink-dim);
+        border       : 1px solid var(--fm-line-soft);
+        border-radius: 6px;
+
+        &.is-denied {
+            color     : var(--fm-ink);
+            background: color-mix(in srgb, var(--fm-kind-alert) 18%, transparent);
+        }
+
+        &.is-degraded {
+            color: var(--fm-state-wedged);
+        }
+    }
+
+    /* the open questions' `read on` sits under the line that says why, at its own width */
+    .fm-mailbox-read-on {
+        align-self: flex-start;
+    }
+
+    /* the list beside the open message, the Memories pane's reading split: the list two shares,
+       the detail one, the splitter resizing the list; when a publish-request card is open in the
+       wide regime, the detail column takes the wider share so the card's 52ch-62ch post + reply
+       target sit side-by-side without squeezing */
+    .fm-mailbox-body {
+        gap       : var(--fm-space-2);
+        min-height: 0;
+
+        &:has(.fm-publish-request-card:not(.neo-hidden)) {
+            flex: 1 0 auto !important;
+
+            > .fm-mailbox-grid {
+                flex: 1 1 0% !important;
+            }
+
+            > .fm-mailbox-detail {
+                flex: 2.5 1 0% !important;
+            }
+        }
+    }
+
+    &:has(.fm-publish-request-card:not(.neo-hidden)) {
+        flex: 1 0 auto !important;
+    }
+
+    /* the rows body is the buffered mailbox grid (Grid.css owns the designed row anatomy);
+       this skin only slots it into the pane's vertical rhythm */
+    .fm-mailbox-grid {
+        overflow  : auto;
+        min-width : 0;
+        min-height: 0;
+    }
+}
+
+/* the narrow regime (a popped-out or vessel-width pane, 720 px and below): the list over the open
+   message, never a squeezed pair; the selected row stays in view above it, and the splitter's drag
+   has no axis here */
+@container fm-mailbox-pane (max-width: 720px) {
+    .fm-mailbox-pane .fm-mailbox-body {
+        flex-direction: column !important;   /* beats the hbox layout's row */
+    }
+
+    .fm-mailbox-pane .fm-mailbox-grid {
+        flex : 1 1 0% !important;   /* beats the wrapperStyle a wide-regime drag writes */
+        width: auto !important;
+    }
+
+    .fm-mailbox-pane .fm-mailbox-splitter {
+        display: none;
+    }
+
+    .fm-mailbox-pane .fm-mailbox-detail {
+        flex        : 0 1 auto !important;
+        padding-left: 0;
+        padding-top : var(--fm-space-2);
+        border-left : none;
+        border-top  : 1px solid var(--fm-line-soft);
+
+        /* stacked, the body scrolls inside a capped height so the strip stays reachable */
+        .fm-mailbox-detail-body {
+            max-height: 40vh;
+        }
+    }
+}
