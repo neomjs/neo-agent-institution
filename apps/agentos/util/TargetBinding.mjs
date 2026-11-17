@@ -1,5 +1,6 @@
 import Base               from '../../../node_modules/neo.mjs/src/core/Base.mjs';
 import FleetAdmission     from './FleetAdmission.mjs';
+import GoldenPathEnvelope from './GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope from './GraphSceneEnvelope.mjs';
 import PlaneAdmission     from './PlaneAdmission.mjs';
 
@@ -7,12 +8,12 @@ import PlaneAdmission     from './PlaneAdmission.mjs';
  * @module apps/agentos/util/TargetBinding
  * @summary The rule the cockpit's retained truth obeys: rows a store holds belong to the profile
  * whose answer produced them. `DeploymentStateRead` stamps its picture with the answering
- * `profileId`; this helper brings the roster, the activity feed, the graph scene and the operator's
- * own mailbox under the same rule, lifted beside the liveness owner (which holds the size bar). The
- * activity feed's clear also serves its other authorities, the Activity mode and the observer admission
- * ({@link AgentOS.util.ActivityObserver}). A read through a bridge bound to
+ * `profileId`; this helper brings the roster, the activity feed, the Golden Path, the graph scene and
+ * the operator's own mailbox under the same rule, lifted beside the liveness owner (which holds the size
+ * bar). The activity feed's clear also serves its other authorities, the Activity mode and the observer
+ * admission ({@link AgentOS.util.ActivityObserver}). A read through a bridge bound to
  * ANOTHER profile first retires the previous profile's truth — both stores empty, both surfaces read
- * `cold`, the graph leaf returns to unobserved, the roster-derived consumers re-snapshot —
+ * `cold`, the Golden Path and graph leaves return to unobserved, the roster-derived consumers re-snapshot —
  * so the new profile's first live answer is a first admission, and its failure shows its own cold
  * truth instead of another instance's residents labelled `stale`. The generation fences only drop
  * a LATE answer from the previous bridge; nothing else touched rows already admitted. A
@@ -179,6 +180,35 @@ class TargetBinding extends Base {
 
         reader.snapshot  = null;
         reader.profileId = null;
+
+        return true
+    }
+
+    /**
+     * @summary Retire the Golden Path when the bridge in hand belongs to another profile than the read
+     * the leaf holds or the read on the wire. The leaf returns to unobserved, so a failed first read lands
+     * as unavailable, never as another instance's route withheld; the read in flight stops counting and
+     * its fence moves, so it neither holds back nor lands over the new profile's read.
+     * @param {AgentOS.view.fleet.cockpit.ReadingSurfacesController} owner The reading-surfaces owner.
+     * @param {Object} options
+     * @param {String|null} options.profileId The profile the bridge in hand is bound to.
+     * @returns {Boolean} whether a retirement happened
+     */
+    static retireGoldenPath(owner, {profileId}) {
+        const
+            flight = owner.goldenPathFlight,
+            held   = owner.goldenPathHeld;
+
+        if ((!held || owner.goldenPathProfileId === profileId) && (!flight || flight.profileId === profileId)) {
+            return false
+        }
+
+        owner.goldenPathFlight    = null;
+        owner.goldenPathHeld      = false;
+        owner.goldenPathProfileId = null;
+        owner.goldenPathReadGeneration++;
+
+        held && owner.component.getStateProvider()?.setData({goldenPathEnvelope: GoldenPathEnvelope.blank()});
 
         return true
     }

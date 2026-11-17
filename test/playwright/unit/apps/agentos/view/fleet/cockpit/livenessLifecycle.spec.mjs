@@ -965,7 +965,6 @@ test.describe('Fleet cockpit — the liveness owner lifecycle (start/stop, #1529
         host.component.getStateProvider = () => ({setData: ({systemTickAt}) => ticks.push(systemTickAt)});
         host.component.getOperatorMailboxPane = () => mailbox;
         host.component.getGoldenPathPane      = () => goldenPath;
-        host.goldenPathReadInFlight           = 0;
 
         Object.keys(launched).forEach(key => {
             host[LivenessCadence.READS[key].load] = () => { launched[key]++; return Promise.resolve() }

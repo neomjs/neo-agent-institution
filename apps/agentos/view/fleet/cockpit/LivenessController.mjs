@@ -900,7 +900,8 @@ class LivenessController extends ViewerWakeController {
 
     /**
      * @summary The Reconnect affordance's one-click re-drive: every liveness seam immediately —
-     * deliberately NOT capped (a direct call is operator-meant, never suppressed). The pane
+     * deliberately NOT capped (a direct call is operator-meant, never suppressed). The Golden Path reads
+     * one at a time, so it joins a read already on the wire. The pane
      * histories ride it through each pane's own guarded refresh handler: they have no cadence at
      * all, so a failed first read would otherwise pin its unavailable envelope forever. A standing
      * credential cause is asked about again too: the shell's answer is the one that clears it.
