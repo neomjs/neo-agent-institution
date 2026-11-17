@@ -255,7 +255,7 @@ apps/agentos/util/FloatingMenuTheme.mjs
     56ca718195dd69938a4485eb32b503fefe523f7f
 
 apps/agentos/util/GoldenPathEnvelope.mjs
-    b112a479ca39a63d579e8dc5f13926fe6a9aa3a0
+    db4053ad30535328bff4687c2eef660f736ec512
 
 apps/agentos/util/GraphNodeSource.mjs
     dafd1c43eec7c472203706bd1e61537a564b1acb
@@ -270,7 +270,7 @@ apps/agentos/util/KindRegistry.mjs
     3dbea1568b0061dd900a2b354270e2509a730d1b
 
 apps/agentos/util/LivenessCadence.mjs
-    4275a2a020d6ceb01f5bcd72426653f8d1b57ec3
+    ff4c2094739700fbfffb0940f4410f836be90c15
 
 apps/agentos/util/NameSlot.mjs
     8becd38529a5534802d079fa18aa4fcb3c41a9c4
@@ -348,7 +348,7 @@ apps/agentos/util/StageWindow.mjs
     3a7d9e3626185ac8020073e9e926b7140a4a0b01
 
 apps/agentos/util/TargetBinding.mjs
-    d1eca9dc32e8b6330198aaadd5f7e00d4303aa0e
+    96ef46964826701b19a21a89a2c870deb37061c9
 
 apps/agentos/util/Telltale.mjs
     8643f9ab2eca6b946606f6411fa290279516550a
@@ -405,10 +405,10 @@ apps/agentos/view/fleet/cockpit/FleetBatchController.mjs
     7b4f54fb640975167ec3dc729882d1130d18c08e
 
 apps/agentos/view/fleet/cockpit/LivenessController.mjs
-    fa5a2b0ce81b168540ac914b1f3bba006f20fa8f
+    6a009dffda5cd98d6e573e041aea546d7a61ce23
 
 apps/agentos/view/fleet/cockpit/ReadingSurfacesController.mjs
-    9da5266ecca53fb1dad92d4cea833495b45674aa
+    52b8bfe9626cd2d1f21b8ef0b165dbeb4343d9a4
 
 apps/agentos/view/fleet/cockpit/SpineBannerComponent.mjs
     b3cc52bb3cf1a3a1935762dfee82ade6af47d501
@@ -417,7 +417,7 @@ apps/agentos/view/fleet/cockpit/StateProvider.mjs
     d0a2486866d3ed404cce2519def4cc6e05ac9db8
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
-    b221692b44ea6aa07a74cf17cb48d9e9eef8210c
+    f4050775d813e70fd4d17b29514297279f9357ec
 
 apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs
     ace8b3c5b0f6e52d4c3faafd738263e543ecfed3
@@ -468,7 +468,7 @@ apps/agentos/view/fleet/detail/ThoughtStreamList.mjs
     d5d6baa7a98d3ee6e6f3adb5a2499a252a6766c7
 
 apps/agentos/view/fleet/goldenpath/Container.mjs
-    e2b127838254f6fa5ab6512f19793c94aea2aa03
+    4e5d3dfa2643520bd7912d69bc1609c37cf9b635
 
 apps/agentos/view/fleet/goldenpath/ObservatoryCanvas.mjs
     14f0c9064cc032c4b4d4010c3ed03f9adc3f698c
@@ -903,7 +903,7 @@ test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs-snapshots/agen
     eb7409d809b7dfe09527323a3e4a68ba111e45f4
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs
-    f0e4e7854cb30d1f6a4dd2f4ecace2d658fac64e
+    0a137eb3e25bdddb32681e09ec68cf241cedaa81
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-current-dark-chromium-darwin.png
     be0e77f94e8e142b6f0e4ec41ea6bcd880df635e

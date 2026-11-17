@@ -5,8 +5,9 @@ import GoldenPathEnvelope from '../../../apps/agentos/util/GoldenPathEnvelope.mj
  * `Neo.worker.App.loadModule`, it lands one fixture wire envelope in the cockpit StateProvider's
  * `goldenPathEnvelope` leaf the way the Golden Path read does (`GoldenPathEnvelope.fromWire`, then
  * `setData`), which no remote of the App worker exposes. The fixture instants sit on the visual
- * suite's pinned 2026-07-05 day. Every distinct URL executes once (module cache), so a spec varies
- * the `t` parameter per call.
+ * suite's pinned 2026-07-05 day; the current route expires on that day in 2099, because the pane
+ * measures currency against the viewer's clock and the older-day form shows no year. Every distinct
+ * URL executes once (module cache), so a spec varies the `t` parameter per call.
  *
  * `?state=current|withheld|degraded|unavailable&t=<n>`
  */
@@ -33,11 +34,11 @@ const
         schemaVersion: 'computed-route.v1',
         status       : 'fresh',
         capturedAt,
-        expiresAt    : '2026-07-05T11:30:00.000Z',
+        expiresAt    : '2099-07-05T11:30:00.000Z',
         expired      : false,
         routeVersion : 'r-17',
         kind         : 'computed-ranked',
-        freshness    : {status: 'fresh', checkedAt: capturedAt, expiresAt: '2026-07-05T11:30:00.000Z'},
+        freshness    : {status: 'fresh', checkedAt: capturedAt, expiresAt: '2099-07-05T11:30:00.000Z'},
         provenance   : {producer: 'golden-path-synthesizer', runId: 'run-9', algorithmVersion: 'v1'},
         items
     },

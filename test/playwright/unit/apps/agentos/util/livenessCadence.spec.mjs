@@ -46,7 +46,7 @@ test.describe('AgentOS.util.LivenessCadence', () => {
         dueAt = minute.dueAt;
 
         expect(LivenessCadence.plan(dueAt, {cap: 2, inFlight: idle, intervals, now: 120000}).launch)
-            .toEqual(['activity', 'roster', 'brainHealth', 'tasks', 'deploymentState', 'openWork', 'operatorInbox', 'recentTurns'])
+            .toEqual(['activity', 'roster', 'brainHealth', 'tasks', 'deploymentState', 'openWork', 'operatorInbox', 'recentTurns', 'goldenPath'])
     });
 
     test('a due read whose wires fill the cap does not launch, and still waits a whole interval', () => {
@@ -89,7 +89,7 @@ test.describe('AgentOS.util.LivenessCadence', () => {
         expect(recovered.launch).toContain('operatorInbox')
     });
 
-    test('ten minutes of default passes launch 45 Memory Core reads plus 10 open-work reads, and 10 recent-turns passes that ask nothing without a seat shown', () => {
+    test('ten minutes of default passes with no current route launch 50 Memory Core reads plus 10 open-work reads, and 10 recent-turns passes that ask nothing without a seat shown', () => {
         let dueAt    = LivenessCadence.create(0, intervals),
             launched = Object.fromEntries(Object.keys(LivenessCadence.READS).map(key => [key, 0]));
 
@@ -100,10 +100,28 @@ test.describe('AgentOS.util.LivenessCadence', () => {
             dueAt     = pass.dueAt
         }
 
+        // the Golden Path's five are its retries while no route is current; a current route moves its read to the route's expiry
         expect(launched).toEqual({
-            activity: 10, roster: 10, brainHealth: 5, tasks: 5, deploymentState: 5, openWork: 10, operatorInbox: 10, recentTurns: 10
+            activity: 10, roster: 10, brainHealth: 5, tasks: 5, deploymentState: 5, openWork: 10, operatorInbox: 10, recentTurns: 10, goldenPath: 5
         });
-        expect(Object.values(launched).reduce((sum, count) => sum + count, 0) - launched.openWork - launched.recentTurns).toBe(45)
+        expect(Object.values(launched).reduce((sum, count) => sum + count, 0) - launched.openWork - launched.recentTurns).toBe(50)
+    });
+
+    test('reschedule sets one read\'s due time later or earlier; the Golden Path read holds one wire at most', () => {
+        const
+            dueAt = LivenessCadence.create(0, intervals),
+            later = LivenessCadence.reschedule(dueAt, 'goldenPath', 3600000);
+
+        expect(later).toEqual({...dueAt, goldenPath: 3600000});
+        expect(later).not.toBe(dueAt);
+        expect(LivenessCadence.reschedule(later, 'goldenPath', 5000).goldenPath, 'unlike expedite, it moves both ways').toBe(5000);
+
+        const capped = LivenessCadence.plan(LivenessCadence.create(0, intervals), {
+            cap: 2, inFlight: key => key === 'goldenPath' ? 1 : 0, intervals, now: 120000
+        });
+
+        expect(capped.launch).not.toContain('goldenPath');
+        expect(capped.launch).toContain('tasks')
     });
 
     test('the next roster read lands inside the window the packaged smoke waits after a popup closes', () => {

@@ -9,11 +9,13 @@ import {expect, test} from '../../fixtures.mjs';
  * fails, so the first state the pane shows is the unavailable one, never an empty route.
  *
  * Instants are a fixed older day: ViewerTime's older-day form carries no year, so the goldens read
- * the same on every capture day (the visual-baseline determinism rule).
+ * the same on every capture day (the visual-baseline determinism rule). The expiry is that day's
+ * evening in 2099: the pane measures currency against the viewer's clock, and the missing year
+ * keeps its text, and so the goldens, as they were.
  */
 const
     CAPTURED_AT = '2026-07-05T08:00:00.000Z',
-    EXPIRES_AT  = '2026-07-05T20:00:00.000Z',
+    EXPIRES_AT  = '2099-07-05T20:00:00.000Z',
     LONG_TITLE  = 'Keep the full recommendation title and its supporting context readable when the pane narrows, so the operator can choose the next task without guessing at clipped labels',
     route       = overrides => ({
         schemaVersion: 'computed-route.v1',
@@ -175,5 +177,37 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         expect(tallPane.paneBox.client, 'the taller viewport gives the pane more height than the short fixture needs').toBeGreaterThan(400);
         expect(tallPane.columnBox.scroll).toBeLessThanOrEqual(tallPane.columnBox.client + 1);
         expect(tallPane.paneBox.scroll).toBeLessThanOrEqual(tallPane.paneBox.client + 1)
+    });
+
+    test('a route left open past its expiry reads withheld on the next pass, and that pass launches one read (#898 AC-6)', async ({page, neuralLink}) => {
+        await page.setViewportSize({width: 1600, height: 1100});
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
+
+        const app = await neuralLink.connectToApp('AgentOS');
+
+        await page.getByRole('tab', {name: 'Golden Path', exact: true}).click();
+
+        const
+            currency   = page.locator('.fm-golden-path-pane .fm-golden-path-currency'),
+            [cockpit]  = await app.queryComponent({className: 'AgentOS.view.fleet.cockpit.Container'}, ['id']),
+            controller = (await app.getComponent(cockpit.properties.id, ['controller'])).controller.id,
+            reads      = async () => (await app.getComponent(controller, ['goldenPathReadGeneration'])).goldenPathReadGeneration,
+            expiresAt  = Date.now() + 600000;
+
+        await expect(currency, 'the failed first read answers first').toHaveText(/^Typed route · unavailable · fleet golden path read failed$/);
+        await app.callMethod(controller, 'writeGoldenPath', [{...STATES[0][1], route: route({expiresAt: new Date(expiresAt).toISOString()})}]);
+        await expect(currency).toHaveText(/^Typed route · current · captured /);
+
+        const before = await reads();
+
+        // the pass the operator's clock reaches one second after the route's expiry: no new envelope, no click
+        await app.callMethod(controller, 'onLivenessTick', [expiresAt + 1000]);
+
+        // this bridge's read fails, so the launched re-read keeps the route on screen with its reason
+        await expect(currency).toHaveText(/^Typed route · withheld · fleet golden path read failed · last known good route, captured /);
+        await expect(currency).toHaveClass(/(?:^|\s)is-withheld(?:\s|$)/);
+        await expect.poll(reads, {message: 'that pass launched exactly one Golden Path read'}).toBe(before + 1);
+        await expect(page.locator('.fm-golden-path-markdown')).toContainText('Captured at: 2026-07-05 08:00 UTC')
     });
 });

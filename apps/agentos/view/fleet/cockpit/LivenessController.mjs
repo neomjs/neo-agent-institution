@@ -811,7 +811,7 @@ class LivenessController extends ViewerWakeController {
 
         if (me.livenessHidden || me.isDestroyed) return;
 
-        cockpit.getOperatorMailboxPane()?.set({now});
+        [cockpit.getOperatorMailboxPane(), cockpit.getGoldenPathPane()].forEach(pane => pane?.set({now}));
 
         const {launch, dueAt} = LivenessCadence.plan(me.livenessSchedule, {
             cap      : cockpit.maxReadsInFlight,
@@ -900,10 +900,10 @@ class LivenessController extends ViewerWakeController {
 
     /**
      * @summary The Reconnect affordance's one-click re-drive: every liveness seam immediately —
-     * deliberately NOT capped (a direct call is operator-meant, never suppressed). The pane
-     * histories ride it through each pane's own guarded refresh handler: they have no cadence at
-     * all, so a failed first read would otherwise pin its unavailable envelope forever. A standing
-     * credential cause is asked about again too: the shell's answer is the one that clears it.
+     * deliberately NOT capped (a direct call is operator-meant, never suppressed), but the Golden Path joins
+     * its read on the wire. Pane histories ride it through each pane's own guarded refresh handler: they
+     * have no cadence, so a failed first read would otherwise pin its unavailable envelope forever. A
+     * standing credential cause is asked about again too: the shell's answer is the one that clears it.
      */
     reconnectFleet() {
         const

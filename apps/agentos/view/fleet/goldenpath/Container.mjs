@@ -43,6 +43,14 @@ class GoldenPathPane extends Container {
          */
         envelope_: null,
         /**
+         * The viewer's clock (epoch ms) the facts row is measured against. The cockpit's liveness pass
+         * sets it, so the currency word and the stamps age without a new envelope; `null` reads the clock
+         * at each apply.
+         * @member {Number|null} now_=null
+         * @reactive
+         */
+        now_: null,
+        /**
          * @member {Object} layout={ntype:'vbox',align:'stretch'}
          * @reactive
          */
@@ -132,6 +140,15 @@ class GoldenPathPane extends Container {
         this.isConstructed && this.applyEnvelope()
     }
 
+    /**
+     * @summary A new pass instant re-applies the facts row against it.
+     * @param {Number|null} value
+     * @param {Number|null} oldValue
+     */
+    afterSetNow(value, oldValue) {
+        this.isConstructed && this.applyEnvelope()
+    }
+
     /** @summary Re-read the computed route. */
     onRefreshClick() {
         this.fire('goldenPathRequest', {})
@@ -143,7 +160,8 @@ class GoldenPathPane extends Container {
      */
     applyEnvelope() {
         const envelope   = this.envelope,
-              currency   = GoldenPathEnvelope.currency(envelope),
+              now        = this.now ?? Date.now(),
+              currency   = GoldenPathEnvelope.currency(envelope, now),
               handoff    = envelope?.handoff,
               route      = GoldenPathEnvelope.routeOf(envelope),
               currencyEl = this.getReference('golden-path-currency'),
@@ -151,38 +169,41 @@ class GoldenPathPane extends Container {
               markdownEl = this.getReference('golden-path-markdown'),
               remEl      = this.getReference('golden-path-rem'),
               sourceEl   = this.getReference('golden-path-provenance'),
-              stampedAt  = route ? route.capturedAt : envelope?.capability?.capturedAt;
+              stampedAt  = route ? route.capturedAt : envelope?.capability?.capturedAt,
+              title      = stampedAt ? ViewerTime.viewerTimeTitle(stampedAt) : null;
 
         if (currencyEl) {
-            currencyEl.set({cls: ['fm-golden-path-currency', `is-${currency}`], text: this.currencyText(envelope, currency)});
-            currencyEl.changeVdomRootKey('title', stampedAt ? ViewerTime.viewerTimeTitle(stampedAt) : null)
+            currencyEl.set({cls: ['fm-golden-path-currency', `is-${currency}`], text: this.currencyText(envelope, currency, now)});
+            // a pass re-applies every 15 s: only a changed title is worth a vdom update
+            (currencyEl.getVdomRoot().title ?? null) !== title && currencyEl.changeVdomRootKey('title', title)
         }
 
         remEl && (remEl.text = this.remText(envelope));
 
-        const handoffState = this.handoffText(handoff);
+        const handoffState = this.handoffText(handoff, now);
 
         handoffEl?.set({hidden: !handoffState, text: handoffState});
         markdownEl && (markdownEl.value = typeof handoff?.markdown === 'string' ? handoff.markdown : null);
 
-        sourceEl && (sourceEl.text = this.provenanceText(route))
+        sourceEl && (sourceEl.text = this.provenanceText(route, now))
     }
 
     /**
      * @summary The currency line, in the producer's words.
      * @param {Object|null} envelope
      * @param {String} currency
+     * @param {Number} now The viewer's clock, epoch ms.
      * @returns {String}
      */
-    currencyText(envelope, currency) {
+    currencyText(envelope, currency, now) {
         const route = GoldenPathEnvelope.routeOf(envelope);
 
         switch (currency) {
             case 'unobserved' : return 'Typed route · not observed yet';
             case 'unavailable': return `Typed route · unavailable · ${envelope.capability?.reason || 'no reason given'}`;
             case 'degraded'   : return `Typed route · degraded · ${envelope.capability?.reason || envelope.sources?.route?.reason || 'no route'}`;
-            case 'withheld'   : return `Typed route · withheld · ${GoldenPathEnvelope.withheldReason(envelope)} · last known good route, captured ${this.formatStamp(route.capturedAt)}`;
-            default           : return `Typed route · current · captured ${this.formatStamp(route.capturedAt)}`
+            case 'withheld'   : return `Typed route · withheld · ${GoldenPathEnvelope.withheldReason(envelope, now)} · last known good route, captured ${this.formatStamp(route.capturedAt, now)}`;
+            default           : return `Typed route · current · captured ${this.formatStamp(route.capturedAt, now)}`
         }
     }
 
@@ -190,12 +211,13 @@ class GoldenPathPane extends Container {
      * @summary Names the handoff artifact's own freshness independently from the typed route. `mtimeMs`
      * means the source document changed; it is never presented as the Golden Path's capture instant.
      * @param {Object|null} handoff
+     * @param {Number} now The viewer's clock, epoch ms.
      * @returns {String}
      */
-    handoffText(handoff) {
+    handoffText(handoff, now) {
         if (!handoff || typeof handoff !== 'object') return '';
 
-        const updated = Number.isFinite(handoff.mtimeMs) ? this.formatStamp(handoff.mtimeMs) : null;
+        const updated = Number.isFinite(handoff.mtimeMs) ? this.formatStamp(handoff.mtimeMs, now) : null;
 
         if (typeof handoff.markdown !== 'string') {
             return handoff.reason ? `Recommendation unavailable · ${handoff.reason}` : 'Recommendation unavailable'
@@ -224,25 +246,27 @@ class GoldenPathPane extends Container {
      * @summary The producer's provenance for the route shown. The run id is the one value this line exists
      * to show, so its absence is said in words rather than as `unknown`.
      * @param {Object|null} route
+     * @param {Number} now The viewer's clock, epoch ms.
      * @returns {String}
      */
-    provenanceText(route) {
+    provenanceText(route, now) {
         if (!route) return '';
 
         const
             {producer, runId, algorithmVersion} = route.provenance || {},
             run = runId ? `run ${runId}` : 'run id not recorded by the synthesizer';
 
-        return `${producer || 'unknown producer'} · ${run} · ${algorithmVersion || 'unknown algorithm'} · expires ${this.formatStamp(route.expiresAt)}${route.expired === true ? ' (expired)' : ''}`
+        return `${producer || 'unknown producer'} · ${run} · ${algorithmVersion || 'unknown algorithm'} · expires ${this.formatStamp(route.expiresAt, now)}${GoldenPathEnvelope.isExpired(route, now) ? ' (expired)' : ''}`
     }
 
     /**
-     * @summary Viewer-local stamp via the shared cockpit formatter.
+     * @summary Viewer-local stamp via the shared cockpit formatter, on the viewer's day as of `now`.
      * @param {Date|String|Number|null} value
+     * @param {Number} now The viewer's clock, epoch ms.
      * @returns {String}
      */
-    formatStamp(value) {
-        return ViewerTime.formatViewerTime(value)?.text ?? 'unknown time'
+    formatStamp(value, now) {
+        return ViewerTime.formatViewerTime(value, {now})?.text ?? 'unknown time'
     }
 }
 

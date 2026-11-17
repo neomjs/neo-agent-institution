@@ -11,6 +11,8 @@ import * as core              from '../../../../../../../../node_modules/neo.mjs
 import FleetCockpitController from '../../../../../../../../apps/agentos/view/fleet/cockpit/Controller.mjs';
 import GoldenPathEnvelope     from '../../../../../../../../apps/agentos/util/GoldenPathEnvelope.mjs';
 import GraphSceneEnvelope     from '../../../../../../../../apps/agentos/util/GraphSceneEnvelope.mjs';
+import LivenessCadence        from '../../../../../../../../apps/agentos/util/LivenessCadence.mjs';
+import Provider               from '../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs';
 
 // the load is a CONTROLLER method: a prototype host with a recording provider on the component seat
 // drives it as production code, like the catch-up owner spec
@@ -18,12 +20,23 @@ const makeHost = () => {
     const writes = [];
 
     return Object.assign(Object.create(FleetCockpitController.prototype), {
-        component               : {getStateProvider: () => ({setData: data => writes.push(data)})},
+        component               : {getStateProvider: () => ({getData: () => undefined, setData: data => writes.push(data)}), livenessReadTimeout: 10000},
         goldenPathReadGeneration: 0,
         graphSceneReadGeneration: 0,
         isDestroyed             : false,
         writes
     })
+};
+
+// the same host on a real provider: the failed re-read reads the landed leaf back through the engine
+const makeProviderHost = () => {
+    const
+        provider = Neo.create(Provider, {data: {goldenPathEnvelope: GoldenPathEnvelope.blank()}}),
+        host     = makeHost();
+
+    host.component = {getStateProvider: () => provider, livenessCadence: LivenessCadence.DEFAULT_INTERVALS, livenessReadTimeout: 10000};
+
+    return {host, provider}
 };
 
 const clearBridge = () => { delete globalThis.AgentOS?.fleet };
@@ -62,23 +75,231 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         expect(failed.writes).toHaveLength(1)
     });
 
-    test('an older read loses the generation race and writes nothing', async () => {
-        let resolveOld,
+    test('a request while a read is on the wire shares it: the cadence, Refresh, Reconnect and admission ask one wire (#898 AC-3)', async () => {
+        let release,
             reads = 0;
 
-        const host = makeHost(),
-              old  = new Promise(resolve => { resolveOld = resolve });
+        const
+            host     = makeHost(),
+            envelope = {capability: {state: 'degraded', reason: 'route-sidecar-missing'}},
+            landed   = GoldenPathEnvelope.fromWire(envelope);
 
-        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: () => ++reads === 1 ? old : Promise.resolve({capability: {state: 'degraded', reason: 'new'}})}};
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: () => { reads++; return new Promise(resolve => { release = resolve }) }}};
 
-        const first  = host.loadGoldenPath(),
-              second = host.loadGoldenPath();
+        // the cadence's launch holds the wire; Refresh, then Reconnect or the admission recovery, ask meanwhile
+        const asked = [host.loadGoldenPath(), host.onGoldenPathRequest(), host.loadGoldenPath()];
 
-        await second;
-        resolveOld({capability: {state: 'wired'}});
+        await Promise.resolve();
+        expect(reads, 'one wire').toBe(1);
+        expect(host.goldenPathReadInFlight).toBe(1);
+
+        release(envelope);
+
+        expect(await Promise.all(asked)).toEqual([landed, landed, landed]);
+        expect(host.writes.filter(write => write.goldenPathEnvelope), 'one landing').toEqual([{goldenPathEnvelope: landed}]);
+        expect(host.goldenPathReadInFlight, 'the wire\'s settle frees the next read').toBe(0);
+
+        const next = host.loadGoldenPath();
+
+        await Promise.resolve();
+        expect(reads, 'a request after the settle reads anew').toBe(2);
+        release(envelope);
+        await next
+    });
+
+    test('a profile switch keeps the fenced read on the wire until it settles: A, B, then A again ask one wire at a time (#898 AC-3)', async () => {
+        const
+            host     = makeHost(),
+            calls    = [],
+            releases = [],
+            answer   = id => ({capability: {state: 'wired'}, admission: {admitted: true}, route: {status: 'fresh', items: [{id, title: id, score: 0.9, rank: 1, citations: []}]}}),
+            bridge   = profileId => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: {profileId, fleetGoldenPath: () => { calls.push(profileId); return new Promise(resolve => releases.push(resolve)) }}} },
+            settled  = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        bridge('profile-a');
+        const first = host.loadGoldenPath();
+        bridge('profile-b');
+        const switched = host.loadGoldenPath();
+        bridge('profile-a');
+        const back = host.loadGoldenPath();
+
+        await settled();
+        expect(calls, 'one wire across both switches').toEqual(['profile-a']);
+        expect(host.goldenPathReadInFlight).toBe(1);
+
+        releases[0](answer('neo#1'));
         await first;
+        await settled();
 
-        expect(host.writes.map(({goldenPathEnvelope}) => goldenPathEnvelope.capability.reason)).toEqual(['new'])
+        expect(host.writes.filter(write => write.goldenPathEnvelope), 'the fenced read lands nowhere').toEqual([]);
+        expect(calls, 'the waiting requests read once, through the bridge in hand').toEqual(['profile-a', 'profile-a']);
+
+        const landed = GoldenPathEnvelope.fromWire(answer('neo#2'));
+
+        releases[1](answer('neo#2'));
+        expect(await Promise.all([switched, back])).toEqual([landed, landed]);
+        expect(host.writes.filter(write => write.goldenPathEnvelope)).toEqual([{goldenPathEnvelope: landed}]);
+        expect(host.goldenPathReadInFlight).toBe(0)
+    });
+
+    test('a request waiting on a fenced read starts none once its owner is destroyed (#898 AC-3)', async () => {
+        let release;
+
+        const
+            host   = makeHost(),
+            calls  = [],
+            bridge = profileId => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: {profileId, fleetGoldenPath: () => { calls.push(profileId); return new Promise(resolve => { release = resolve }) }}} };
+
+        bridge('profile-a');
+        const first = host.loadGoldenPath();
+        bridge('profile-b');
+        const waiting = host.loadGoldenPath();
+
+        await Promise.resolve();
+
+        // what Neo's destroy leaves (core.Base#destroy): every own entry deleted, then the flag
+        Object.keys(host).forEach(key => delete host[key]);
+        host.isDestroyed = true;
+
+        release({capability: {state: 'wired'}});
+        await first;
+        await waiting;
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(calls).toEqual(['profile-a'])
+    });
+
+    test('a read that fails after its owner is destroyed lands nothing and reaches no provider', async () => {
+        let fail;
+
+        const
+            host     = makeHost(),
+            {writes} = host;
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: () => new Promise((resolve, reject) => { fail = reject })}};
+
+        const read = host.loadGoldenPath();
+
+        await Promise.resolve();
+
+        // what Neo's destroy leaves (core.Base#destroy): every own entry deleted, then the flag
+        Object.keys(host).forEach(key => delete host[key]);
+        host.isDestroyed = true;
+
+        fail(new Error('secret read detail'));
+
+        await expect(read).resolves.toEqual(GoldenPathEnvelope.fromWire({capability: {state: 'unavailable', reason: 'fleet golden path read failed'}}));
+        expect(writes).toEqual([])
+    });
+
+    test('a read through another profile\'s bridge retires the landed route and fences the read in flight; a same-profile failure keeps its own (#898 AC-4)', async () => {
+        let releaseA;
+
+        const
+            {host, provider} = makeProviderHost(),
+            leaf             = () => provider.getData('goldenPathEnvelope'),
+            items            = id => [{id, title: id, score: 0.9, rank: 1, citations: []}],
+            answer           = id => ({capability: {state: 'wired'}, admission: {admitted: true},
+                route: {status: 'fresh', expiresAt: new Date(Date.now() + 3600000).toISOString(), expired: false, items: items(id)}}),
+            bridge           = (profileId, fleetGoldenPath) => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: {profileId, fleetGoldenPath}} };
+
+        bridge('profile-a', async () => answer('neo#1'));
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(leaf())).toBe('current');
+
+        bridge('profile-a', () => new Promise(resolve => { releaseA = resolve }));
+        const lateA = host.loadGoldenPath();
+
+        // the switch retires A's route at once; B's first read waits for A's wire, which lands nowhere, then fails
+        bridge('profile-b', async () => { throw new Error('secret read detail') });
+        const firstB = host.loadGoldenPath();
+
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(GoldenPathEnvelope.routeOf(leaf()), 'never A\'s route under B').toBeNull();
+
+        releaseA(answer('neo#2'));
+        await lateA;
+        await firstB;
+
+        expect(GoldenPathEnvelope.currency(leaf()), 'A\'s late answer lands nowhere; B\'s failure lands unavailable').toBe('unavailable');
+        expect(GoldenPathEnvelope.routeOf(leaf())).toBeNull();
+
+        bridge('profile-b', async () => answer('neo#3'));
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(leaf())).toBe('current');
+
+        bridge('profile-b', async () => { throw new Error('secret read detail') });
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(leaf()), 'a same-profile failure keeps the route').toBe('withheld');
+        expect(leaf().route.items).toEqual(items('neo#3'));
+
+        bridge('profile-b', async () => answer('neo#3'));
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(leaf()), 'and its next answer recovers it').toBe('current');
+
+        provider.destroy()
+    });
+
+    test('a failed re-read keeps the route in the real provider leaf, withheld with the read\'s reason (#898 AC-4)', async () => {
+        const
+            {host, provider} = makeProviderHost(),
+            items            = [{id: 'neo#210', title: 'Golden Path pane', score: 0.87, rank: 1, citations: []}],
+            route            = {status: 'fresh', expiresAt: new Date(Date.now() + 3600000).toISOString(), expired: false, items};
+
+        let fail = false;
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: async () => {
+            if (fail) throw new Error('secret read detail');
+            return {capability: {state: 'wired'}, admission: {admitted: true}, route}
+        }}};
+
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(provider.getData('goldenPathEnvelope'))).toBe('current');
+
+        fail = true;
+
+        const kept = await host.loadGoldenPath(),
+              leaf = provider.getData('goldenPathEnvelope');
+
+        expect(GoldenPathEnvelope.currency(leaf), 'never current').toBe('withheld');
+        expect(GoldenPathEnvelope.withheldReason(leaf)).toBe('fleet golden path read failed');
+        expect(leaf.route.items, 'never an empty pane').toEqual(items);
+        expect(kept.read).toEqual({state: 'failed', reason: 'fleet golden path read failed'});
+
+        fail = false;
+        await host.loadGoldenPath();
+        expect(GoldenPathEnvelope.currency(provider.getData('goldenPathEnvelope')), 'the next answer clears the mark').toBe('current');
+
+        provider.destroy()
+    });
+
+    test('a landed route sets the next read: at a current route\'s expiry, else one interval out; one read counts in flight (#898 AC-3)', async () => {
+        const
+            {host, provider} = makeProviderHost(),
+            now              = Date.now(),
+            expiresAt        = now + 3600000;
+
+        host.livenessSchedule = LivenessCadence.create(now, LivenessCadence.DEFAULT_INTERVALS);
+
+        host.writeGoldenPath({capability: {state: 'wired'}, admission: {admitted: true}, route: {status: 'fresh', expiresAt: new Date(expiresAt).toISOString(), items: []}}, now);
+        expect(host.livenessSchedule.goldenPath, 'an hour-long route is read again at its expiry, not every two minutes').toBe(expiresAt);
+
+        host.writeGoldenPath({capability: {state: 'degraded', reason: 'route-sidecar-missing'}}, now);
+        expect(host.livenessSchedule.goldenPath).toBe(now + LivenessCadence.DEFAULT_INTERVALS.goldenPath);
+
+        let resolve;
+
+        (globalThis.AgentOS ??= {}).fleet = {registryBridge: {fleetGoldenPath: () => new Promise(done => { resolve = done })}};
+
+        const read = host.loadGoldenPath();
+
+        expect(host.goldenPathReadInFlight).toBe(1);
+        await Promise.resolve();
+        resolve({capability: {state: 'unavailable', reason: 'fleet golden path source not wired'}});
+        await read;
+        expect(host.goldenPathReadInFlight).toBe(0);
+
+        provider.destroy()
     });
 });
 

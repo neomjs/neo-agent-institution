@@ -512,6 +512,16 @@ class VesselContainer extends Workspace {
     }
 
     /**
+     * @summary Resolve the live {@link AgentOS.view.fleet.goldenpath.Container} instance whether it is
+     * docked, vesseled, or in flight home — the {@link #getOperatorMailboxPane} contract, so the liveness
+     * pass's clock reaches the pane in every phase.
+     * @returns {Neo.container.Base|null} The Golden Path pane, or `null` before materialization.
+     */
+    getGoldenPathPane() {
+        return this.vesselPane('goldenPath') || this.getReference('golden-path')
+    }
+
+    /**
      * @summary Resolve the live {@link AgentOS.view.fleet.memories.Container} instance whether it is
      * docked, revealed, or vesseled — the click pop-out ({@link #popOutPane}) and the gesture
      * tear-out share one pathway, so one owner answers both. Owner-side pushes (snapshot writes,

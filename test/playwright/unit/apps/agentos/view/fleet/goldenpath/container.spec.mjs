@@ -15,10 +15,14 @@ import * as core          from '../../../../../../../../node_modules/neo.mjs/src
 import InstanceManager    from '../../../../../../../../node_modules/neo.mjs/src/manager/Instance.mjs';
 import GoldenPathEnvelope from '../../../../../../../../apps/agentos/util/GoldenPathEnvelope.mjs';
 import GoldenPathPane     from '../../../../../../../../apps/agentos/view/fleet/goldenpath/Container.mjs';
+import ViewerTime         from '../../../../../../../../apps/agentos/util/ViewerTime.mjs';
 
 const
     CAPTURED_AT = '2026-09-25T06:00:00.000Z',
     EXPIRES_AT  = '2026-09-25T18:00:00.000Z',
+    // the pane measures the route against the viewer's clock, so every case pins it: midday of the capture day
+    SAME_DAY    = Date.parse('2026-09-25T12:00:00.000Z'),
+    NEXT_DAY    = Date.parse('2026-09-26T12:00:00.000Z'),
     MARKDOWN    = `## Computed Golden Path (Strategic Recommendation)\n\nCaptured at: 2026-09-25 06:00 UTC\n\n1. **neo#210**: Score 0.87 (Semantic: 0.61, Structural: 0.26)\n   - *Golden Path pane carries the complete producer brief*\n\n### Strategic Interpretation\n\nThe producer's explanation stays whole, including this long interpretation paragraph.`,
     handoff     = overrides => ({markdown: MARKDOWN, mtimeMs: Date.parse('2026-09-25T06:05:00.000Z'), ageMs: 60000, staleAfterMs: 129600000, stale: false, reason: null, ...overrides}),
     route       = overrides => ({
@@ -36,7 +40,7 @@ const
         sources   : {},
         ...overrides
     }),
-    createPane = config => Neo.create(GoldenPathPane, {appName: 'GoldenPathPaneTest', ...config}),
+    createPane = config => Neo.create(GoldenPathPane, {appName: 'GoldenPathPaneTest', now: SAME_DAY, ...config}),
     currencyOf = pane => pane.getReference('golden-path-currency'),
     handoffOf  = pane => pane.getReference('golden-path-markdown'),
     stateOf    = pane => pane.getReference('golden-path-handoff-state');
@@ -120,6 +124,53 @@ test.describe('AgentOS.view.fleet.goldenpath.Container — complete producer han
         pane.fire = (name, data) => events.push([name, data]);
         pane.onRefreshClick();
         expect(events).toEqual([['goldenPathRequest', {}]]);
+
+        pane.destroy()
+    });
+});
+
+test.describe('AgentOS.view.fleet.goldenpath.Container — the facts row ages with the cockpit\'s pass (#898)', () => {
+    test('AC-1: once the pass passes expiresAt, the route reads withheld · route-expired, whatever the wire said', () => {
+        for (const expired of [false, true]) {
+            const pane = createPane({envelope: envelope({route: route({expired})})});
+
+            pane.now = Date.parse(EXPIRES_AT);
+
+            expect(currencyOf(pane).text, `wire expired: ${expired}`).toMatch(/^Typed route · withheld · route-expired · last known good route, captured /);
+            expect(currencyOf(pane).cls).toContain('is-withheld');
+            expect(pane.getReference('golden-path-provenance').text).toMatch(/ \(expired\)$/);
+
+            pane.destroy()
+        }
+    });
+
+    test('AC-2: a capture from an earlier viewer day gains its date on the next pass, with no new envelope', () => {
+        const
+            pane    = createPane({envelope: envelope()}),
+            stamp   = now => ViewerTime.formatViewerTime(CAPTURED_AT, {now}).text,
+            landed  = pane.envelope,
+            updates = [];
+
+        expect(currencyOf(pane).text).toBe(`Typed route · current · captured ${stamp(SAME_DAY)}`);
+
+        currencyOf(pane).changeVdomRootKey = (...args) => updates.push(args);
+        pane.now = SAME_DAY + 15000;
+        expect(updates, 'a pass with an unchanged title costs no vdom update').toEqual([]);
+
+        pane.now = NEXT_DAY;
+
+        expect(stamp(NEXT_DAY), 'the fixture crosses a viewer day').not.toBe(stamp(SAME_DAY));
+        expect(currencyOf(pane).text).toBe(`Typed route · withheld · route-expired · last known good route, captured ${stamp(NEXT_DAY)}`);
+        expect(pane.envelope, 'the same envelope, re-read against the new clock').toBe(landed);
+
+        pane.destroy()
+    });
+
+    test('AC-4: a route kept after a failed re-read shows withheld with the read\'s reason, and its recommendation stays', () => {
+        const pane = createPane({envelope: GoldenPathEnvelope.fromWire(GoldenPathEnvelope.afterFailedRead(envelope(), 'fleet golden path read failed'))});
+
+        expect(currencyOf(pane).text).toMatch(/^Typed route · withheld · fleet golden path read failed · last known good route, captured /);
+        expect(handoffOf(pane).value).toBe(MARKDOWN);
 
         pane.destroy()
     });

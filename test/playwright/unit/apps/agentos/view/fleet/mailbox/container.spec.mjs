@@ -901,7 +901,7 @@ test.describe('operator mailbox — cadence, held wire and the real projection',
         const host = Neo.create(OperatorMailbox, {appName, now: NOW, record: {agentIdentityNodeId: '@neo-opus-vega', githubUsername: 'neo-opus-vega'}, snapshot}),
               pane = host.getReference('operator-inbox-pane'),
               controller = Object.assign(Neo.create(Controller, {component: {
-                  isConstructed: false, on() {}, getOperatorMailboxPane: () => host, livenessReadTimeout: 30,
+                  isConstructed: false, on() {}, getGoldenPathPane: () => null, getOperatorMailboxPane: () => host, livenessReadTimeout: 30,
                   livenessCadence: LivenessCadence.DEFAULT_INTERVALS, maxReadsInFlight: 2
               }}), {
                   operatorRecord: host.record, operatorProfileId: bridge.profileId ?? null,
