@@ -106,7 +106,8 @@ test.describe('AgentOS product bar — the Nightshift toggle (Neural Link)', () 
             expect(spanMs).toBeLessThan(8 * 3_600_000 + 60_000);
 
             await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-            await expect(toggle).toHaveAttribute('aria-label', /^Nightshift on since \d\d:\d\d, ends \d\d:\d\d$/);
+            // an 8-hour span started after 16:00 ends tomorrow, and the label then names the day
+            await expect(toggle).toHaveAttribute('aria-label', /^Nightshift on since \d\d:\d\d, ends (?:\d{1,2} \w{3} )?\d\d:\d\d$/);
             await expect(toggle).not.toHaveAttribute('aria-haspopup', 'menu');
 
             // the engine's truth: the toggle holds the plane's record, not a local flip
@@ -124,6 +125,36 @@ test.describe('AgentOS product bar — the Nightshift toggle (Neural Link)', () 
             await expect(menu, 'switching off opens no menu').toBeHidden()
         } finally {
             await fleet.close()
+        }
+    });
+
+    test('the product bar spaces its controls on the 8px step, wide and narrow, in both themes', async ({page}) => {
+        await page.goto('/apps/agentos/index.html');
+        await expect(page.locator('.agent-nightshift-button')).toBeVisible({timeout: 60000});
+
+        /** @summary The distance between two product bar items' borders, read from their DOM rects. */
+        const gap = (left, right) => page.evaluate(([l, r]) => {
+            const rect = selector => document.querySelector(`.agent-top-toolbar ${selector}`).getBoundingClientRect();
+
+            return rect(r).left - rect(l).right
+        }, [left, right]);
+
+        for (const theme of ['dark', 'light']) {
+            if (theme === 'light') {
+                // the band's own control, the app's theme API: never a class flipped on the root
+                await page.locator('.agent-theme-button').click();
+                await expect(page.locator('.agent-theme-button .fa-moon')).toHaveCount(1);
+            }
+
+            await page.setViewportSize({width: 1280, height: 800});
+            await expect.poll(() => gap('.agent-nightshift-button', '.agent-theme-button'), `${theme}: Nightshift → theme switch`).toBeCloseTo(8, 1);
+            expect(await gap('.agent-shell-title', '.fm-instance-switcher'), `${theme}: title → instance switcher`).toBeCloseTo(8, 1);
+            expect(await gap('.agent-logo', '.agent-shell-title'), `${theme}: logo → title`).toBeCloseTo(15, 1);
+
+            // ≤ 560px: the title hides and the toggle shows its glyph only
+            await page.setViewportSize({width: 520, height: 800});
+            await expect.poll(() => gap('.agent-nightshift-button', '.agent-theme-button'), `${theme}, narrow: Nightshift → theme switch`).toBeCloseTo(8, 1);
+            expect(await gap('.agent-logo', '.fm-instance-switcher'), `${theme}, narrow: logo → instance switcher`).toBeCloseTo(8, 1)
         }
     })
 });

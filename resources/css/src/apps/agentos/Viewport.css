@@ -429,6 +429,9 @@
        ground on two edges; without it the stock toolbar neutral sat as a foreign band above
        every FM pane */
     background: var(--fm-rail);
+    /* the engine's toolbar zeroes button margins and declares no gap, so the band spaces its own
+       controls on the 8px step; the logo's margin below shrinks by the same step */
+    gap: var(--fm-space-2);
     min-height: 50px;
     /* §04 recorded exception: see the mark's line below. In the native shell this band is the
        window's title bar: the window-controls overlay starts its free area after the traffic
@@ -485,7 +488,8 @@
 .fm-nightshift-menu .agent-logo {
     align-items: center;
     display: flex;
-    margin-right: 15px;
+    /* 15px to the title: this 7px plus the band's 8px gap */
+    margin-right: 7px;
     /* the vessel band's gutter drops to the 8px step so the scope label keeps its whole tail */
 }
 @media (max-width: 560px) {
@@ -493,7 +497,8 @@
     .fm-instance-menu .agent-logo,
     .fm-awaiting-merge-menu .agent-logo,
     .fm-nightshift-menu .agent-logo {
-        margin-right: var(--fm-space-2);
+        /* the band's gap alone is the 8px step */
+        margin-right: 0;
     }
 }
 .agent-os-viewport.neo-viewport .agent-logo img,
