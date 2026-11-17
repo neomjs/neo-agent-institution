@@ -9,13 +9,6 @@
    (the pill register, distinct from the chip family) — recorded here and deferred to the
    #17268/#17211 composition passes. Compact `line-height: 1` overrides on pill/meta registers
    are site-visible role deviations, deliberate. */
-/* A copy of the shared rules of src/apps/agentos/fleet/shared/_family-ink.css; the other copy: src/apps/agentos/fleet/shared/FamilyRailComponent.css. Keep them identical. */
-/* The family class → ink mapping, the closed FAMILY_TOKEN set (apps/agentos/util/FamilyTokens.mjs).
-   Every surface that speaks a resident's family colour — the rail spine, the avatar monogram — binds
-   `--fm-rail` through the same fm-family-* class FamilyRail's resolver swaps, so the mapping lives
-   once and a new family lands here and in FamilyTokens, nowhere else. The neutral fallback stays with
-   each consumer (`var(--fm-rail, var(--fm-state-off))`): an unclassified family reads as no family,
-   never as a guessed one. */
 
 .fm-agent-card {
     container-type: inline-size; /* the card is its own width-query context (card-owned responsiveness) */
@@ -80,32 +73,9 @@
 
 .fm-agent-card {
     /* the monogram: the family ink as text over its own tint, bound through the shared fm-family-*
-       mapping (the same class FamilyRail swaps); the name reaches assistive tech via aria-label, so
-       colour is never the only carrier. An unclassified family reads on the neutral token. */
-}
-
-.fm-agent-card .fm-card-monogram {
-    /* A copy of the shared family-ink block; the other copy: src/apps/agentos/fleet/shared/FamilyRailComponent.css. Keep them identical. */
-}
-
-.fm-agent-card .fm-card-monogram.fm-family-claude {
-    --fm-rail: var(--fm-family-claude);
-}
-
-.fm-agent-card .fm-card-monogram.fm-family-gpt {
-    --fm-rail: var(--fm-family-gpt);
-}
-
-.fm-agent-card .fm-card-monogram.fm-family-gemini {
-    --fm-rail: var(--fm-family-gemini);
-}
-
-.fm-agent-card .fm-card-monogram.fm-family-human {
-    --fm-rail: var(--fm-family-human);
-}
-
-.fm-agent-card .fm-card-monogram.fm-family-kimi {
-    --fm-rail: var(--fm-family-kimi);
+       mapping in FamilyRailComponent.css (the same class FamilyRail swaps); the name reaches assistive
+       tech via aria-label, so colour is never the only carrier. An unclassified family reads on the
+       neutral token. */
 }
 
 .fm-agent-card .fm-card-monogram {

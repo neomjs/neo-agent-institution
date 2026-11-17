@@ -1,37 +1,33 @@
-/* A copy of the shared rules of src/apps/agentos/shared/_scroll-fade.css; the other copy: src/apps/agentos/setup/CreateContainer.css. Keep them identical. */
-
-/* The foot fade of a bounded scroll surface: a sticky gradient over its last pixels that says the rows
-   continue — only while they do. The surface becomes a scroll-state container, so its own `::after`
-   paints while the surface can still scroll down and leaves at its end; a surface that holds everything
-   shows none, and nothing under it is ever veiled. Include on the element that scrolls (`overflow-y:
-   auto`); `$panel` names the colour the fade resolves into, the surface's own background. One idiom for
-   every faded foot — the setup card's Create door, the memory candidate lists — so a reader learns the
-   signal once. */
-
 /* The add-agent form's memory choice: one quiet row per candidate, the name over its notes line, then
    the empty-memory row, its name alone and dim until chosen, on no stock surface. Selection pairs the
    signal tint with the name's weight, so a choice never reads by colour alone. */
+
+/* scroll-fade: begin. The foot fade of the bounded candidate list, the idiom described in
+   setup/CreateContainer.css; scrollFadeParity.spec.mjs keeps the two blocks equal. */
 .fm-memory-candidates.neo-list {
-    /* A copy of the shared scroll-fade block; the other copy: src/apps/agentos/setup/CreateContainer.css. Keep them identical. */
     container-type: scroll-state;
 }
+
 .fm-memory-candidates.neo-list::after {
-    content: "";
-    display: block;
-    position: sticky;
-    bottom: 0;
-    flex: none;
-    height: 28px;
-    margin-top: -28px;
-    background: linear-gradient(to bottom, transparent, var(--fm-panel-2));
+    content       : '';
+    display       : block;
+    position      : sticky;
+    bottom        : 0;
+    flex          : none;
+    height        : 28px;
+    margin-top    : -28px;
+    background    : linear-gradient(to bottom, transparent, var(--fm-panel-2));
     pointer-events: none;
-    opacity: 0;
+    opacity       : 0;
 }
+
 @container scroll-state(scrollable: bottom) {
     .fm-memory-candidates.neo-list::after {
         opacity: 1;
     }
 }
+/* scroll-fade: end */
+
 .fm-memory-candidates.neo-list {
     --list-item-background-color: transparent;
     --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);

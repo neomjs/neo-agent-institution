@@ -5,39 +5,39 @@
    ledger and the preset choices are folds. The served path (no vessel) shows the CLI's command in
    the mono detail role over a field for its JSON. Column widths never come from a stylesheet `flex`
    on a layout child: the engine writes `flex` inline on every one of them. */
-/* A copy of the shared rules of src/apps/agentos/shared/_scroll-fade.css; the other copy: src/apps/agentos/fleet/instances/MemoryCandidateList.css. Keep them identical. */
-/* The foot fade of a bounded scroll surface: a sticky gradient over its last pixels that says the rows
-   continue — only while they do. The surface becomes a scroll-state container, so its own `::after`
-   paints while the surface can still scroll down and leaves at its end; a surface that holds everything
-   shows none, and nothing under it is ever veiled. Include on the element that scrolls (`overflow-y:
-   auto`); `$panel` names the colour the fade resolves into, the surface's own background. One idiom for
-   every faded foot — the setup card's Create door, the memory candidate lists — so a reader learns the
-   signal once. */
+
+/* scroll-fade: begin. The foot fade of a bounded scroll surface: a sticky gradient over its last pixels
+   that says the rows continue — only while they do. The surface becomes a scroll-state container, so its
+   own `::after` paints while the surface can still scroll down and leaves at its end; a surface that
+   holds everything shows none, and nothing under it is ever veiled. The gradient ends in the surface's
+   own background. One idiom for every faded foot, so a reader learns the signal once: here, on the
+   bounded Create door, and in fleet/instances/MemoryCandidateList.css. The two consumers share no loaded
+   sheet, so each carries the block, and scrollFadeParity.spec.mjs keeps them equal. */
+.fm-setup-create {
+    container-type: scroll-state;
+}
+
+.fm-setup-create::after {
+    content       : '';
+    display       : block;
+    position      : sticky;
+    bottom        : 0;
+    flex          : none;
+    height        : 28px;
+    margin-top    : -28px;
+    background    : linear-gradient(to bottom, transparent, var(--fm-panel));
+    pointer-events: none;
+    opacity       : 0;
+}
+
+@container scroll-state(scrollable: bottom) {
+    .fm-setup-create::after {
+        opacity: 1;
+    }
+}
+/* scroll-fade: end */
 
 .fm-setup-create {
-    /* the bounded door scrolls: a fade at its foot says the rows continue — only while they do */
-    /* A copy of the shared scroll-fade block; the other copy: src/apps/agentos/fleet/instances/MemoryCandidateList.css. Keep them identical. */
-    container-type: scroll-state;
-
-    &::after {
-        content       : '';
-        display       : block;
-        position      : sticky;
-        bottom        : 0;
-        flex          : none;
-        height        : 28px;
-        margin-top    : -28px;
-        background    : linear-gradient(to bottom, transparent, var(--fm-panel));
-        pointer-events: none;
-        opacity       : 0;
-    }
-
-    @container scroll-state(scrollable: bottom) {
-        &::after {
-            opacity: 1;
-        }
-    }
-
     .fm-setup-asks {
         gap    : var(--fm-space-4);
         padding: var(--fm-space-3) var(--fm-space-3) 0;
