@@ -187,8 +187,9 @@ class TargetBinding extends Base {
     /**
      * @summary Retire the Golden Path when the bridge in hand belongs to another profile than the read
      * the leaf holds or the read on the wire. The leaf returns to unobserved, so a failed first read lands
-     * as unavailable, never as another instance's route withheld; the read in flight stops counting and
-     * its fence moves, so it neither holds back nor lands over the new profile's read.
+     * as unavailable, never as another instance's route withheld. The read on the wire keeps its slot until
+     * it settles, so one read stays in flight, and its fence moves, so it never lands over the new
+     * profile's read; a read already fenced needs no second retirement.
      * @param {AgentOS.view.fleet.cockpit.ReadingSurfacesController} owner The reading-surfaces owner.
      * @param {Object} options
      * @param {String|null} options.profileId The profile the bridge in hand is bound to.
@@ -197,13 +198,13 @@ class TargetBinding extends Base {
     static retireGoldenPath(owner, {profileId}) {
         const
             flight = owner.goldenPathFlight,
-            held   = owner.goldenPathHeld;
+            held   = owner.goldenPathHeld,
+            live   = flight && flight.generation === owner.goldenPathReadGeneration;
 
-        if ((!held || owner.goldenPathProfileId === profileId) && (!flight || flight.profileId === profileId)) {
+        if ((!held || owner.goldenPathProfileId === profileId) && (!live || flight.profileId === profileId)) {
             return false
         }
 
-        owner.goldenPathFlight    = null;
         owner.goldenPathHeld      = false;
         owner.goldenPathProfileId = null;
         owner.goldenPathReadGeneration++;

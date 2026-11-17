@@ -103,7 +103,8 @@ class ReadingSurfacesController extends LivenessController {
      */
     goldenPathReadGeneration = 0
     /**
-     * The Golden Path read on the wire, `{landing, profileId}`, shared by every request ({@link #loadGoldenPath}).
+     * The Golden Path read on the wire, `{generation, landing, profileId, settled}`, shared by every request
+     * ({@link #loadGoldenPath}); `settled` resolves when the wire itself settles.
      * @member {Object|null} goldenPathFlight=null
      * @protected
      */
@@ -486,10 +487,11 @@ class ReadingSurfacesController extends LivenessController {
      * @summary READ: the computed Golden Path through the fleet bridge, one read at a time: the cadence,
      * Refresh, Reconnect and the admission recovery share the read on the wire, and only the wire's own
      * settle frees the next one (a bounded wait that timed out lands as a failed read). A read through
-     * another profile's bridge first retires the landed route and the read in flight
-     * ({@link AgentOS.util.TargetBinding#retireGoldenPath}). Only the newest read lands, and only while
-     * its owner lives. A failure keeps a route this profile landed, withheld with the read's reason;
-     * with none, it lands as unavailable.
+     * another profile's bridge first retires the landed route and fences the read in flight
+     * ({@link AgentOS.util.TargetBinding#retireGoldenPath}); that read keeps the wire until it settles,
+     * and a request meanwhile reads anew once it has, unless the owner is gone. Only the newest read
+     * lands, and only while its owner lives. A failure keeps a route this profile landed, withheld with
+     * the read's reason; with none, it lands as unavailable.
      * @returns {Promise<Object>} The landed envelope, or the closed shape of one that landed nowhere.
      */
     loadGoldenPath() {
@@ -500,8 +502,12 @@ class ReadingSurfacesController extends LivenessController {
 
         TargetBinding.retireGoldenPath(me, {profileId});
 
-        if (me.goldenPathFlight) {
-            return me.goldenPathFlight.landing
+        const onWire = me.goldenPathFlight;
+
+        if (onWire) {
+            return onWire.generation === me.goldenPathReadGeneration
+                ? onWire.landing
+                : onWire.settled.then(() => me.isDestroyed ? onWire.landing : me.loadGoldenPath())
         }
 
         const
@@ -521,11 +527,16 @@ class ReadingSurfacesController extends LivenessController {
             return Promise.resolve(land(null, 'fleet golden path verb not wired'))
         }
 
-        const flight = me.goldenPathFlight = {landing: null, profileId};
+        let settle;
+
+        const flight = me.goldenPathFlight = {generation, landing: null, profileId, settled: new Promise(resolve => { settle = resolve })};
 
         flight.landing = me.boundedRead(
             Promise.resolve().then(() => bridge.fleetGoldenPath({})),
-            () => { !me.isDestroyed && me.goldenPathFlight === flight && (me.goldenPathFlight = null) }
+            () => {
+                !me.isDestroyed && me.goldenPathFlight === flight && (me.goldenPathFlight = null);
+                settle()
+            }
         ).then(envelope => land(envelope, null), () => land(null, 'fleet golden path read failed'));
 
         return flight.landing

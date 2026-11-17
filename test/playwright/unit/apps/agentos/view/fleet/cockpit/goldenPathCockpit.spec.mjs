@@ -107,6 +107,68 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         await next
     });
 
+    test('a profile switch keeps the fenced read on the wire until it settles: A, B, then A again ask one wire at a time (#898 AC-3)', async () => {
+        const
+            host     = makeHost(),
+            calls    = [],
+            releases = [],
+            answer   = id => ({capability: {state: 'wired'}, admission: {admitted: true}, route: {status: 'fresh', items: [{id, title: id, score: 0.9, rank: 1, citations: []}]}}),
+            bridge   = profileId => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: {profileId, fleetGoldenPath: () => { calls.push(profileId); return new Promise(resolve => releases.push(resolve)) }}} },
+            settled  = () => new Promise(resolve => setTimeout(resolve, 0));
+
+        bridge('profile-a');
+        const first = host.loadGoldenPath();
+        bridge('profile-b');
+        const switched = host.loadGoldenPath();
+        bridge('profile-a');
+        const back = host.loadGoldenPath();
+
+        await settled();
+        expect(calls, 'one wire across both switches').toEqual(['profile-a']);
+        expect(host.goldenPathReadInFlight).toBe(1);
+
+        releases[0](answer('neo#1'));
+        await first;
+        await settled();
+
+        expect(host.writes.filter(write => write.goldenPathEnvelope), 'the fenced read lands nowhere').toEqual([]);
+        expect(calls, 'the waiting requests read once, through the bridge in hand').toEqual(['profile-a', 'profile-a']);
+
+        const landed = GoldenPathEnvelope.fromWire(answer('neo#2'));
+
+        releases[1](answer('neo#2'));
+        expect(await Promise.all([switched, back])).toEqual([landed, landed]);
+        expect(host.writes.filter(write => write.goldenPathEnvelope)).toEqual([{goldenPathEnvelope: landed}]);
+        expect(host.goldenPathReadInFlight).toBe(0)
+    });
+
+    test('a request waiting on a fenced read starts none once its owner is destroyed (#898 AC-3)', async () => {
+        let release;
+
+        const
+            host   = makeHost(),
+            calls  = [],
+            bridge = profileId => { (globalThis.AgentOS ??= {}).fleet = {registryBridge: {profileId, fleetGoldenPath: () => { calls.push(profileId); return new Promise(resolve => { release = resolve }) }}} };
+
+        bridge('profile-a');
+        const first = host.loadGoldenPath();
+        bridge('profile-b');
+        const waiting = host.loadGoldenPath();
+
+        await Promise.resolve();
+
+        // what Neo's destroy leaves (core.Base#destroy): every own entry deleted, then the flag
+        Object.keys(host).forEach(key => delete host[key]);
+        host.isDestroyed = true;
+
+        release({capability: {state: 'wired'}});
+        await first;
+        await waiting;
+        await new Promise(resolve => setTimeout(resolve, 0));
+
+        expect(calls).toEqual(['profile-a'])
+    });
+
     test('a read that fails after its owner is destroyed lands nothing and reaches no provider', async () => {
         let fail;
 
@@ -130,7 +192,7 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         expect(writes).toEqual([])
     });
 
-    test('a read through another profile\'s bridge retires the landed route and the read in flight; a same-profile failure keeps its own (#898 AC-4)', async () => {
+    test('a read through another profile\'s bridge retires the landed route and fences the read in flight; a same-profile failure keeps its own (#898 AC-4)', async () => {
         let releaseA;
 
         const
@@ -148,16 +210,19 @@ test.describe('FleetCockpit — Golden Path owner routing', () => {
         bridge('profile-a', () => new Promise(resolve => { releaseA = resolve }));
         const lateA = host.loadGoldenPath();
 
-        // the switch: B reads at once, though A's read still holds its wire, and B's first read fails
+        // the switch retires A's route at once; B's first read waits for A's wire, which lands nowhere, then fails
         bridge('profile-b', async () => { throw new Error('secret read detail') });
-        await host.loadGoldenPath();
+        const firstB = host.loadGoldenPath();
 
-        expect(GoldenPathEnvelope.currency(leaf()), 'never A\'s route, withheld under B').toBe('unavailable');
-        expect(GoldenPathEnvelope.routeOf(leaf())).toBeNull();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(GoldenPathEnvelope.routeOf(leaf()), 'never A\'s route under B').toBeNull();
 
         releaseA(answer('neo#2'));
         await lateA;
-        expect(GoldenPathEnvelope.currency(leaf()), 'A\'s late answer lands nowhere').toBe('unavailable');
+        await firstB;
+
+        expect(GoldenPathEnvelope.currency(leaf()), 'A\'s late answer lands nowhere; B\'s failure lands unavailable').toBe('unavailable');
+        expect(GoldenPathEnvelope.routeOf(leaf())).toBeNull();
 
         bridge('profile-b', async () => answer('neo#3'));
         await host.loadGoldenPath();
