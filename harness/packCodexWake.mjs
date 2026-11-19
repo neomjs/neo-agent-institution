@@ -1,27 +1,42 @@
 import fs                         from 'node:fs';
 import {isBuiltin, createRequire} from 'node:module';
 import path                       from 'node:path';
+import {fileURLToPath}            from 'node:url';
 
 /**
  * @module harness/packCodexWake
  * @summary Declares the build-time inputs for the wake executable independently of package revision metadata.
  */
 
+/** The checkout `install:mac` runs from. Its `neo-agent-brain` is the verifier the installer trusts. */
+const productRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
 /**
- * @summary Emits a declaration only for an unsigned package with a Brain that can authenticate its payload.
+ * @summary Emits a declaration only for an unsigned package with a Brain that can authenticate its payload. Refuses
+ * the build when the installer's trusted verifier could not read that declaration: the install would stop after its Quit.
  * @param {String} root Assembled organism after native dependency staging.
  * @param {String|null} signingIdentity The builder's macOS identity; explicit null selects unsigned packaging.
+ * @param {Object} [installer] The installer's runtime-generation module; defaults to this checkout's `neo-agent-brain`.
  * @returns {Promise<String>} The chosen shape for the package build record.
  */
-export async function stageCodexWakeArtifact(root, signingIdentity) {
+export async function stageCodexWakeArtifact(root, signingIdentity, installer) {
     if (signingIdentity !== null) return 'generation-bound (outer app signing configured)';
     const protocol = path.join(root, 'ai/daemons/wake/codexWakeProtocol.json');
     if (!fs.existsSync(protocol)) return 'generation-bound (legacy Brain)';
     const verifier = createRequire(path.join(root, 'package.json'))('neo-agent-brain/runtime-generation');
     if (typeof verifier.describeCodexWakeArtifact !== 'function') return 'generation-bound (legacy Brain)';
     if (JSON.parse(fs.readFileSync(protocol, 'utf8')).wire !== 'neo-codex-primary-wake-v1') return 'generation-bound (unsupported hook wire)';
-    const {extractLiteralImportSpecifiers} = await import('./pack.mjs');
-    const declaration                      = buildCodexWakeDeclaration(root, source => extractLiteralImportSpecifiers(source, true));
+    const {extractLiteralImportSpecifiers, installedRevisionOf} = await import('./pack.mjs');
+    installer ??= createRequire(import.meta.url)('neo-agent-brain/runtime-generation');
+    if (typeof installer.describeCodexWakeArtifact !== 'function') {
+        const short = revision => revision?.slice(0, 7) ?? 'unknown';
+        let packed;
+        try { packed = JSON.parse(fs.readFileSync(path.join(root, 'organism-build-info.json'), 'utf8')).owners?.brain?.revision } catch {}
+        throw Error(`afterPack: this organism would declare a Codex wake artifact (Brain ${short(packed)}), but install:mac verifies with ` +
+            `neo-agent-brain ${short(installedRevisionOf(productRoot, 'neo-agent-brain'))}, which cannot read it. Run \`npm run resolve-org-dev\` ` +
+            'to install the Brain at dev, or move the neo-agent-brain pin in package.json; then build again.')
+    }
+    const declaration = buildCodexWakeDeclaration(root, source => extractLiteralImportSpecifiers(source, true));
     fs.writeFileSync(path.join(root, 'codex-wake-artifact.json'), JSON.stringify(declaration) + '\n', {flag:'wx'});
     return 'immutable hook artifact declared'
 }
