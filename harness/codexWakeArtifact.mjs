@@ -28,14 +28,23 @@ async function ownedDirectory(dir) {
 async function describe(payload, entries, verifier) {
     const row = entries.find(entry => entry[0] === declarationPath);
     if (!row) return null;
-    if (row[1] !== 'file' || row[3] < 1 || row[3] > 262144 || typeof verifier.describeCodexWakeArtifact !== 'function') {
-        throw Error('wake-artifact-declaration-invalid')
-    }
+    if (typeof verifier.describeCodexWakeArtifact !== 'function') throw Error('wake-artifact-verifier-outdated');
+    if (row[1] !== 'file' || row[3] < 1 || row[3] > 262144) throw Error('wake-artifact-declaration-invalid');
     const file = path.join(payload, declarationPath);
     if (await fs.realpath(file) !== file) throw Error('wake-artifact-declaration-link');
     const data = await fs.readFile(file);
     if (data.length !== row[3] || createHash('sha256').update(data).digest('hex') !== row[4]) throw Error('wake-artifact-declaration-changed');
     return verifier.describeCodexWakeArtifact({declaration:JSON.parse(data), entries})
+}
+
+/**
+ * @summary Whether a trusted verifier reads the wake-artifact declaration a bundle may carry. A bundle without one needs nothing.
+ * @param {String} bundle   Bundle root.
+ * @param {Object} verifier The trusted runtime-generation module.
+ * @returns {Boolean}
+ */
+export function verifierReadsBundle(bundle, verifier) {
+    return typeof verifier.describeCodexWakeArtifact === 'function' || !nodeFs.existsSync(path.join(bundle, declarationPath))
 }
 
 /** @summary Verifies a published address. An existing corrupt object cannot become a writable repair target. */

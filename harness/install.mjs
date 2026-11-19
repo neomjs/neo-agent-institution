@@ -30,6 +30,7 @@ import {inspectRuntimeSupport, materializeRuntimeGeneration, probeRuntimeRecover
 import * as runtimeVerifier                                                                                      from 'neo-agent-brain/runtime-generation';
 import {holdLaunchAdmissionHandoff, holdLaunchAdmissionVacancy, isAdmissionSnapshot, readLaunchAdmissionJournal} from 'neo-agent-brain/launch-admission-journal';
 
+import {verifierReadsBundle}                                                                                from './codexWakeArtifact.mjs';
 import {holdFileLease}                                                                                      from 'neo-agent-brain/file-lease';
 import * as runtimeReferences                                                                               from 'neo-agent-brain/runtime-generation-lease';
 import {DEFAULT_INSTALL_TRANSACTION_DIR, holdPackageTransaction, PACKAGE_RECEIPT_PATH, publishPackageSlots} from './packageSlots.mjs';
@@ -149,15 +150,23 @@ const GENERATION_HELPER_PATH = /^([a-f0-9]{64})\/host\.runtime\/Contents\/Framew
  * @param {String[]} [input.running=[]] executable paths of every Neo Harness process alive now
  * @param {Object} [input.flags={}] `{quit, open}`
  * @param {String|null} [input.custodyDir=null] the userData root whose custody set is hashed before and after; `null` skips the check
+ * @param {String[]} [input.outdated=[]] bundle paths carrying a wake-artifact declaration the trusted verifier cannot read
  * @returns {{ok: true, steps: Object[], warnings: String[], note?: String}|{ok: false, reason: String, detail: String[]}}
  */
-export function planInstall({mode = 'install', artifact, installed, rollback, parked, running = [], flags = {}, custodyDir = null}) {
+export function planInstall({mode = 'install', artifact, installed, rollback, parked, running = [], flags = {}, custodyDir = null, outdated = []}) {
     const
         offCanonical = running.filter(exe => !isInside(exe, installed.path)),
         steps        = [],
+        sources      = [],
         warnings     = [],
         custody      = phase => custodyDir && steps.push({type: 'custody', phase, dir: custodyDir}),
-        generation   = bundle => custodyDir && steps.push({type: 'runtime', bundle, directory: path.join(custodyDir, 'brain', 'runtime')}),
+        // `source` is the bundle the runtime's bytes come from: the artifact, for its staged copy
+        generation   = (bundle, source = bundle) => {
+            if (custodyDir) {
+                sources.push(source);
+                steps.push({type: 'runtime', bundle, directory: path.join(custodyDir, 'brain', 'runtime')})
+            }
+        },
         quit         = () => {
             if (running.length) {
                 steps.push({type: 'quit', bundle: installed.path, paths: running});
@@ -170,6 +179,16 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
 
     /** @summary Carries the observed package slots into execution instead of silently replanning a stale update. */
     const finish = note => {
+        const unreadable = [...new Set(sources.filter(source => outdated.includes(source)))];
+
+        // Before step 1, so nothing is quit: the runtime step would stop on this after the quit, and a retry cannot pass.
+        if (unreadable.length) {
+            return refusal('runtime-verifier-outdated', [
+                `This checkout's neo-agent-brain cannot read the Codex wake artifact declared by ${unreadable.join(' and ')}.`,
+                'Run `npm run resolve-org-dev` to install the Brain at dev, or move the neo-agent-brain pin in package.json; then run the install again.'
+            ])
+        }
+
         if (steps.length) {
             const slots = [installed, rollback, parked ?? {path: `${installed.path}.restoring`, exists: false, receipt: null}];
             if (mode === 'install' && !parked?.exists) slots.push(artifact);
@@ -265,7 +284,7 @@ export function planInstall({mode = 'install', artifact, installed, rollback, pa
         // applications folder.
         steps.push({type: 'stage', from: artifact.path, to: staged});
         steps.push({type: 'verify', path: staged, receipt: artifact.receipt});
-        generation(staged);
+        generation(staged, artifact.path);
 
         if (installed.exists) {
             rollback.exists && steps.push({type: 'remove', path: rollback.path});
@@ -1070,7 +1089,8 @@ async function main() {
         runningFn  = await prepareBundleProcessCensus(custodyDir, [installed, rollback, parked, artifact].filter(Boolean)),
         running    = runningFn(),
         legacy     = legacyCopies(options.applicationsDir),
-        plan       = planInstall({artifact, custodyDir, flags: {open: options.open, quit: options.quit, legacyMigration: options.legacyMigration}, installed, mode: options.mode, parked, rollback, running});
+        outdated   = [installed, parked, rollback, artifact].filter(slot => slot?.exists && !verifierReadsBundle(slot.path, runtimeVerifier)).map(slot => slot.path),
+        plan       = planInstall({artifact, custodyDir, flags: {open: options.open, quit: options.quit, legacyMigration: options.legacyMigration}, installed, mode: options.mode, outdated, parked, rollback, running});
 
     console.log(describeSlot('installed', installed, 'absent'));
     console.log(describeSlot('rollback', rollback, 'empty'));

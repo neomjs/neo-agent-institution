@@ -130,6 +130,23 @@ test.describe('harness/install.mjs — the plan', () => {
         expect(plan.warnings).toEqual([PEER_QUIT_WARNING])
     });
 
+    test('a bundle whose wake artifact the trusted verifier cannot read is refused before the quit, and the refusal names the pin', () => {
+        const plan = planInstall({...baseInput(), running: [MAIN_EXE], flags: {open: true, quit: true}, custodyDir: CUSTODY, outdated: [ARTIFACT]});
+
+        expect(plan.ok).toBe(false);
+        expect(plan.reason).toBe('runtime-verifier-outdated');
+        expect(plan.steps, 'no step runs, so nothing is quit').toBeUndefined();
+        expect(plan.detail[0]).toContain(ARTIFACT);
+        expect(plan.detail.join('\n')).toContain('neo-agent-brain pin in package.json');
+        expect(plan.detail.join('\n')).not.toContain('run the same install command again');
+
+        // Only a bundle the plan prepares a runtime from must be readable.
+        expect(planInstall({...baseInput(), custodyDir: CUSTODY, outdated: [INSTALLED]}).ok).toBe(true);
+        expect(planInstall({...baseInput(), outdated: [ARTIFACT]}).ok, 'no custody, no runtime step').toBe(true);
+        expect(planInstall({...baseInput(), mode: 'restore', rollback: slot(ROLLBACK, PREVIOUS), custodyDir: CUSTODY, outdated: [ROLLBACK]}).reason)
+            .toBe('runtime-verifier-outdated')
+    });
+
     test('a first install stages beside the destination, verifies the copy there, and renames into place; nothing else is touched', () => {
         const plan = planInstall({...baseInput(), installed: slot(INSTALLED, null)});
 

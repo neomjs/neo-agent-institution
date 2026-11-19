@@ -372,6 +372,26 @@ test.describe('harness pack stage', () => {
             expect(existsSync(path.join(root,'codex-wake-artifact.json'))).toBe(false);
         } finally { await rm(root,{recursive:true,force:true}) }
     });
+    test('the build refuses a wake declaration the installer\'s verifier could not read, naming both Brains and the pin', async () => {
+        const root  = await mkdtemp(path.join(tmpdir(),'wake-installer-'));
+        const write = (name,source) => {
+            const file = path.join(root,name);
+            mkdirSync(path.dirname(file),{recursive:true});
+            writeFileSync(file,source)
+        };
+        try {
+            write('package.json','{"name":"fixture"}');
+            write('ai/daemons/wake/codexWakeProtocol.json','{"wire":"neo-codex-primary-wake-v1"}');
+            write('ai/daemons/wake/codexWakeHook.mjs',"import 'node:fs'");
+            write('node_modules/neo-agent-brain/package.json','{"name":"neo-agent-brain","exports":{"./runtime-generation":"./reader.cjs"}}');
+            write('node_modules/neo-agent-brain/reader.cjs','exports.describeCodexWakeArtifact = () => null');
+            write('organism-build-info.json',JSON.stringify({owners:{brain:{revision:'936a3635'.padEnd(40,'0')}}}));
+            await expect(stageCodexWakeArtifact(root,null,{})).rejects.toThrow(/Brain 936a363\).*cannot read it.*resolve-org-dev.*neo-agent-brain pin in package\.json/s);
+            expect(existsSync(path.join(root,'codex-wake-artifact.json'))).toBe(false);
+            expect(await stageCodexWakeArtifact(root,null,{describeCodexWakeArtifact() {}})).toBe('immutable hook artifact declared');
+            expect(existsSync(path.join(root,'codex-wake-artifact.json'))).toBe(true);
+        } finally { await rm(root,{recursive:true,force:true}) }
+    });
     test('packaged main imports are closed over app.asar and parent-root contracts are forbidden', async () => {
         const
             harnessRoot                 = fileURLToPath(new URL('../../../../harness/', import.meta.url)),

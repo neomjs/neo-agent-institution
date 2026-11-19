@@ -12,7 +12,7 @@ import * as runtimeVerifier                              from 'neo-agent-brain/r
 import * as runtimeReferences                            from 'neo-agent-brain/runtime-generation-lease';
 import {inspectPackageProtection, readPackageSlotRecord} from '../../../../harness/packageSlots.mjs';
 import {resolveLauncherRuntime}                          from '../../../../harness/brain.mjs';
-import {retireCodexWakeArtifacts}                        from '../../../../harness/codexWakeArtifact.mjs';
+import {retireCodexWakeArtifacts, verifierReadsBundle}   from '../../../../harness/codexWakeArtifact.mjs';
 import {
     executePlan as executePlanImpl, holdInstallTransaction, planInstall, prepareBundleProcessCensus,
     prepareInstallContinuity, readSlot, runningHarnessPaths
@@ -400,6 +400,19 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         await fs.chmod(altered,0o600); await fs.writeFile(altered,'changed outside'); await fs.chmod(altered,0o444);
         await expect(generate('c')).rejects.toThrow(/wake-artifact-integrity-failed/);
         expect(await fs.readFile(altered,'utf8')).toBe('changed outside');
+    });
+
+    test('a verifier without the wake reader and a malformed declaration stop under their own codes', async () => {
+        const input    = await fixture(root), declaration = path.join(input.runtimeRoot, 'codex-wake-artifact.json');
+        const outdated = {...runtimeVerifier, describeCodexWakeArtifact: undefined};
+        const reader   = {...runtimeVerifier, describeCodexWakeArtifact: () => ({entries: [], digest: '0'.repeat(64)})};
+        expect(verifierReadsBundle(input.bundlePath, outdated), 'a bundle without a declaration needs no reader').toBe(true);
+        await fs.writeFile(declaration, JSON.stringify({version: 1}));
+        expect(verifierReadsBundle(input.bundlePath, outdated)).toBe(false);
+        expect(verifierReadsBundle(input.bundlePath, reader)).toBe(true);
+        await expect(materializeRuntimeGeneration({...input, verifier: outdated})).rejects.toThrow(/wake-artifact-verifier-outdated/);
+        await fs.writeFile(declaration, '');
+        await expect(materializeRuntimeGeneration({...input, verifier: reader})).rejects.toThrow(/wake-artifact-declaration-invalid/);
     });
 
     test('host file acquisition spans publication and releases reference exclusion before child recovery', async () => {
