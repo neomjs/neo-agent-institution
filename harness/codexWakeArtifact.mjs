@@ -96,12 +96,12 @@ export async function publishCodexWakeArtifact({directory,payload,entries,verifi
  * @summary Collects only physically unreachable, unused artifacts under the package and runtime-reference leases.
  * A declaring generation, an uncertain process observation or an interrupted generation retirement keeps the bytes.
  * It runs inside the maintenance pass and shares its halts: every read races the pass's deadlines through `bounded`,
- * a halt leaves the per-artifact catch through `rethrowHalt`, and `stopIfHalted` starts no further artifact, while a
- * removal already running finishes under both leases.
+ * a halt leaves the per-artifact catch through `rethrowHalt`, and `stopIfHalted` starts no further artifact. A removal
+ * already running finishes under both leases through `joined`, and a halt that fired meanwhile then leaves with its phase.
  * @param {Object} options Locked generation parent and maintenance's own verifier, census, phase, halt and cleanup operations.
  * @returns {Promise<Object[]>} One result per examined orphan.
  */
-export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,rethrowHalt,stopIfHalted,protectedIds,snapshot}) {
+export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,joined,rethrowHalt,stopIfHalted,protectedIds,snapshot}) {
     const parent = path.join(directory,pool);
     try { await bounded('wake-scan',null,ownedDirectory(parent)) } catch (error) { if (error.code === 'ENOENT') return []; throw error }
     const names = await bounded('wake-scan',null,fs.readdir(directory));
@@ -170,7 +170,7 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
                 dir = quarantine
             }
             assertCurrent();
-            await removeTree(dir);
+            await joined('wake-remove',name,removeTree(dir));
             result.push({id:name,state:'removed'})
         } catch (error) {
             rethrowHalt(error);

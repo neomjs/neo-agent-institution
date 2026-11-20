@@ -380,7 +380,7 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         await declare(9);
         await expect(generate('d')).rejects.toThrow(/invalid-declaration/);
         await declare(1);
-        const options = {directory,verifier,assertCurrent(){},removeTree:cleanup,bounded:(step,id,promise)=>promise,rethrowHalt(){},stopIfHalted(){},
+        const options = {directory,verifier,assertCurrent(){},removeTree:cleanup,bounded:(step,id,promise)=>promise,joined:(step,id,promise)=>promise,rethrowHalt(){},stopIfHalted(){},
             protectedIds:[c.id],snapshot:{seats:[],generations:[]},inspectProcesses:async()=>({state:'observed',processes:[]})};
         await cleanup(a.directory);
         const firstScan = scans;

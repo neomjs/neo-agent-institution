@@ -273,22 +273,23 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         } finally { fs.readdir = readdir }
     });
 
+    /** @summary Seals one unreferenced wake artifact under its digest in `pool`, as the publisher would. */
+    async function sealArtifact(pool, content) {
+        const incoming = path.join(pool, 'incoming');
+        await fs.mkdir(incoming, {mode: 0o700});
+        await fs.writeFile(path.join(incoming, 'hook'), content, {mode: 0o444});
+        await fs.chmod(incoming, 0o555);
+        const {digest} = await verifier.inventoryRuntimePayload(incoming);
+        await fs.rename(incoming, path.join(pool, digest));
+        return digest
+    }
+
     test('a wake-artifact verify that never settles starts no further artifact work, and the scheduler backs off', async () => {
         test.setTimeout(15000);
         owner.write(snapshot([seat(unused.value)]));
         const pool = path.join(directory, 'wake-artifacts-v1');
         await fs.mkdir(pool, {mode: 0o700});
-        /** @summary Seals one unreferenced artifact under its digest, as the publisher would. */
-        async function artifact(content) {
-            const incoming = path.join(pool, 'incoming');
-            await fs.mkdir(incoming, {mode: 0o700});
-            await fs.writeFile(path.join(incoming, 'hook'), content, {mode: 0o444});
-            await fs.chmod(incoming, 0o555);
-            const {digest} = await verifier.inventoryRuntimePayload(incoming);
-            await fs.rename(incoming, path.join(pool, digest));
-            return digest
-        }
-        const artifacts = [await artifact('one'), await artifact('two')].sort();
+        const artifacts = [await sealArtifact(pool, 'one'), await sealArtifact(pool, 'two')].sort();
         let entered, inventories = 0, removals = 0, pass, tick, passes = 0;
         const verifying = new Promise(resolve => { entered = resolve });
         const stuck     = {...verifier, inventoryRuntimePayload(dir, ...rest) {
@@ -315,6 +316,50 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         await new Promise(resolve => setImmediate(resolve));
         expect(passes, 'the next tick waits out the back-off').toBe(1);
         await maintenance.close()
+    });
+
+    /** @summary Holds a pass inside its first artifact removal in `pool`, fires the leased deadline there, then lets the removal finish. */
+    async function haltDuringArtifactRemoval(pool) {
+        let leased, resume, entered, removals = 0;
+        const inRemoval = new Promise(resolve => { entered = resolve }),
+              paused    = new Promise(resolve => { resume = resolve });
+        const pending   = retireRuntimeGenerations({...options(), deadlineMs: 10000, leasedDeadlineMs: 1000}, {transactionFn,
+            inspectProcesses: emptyCensus,
+            removeTree      : async target => {
+                if (path.dirname(target) === pool) { removals++; entered(); await paused }
+                return removeOwnedRuntimeTree(target)
+            },
+            setTimeoutFn    : (callback, ms) => { if (ms === 1000) leased = callback; return 0 },
+            clearTimeoutFn() {}});
+        await inRemoval;
+        leased();
+        resume();
+        return {result: await pending, removals}
+    }
+
+    test('a leased deadline during the last wake-artifact removal still defers the pass, so the scheduler backs off', async () => {
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const only = await sealArtifact(pool, 'one');
+        const {result} = await haltDuringArtifactRemoval(pool);
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-remove', id: only}});
+        expect(await fs.readdir(pool), 'the removal in flight finished').toEqual([]);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
+    test('a leased deadline during a wake-artifact removal starts no later artifact and reports the removal phase', async () => {
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const [first, second] = [await sealArtifact(pool, 'one'), await sealArtifact(pool, 'two')].sort();
+        const {result, removals} = await haltDuringArtifactRemoval(pool);
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-remove', id: first}});
+        expect(removals, 'no later artifact starts after the halt').toBe(1);
+        expect(await fs.readdir(pool), 'the removal in flight finished').toEqual([second]);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
     });
 
     test('a generation replaced during its lease-free verify is retained, not removed', async () => {
@@ -359,6 +404,7 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect(await fs.stat(target)).toBeTruthy();
         resume();
         const result = await pending;
+        expect(result, 'the halt leaves after the removal, with its phase').toMatchObject({state: 'deferred', reason: 'pass-aborted', phase: {step: 'remove', id: unused.value.id}});
         expect(result.generations.find(row => row.id === unused.value.id)).toMatchObject({state: 'removed'});
         await expect(fs.stat(target)).rejects.toMatchObject({code: 'ENOENT'});
         expect(await verifier.readRuntimeGeneration({directory: current.value.directory})).toEqual(current.value);

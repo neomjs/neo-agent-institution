@@ -149,6 +149,13 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
     function stopIfHalted() {
         if (haltCode) throw Object.assign(Error(haltCode), {code: haltCode});
     }
+    /** @summary Joins a step that must finish under both leases, never racing it, then lets a halt that fired during it leave with its phase. */
+    async function joined(step, id, promise) {
+        phase = {step, id};
+        const value = await promise;
+        stopIfHalted();
+        return value;
+    }
     /** @summary Revalidates both exclusion owners in the acquisition order. */
     function assertCurrent() {
         packageGuard.assertCurrent();
@@ -246,6 +253,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
             try {
                 if (!transactionPattern.test(name.slice(RETIRING.length))) throw Error('runtime-removal-name-unknown');
                 generations.push(await finishRemoval(target));
+                stopIfHalted();
             } catch (error) {
                 rethrowHalt(error);
                 generations.push({directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
@@ -286,12 +294,13 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                 renameTree(target, destination);
                 flushDirectory(directory);
                 generations.push(await finishRemoval(destination));
+                stopIfHalted();
             } catch (error) {
                 rethrowHalt(error);
                 generations.push({id, directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
             }
         }
-        const artifacts = await retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,rethrowHalt,stopIfHalted,...evidence()});
+        const artifacts = await retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,joined,rethrowHalt,stopIfHalted,...evidence()});
         return {state: 'observed', generations, ...(artifacts.length ? {artifacts} : {})};
     } catch (error) {
         return {state: 'deferred', reason: error.code || error.message, ...(HALTS.has(error.code) ? {phase} : {}), generations};
