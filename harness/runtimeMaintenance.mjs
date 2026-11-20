@@ -141,9 +141,10 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         phase = {step, id};
         return Promise.race([promise, halted]);
     }
-    /** @summary Lets a halt leave a per-generation catch, so the pass stops instead of trying the next generation. */
+    /** @summary Lets a halt leave a per-item catch, even one a running step reaches with its own late error, so the pass stops at that step's phase. */
     function rethrowHalt(error) {
         if (HALTS.has(error.code)) throw error;
+        stopIfHalted();
     }
     /** @summary Starts no further step once the pass has halted; a removal already running still finishes under both leases. */
     function stopIfHalted() {
