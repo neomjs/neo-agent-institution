@@ -8,7 +8,8 @@ import * as journal                                                             
 import * as leases                                                                     from 'neo-agent-brain/file-lease';
 import {materializeRuntimeGeneration, removeOwnedRuntimeTree}                          from '../../../../harness/runtimeGeneration.mjs';
 import {holdPackageTransaction, inspectPackageSlot, publishPackageSlots}               from '../../../../harness/packageSlots.mjs';
-import {retireRuntimeGenerations, runtimeMaintenanceReporter, startRuntimeMaintenance} from '../../../../harness/runtimeMaintenance.mjs';
+import {RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS, retireRuntimeGenerations, runtimeMaintenanceReporter, startRuntimeMaintenance}
+                                                                                       from '../../../../harness/runtimeMaintenance.mjs';
 
 /** @summary Builds a real sealed generation using the production publisher and a fixture binary probe. */
 async function generation(root, directory, revision) {
@@ -240,14 +241,28 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
     });
 
-    test('a generation replaced after its lease-free verify is retained, not removed', async () => {
+    test('a census that never settles keeps a seat Start waiting no longer than the leased deadline', async () => {
+        let entered;
+        const inCensus = new Promise(resolve => { entered = resolve });
+        const pass     = retireRuntimeGenerations({...options(), deadlineMs: 5000, leasedDeadlineMs: 100},
+            {transactionFn, inspectProcesses: () => { entered(); return new Promise(() => {}) }});
+        await inCensus;
+        expect((await references.waitForRuntimeGenerationReferences({directory, deadlineMs: 1000})).release()).toBe(true);
+        expect(await pass).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'census', id: unused.value.id}});
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+    });
+
+    test('the leased deadline stays below the time a seat Start waits for the lease', () => {
+        expect(RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS).toBeLessThan(references.RUNTIME_REFERENCE_START_WAIT_MS);
+    });
+
+    test('a generation replaced during its lease-free verify is retained, not removed', async () => {
         const swapping = {...verifier, async readRuntimeGeneration(input) {
-            const generation = await verifier.readRuntimeGeneration(input);
             if (input.directory === unused.value.directory) {
-                await fs.rename(input.directory, input.directory + '-verified');
-                await fs.cp(input.directory + '-verified', input.directory, {recursive: true});
+                await fs.rename(input.directory, input.directory + '-original');
+                await fs.cp(input.directory + '-original', input.directory, {recursive: true});
             }
-            return generation;
+            return verifier.readRuntimeGeneration(input);
         }};
         let   removals = 0;
         const result   = await retireRuntimeGenerations({...options(), verifier: swapping},
@@ -323,7 +338,7 @@ test('maintenance cadence coalesces overlap and teardown joins the active pass',
 
 test('a pass that halts at its deadline waits longer before the next, and a settled pass resets the wait', async () => {
     const flush   = () => new Promise(resolve => setImmediate(resolve));
-    const results = [{state: 'deferred', reason: 'pass-deadline'}, {state: 'deferred', reason: 'pass-deadline'}, {state: 'observed'}, {state: 'observed'}];
+    const results = [{state: 'deferred', reason: 'pass-deadline'}, {state: 'deferred', reason: 'lease-deadline'}, {state: 'observed'}, {state: 'observed'}];
     let tick, clock = 0, calls = 0;
     const maintenance = startRuntimeMaintenance(async () => { calls++; return results.shift() }, {
         intervalMs: 1000, maxBackoffMs: 4000, now: () => clock,

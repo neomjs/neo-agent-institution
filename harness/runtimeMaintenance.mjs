@@ -27,7 +27,14 @@ export const RUNTIME_MAINTENANCE_DEADLINE_MS = 120000;
  * so the wait doubles from the cadence up to this cap instead of starting another read every tick.
  */
 export const RUNTIME_MAINTENANCE_MAX_BACKOFF_MS = 1800000;
-const HALTS = new Set(['pass-deadline', 'pass-aborted']);
+
+/**
+ * @summary How long the pass may wait on a read while it holds both leases. A seat Start waits at most the
+ * Brain's `RUNTIME_REFERENCE_START_WAIT_MS` (20 s) for the reference lease, so a census that never settles
+ * halts here rather than at the pass deadline. A real census takes well under a second.
+ */
+export const RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS = 10000;
+const DEADLINES = new Set(['pass-deadline', 'lease-deadline']), HALTS = new Set([...DEADLINES, 'pass-aborted']);
 
 /**
  * @summary Reports removals and each active deferral reason once until it clears.
@@ -104,25 +111,28 @@ function readRemovalReceipt(target, verifier) {
  * Payload verification reads only sealed, non-current trees, so it runs before the pass takes either
  * lease; unguarded evidence there only chooses what to verify. Under both leases the pass decides again on
  * fresh evidence and a census, and removes only a tree whose inode is the one captured before its verify.
- * The deadline or the owner's abort ends a pending read (payload verify, census), the `finally` releases
+ * Once it holds them, a shorter leased deadline bounds its reads, so a census that never settles keeps a
+ * seat Start waiting no longer than that deadline.
+ * Either deadline or the owner's abort ends a pending read (payload verify, census), the `finally` releases
  * the leases the pass took, and the result names the step and generation it stopped in. A removal is never
  * abandoned: it deletes by path, so a successor holding the leases could see its tree retained or replaced.
  * It finishes under both leases, and a halt takes effect at the next step.
  * @param {Object} options Explicit host generation, trusted Brain contracts and custody directory.
  * @param {Number} [options.deadlineMs=RUNTIME_MAINTENANCE_DEADLINE_MS] Longest time the pass runs.
+ * @param {Number} [options.leasedDeadlineMs=RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS] Longest wait on a read under both leases.
  * @param {AbortSignal} [options.signal] The owner's teardown; aborting ends the pass at its pending step.
  * @param {Object} [dependencies] Isolated transaction, census, interruption and clock seams for fixtures.
  * @returns {Promise<Object>} Per-generation removal/retention facts; never readiness or seat migration.
- * A halted pass returns `{state: 'deferred', reason: 'pass-deadline' | 'pass-aborted', phase: {step, id}}`.
+ * A halted pass returns `{state: 'deferred', reason: 'pass-deadline' | 'lease-deadline' | 'pass-aborted', phase: {step, id}}`.
  */
 export async function retireRuntimeGenerations({directory, currentGeneration, journalDirectory, verifier, references, journal, leases,
-    deadlineMs = RUNTIME_MAINTENANCE_DEADLINE_MS, signal}, {
+    deadlineMs = RUNTIME_MAINTENANCE_DEADLINE_MS, leasedDeadlineMs = RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS, signal}, {
     transactionFn = () => holdPackageTransaction({acquireLease: leases.holdFileLease}),
     inspectProcesses = inspectRuntimeGenerationProcesses, removeTree = removeOwnedRuntimeTree, renameTree = fs.renameSync,
     setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout
 } = {}) {
     const generations = [];
-    let packageGuard, referenceGuard, timer, halt, phase = {step: 'acquire', id: null};
+    let packageGuard, referenceGuard, timer, leasedTimer, halt, phase = {step: 'acquire', id: null};
     const halted  = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
     const onAbort = () => halt('pass-aborted');
     halted.catch(() => {});
@@ -222,6 +232,8 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         }
         packageGuard = transactionFn();
         referenceGuard = references.holdRuntimeGenerationReferences({directory});
+        leasedTimer = setTimeoutFn(() => halt('lease-deadline'), leasedDeadlineMs);
+        leasedTimer?.unref?.();
         assertCurrent();
         const pending = new Set(fs.readdirSync(directory).filter(name => name.startsWith(RETIRING))
             .map(name => name.endsWith('.json') ? name.slice(0, -5) : name));
@@ -281,6 +293,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         return {state: 'deferred', reason: error.code || error.message, ...(HALTS.has(error.code) ? {phase} : {}), generations};
     } finally {
         clearTimeoutFn(timer);
+        clearTimeoutFn(leasedTimer);
         signal?.removeEventListener('abort', onAbort);
         const failures = [];
         for (const guard of [referenceGuard, packageGuard]) {
@@ -294,8 +307,8 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
 /**
  * @summary Runs non-overlapping maintenance on a host cadence and joins the final pass during teardown.
  * Each pass receives `{signal}`. Teardown aborts it and waits at most `closeTimeoutMs`, so an FM quit
- * never hangs behind a pass, even one that ignores its signal. Consecutive `pass-deadline` halts double
- * the wait before the next pass, from the cadence up to `maxBackoffMs`; any other result resets it.
+ * never hangs behind a pass, even one that ignores its signal. Consecutive deadline halts double the
+ * wait before the next pass, from the cadence up to `maxBackoffMs`; any other result resets it.
  * @param {Function} run One bounded asynchronous maintenance pass, called with `{signal}`.
  * @param {Object} [options] Clock and report seams; no new operator configuration.
  * @returns {{close: Function}} Closing prevents another pass, aborts the running one and joins it within the bound.
@@ -306,7 +319,7 @@ export function startRuntimeMaintenance(run, {intervalMs = 60000, closeTimeoutMs
     let pending = null, closed = false, controller = null, halts = 0, resumeAt = 0;
     /** @summary Counts consecutive deadline halts and sets when the next pass may start. */
     function observe(result) {
-        halts    = result?.reason === 'pass-deadline' ? halts + 1 : 0;
+        halts    = DEADLINES.has(result?.reason) ? halts + 1 : 0;
         resumeAt = halts ? now() + Math.min(intervalMs * 2 ** halts, maxBackoffMs) : 0;
         return result
     }
