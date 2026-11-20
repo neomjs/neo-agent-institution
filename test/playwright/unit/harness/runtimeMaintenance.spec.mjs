@@ -227,6 +227,36 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect((await fs.readdir(directory)).filter(name => name.startsWith('.retiring-'))).toEqual([]);
     });
 
+    test('a verify that never settles keeps no seat Start or install waiting', async () => {
+        let entered;
+        const verifying = new Promise(resolve => { entered = resolve });
+        const stuck     = {...verifier, readRuntimeGeneration: () => { entered(); return new Promise(() => {}) }};
+        const pass      = retireRuntimeGenerations({...options(), verifier: stuck, deadlineMs: 300}, {transactionFn, inspectProcesses: emptyCensus});
+        await verifying;
+        // a seat Start's bounded wait gets the reference lease while the verify hangs
+        expect((await references.waitForRuntimeGenerationReferences({directory, deadlineMs: 50})).release()).toBe(true);
+        expect(transactionFn().release()).toBe(true);
+        expect(await pass).toMatchObject({state: 'deferred', reason: 'pass-deadline', phase: {step: 'verify', id: unused.value.id}});
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+    });
+
+    test('a generation replaced after its lease-free verify is retained, not removed', async () => {
+        const swapping = {...verifier, async readRuntimeGeneration(input) {
+            const generation = await verifier.readRuntimeGeneration(input);
+            if (input.directory === unused.value.directory) {
+                await fs.rename(input.directory, input.directory + '-verified');
+                await fs.cp(input.directory + '-verified', input.directory, {recursive: true});
+            }
+            return generation;
+        }};
+        let   removals = 0;
+        const result   = await retireRuntimeGenerations({...options(), verifier: swapping},
+            {transactionFn, inspectProcesses: emptyCensus, removeTree: async () => { removals++ }});
+        expect(removals).toBe(0);
+        expect(result.generations.find(row => row.id === unused.value.id).reasons).toContainEqual({code: 'runtime-generation-changed'});
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+    });
+
     test('an owner abort ends a pass stuck in a step at once', async () => {
         const controller = new AbortController();
         const result     = await retireRuntimeGenerations({...options(), signal: controller.signal},
@@ -289,6 +319,25 @@ test('maintenance cadence coalesces overlap and teardown joins the active pass',
     release(); await closing;
     tick(); await Promise.resolve();
     expect(calls).toBe(1);
+});
+
+test('a pass that halts at its deadline waits longer before the next, and a settled pass resets the wait', async () => {
+    const flush   = () => new Promise(resolve => setImmediate(resolve));
+    const results = [{state: 'deferred', reason: 'pass-deadline'}, {state: 'deferred', reason: 'pass-deadline'}, {state: 'observed'}, {state: 'observed'}];
+    let tick, clock = 0, calls = 0;
+    const maintenance = startRuntimeMaintenance(async () => { calls++; return results.shift() }, {
+        intervalMs: 1000, maxBackoffMs: 4000, now: () => clock,
+        setIntervalFn(callback) { tick = callback; return {unref() {}} }, clearIntervalFn() {}
+    });
+    const at = async time => { clock = time; tick(); await flush() };
+    await flush();
+    expect(calls).toBe(1);                      // first halt: the next pass waits twice the cadence
+    await at(1000);  expect(calls).toBe(1);
+    await at(2000);  expect(calls).toBe(2);     // second halt: four times the cadence, which is the cap
+    await at(5000);  expect(calls).toBe(2);
+    await at(6000);  expect(calls).toBe(3);     // settles: the cadence applies again
+    await at(7000);  expect(calls).toBe(4);
+    await maintenance.close();
 });
 
 test('teardown aborts the running pass and never waits past its close bound', async () => {

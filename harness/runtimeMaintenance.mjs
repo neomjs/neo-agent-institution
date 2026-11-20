@@ -15,12 +15,18 @@ const RETIRING  = '.retiring-';
 const idPattern = /^[a-f0-9]{64}$/, transactionPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
 
 /**
- * @summary How long one pass may hold the package and reference leases. Every seat Start and every
- * install waits on them, so a pass that never settles must still release them. A real pass verifies
- * a generation in about 6 s and its census takes at most 30 s (three 10 s probes); 2 minutes is
- * roughly ten real passes.
+ * @summary How long one pass may run. Every seat Start and every install waits on the package and
+ * reference leases, so the pass verifies payloads before it takes them: a verify that never settles
+ * holds neither, and the leases cover only the census and a removal. A real pass verifies a generation
+ * in about 6 s and its census takes at most 30 s (three 10 s probes); 2 minutes is roughly ten real passes.
  */
 export const RUNTIME_MAINTENANCE_DEADLINE_MS = 120000;
+
+/**
+ * @summary The longest wait after consecutive deadline halts. Nothing cancels a halted verify's read,
+ * so the wait doubles from the cadence up to this cap instead of starting another read every tick.
+ */
+export const RUNTIME_MAINTENANCE_MAX_BACKOFF_MS = 1800000;
 const HALTS = new Set(['pass-deadline', 'pass-aborted']);
 
 /**
@@ -95,13 +101,15 @@ function readRemovalReceipt(target, verifier) {
  * Expensive payload verification is skipped for positively retained generations. A removal requires
  * the current trusted verifier plus a fresh complete census and current package/journal evidence.
  *
- * The pass holds both leases only until its deadline or its owner's abort. Either one ends a pending
- * read (payload verify, census), the `finally` releases both leases, and the result names the step and
- * generation it stopped in. A removal is never abandoned: it deletes by path, so a successor holding the
- * leases could see its tree retained or replaced. It finishes under both leases, and a halt takes effect
- * at the next step.
+ * Payload verification reads only sealed, non-current trees, so it runs before the pass takes either
+ * lease; unguarded evidence there only chooses what to verify. Under both leases the pass decides again on
+ * fresh evidence and a census, and removes only a tree whose inode is the one captured before its verify.
+ * The deadline or the owner's abort ends a pending read (payload verify, census), the `finally` releases
+ * the leases the pass took, and the result names the step and generation it stopped in. A removal is never
+ * abandoned: it deletes by path, so a successor holding the leases could see its tree retained or replaced.
+ * It finishes under both leases, and a halt takes effect at the next step.
  * @param {Object} options Explicit host generation, trusted Brain contracts and custody directory.
- * @param {Number} [options.deadlineMs=RUNTIME_MAINTENANCE_DEADLINE_MS] Longest time the pass holds the leases.
+ * @param {Number} [options.deadlineMs=RUNTIME_MAINTENANCE_DEADLINE_MS] Longest time the pass runs.
  * @param {AbortSignal} [options.signal] The owner's teardown; aborting ends the pass at its pending step.
  * @param {Object} [dependencies] Isolated transaction, census, interruption and clock seams for fixtures.
  * @returns {Promise<Object>} Per-generation removal/retention facts; never readiness or seat migration.
@@ -132,9 +140,9 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         packageGuard.assertCurrent();
         references.assertRuntimeGenerationReferences(referenceGuard, directory);
     }
-    /** @summary Reads the full journal, never the registry-filtered cockpit projection. */
-    function evidence() {
-        assertCurrent();
+    /** @summary Reads the full journal, never the registry-filtered cockpit projection; unguarded, it only chooses what to verify. */
+    function evidence(guarded = true) {
+        if (guarded) assertCurrent();
         const packages = inspectPackageProtection({directory, verifier});
         let   snapshot = null;
         try {
@@ -147,13 +155,23 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         return {snapshot, protectedIds: packages.state === 'observed' ? [...packages.protectedIds, currentGeneration.id] : null};
     }
     /** @summary Applies the same retention rules before and after asynchronous process inspection. */
-    function classify(generation, census) {
-        return classifyRuntimeGenerationRetention({generation, ...evidence(), census, verifier,
+    function classify(generation, census, guarded = true) {
+        return classifyRuntimeGenerationRetention({generation, ...evidence(guarded), census, verifier,
             validateReferences: journal.isRuntimeReferenceSnapshot});
     }
     /** @summary Distinguishes positive or unknown retention from the still-unperformed process observation. */
-    function preliminarilyRetained(generation) {
-        return classify(generation, {state: 'unknown', processes: []}).reasons.filter(reason => reason.code !== 'process-census-unknown');
+    function preliminarilyRetained(generation, guarded = true) {
+        return classify(generation, {state: 'unknown', processes: []}, guarded).reasons.filter(reason => reason.code !== 'process-census-unknown');
+    }
+    /** @summary The published generation directories, listed afresh for each phase. */
+    function generationIds() {
+        return fs.readdirSync(directory).filter(name => idPattern.test(name));
+    }
+    /** @summary A generation's owned directory and its record's descriptor, never a substituted record. */
+    function readCandidate(target) {
+        const stat = ownedDirectory(target);
+        return {stat, candidate: verifier.runtimeGenerationDescriptor(target,
+            readOwnedJson(path.join(target, verifier.RUNTIME_GENERATION_RECORD), 16 * 1024 * 1024))};
     }
     /** @summary Cleans only a committed inode after fresh retention and process observations permit it. */
     async function finishRemoval(target) {
@@ -189,6 +207,19 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
         timer = setTimeoutFn(() => halt('pass-deadline'), deadlineMs);
         timer?.unref?.();
         if (path.dirname(verifier.runtimeGenerationPin(currentGeneration).directory) !== directory) throw Error('runtime-maintenance-host-binding-invalid');
+        // No lease is held yet: a verify that never settles keeps no seat Start or install waiting.
+        const verified = new Map();
+        for (const id of generationIds()) {
+            const target = path.join(directory, id);
+            try {
+                const {stat, candidate} = readCandidate(target);
+                if (preliminarilyRetained(candidate, false).length) continue;
+                verified.set(id, {original: stat, generation: await bounded('verify', id, verifier.readRuntimeGeneration({directory: target}))});
+            } catch (error) {
+                rethrowHalt(error);
+                verified.set(id, {error});
+            }
+        }
         packageGuard = transactionFn();
         referenceGuard = references.holdRuntimeGenerationReferences({directory});
         assertCurrent();
@@ -204,20 +235,19 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                 generations.push({directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
             }
         }
-        for (const id of fs.readdirSync(directory).filter(name => idPattern.test(name))) {
+        for (const id of generationIds()) {
             const target = path.join(directory, id);
             try {
-                ownedDirectory(target);
-                const metadata    = readOwnedJson(path.join(target, verifier.RUNTIME_GENERATION_RECORD), 16 * 1024 * 1024);
-                const candidate   = verifier.runtimeGenerationDescriptor(target, metadata);
-                const preliminary = preliminarilyRetained(candidate);
+                const preliminary = preliminarilyRetained(readCandidate(target).candidate);
                 if (preliminary.length) {
                     generations.push({id, directory: target, state: 'retained', reasons: preliminary});
                     continue;
                 }
-                const generation = await bounded('verify', id, verifier.readRuntimeGeneration({directory: target}));
-                const original   = ownedDirectory(target);
-                const census     = await bounded('census', id, inspectProcesses({directories: [target]}));
+                // one the unguarded evidence skipped is verified by a later pass, never removed unverified
+                const entry = verified.get(id) ?? {error: Error('runtime-verify-deferred')};
+                if (entry.error) throw entry.error;
+                const {generation, original} = entry;
+                const census = await bounded('census', id, inspectProcesses({directories: [target]}));
                 const decision   = classify(generation, census);
                 if (!decision.eligible) {
                     generations.push({id, directory: target, state: 'retained', reasons: decision.reasons});
@@ -264,20 +294,28 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
 /**
  * @summary Runs non-overlapping maintenance on a host cadence and joins the final pass during teardown.
  * Each pass receives `{signal}`. Teardown aborts it and waits at most `closeTimeoutMs`, so an FM quit
- * never hangs behind a pass, even one that ignores its signal.
+ * never hangs behind a pass, even one that ignores its signal. Consecutive `pass-deadline` halts double
+ * the wait before the next pass, from the cadence up to `maxBackoffMs`; any other result resets it.
  * @param {Function} run One bounded asynchronous maintenance pass, called with `{signal}`.
  * @param {Object} [options] Clock and report seams; no new operator configuration.
  * @returns {{close: Function}} Closing prevents another pass, aborts the running one and joins it within the bound.
  */
-export function startRuntimeMaintenance(run, {intervalMs = 60000, closeTimeoutMs = 5000, onResult = () => {}, onError = () => {},
+export function startRuntimeMaintenance(run, {intervalMs = 60000, closeTimeoutMs = 5000, maxBackoffMs = RUNTIME_MAINTENANCE_MAX_BACKOFF_MS,
+    onResult = () => {}, onError = () => {}, now = Date.now,
     setIntervalFn = setInterval, clearIntervalFn = clearInterval, setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout} = {}) {
-    let pending = null, closed = false, controller = null;
+    let pending = null, closed = false, controller = null, halts = 0, resumeAt = 0;
+    /** @summary Counts consecutive deadline halts and sets when the next pass may start. */
+    function observe(result) {
+        halts    = result?.reason === 'pass-deadline' ? halts + 1 : 0;
+        resumeAt = halts ? now() + Math.min(intervalMs * 2 ** halts, maxBackoffMs) : 0;
+        return result
+    }
     /** @summary Coalesces cadence overlap without losing the in-flight teardown join. */
     function tick() {
-        if (closed || pending) return;
+        if (closed || pending || now() < resumeAt) return;
         controller = new AbortController();
         const {signal} = controller;
-        pending = Promise.resolve().then(() => run({signal})).then(onResult).catch(onError).finally(() => { pending = null; controller = null });
+        pending = Promise.resolve().then(() => run({signal})).then(observe).then(onResult).catch(onError).finally(() => { pending = null; controller = null });
     }
     const timer = setIntervalFn(tick, intervalMs);
     timer.unref?.();
