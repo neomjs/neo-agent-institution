@@ -8,7 +8,8 @@ import * as journal                                                             
 import * as leases                                                                     from 'neo-agent-brain/file-lease';
 import {materializeRuntimeGeneration, removeOwnedRuntimeTree}                          from '../../../../harness/runtimeGeneration.mjs';
 import {holdPackageTransaction, inspectPackageSlot, publishPackageSlots}               from '../../../../harness/packageSlots.mjs';
-import {retireRuntimeGenerations, runtimeMaintenanceReporter, startRuntimeMaintenance} from '../../../../harness/runtimeMaintenance.mjs';
+import {RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS, retireRuntimeGenerations, runtimeMaintenanceReporter, startRuntimeMaintenance}
+                                                                                       from '../../../../harness/runtimeMaintenance.mjs';
 
 /** @summary Builds a real sealed generation using the production publisher and a fixture binary probe. */
 async function generation(root, directory, revision) {
@@ -227,6 +228,184 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect((await fs.readdir(directory)).filter(name => name.startsWith('.retiring-'))).toEqual([]);
     });
 
+    test('a verify that never settles keeps no seat Start or install waiting', async () => {
+        let entered;
+        const verifying = new Promise(resolve => { entered = resolve });
+        const stuck     = {...verifier, readRuntimeGeneration: () => { entered(); return new Promise(() => {}) }};
+        const pass      = retireRuntimeGenerations({...options(), verifier: stuck, deadlineMs: 300}, {transactionFn, inspectProcesses: emptyCensus});
+        await verifying;
+        // a seat Start's bounded wait gets the reference lease while the verify hangs
+        expect((await references.waitForRuntimeGenerationReferences({directory, deadlineMs: 50})).release()).toBe(true);
+        expect(transactionFn().release()).toBe(true);
+        expect(await pass).toMatchObject({state: 'deferred', reason: 'pass-deadline', phase: {step: 'verify', id: unused.value.id}});
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+    });
+
+    test('a census that never settles keeps a seat Start waiting no longer than the leased deadline', async () => {
+        let entered;
+        const inCensus = new Promise(resolve => { entered = resolve });
+        const pass     = retireRuntimeGenerations({...options(), deadlineMs: 5000, leasedDeadlineMs: 100},
+            {transactionFn, inspectProcesses: () => { entered(); return new Promise(() => {}) }});
+        await inCensus;
+        expect((await references.waitForRuntimeGenerationReferences({directory, deadlineMs: 1000})).release()).toBe(true);
+        expect(await pass).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'census', id: unused.value.id}});
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+    });
+
+    test('the leased deadline stays below the time a seat Start waits for the lease', () => {
+        expect(RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS).toBeLessThan(references.RUNTIME_REFERENCE_START_WAIT_MS);
+    });
+
+    test('a wake-artifact directory read that never settles frees both leases at the leased deadline', async () => {
+        test.setTimeout(15000);
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1'), readdir = fs.readdir;
+        await fs.mkdir(pool, {mode: 0o700});
+        fs.readdir = (target, ...rest) => target === pool ? new Promise(() => {}) : readdir.call(fs, target, ...rest);
+        try {
+            const started = Date.now(),
+                  result  = await retireRuntimeGenerations({...options(), deadlineMs: 10000, leasedDeadlineMs: 1000},
+                      {transactionFn, inspectProcesses: emptyCensus});
+            expect(Date.now() - started, 'released at the leased deadline, not the pass deadline').toBeLessThan(5000);
+            expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-scan'}});
+            expect(transactionFn().release()).toBe(true);
+            expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true)
+        } finally { fs.readdir = readdir }
+    });
+
+    /** @summary Seals one unreferenced wake artifact under its digest in `pool`, as the publisher would. */
+    async function sealArtifact(pool, content) {
+        const incoming = path.join(pool, 'incoming');
+        await fs.mkdir(incoming, {mode: 0o700});
+        await fs.writeFile(path.join(incoming, 'hook'), content, {mode: 0o444});
+        await fs.chmod(incoming, 0o555);
+        const {digest} = await verifier.inventoryRuntimePayload(incoming);
+        await fs.rename(incoming, path.join(pool, digest));
+        return digest
+    }
+
+    test('a wake-artifact verify that never settles starts no further artifact work, and the scheduler backs off', async () => {
+        test.setTimeout(15000);
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const artifacts = [await sealArtifact(pool, 'one'), await sealArtifact(pool, 'two')].sort();
+        let entered, inventories = 0, removals = 0, pass, tick, passes = 0;
+        const verifying = new Promise(resolve => { entered = resolve });
+        const stuck     = {...verifier, inventoryRuntimePayload(dir, ...rest) {
+            if (path.dirname(dir) !== pool) return verifier.inventoryRuntimePayload(dir, ...rest);
+            inventories++;
+            entered();
+            return new Promise(() => {})
+        }};
+        const maintenance = startRuntimeMaintenance(({signal}) => {
+            passes++;
+            return pass = retireRuntimeGenerations({...options(), verifier: stuck, deadlineMs: 10000, leasedDeadlineMs: 1000, signal},
+                {transactionFn, inspectProcesses: emptyCensus, removeTree: async target => { removals++; return removeOwnedRuntimeTree(target) }})
+        }, {intervalMs: 1000, maxBackoffMs: 4000, now: () => 0, setIntervalFn(callback) { tick = callback; return {unref() {}} }, clearIntervalFn() {}});
+        await verifying;
+        const result = await pass;
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-verify'}});
+        expect(inventories, 'no artifact after the stuck one is read').toBe(1);
+        expect(removals, 'no removal starts after the halt').toBe(0);
+        expect((await fs.readdir(pool)).sort()).toEqual(artifacts);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+        await new Promise(resolve => setImmediate(resolve));
+        tick();
+        await new Promise(resolve => setImmediate(resolve));
+        expect(passes, 'the next tick waits out the back-off').toBe(1);
+        await maintenance.close()
+    });
+
+    /** @summary Holds a pass inside its first removal under `parent`, fires the leased deadline there, then lets the removal finish or reject with `failure`. */
+    async function haltDuringRemoval(parent, failure) {
+        let leased, resume, entered, removals = 0;
+        const inRemoval = new Promise(resolve => { entered = resolve }),
+              paused    = new Promise(resolve => { resume = resolve });
+        const pending   = retireRuntimeGenerations({...options(), deadlineMs: 10000, leasedDeadlineMs: 1000}, {transactionFn,
+            inspectProcesses: emptyCensus,
+            removeTree      : async target => {
+                if (path.dirname(target) === parent) { removals++; entered(); await paused; if (failure) throw failure }
+                return removeOwnedRuntimeTree(target)
+            },
+            setTimeoutFn    : (callback, ms) => { if (ms === 1000) leased = callback; return 0 },
+            clearTimeoutFn() {}});
+        await inRemoval;
+        leased();
+        resume();
+        return {result: await pending, removals}
+    }
+
+    test('a leased deadline during the last wake-artifact removal still defers the pass, so the scheduler backs off', async () => {
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const only = await sealArtifact(pool, 'one');
+        const {result} = await haltDuringRemoval(pool);
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-remove', id: only}});
+        expect(await fs.readdir(pool), 'the removal in flight finished').toEqual([]);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
+    test('the last wake-artifact removal failing after a leased deadline still defers the pass, so the scheduler backs off', async () => {
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const only = await sealArtifact(pool, 'one');
+        const {result} = await haltDuringRemoval(pool, Object.assign(Error('io'), {code: 'EIO'}));
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-remove', id: only}});
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
+    test('a generation removal failing after a leased deadline leaves as the halt with its phase, starting no artifact scan', async () => {
+        const {result} = await haltDuringRemoval(directory, Object.assign(Error('io'), {code: 'EIO'}));
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'remove', id: unused.value.id}});
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
+    test('a wake-artifact removal that fails without a halt keeps its filesystem error, and the pass settles', async () => {
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const only   = await sealArtifact(pool, 'one');
+        const result = await retireRuntimeGenerations(options(), {transactionFn, inspectProcesses: emptyCensus,
+            removeTree: async () => { throw Object.assign(Error('io'), {code: 'EIO'}) }});
+        expect(result).toMatchObject({state: 'observed', artifacts: [{id: only, state: 'retained', reason: 'EIO'}]});
+    });
+
+    test('a leased deadline during a wake-artifact removal starts no later artifact and reports the removal phase', async () => {
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        const [first, second] = [await sealArtifact(pool, 'one'), await sealArtifact(pool, 'two')].sort();
+        const {result, removals} = await haltDuringRemoval(pool);
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-remove', id: first}});
+        expect(removals, 'no later artifact starts after the halt').toBe(1);
+        expect(await fs.readdir(pool), 'the removal in flight finished').toEqual([second]);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+    });
+
+    test('a generation replaced during its lease-free verify is retained, not removed', async () => {
+        const swapping = {...verifier, async readRuntimeGeneration(input) {
+            if (input.directory === unused.value.directory) {
+                await fs.rename(input.directory, input.directory + '-original');
+                await fs.cp(input.directory + '-original', input.directory, {recursive: true});
+            }
+            return verifier.readRuntimeGeneration(input);
+        }};
+        let   removals = 0;
+        const result   = await retireRuntimeGenerations({...options(), verifier: swapping},
+            {transactionFn, inspectProcesses: emptyCensus, removeTree: async () => { removals++ }});
+        expect(removals).toBe(0);
+        expect(result.generations.find(row => row.id === unused.value.id).reasons).toContainEqual({code: 'runtime-generation-changed'});
+        expect(await verifier.readRuntimeGeneration({directory: unused.value.directory})).toEqual(unused.value);
+    });
+
     test('an owner abort ends a pass stuck in a step at once', async () => {
         const controller = new AbortController();
         const result     = await retireRuntimeGenerations({...options(), signal: controller.signal},
@@ -253,6 +432,7 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect(await fs.stat(target)).toBeTruthy();
         resume();
         const result = await pending;
+        expect(result, 'the halt leaves after the removal, with its phase').toMatchObject({state: 'deferred', reason: 'pass-aborted', phase: {step: 'remove', id: unused.value.id}});
         expect(result.generations.find(row => row.id === unused.value.id)).toMatchObject({state: 'removed'});
         await expect(fs.stat(target)).rejects.toMatchObject({code: 'ENOENT'});
         expect(await verifier.readRuntimeGeneration({directory: current.value.directory})).toEqual(current.value);
@@ -289,6 +469,25 @@ test('maintenance cadence coalesces overlap and teardown joins the active pass',
     release(); await closing;
     tick(); await Promise.resolve();
     expect(calls).toBe(1);
+});
+
+test('a pass that halts at its deadline waits longer before the next, and a settled pass resets the wait', async () => {
+    const flush   = () => new Promise(resolve => setImmediate(resolve));
+    const results = [{state: 'deferred', reason: 'pass-deadline'}, {state: 'deferred', reason: 'lease-deadline'}, {state: 'observed'}, {state: 'observed'}];
+    let tick, clock = 0, calls = 0;
+    const maintenance = startRuntimeMaintenance(async () => { calls++; return results.shift() }, {
+        intervalMs: 1000, maxBackoffMs: 4000, now: () => clock,
+        setIntervalFn(callback) { tick = callback; return {unref() {}} }, clearIntervalFn() {}
+    });
+    const at = async time => { clock = time; tick(); await flush() };
+    await flush();
+    expect(calls).toBe(1);                      // first halt: the next pass waits twice the cadence
+    await at(1000);  expect(calls).toBe(1);
+    await at(2000);  expect(calls).toBe(2);     // second halt: four times the cadence, which is the cap
+    await at(5000);  expect(calls).toBe(2);
+    await at(6000);  expect(calls).toBe(3);     // settles: the cadence applies again
+    await at(7000);  expect(calls).toBe(4);
+    await maintenance.close();
 });
 
 test('teardown aborts the running pass and never waits past its close bound', async () => {
