@@ -256,6 +256,67 @@ test.describe('harness/runtimeMaintenance — actual guarded retirement', () => 
         expect(RUNTIME_MAINTENANCE_LEASED_DEADLINE_MS).toBeLessThan(references.RUNTIME_REFERENCE_START_WAIT_MS);
     });
 
+    test('a wake-artifact directory read that never settles frees both leases at the leased deadline', async () => {
+        test.setTimeout(15000);
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1'), readdir = fs.readdir;
+        await fs.mkdir(pool, {mode: 0o700});
+        fs.readdir = (target, ...rest) => target === pool ? new Promise(() => {}) : readdir.call(fs, target, ...rest);
+        try {
+            const started = Date.now(),
+                  result  = await retireRuntimeGenerations({...options(), deadlineMs: 10000, leasedDeadlineMs: 1000},
+                      {transactionFn, inspectProcesses: emptyCensus});
+            expect(Date.now() - started, 'released at the leased deadline, not the pass deadline').toBeLessThan(5000);
+            expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-scan'}});
+            expect(transactionFn().release()).toBe(true);
+            expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true)
+        } finally { fs.readdir = readdir }
+    });
+
+    test('a wake-artifact verify that never settles starts no further artifact work, and the scheduler backs off', async () => {
+        test.setTimeout(15000);
+        owner.write(snapshot([seat(unused.value)]));
+        const pool = path.join(directory, 'wake-artifacts-v1');
+        await fs.mkdir(pool, {mode: 0o700});
+        /** @summary Seals one unreferenced artifact under its digest, as the publisher would. */
+        async function artifact(content) {
+            const incoming = path.join(pool, 'incoming');
+            await fs.mkdir(incoming, {mode: 0o700});
+            await fs.writeFile(path.join(incoming, 'hook'), content, {mode: 0o444});
+            await fs.chmod(incoming, 0o555);
+            const {digest} = await verifier.inventoryRuntimePayload(incoming);
+            await fs.rename(incoming, path.join(pool, digest));
+            return digest
+        }
+        const artifacts = [await artifact('one'), await artifact('two')].sort();
+        let entered, inventories = 0, removals = 0, pass, tick, passes = 0;
+        const verifying = new Promise(resolve => { entered = resolve });
+        const stuck     = {...verifier, inventoryRuntimePayload(dir, ...rest) {
+            if (path.dirname(dir) !== pool) return verifier.inventoryRuntimePayload(dir, ...rest);
+            inventories++;
+            entered();
+            return new Promise(() => {})
+        }};
+        const maintenance = startRuntimeMaintenance(({signal}) => {
+            passes++;
+            return pass = retireRuntimeGenerations({...options(), verifier: stuck, deadlineMs: 10000, leasedDeadlineMs: 1000, signal},
+                {transactionFn, inspectProcesses: emptyCensus, removeTree: async target => { removals++; return removeOwnedRuntimeTree(target) }})
+        }, {intervalMs: 1000, maxBackoffMs: 4000, now: () => 0, setIntervalFn(callback) { tick = callback; return {unref() {}} }, clearIntervalFn() {}});
+        await verifying;
+        const result = await pass;
+        expect(result).toMatchObject({state: 'deferred', reason: 'lease-deadline', phase: {step: 'wake-verify'}});
+        expect(inventories, 'no artifact after the stuck one is read').toBe(1);
+        expect(removals, 'no removal starts after the halt').toBe(0);
+        expect((await fs.readdir(pool)).sort()).toEqual(artifacts);
+        expect(transactionFn().release()).toBe(true);
+        expect(references.holdRuntimeGenerationReferences({directory}).release()).toBe(true);
+        await new Promise(resolve => setImmediate(resolve));
+        tick();
+        await new Promise(resolve => setImmediate(resolve));
+        expect(passes, 'the next tick waits out the back-off').toBe(1);
+        await maintenance.close()
+    });
+
     test('a generation replaced during its lease-free verify is retained, not removed', async () => {
         const swapping = {...verifier, async readRuntimeGeneration(input) {
             if (input.directory === unused.value.directory) {

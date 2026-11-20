@@ -132,8 +132,8 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
     setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout
 } = {}) {
     const generations = [];
-    let packageGuard, referenceGuard, timer, leasedTimer, halt, phase = {step: 'acquire', id: null};
-    const halted  = new Promise((resolve, reject) => { halt = code => reject(Object.assign(Error(code), {code})) });
+    let packageGuard, referenceGuard, timer, leasedTimer, halt, haltCode = null, phase = {step: 'acquire', id: null};
+    const halted  = new Promise((resolve, reject) => { halt = code => { haltCode ??= code; reject(Object.assign(Error(code), {code})) } });
     const onAbort = () => halt('pass-aborted');
     halted.catch(() => {});
     /** @summary Records where the pass is, then lets its deadline or its owner's abort end a step that never settles. */
@@ -144,6 +144,10 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
     /** @summary Lets a halt leave a per-generation catch, so the pass stops instead of trying the next generation. */
     function rethrowHalt(error) {
         if (HALTS.has(error.code)) throw error;
+    }
+    /** @summary Starts no further step once the pass has halted; a removal already running still finishes under both leases. */
+    function stopIfHalted() {
+        if (haltCode) throw Object.assign(Error(haltCode), {code: haltCode});
     }
     /** @summary Revalidates both exclusion owners in the acquisition order. */
     function assertCurrent() {
@@ -287,7 +291,7 @@ export async function retireRuntimeGenerations({directory, currentGeneration, jo
                 generations.push({id, directory: target, state: 'retained', reasons: [{code: error.code || error.message}]})
             }
         }
-        const artifacts = await retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,...evidence()});
+        const artifacts = await retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,rethrowHalt,stopIfHalted,...evidence()});
         return {state: 'observed', generations, ...(artifacts.length ? {artifacts} : {})};
     } catch (error) {
         return {state: 'deferred', reason: error.code || error.message, ...(HALTS.has(error.code) ? {phase} : {}), generations};

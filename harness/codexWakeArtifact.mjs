@@ -95,16 +95,19 @@ export async function publishCodexWakeArtifact({directory,payload,entries,verifi
 /**
  * @summary Collects only physically unreachable, unused artifacts under the package and runtime-reference leases.
  * A declaring generation, an uncertain process observation or an interrupted generation retirement keeps the bytes.
- * @param {Object} options Locked generation parent and maintenance's own verifier, census, phase and cleanup operations.
+ * It runs inside the maintenance pass and shares its halts: every read races the pass's deadlines through `bounded`,
+ * a halt leaves the per-artifact catch through `rethrowHalt`, and `stopIfHalted` starts no further artifact, while a
+ * removal already running finishes under both leases.
+ * @param {Object} options Locked generation parent and maintenance's own verifier, census, phase, halt and cleanup operations.
  * @returns {Promise<Object[]>} One result per examined orphan.
  */
-export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,protectedIds,snapshot}) {
+export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent,inspectProcesses,removeTree,bounded,rethrowHalt,stopIfHalted,protectedIds,snapshot}) {
     const parent = path.join(directory,pool);
-    try { await ownedDirectory(parent) } catch (error) { if (error.code === 'ENOENT') return []; throw error }
-    const names = await fs.readdir(directory);
+    try { await bounded('wake-scan',null,ownedDirectory(parent)) } catch (error) { if (error.code === 'ENOENT') return []; throw error }
+    const names = await bounded('wake-scan',null,fs.readdir(directory));
     if (names.some(name => name.startsWith('.retiring-'))) throw Error('wake-artifact-retirement-pending');
     const ids = names.filter(name => digestName.test(name)).sort(), artifacts = [], result = [];
-    for (const name of await fs.readdir(parent)) {
+    for (const name of await bounded('wake-scan',null,fs.readdir(parent))) {
         if (digestName.test(name) || stagingName.test(name)) artifacts.push(name);
         else result.push({id:name,state:'retained',reason:'wake-artifact-unrecognized-entry'})
     }
@@ -125,8 +128,8 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
         const live = new Set();
         for (const id of ids) {
             const generation = path.join(directory,id);
-            await ownedDirectory(generation);
-            const record = JSON.parse(await fs.readFile(path.join(generation,verifier.RUNTIME_GENERATION_RECORD),'utf8'));
+            await bounded('wake-reference',id,ownedDirectory(generation));
+            const record = JSON.parse(await bounded('wake-reference',id,fs.readFile(path.join(generation,verifier.RUNTIME_GENERATION_RECORD),'utf8')));
             if (record.id !== id || !Array.isArray(record.entries)) throw Error('wake-artifact-retention-record-invalid');
             if (verify) {
                 const proof = await bounded('wake-reference',id,verifier.readRuntimeGeneration({directory:generation}));
@@ -134,7 +137,7 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
                     throw Error('wake-artifact-retention-record-unproven')
                 }
             }
-            const artifact = await describe(path.join(generation,verifier.RUNTIME_GENERATION_PAYLOAD),record.entries,verifier);
+            const artifact = await bounded('wake-reference',id,describe(path.join(generation,verifier.RUNTIME_GENERATION_PAYLOAD),record.entries,verifier));
             if (artifact) live.add(artifact.digest)
         }
         return live
@@ -151,12 +154,13 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
         throw Error('wake-artifact-processes-unknown')
     }
     for (const name of unreferenced) {
+        stopIfHalted();
         let dir = path.join(parent,name);
         if (census.processes.some(p => p.directories.includes(dir))) {
             result.push({id:name,state:'retained',reason:'process-held'}); continue
         }
         try {
-            await ownedDirectory(dir);
+            await bounded('wake-verify',name,ownedDirectory(dir));
             if (digestName.test(name)) {
                 await bounded('wake-verify',name,verified(dir,name,verifier));
                 const quarantine = path.join(parent,'.removing-' + randomUUID());
@@ -169,7 +173,7 @@ export async function retireCodexWakeArtifacts({directory,verifier,assertCurrent
             await removeTree(dir);
             result.push({id:name,state:'removed'})
         } catch (error) {
-            if (error.code === 'pass-aborted' || error.code === 'pass-deadline') throw error;
+            rethrowHalt(error);
             assertCurrent();
             result.push({id:name,state:'retained',reason:error.code || error.message})
         }
