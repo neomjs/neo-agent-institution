@@ -1,0 +1,19 @@
+{
+    "schema"   : "public-manifest.v1",
+    "spoke"    : "neomjs/neo-agent-institution",
+    "treeFile" : "learn/tree.json",
+    "treeMount": {
+        "parentId": "AgentInterfaces",
+        "id"      : "institution",
+        "name"    : "Agent Institution"
+    },
+    "entries"  : [
+        {"file": "learn/README.md",                  "route": "/learn/institution/README"},
+        {"file": "learn/Introduction.md",            "route": "/learn/institution/Introduction"},
+        {"file": "learn/CockpitTour.md",             "route": "/learn/institution/CockpitTour"},
+        {"file": "learn/CockpitStateCensus.md",      "route": "/learn/institution/CockpitStateCensus"},
+        {"file": "learn/CockpitStateWalkthrough.md", "route": "/learn/institution/CockpitStateWalkthrough"},
+        {"file": "learn/RunningTheInstitution.md",   "route": "/learn/institution/RunningTheInstitution"},
+        {"file": "learn/TheNativeVessel.md",         "route": "/learn/institution/TheNativeVessel"}
+    ]
+}
