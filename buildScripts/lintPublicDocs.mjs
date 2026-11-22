@@ -12,12 +12,11 @@ import {fileURLToPath} from 'node:url';
 const
     __filename       = fileURLToPath(import.meta.url),
     REPO_ROOT        = path.resolve(path.dirname(__filename), '..'),
-    DEFAULT_PREFIX   = '/learn/institution/',
     EXPECTED_SCHEMA  = 'public-manifest.v1',
     EXPECTED_SPOKE   = 'neomjs/neo-agent-institution',
     EXCLUDED_SUBDIRS = ['learn/agentos/decisions/', 'learn/agentos/measurements/', 'learn/agentos/incidents/'],
-    UNIX_HOST_PATH_RE = /(?:^|[\s`'"(=])(\/(?:Users|home)\/(?![<{]|(?:you|user|username)(?:\/|\b))[A-Za-z0-9._-]+\/[^\s`'")>\]]*)/gm,
-    WIN_HOST_PATH_RE  = /(?:^|[\s`'"(=])([A-Za-z]:\\Users\\(?![<{]|(?:you|user|username)(?:\\|\b))[A-Za-z0-9._-]+\\[^\s`'")>\]]*)/gm,
+    UNIX_HOST_PATH_RE = /(?:^|[\s`'"(=:]|file:\/\/)(\/(?:Users|home)\/(?![<{]|(?:you|user|username)(?:\/|\b))[A-Za-z0-9._-]+\/[^\s`'")>\]]*)/gm,
+    WIN_HOST_PATH_RE  = /(?:^|[\s`'"(=:]|file:\/\/\/?)([A-Za-z]:[\\/]Users[\\/](?![<{]|(?:you|user|username)(?:[\\/]|\b))[A-Za-z0-9._-]+[\\/][^\s`'")>\]]*)/gm,
     PRIVATE_REPO_RE   = /\bneomjs\/(?:business|neo-stage|neo-pro)\b/gi,
     REL_LINK_RE       = /\[(?:[^\[\]]|\[[^\]]*\])*\]\(([^)\s]+)\)/g,
     INLINE_CODE_RE    = /`[^`\n]+`/g,
@@ -76,7 +75,7 @@ function lineAt(text, index) {
 export function lintPublicDocs({
     root            = REPO_ROOT,
     manifestRelPath = 'docs/public-manifest.json',
-    routePrefix     = DEFAULT_PREFIX,
+    routePrefix     = null,
     expectedSpoke   = EXPECTED_SPOKE
 } = {}) {
     const
@@ -103,8 +102,16 @@ export function lintPublicDocs({
     if (typeof manifest?.treeFile !== 'string' || !manifest.treeFile.trim()) {
         errors.push('treeFile must be a non-empty relative path')
     }
-    if (!manifest?.treeMount || typeof manifest.treeMount.id !== 'string' || typeof manifest.treeMount.name !== 'string') {
-        errors.push('treeMount must declare string id and name fields')
+    if (
+        !manifest?.treeMount ||
+        typeof manifest.treeMount.id !== 'string' ||
+        !manifest.treeMount.id.trim() ||
+        manifest.treeMount.id.startsWith('/') ||
+        manifest.treeMount.id.endsWith('/') ||
+        manifest.treeMount.id.includes('..') ||
+        typeof manifest.treeMount.name !== 'string'
+    ) {
+        errors.push('treeMount must declare normalized string id and name fields')
     }
     if (!Array.isArray(manifest?.entries) || manifest.entries.length === 0) {
         errors.push('entries must be a non-empty array')
@@ -113,6 +120,8 @@ export function lintPublicDocs({
     if (errors.length > 0) {
         throw new Error(`[public-docs] ${manifestRelPath} failed header validation:\n  - ${errors.join('\n  - ')}`)
     }
+
+    const effectivePrefix = routePrefix ?? `/learn/${manifest.treeMount.id}/`;
 
     const treePath = path.resolve(root, manifest.treeFile);
     if (!fs.existsSync(treePath)) {
@@ -172,13 +181,13 @@ export function lintPublicDocs({
         }
         seenFiles.add(entry.file);
 
-        if (!entry.route.startsWith(routePrefix) || entry.route.endsWith('/') || entry.route.endsWith('.md') || entry.route.includes('..')) {
-            errors.push(`${label}: invalid route "${entry.route}" (must start with "${routePrefix}" without trailing "/" or ".md")`)
+        if (!entry.route.startsWith(effectivePrefix) || entry.route.endsWith('/') || entry.route.endsWith('.md') || entry.route.includes('..')) {
+            errors.push(`${label}: invalid route "${entry.route}" (must start with "${effectivePrefix}" without trailing "/" or ".md")`)
         }
 
         const expectedId = treeLeafByFile.get(entry.file);
-        if (expectedId && entry.route !== `${routePrefix}${expectedId}`) {
-            errors.push(`${label}: route "${entry.route}" does not match expected spoke route "${routePrefix}${expectedId}"`)
+        if (expectedId && entry.route !== `${effectivePrefix}${expectedId}`) {
+            errors.push(`${label}: route "${entry.route}" does not match expected spoke route "${effectivePrefix}${expectedId}"`)
         }
 
         if (seenRoutes.has(entry.route)) {

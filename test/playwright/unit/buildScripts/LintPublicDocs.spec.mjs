@@ -99,19 +99,24 @@ test.describe('buildScripts/lintPublicDocs', () => {
         }
     });
 
-    test('rejects real Unix/macOS and Windows host filesystem paths', () => {
-        const unixRoot = createFixture({
+    test('rejects real Unix/macOS and Windows host filesystem paths including file:// URLs', () => {
+        const unixRoot    = createFixture({
             guideBody: '# Leak\n\nLoaded from `/Users/alice/.neo-ai/neo-agent-institution/learn/Introduction.md`.\n'
         });
-        const winRoot = createFixture({
+        const fileUrlRoot = createFixture({
+            guideBody: '# Leak\n\nScreenshot at `file:///Users/alice/x/shot.png`.\n'
+        });
+        const winRoot     = createFixture({
             guideBody: '# Leak\n\nLoaded from `C:\\Users\\alice\\neo-agent-institution\\learn\\Introduction.md`.\n'
         });
 
         try {
             expect(() => lintPublicDocs({root: unixRoot})).toThrow(/forbidden host filesystem path "\/Users\/alice\//);
+            expect(() => lintPublicDocs({root: fileUrlRoot})).toThrow(/forbidden host filesystem path "\/Users\/alice\/x\/shot\.png"/);
             expect(() => lintPublicDocs({root: winRoot})).toThrow(/forbidden Windows host filesystem path/)
         } finally {
             fs.rmSync(unixRoot, {recursive: true, force: true});
+            fs.rmSync(fileUrlRoot, {recursive: true, force: true});
             fs.rmSync(winRoot, {recursive: true, force: true})
         }
     });
