@@ -14,6 +14,7 @@ function createFixture({
     extraTreeLeaf      = false,
     extraManifestEntry = false,
     includeAdrInTree   = false,
+    mountIdOverride    = null,
     routeOverride      = null
 } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'institution-public-docs-'));
@@ -58,7 +59,7 @@ function createFixture({
         schema   : 'public-manifest.v1',
         spoke    : 'neomjs/neo-agent-institution',
         treeFile : 'learn/tree.json',
-        treeMount: {parentId: 'AgentInterfaces', id: 'institution', name: 'Agent Institution'},
+        treeMount: {parentId: 'AgentInterfaces', id: mountIdOverride || 'institution', name: 'Agent Institution'},
         entries
     }, null, 4));
 
@@ -144,6 +145,7 @@ test.describe('buildScripts/lintPublicDocs', () => {
     test('rejects manifest/tree drift, wrong route prefixes, and broken relative Markdown links outside fences', () => {
         const extraLeafRoot   = createFixture({extraTreeLeaf: true});
         const extraEntryRoot  = createFixture({extraManifestEntry: true});
+        const mountDriftRoot  = createFixture({mountIdOverride: 'other-spoke'});
         const badPrefixRoot   = createFixture({routeOverride: '/learn/agentos/CockpitTour'});
         const fencedRoot      = createFixture({guideBody: '# Cockpit Tour\n\n```markdown\n[Example](./DoesNotExist.md)\n```\nInline `[Code](./DoesNotExist.md)` stays inert.\n'});
         const brokenLinkRoot  = createFixture({guideBody: '# Cockpit Tour\n\nSee [Missing](./DoesNotExist.md#top) for details.\n'});
@@ -153,6 +155,7 @@ test.describe('buildScripts/lintPublicDocs', () => {
         try {
             expect(() => lintPublicDocs({root: extraLeafRoot})).toThrow(/leaf "learn\/Extra\.md" is missing/);
             expect(() => lintPublicDocs({root: extraEntryRoot})).toThrow(/"learn\/Unlisted\.md" is not a leaf/);
+            expect(() => lintPublicDocs({root: mountDriftRoot})).toThrow(/invalid route/);
             expect(() => lintPublicDocs({root: badPrefixRoot})).toThrow(/invalid route/);
             expect(stripFencedCodeBlocks('a\n```js\nb\n```\nc')).toBe('a\n\n\n\nc');
             expect(lintPublicDocs({root: fencedRoot}).entryCount).toBe(2);
@@ -160,7 +163,7 @@ test.describe('buildScripts/lintPublicDocs', () => {
             expect(() => lintPublicDocs({root: unlistedAdrLink})).toThrow(/broken relative Markdown link "agentos\/decisions\/0020-agent-harness-concept\.md"/);
             expect(() => lintPublicDocs({root: repoOutsideLink})).toThrow(/broken relative Markdown link "\.\.\/apps\/agentos\/design\/sketch\.html"/)
         } finally {
-            for (const dir of [extraLeafRoot, extraEntryRoot, badPrefixRoot, fencedRoot, brokenLinkRoot, unlistedAdrLink, repoOutsideLink]) {
+            for (const dir of [extraLeafRoot, extraEntryRoot, mountDriftRoot, badPrefixRoot, fencedRoot, brokenLinkRoot, unlistedAdrLink, repoOutsideLink]) {
                 fs.rmSync(dir, {recursive: true, force: true})
             }
         }

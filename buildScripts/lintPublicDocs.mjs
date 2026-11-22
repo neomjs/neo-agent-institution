@@ -7,6 +7,16 @@ import {fileURLToPath} from 'node:url';
  * @module buildScripts.lintPublicDocs
  * @summary Validates `docs/public-manifest.json` against `learn/tree.json`, excludes ADR/operational directories,
  * and enforces public-publish hygiene across every manifest-admitted Markdown guide.
+ *
+ * Default-deny spoke federation requires two guarantees:
+ * 1. **Structural parity:** Every `learn/tree.json` leaf is explicitly listed in `docs/public-manifest.json` under the
+ *    canonical `/learn/<treeMount.id>/<id>` route derived from `treeMount.id`, and every manifest entry resolves to a
+ *    real tracked `.md` file inside `learn/` with zero ADR/measurement/incident leakage, path traversal, or duplicate
+ *    routes.
+ * 2. **Content hygiene:** Admitted product guides contain zero real host filesystem paths (`/Users/<name>/`,
+ *    `/home/<name>/`, `C:\Users\<name>\`, or `file://` URLs targeting them), zero private-repository identifiers
+ *    (`neomjs/business`, `neomjs/neo-stage`, `neomjs/neo-pro`), and zero broken or unpublished relative Markdown links
+ *    outside fenced and inline code, while permitting public `@neo-*` maintainer handles used in illustrative examples.
  */
 
 const
@@ -59,6 +69,12 @@ export function stripFencedCodeBlocks(markdown) {
     return out.join('\n')
 }
 
+/**
+ * @summary Computes the 1-based line number for a character offset in a string.
+ * @param {String} text
+ * @param {Number} index
+ * @returns {Number}
+ */
 function lineAt(text, index) {
     let line = 1;
     for (let i = 0; i < index && i < text.length; i++) {
@@ -70,6 +86,10 @@ function lineAt(text, index) {
 /**
  * @summary Validates `docs/public-manifest.json`, `learn/tree.json`, and all admitted Markdown files under `root`.
  * @param {Object} [options={}]
+ * @param {String} [options.root=REPO_ROOT] Repository root directory.
+ * @param {String} [options.manifestRelPath='docs/public-manifest.json'] Manifest path relative to `root`.
+ * @param {String|null} [options.routePrefix=null] Optional route prefix override; defaults to `/learn/<treeMount.id>/`.
+ * @param {String} [options.expectedSpoke=EXPECTED_SPOKE] Expected `spoke` identifier in the manifest.
  * @returns {{entryCount: Number, routes: String[]}}
  */
 export function lintPublicDocs({
