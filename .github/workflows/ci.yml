@@ -58,6 +58,9 @@ jobs:
             - name: Check app file sizes
               run: npm run check-app-file-sizes
 
+            - name: Lint public documentation manifest
+              run: npm run lint-public-docs
+
             - name: Run isolated unit tests
               run: npm run test-unit
 

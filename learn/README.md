@@ -8,11 +8,11 @@ Agent Institution is the operator-facing application for a team that runs its ow
 3. [Run the Institution](RunningTheInstitution.md) — start the browser app and locate the separately owned Fleet transport.
 4. [The native vessel](TheNativeVessel.md) — understand the packaged shell, its custody boundary, and its update path.
 
-The product's [README](../README.md) is the quick entry point. The [cockpit design contracts](../apps/agentos/CARD-CONTRACT.md), [token reference](../apps/agentos/TOKENS.md), and [harness runbook](../harness/README.md) remain the detailed authority for implementation and operations; the guides explain what a reader can expect from the product.
+The product's [README](https://github.com/neomjs/neo-agent-institution/blob/dev/README.md) is the quick entry point. The [cockpit design contracts](https://github.com/neomjs/neo-agent-institution/blob/dev/apps/agentos/CARD-CONTRACT.md), [token reference](https://github.com/neomjs/neo-agent-institution/blob/dev/apps/agentos/TOKENS.md), and [harness runbook](https://github.com/neomjs/neo-agent-institution/blob/dev/harness/README.md) remain the detailed authority for implementation and operations; the guides explain what a reader can expect from the product.
 
-The decisions those contracts implement live in [`agentos/decisions/`](agentos/decisions/):
-- [the agent harness concept](agentos/decisions/0020-agent-harness-concept.md);
-- [the cockpit render model](agentos/decisions/0032-institution-cockpit-render-model.md);
-- [the Electron shell](agentos/decisions/0034-electron-shell-architecture.md);
-- [the outward door](agentos/decisions/0037-fleet-manager-outward-door-topology.md);
-- [the client topology](agentos/decisions/0038-fm-client-topology.md).
+The decisions those contracts implement live in [`learn/agentos/decisions/`](https://github.com/neomjs/neo-agent-institution/tree/dev/learn/agentos/decisions):
+- [the agent harness concept](https://github.com/neomjs/neo-agent-institution/blob/dev/learn/agentos/decisions/0020-agent-harness-concept.md);
+- [the cockpit render model](https://github.com/neomjs/neo-agent-institution/blob/dev/learn/agentos/decisions/0032-institution-cockpit-render-model.md);
+- [the Electron shell](https://github.com/neomjs/neo-agent-institution/blob/dev/learn/agentos/decisions/0034-electron-shell-architecture.md);
+- [the outward door](https://github.com/neomjs/neo-agent-institution/blob/dev/learn/agentos/decisions/0037-fleet-manager-outward-door-topology.md);
+- [the client topology](https://github.com/neomjs/neo-agent-institution/blob/dev/learn/agentos/decisions/0038-fm-client-topology.md).

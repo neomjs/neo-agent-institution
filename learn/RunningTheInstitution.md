@@ -1,6 +1,6 @@
 # Run the Institution: start with a truthful page
 
-A first visit does not require a running Agent OS. It requires the Agent Institution source checkout, Node.js 24 or newer, and a browser. The [README browser quickstart](../README.md#browser-quickstart) gives the current install and dev-server commands; open the route the server reports for `apps/agentos/index.html`. This is a useful way to learn the app without borrowing another team's credentials or mistaking a test fixture for a live fleet.
+A first visit does not require a running Agent OS. It requires the Agent Institution source checkout, Node.js 24 or newer, and a browser. The [README browser quickstart](https://github.com/neomjs/neo-agent-institution/blob/dev/README.md#browser-quickstart) gives the current install and dev-server commands; open the route the server reports for `apps/agentos/index.html`. This is a useful way to learn the app without borrowing another team's credentials or mistaking a test fixture for a live fleet.
 
 On that source-only boot, expect a cold page. In my local run, the selected instance named a loopback Fleet endpoint but said **not connected**; the spine said **fleet offline**; roster and activity said **not answered yet**. The application itself had loaded. The Agent OS had not supplied those reads. That distinction is the first operational check: a rendered page proves the client is running, while a pane's own capability and state words say whether its producer answered.
 
@@ -24,7 +24,7 @@ flowchart TD
 
 The host Fleet process uses an explicitly declared plane base and an identity-bound plane bearer when it attaches to a plane. Its activity feed also reads a declared content root. In the Brain's config these are the `NEO_FLEET_PLANE_BASE`, `NEO_FLEET_PLANE_BEARER`, and `NEO_FLEET_CONTENT_ROOT` inputs. They are Brain-side configuration and secret custody, not fields to paste into the browser app or this repository. A nonempty plane base declares topology; it does not prove the plane is healthy. The [Brain runbook](https://github.com/neomjs/neo-agent-brain/blob/dev/ai/scripts/lifecycle/local-agent-os/README.md#bind-the-host-fleet-transport-to-this-plane) gives the concrete binding and verification steps.
 
-The checkout's [contributor workflow](../README.md#contributor-mode-vs-live-institution-mode) can run isolated product suites without a Brain checkout. Full contract and Neural Link witnesses need an explicit absolute `NEO_AGENTOS_RUNTIME_ROOT`; a current working directory or guessed sibling checkout is not an authority. Keeping the source test path separate from a live connection makes a green isolated test useful evidence for code behavior without presenting it as proof of a deployed Agent OS.
+The checkout's [contributor workflow](https://github.com/neomjs/neo-agent-institution/blob/dev/README.md#contributor-mode-vs-live-institution-mode) can run isolated product suites without a Brain checkout. Full contract and Neural Link witnesses need an explicit absolute `NEO_AGENTOS_RUNTIME_ROOT`; a current working directory or guessed sibling checkout is not an authority. Keeping the source test path separate from a live connection makes a green isolated test useful evidence for code behavior without presenting it as proof of a deployed Agent OS.
 
 ## Read the result, then act
 
