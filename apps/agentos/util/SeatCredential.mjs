@@ -266,6 +266,67 @@ class SeatCredential extends Base {
     }
 
     /**
+     * @summary Whether `record`'s open-work credential fields (`openWorkCredentialRefusal`, `tokenExpiresAt`)
+     * post-date the latest in-cockpit token replacement (`credentialReplacedAt`). Before any replacement on
+     * `record`, observations are current; once `credentialReplacedAt` is set, an open-work observation is
+     * current only when its `openWorkCredentialObservedAt` is strictly newer than `credentialReplacedAt`.
+     * @param {Object|null} record
+     * @returns {Boolean}
+     */
+    static hasCurrentOpenWorkObservation(record) {
+        if (!record) {
+            return false
+        }
+
+        const replacedAt = typeof record.credentialReplacedAt === 'string' ? record.credentialReplacedAt.trim() : '';
+
+        if (!replacedAt) {
+            return true
+        }
+
+        const
+            replacedMs = Date.parse(replacedAt),
+            observedAt = typeof record.openWorkCredentialObservedAt === 'string' ? record.openWorkCredentialObservedAt.trim() : '',
+            observedMs = observedAt ? Date.parse(observedAt) : NaN;
+
+        return !Number.isFinite(replacedMs) || (Number.isFinite(observedMs) && observedMs > replacedMs)
+    }
+
+    /**
+     * @summary Describe `record.tokenExpiresAt` only while the open-work observation has not been retired
+     * by a newer token replacement (`credentialReplacedAt`).
+     * @param {Object|null} record
+     * @param {Number}      [now=Date.now()]
+     * @returns {{tokenExpiresAt: String, expiresMs: Number, remainingMs: Number, expired: Boolean, expiringSoon: Boolean, windowText: String, detailText: String, cardClause: String}|null}
+     */
+    static recordExpiry(record, now = Date.now()) {
+        if (!SeatCredential.hasCurrentOpenWorkObservation(record)) {
+            return null
+        }
+
+        return SeatCredential.describeExpiry(record?.tokenExpiresAt ?? null, now)
+    }
+
+    /**
+     * @summary Record a completed token replacement on `record`, clearing any Start credential refusal
+     * and retiring earlier open-work credential observations until a read observed after `replacedAt`.
+     * @param {Object|null} record
+     * @param {String}      [replacedAt=new Date().toISOString()]
+     */
+    static retireReplacedObservations(record, replacedAt = new Date().toISOString()) {
+        if (!record || typeof record !== 'object') {
+            return
+        }
+
+        const patch = {
+            credentialReplacedAt: replacedAt,
+            ...(SeatCredential.isStartCredentialRefusal(record.controlReason) ? {controlReason: null} : {})
+        };
+
+        typeof record.set === 'function' ? record.set(patch) : Object.assign(record, patch)
+    }
+
+    /**
      * @summary Describe `tokenExpiresAt` for Agent Detail and the 7-day cockpit warning flag. Returns `null`
      * when `tokenExpiresAt` is `null` or invalid so tokens without an expiry show nothing.
      * @param {String|null} tokenExpiresAt
@@ -344,7 +405,8 @@ class SeatCredential extends Base {
             }
         }
 
-        if (SeatCredential.isOpenWorkCredentialRefusal(record?.openWorkCredentialRefusal)) {
+        if (SeatCredential.hasCurrentOpenWorkObservation(record) &&
+            SeatCredential.isOpenWorkCredentialRefusal(record?.openWorkCredentialRefusal)) {
             const detail = record.openWorkCredentialRefusal.reason
                 ? FleetLifecycleIntentAdapter.sanitizeControlReason(record.openWorkCredentialRefusal.reason, '')
                 : '';
@@ -362,7 +424,9 @@ class SeatCredential extends Base {
 
     /**
      * @summary Compose the cockpit roster card's status line when a Start credential refusal, open-work
-     * credential refusal, or 7-day `tokenExpiresAt` window applies; `null` otherwise.
+     * credential refusal, or 7-day `tokenExpiresAt` window applies; `null` otherwise. Already-expired
+     * tokens report `kind: 'token-expired'` (`state: 'refused'`), while tokens still valid within the
+     * 7-day warning window report `kind: 'token-expiring'` (`state: 'expiring'`).
      * @param {Object|null} record
      * @param {Object}      [options={}]
      * @param {Number}      [options.now=Date.now()]
@@ -384,7 +448,8 @@ class SeatCredential extends Base {
             }
         }
 
-        if (!record.controlReason && SeatCredential.isOpenWorkCredentialRefusal(record.openWorkCredentialRefusal)) {
+        if (!record.controlReason && SeatCredential.hasCurrentOpenWorkObservation(record) &&
+            SeatCredential.isOpenWorkCredentialRefusal(record.openWorkCredentialRefusal)) {
             const
                 detail = record.openWorkCredentialRefusal.reason
                     ? `: ${FleetLifecycleIntentAdapter.sanitizeControlReason(record.openWorkCredentialRefusal.reason, '')}`
@@ -399,14 +464,14 @@ class SeatCredential extends Base {
             }
         }
 
-        const expiry = !record.controlReason ? SeatCredential.describeExpiry(record.tokenExpiresAt, now) : null;
+        const expiry = !record.controlReason ? SeatCredential.recordExpiry(record, now) : null;
 
         if (expiry?.expiringSoon) {
             const head = `⚠ ${expiry.cardClause}`;
 
             return {
-                kind : 'token-expiring',
-                state: 'expiring',
+                kind : expiry.expired ? 'token-expired' : 'token-expiring',
+                state: expiry.expired ? 'refused' : 'expiring',
                 text : `${head} · ${ACTION_LABEL}`,
                 title: `${expiry.detailText} in Detail › Configuration`
             }

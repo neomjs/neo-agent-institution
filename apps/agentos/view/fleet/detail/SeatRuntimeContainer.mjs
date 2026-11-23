@@ -154,16 +154,22 @@ class SeatRuntimeContainer extends Container {
             ? SeatExitReason.detailText(record.exitReason) : null;
         const clock = Number.isFinite(this.now) ? this.now : Date.now();
         const expiry = !record.pendingAction && !record.controlReason && !record.launchRefusal
-            ? SeatCredential.describeExpiry(record.tokenExpiresAt ?? null, clock)
+            ? SeatCredential.recordExpiry(record, clock)
             : null;
-        const credentialNext = !record.pendingAction && !record.controlReason && !record.launchRefusal
-            ? SeatCredential.nextStep(record) ?? (expiry?.expiringSoon ? {reason: expiry.detailText} : null)
+        const credentialBlocking = !record.pendingAction && !record.controlReason && !record.launchRefusal
+            ? SeatCredential.nextStep(record) ?? (expiry?.expired ? {reason: expiry.detailText} : null)
+            : null;
+        const credentialExpiring = !record.pendingAction && !record.controlReason && !record.launchRefusal &&
+            !credentialBlocking && expiry?.expiringSoon
+            ? {reason: expiry.detailText}
             : null;
         const startCredentialRefusal = !record.pendingAction && SeatCredential.isStartCredentialRefusal(record.controlReason);
-        const showReplace = SeatCredential.availability(record).canReplace && (startCredentialRefusal || Boolean(credentialNext));
+        const showReplace = SeatCredential.availability(record).canReplace &&
+            (startCredentialRefusal || Boolean(credentialBlocking || credentialExpiring));
+        const stateOrExpiry = [exitText, credentialExpiring?.reason].filter(Boolean).join(' · ');
         const feedback = record.pendingAction
             ? 'Lifecycle request in progress…'
-            : record.controlReason?.reason || record.launchRefusal || credentialNext?.reason || exitText || '';
+            : record.controlReason?.reason || record.launchRefusal || credentialBlocking?.reason || stateOrExpiry || '';
         this.getReference('runtime-control-feedback').set({hidden: !feedback, text: feedback});
         this.getReference('runtime-replace-token').set({hidden: !showReplace, disabled: Boolean(record.pendingAction)});
         const hasIdentities = Boolean(currentId || nextId || installedId);

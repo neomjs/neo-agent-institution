@@ -245,6 +245,11 @@ class FleetAgent extends Model {
             name        : 'openWorkHeld',
             defaultValue: null
         }, {
+            // ISO-8601 observation instant of the open-work answer that produced `openWorkCredentialRefusal`
+            // and `tokenExpiresAt`; compared against `credentialReplacedAt` so pre-replacement answers retire
+            name        : 'openWorkCredentialObservedAt',
+            defaultValue: null
+        }, {
             // per-seat forge credential refusal from `fleetOpenWork.seats[id].credentialRefusal`
             // (`{surface: 'forge', verdict: 'refused', cause, status, reason}`), read regardless of envelope state
             name        : 'openWorkCredentialRefusal',
@@ -253,6 +258,11 @@ class FleetAgent extends Model {
             // ISO-8601 GitHub PAT expiration timestamp from `fleetOpenWork.seats[id].tokenExpiresAt`,
             // read regardless of envelope state; `null` when the token has no expiry or is unread
             name        : 'tokenExpiresAt',
+            defaultValue: null
+        }, {
+            // producer-foreign ISO-8601 instant of the latest in-cockpit `replaceSeatCredential` success;
+            // retires earlier open-work credential observations even if the held snapshot is re-projected
+            name        : 'credentialReplacedAt',
             defaultValue: null
         }, {
             // the newest attributable per-agent activity instant (ISO string), stamped Brain-side

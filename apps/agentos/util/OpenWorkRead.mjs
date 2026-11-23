@@ -126,11 +126,11 @@ class OpenWorkRead extends Base {
      * @summary One seat's open-work fields for its roster record, from the owner's held answer, by the
      * seat's GitHub login: the card chip's summary ({@link AgentOS.util.OpenWorkSeat#summarize}), the
      * Agent Detail's rows ({@link AgentOS.util.OpenWorkSeat#held}), and the seat's forge credential
-     * refusal + token expiration ({@link AgentOS.util.OpenWorkSeat#credential}, read regardless of
-     * envelope `state`). One answer feeds all surfaces in one write.
+     * refusal, observation instant, and token expiration ({@link AgentOS.util.OpenWorkSeat#credential},
+     * read regardless of envelope `state`). One answer feeds all surfaces in one write.
      * @param {AgentOS.view.fleet.cockpit.Controller} owner The cockpit controller.
      * @param {String|null} githubUsername The seat's login; none claims nothing.
-     * @returns {{openWork: Object|null, openWorkCredentialRefusal: Object|null, openWorkHeld: Object|null, tokenExpiresAt: String|null}}
+     * @returns {{openWork: Object|null, openWorkCredentialObservedAt: String|null, openWorkCredentialRefusal: Object|null, openWorkHeld: Object|null, tokenExpiresAt: String|null}}
      */
     static seatOpenWork(owner, githubUsername) {
         const
@@ -138,10 +138,11 @@ class OpenWorkRead extends Base {
             credential = OpenWorkSeat.credential(owner.openWorkSnapshot, seat);
 
         return {
-            openWork                 : OpenWorkSeat.summarize(owner.openWorkSnapshot, seat),
-            openWorkCredentialRefusal: credential.credentialRefusal,
-            openWorkHeld             : OpenWorkSeat.held(owner.openWorkSnapshot, seat),
-            tokenExpiresAt           : credential.tokenExpiresAt
+            openWork                    : OpenWorkSeat.summarize(owner.openWorkSnapshot, seat),
+            openWorkCredentialObservedAt: credential.observedAt,
+            openWorkCredentialRefusal   : credential.credentialRefusal,
+            openWorkHeld                : OpenWorkSeat.held(owner.openWorkSnapshot, seat),
+            tokenExpiresAt              : credential.tokenExpiresAt
         }
     }
 

@@ -268,25 +268,30 @@ test.describe('AgentDetail & AgentCard — replace a stopped seat\'s GitHub toke
         expect(cardStatus.text).toContain('· Replace token');
         expect(runtimeReplace.hidden).toBe(false);
 
-        // Case 2: Open-work refusal on fleetOpenWork.seats[id].credentialRefusal inside an 'unavailable' envelope
+        // Case 2: Open-work refusal + 2-day expiry on fleetOpenWork.seats[id] inside an 'unavailable' envelope
         record.set({controlReason: null});
-        const openWorkOwner = {
-            openWorkSnapshot: {
-                state: 'unavailable',
-                seats: {
-                    '@neo-fable-clio': {
-                        authored         : [],
-                        reviewing        : [],
-                        credentialRefusal: {surface: 'forge', verdict: 'refused', cause: 'insufficient-capability', reason: 'missing read:org scope'},
-                        tokenExpiresAt   : null
+        const
+            in2Days       = new Date(NOW + 2 * 86_400_000).toISOString(),
+            openWorkOwner = {
+                openWorkSnapshot: {
+                    state     : 'unavailable',
+                    observedAt: new Date(NOW - 60_000).toISOString(),
+                    seats     : {
+                        '@neo-fable-clio': {
+                            authored         : [],
+                            reviewing        : [],
+                            credentialRefusal: {surface: 'forge', verdict: 'refused', cause: 'insufficient-capability', reason: 'missing read:org scope'},
+                            tokenExpiresAt   : in2Days
+                        }
                     }
                 }
-            }
-        };
+            };
         record.set(OpenWorkRead.seatOpenWork(openWorkOwner, record.githubUsername));
         detail.applyRecord();
         card.applyRecord();
         expect(cardStatus.text).toBe('⚠ GitHub token refused: missing read:org scope · Replace token');
+        expect(section.getReference('credential-expiry').hidden).toBe(false);
+        expect(section.getReference('credential-expiry').text).toContain('Replace token');
         expect(runtimeReplace.hidden).toBe(false);
         expect(runtime.getReference('runtime-control-feedback').text).toBe('missing read:org scope');
 
@@ -335,12 +340,53 @@ test.describe('AgentDetail & AgentCard — replace a stopped seat\'s GitHub toke
 
         // Clicking "Replace token" again re-runs directly with the receipt's scope ('forge-and-bound-plane') without calling getAgent again
         await section.onReplaceClick();
+        card.applyRecord();
         expect(getAgentCalls).toBe(1);
         expect(calls).toEqual([
             {id: 'clio', scope: 'forge-and-bound-plane'},
             {id: 'clio', scope: 'forge-and-bound-plane'}
         ]);
-        expect(section.getReference('credential-status').text).toContain('GitHub token replaced')
+        expect(section.getReference('credential-status').text).toContain('GitHub token replaced');
+
+        // Pre-replacement refusal and expiry stay retired across Detail (line, expiry, Status tab) and card,
+        // even if the held pre-replacement snapshot is re-projected onto the record
+        record.set(OpenWorkRead.seatOpenWork(openWorkOwner, record.githubUsername));
+        detail.applyRecord();
+        card.applyRecord();
+        expect(section.getReference('credential-line').text).not.toContain('Replace token');
+        expect(section.getReference('credential-expiry').hidden).toBe(true);
+        expect(runtimeReplace.hidden).toBe(true);
+        expect(runtime.getReference('runtime-control-feedback').hidden).toBe(true);
+        expect(cardStatus.hidden).toBe(true);
+        expect(cardStatus.text).toBe('');
+
+        // A subsequent open-work read observed strictly after the replacement surfaces its own refusal and expiry
+        const
+            in4Days    = new Date(NOW + 4 * 86_400_000).toISOString(),
+            newerOwner = {
+                openWorkSnapshot: {
+                    state     : 'ok',
+                    observedAt: new Date(NOW + 60_000).toISOString(),
+                    seats     : {
+                        '@neo-fable-clio': {
+                            authored         : [],
+                            reviewing        : [],
+                            credentialRefusal: {surface: 'forge', verdict: 'refused', cause: 'insufficient-capability', reason: 'new token lacks workflow scope'},
+                            tokenExpiresAt   : in4Days
+                        }
+                    }
+                }
+            };
+        record.set(OpenWorkRead.seatOpenWork(newerOwner, record.githubUsername));
+        detail.applyRecord();
+        card.applyRecord();
+        expect(section.getReference('credential-line').text).toContain('new token lacks workflow scope · Next step: Replace token');
+        expect(section.getReference('credential-expiry').hidden).toBe(false);
+        expect(section.getReference('credential-expiry').text).toContain('in 4d');
+        expect(runtimeReplace.hidden).toBe(false);
+        expect(runtime.getReference('runtime-control-feedback').text).toBe('new token lacks workflow scope');
+        expect(cardStatus.hidden).toBe(false);
+        expect(cardStatus.text).toBe('⚠ GitHub token refused: new token lacks workflow scope · Replace token')
     });
 
     test('AC-5: tokenExpiresAt renders in Agent Detail, flags within 7 days in the cockpit with "Replace token", and null shows no expiry', () => {
@@ -383,5 +429,64 @@ test.describe('AgentDetail & AgentCard — replace a stopped seat\'s GitHub toke
         expect(cardStatus.hidden).toBe(false);
         expect(cardStatus.cls).toContain('is-credential-expiring');
         expect(cardStatus.text).toBe('⚠ GitHub token expires in 5d · Replace token')
+    });
+
+    test('a not-yet-expired 7-day token warning ranks below unplanned-exit and launch-admission state, while expired or refused tokens keep their rank', () => {
+        const
+            in6Days    = new Date(NOW + 6 * 86_400_000).toISOString(),
+            exitReason = {
+                state      : 'harness-update',
+                exitedAt   : '2026-11-23T11:55:00.000Z',
+                matchedLine: 'Quit and Install',
+                logPath    : '/tmp/claude.log'
+            },
+            record     = makeRecord({state: 'off', exitReason, tokenExpiresAt: in6Days});
+
+        detail = Neo.create(AgentDetail, {appName, now: NOW, record});
+        card   = Neo.create(AgentCard,   {appName, now: NOW, record, rosterState: 'live'});
+
+        const
+            runtimeFeedback = detail.getReference('seat-runtime').getReference('runtime-control-feedback'),
+            cardStatus      = card.getReference('control-status');
+
+        // Stopped seat with harness-update exit + token expiring in 6d: exit reason leads on both card and Status tab
+        expect(cardStatus.text).toContain('stopped · harness update — Claude Desktop quit this seat');
+        expect(cardStatus.text).not.toContain('GitHub token expires');
+        expect(cardStatus.cls).toContain('is-exit-harness-update');
+        expect(cardStatus.cls).not.toContain('is-credential-expiring');
+        expect(cardStatus.vdom.title).toContain('stopped · harness update');
+        expect(cardStatus.vdom.title).toContain('GitHub token expires in 6d');
+
+        expect(runtimeFeedback.text.startsWith('stopped · harness update — Claude Desktop quit this seat')).toBe(true);
+        expect(runtimeFeedback.text).toContain('GitHub token expires in 6d');
+
+        // Running seat with launch admission + token expiring in 6d: launch admission leads on the card
+        record.set({state: 'ok', exitReason: null, launchAdmission: {state: 'reserved'}});
+        detail.applyRecord();
+        card.applyRecord();
+        expect(cardStatus.text).toBe('Preparing tool access');
+        expect(cardStatus.cls).not.toContain('is-credential-expiring');
+        expect(cardStatus.vdom.title).toContain('Fleet is preparing new tool connections.');
+        expect(cardStatus.vdom.title).toContain('GitHub token expires in 6d');
+
+        // Already-expired token keeps its rank above unplanned exit
+        const alreadyExpired = new Date(NOW - 60_000).toISOString();
+        record.set({state: 'off', exitReason, launchAdmission: null, tokenExpiresAt: alreadyExpired});
+        detail.applyRecord();
+        card.applyRecord();
+        expect(cardStatus.text).toBe('⚠ GitHub token expired · Replace token');
+        expect(cardStatus.cls).toContain('is-credential-refused');
+        expect(runtimeFeedback.text.startsWith('GitHub token expired')).toBe(true);
+
+        // Refused token also keeps its rank above unplanned exit
+        record.set({
+            openWorkCredentialRefusal: {surface: 'forge', verdict: 'refused', cause: 'insufficient-capability', reason: 'missing read:org scope'},
+            tokenExpiresAt           : in6Days
+        });
+        detail.applyRecord();
+        card.applyRecord();
+        expect(cardStatus.text).toBe('⚠ GitHub token refused: missing read:org scope · Replace token');
+        expect(cardStatus.cls).toContain('is-credential-refused');
+        expect(runtimeFeedback.text).toBe('missing read:org scope')
     });
 });

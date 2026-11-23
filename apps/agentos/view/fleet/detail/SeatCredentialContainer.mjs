@@ -290,7 +290,7 @@ class SeatCredentialContainer extends Container {
             availability = SeatCredential.availability(record),
             pending      = me.status?.state === 'pending',
             clock        = Number.isFinite(me.now) ? me.now : Date.now(),
-            expiry       = record ? SeatCredential.describeExpiry(record.tokenExpiresAt ?? null, clock) : null,
+            expiry       = record ? SeatCredential.recordExpiry(record, clock) : null,
             next         = record ? SeatCredential.nextStep(record, {receipt: me.receipt, reason: me.receiptReason}) : null;
 
         me.hidden = !agentId;
@@ -481,11 +481,7 @@ class SeatCredentialContainer extends Container {
         }
 
         if (outcome.ok) {
-            if (SeatCredential.isStartCredentialRefusal(me.record.controlReason)) {
-                typeof me.record.set === 'function'
-                    ? me.record.set({controlReason: null})
-                    : (me.record.controlReason = null)
-            }
+            const replacedAt = new Date(Number.isFinite(me.now) ? me.now : Date.now()).toISOString();
 
             me.set({
                 note         : null,
@@ -499,6 +495,7 @@ class SeatCredentialContainer extends Container {
             me.fire('seatCredentialReplaced', {
                 agentId,
                 receipt: outcome.receipt,
+                replacedAt,
                 scope  : outcome.scope
             });
 

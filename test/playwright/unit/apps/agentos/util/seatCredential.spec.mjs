@@ -228,9 +228,45 @@ test.describe('AgentOS.util.SeatCredential (#902)', () => {
 
         const alreadyExpired = new Date(NOW - 60_000).toISOString();
         expect(SeatCredential.cardLine({agentId: 'clio', tokenExpiresAt: alreadyExpired}, {now: NOW})).toMatchObject({
-            kind : 'token-expiring',
-            state: 'expiring',
+            kind : 'token-expired',
+            state: 'refused',
             text : '⚠ GitHub token expired · Replace token'
         })
+    });
+
+    test('retireReplacedObservations retires older or unobserved open-work credential state until a newer read answers', () => {
+        const
+            beforeReplace = new Date(NOW - 120_000).toISOString(),
+            replacedAt    = new Date(NOW).toISOString(),
+            afterReplace  = new Date(NOW + 60_000).toISOString(),
+            twoDays       = new Date(NOW + 2 * 86_400_000).toISOString(),
+            record        = {
+                agentId                     : 'clio',
+                controlReason               : {
+                    action           : 'start',
+                    kind             : 'rejected',
+                    reason           : 'PAT refused',
+                    credentialRefusal: {surface: 'forge', verdict: 'refused'}
+                },
+                openWorkCredentialObservedAt: beforeReplace,
+                openWorkCredentialRefusal   : {surface: 'forge', verdict: 'refused', reason: 'missing read:org'},
+                tokenExpiresAt              : twoDays
+            };
+
+        SeatCredential.retireReplacedObservations(record, replacedAt);
+
+        expect(record.controlReason).toBeNull();
+        expect(record.credentialReplacedAt).toBe(replacedAt);
+        expect(SeatCredential.hasCurrentOpenWorkObservation(record)).toBe(false);
+        expect(SeatCredential.nextStep(record)).toBeNull();
+        expect(SeatCredential.recordExpiry(record, NOW)).toBeNull();
+        expect(SeatCredential.cardLine(record, {now: NOW})).toBeNull();
+
+        // A read observed strictly after replacement shows its own refusal and expiry again
+        record.openWorkCredentialObservedAt = afterReplace;
+        expect(SeatCredential.hasCurrentOpenWorkObservation(record)).toBe(true);
+        expect(SeatCredential.nextStep(record)).toMatchObject({kind: 'open-work-refused', reason: 'missing read:org'});
+        expect(SeatCredential.recordExpiry(record, NOW)?.expiringSoon).toBe(true);
+        expect(SeatCredential.cardLine(record, {now: NOW})).toMatchObject({kind: 'open-work-refused', state: 'refused'})
     });
 });

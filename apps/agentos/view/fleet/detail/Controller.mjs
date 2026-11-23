@@ -2,6 +2,7 @@ import ComponentController   from '../../../../../node_modules/neo.mjs/src/contr
 import AddAgentFlow          from '../../../util/AddAgentFlow.mjs';
 import ConfigIntentRoundTrip from '../../../util/ConfigIntentRoundTrip.mjs';
 import PublishSwitch         from '../../../util/PublishSwitch.mjs';
+import SeatCredential        from '../../../util/SeatCredential.mjs';
 import SeatGitIdentity       from '../../../util/SeatGitIdentity.mjs';
 import SeatModel             from '../../../util/SeatModel.mjs';
 import SourceHealth          from '../../../util/SourceHealth.mjs';
@@ -171,11 +172,20 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary Repaint `AgentDetail` and notify any cockpit owner once a stopped seat's token is replaced.
-     * @param {Object} data `{agentId, receipt, scope}`
+     * @summary Retire pre-replacement credential observations on the selected `FleetAgent` record,
+     * repaint `AgentDetail`, and notify any cockpit owner once a stopped seat's token is replaced.
+     * @param {Object} data `{agentId, receipt, replacedAt, scope}`
      */
     onSeatCredentialReplaced(data = {}) {
-        this.component.record && this.component.applyRecord();
+        const
+            {agentId, replacedAt} = data,
+            record                = this.component.record;
+
+        if (record && (!agentId || record.agentId === agentId)) {
+            SeatCredential.retireReplacedObservations(record, replacedAt);
+            this.component.applyRecord()
+        }
+
         this.component.fire('seatCredentialReplaced', data)
     }
 

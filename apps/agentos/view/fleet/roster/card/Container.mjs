@@ -916,8 +916,12 @@ class AgentCard extends Container {
             }),
             controlStatus = me.getReference('control-status');
 
+        // admission words that change on their own name their instant; the card re-applies the record then
         me.scheduleAdmissionAging(statusLine.admissionUntil, now);
         restart.changeVdomRootKey('title', statusLine.restartTitle);
+        // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
+        // (CSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
+        // row height at every card width — the lane stays reachable via line one and the title.
         me[statusLine.live ? 'addCls' : 'removeCls']('fm-control-live');
 
         controlStatus.set({

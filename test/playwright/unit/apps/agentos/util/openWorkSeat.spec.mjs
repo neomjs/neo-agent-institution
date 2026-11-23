@@ -267,6 +267,13 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
         expect(OpenWorkSeat.held(unavailable, clio), 'PR rows stay gated when envelope is unavailable').toBeNull();
         expect(OpenWorkSeat.credential(unavailable, clio)).toEqual({
             credentialRefusal: refusal,
+            observedAt       : null,
+            tokenExpiresAt   : expiresAt
+        });
+
+        expect(OpenWorkSeat.credential({...unavailable, state: 'stale', observedAt: '2026-11-23T11:58:00.000Z'}, clio)).toEqual({
+            credentialRefusal: refusal,
+            observedAt       : '2026-11-23T11:58:00.000Z',
             tokenExpiresAt   : expiresAt
         });
 
@@ -279,7 +286,7 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
                     tokenExpiresAt   : null
                 }
             }
-        }, clio)).toEqual({credentialRefusal: null, tokenExpiresAt: null});
+        }, clio)).toEqual({credentialRefusal: null, observedAt: null, tokenExpiresAt: null});
 
         expect(OpenWorkSeat.credential({
             state: 'ok',
@@ -289,9 +296,9 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
                     tokenExpiresAt   : 'not-a-date'
                 }
             }
-        }, clio)).toEqual({credentialRefusal: null, tokenExpiresAt: null});
+        }, clio)).toEqual({credentialRefusal: null, observedAt: null, tokenExpiresAt: null});
 
-        expect(OpenWorkSeat.credential(null, clio)).toEqual({credentialRefusal: null, tokenExpiresAt: null});
-        expect(OpenWorkSeat.credential(unavailable, null)).toEqual({credentialRefusal: null, tokenExpiresAt: null})
+        expect(OpenWorkSeat.credential(null, clio)).toEqual({credentialRefusal: null, observedAt: null, tokenExpiresAt: null});
+        expect(OpenWorkSeat.credential(unavailable, null)).toEqual({credentialRefusal: null, observedAt: null, tokenExpiresAt: null})
     });
 });

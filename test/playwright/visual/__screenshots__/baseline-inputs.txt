@@ -78,7 +78,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    1bba79de7bb330ab773fbe941894cbf82e5a9aec
+    98fd549629e8da2097a958c297e3bf6dc27222ee
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -228,7 +228,7 @@ apps/agentos/util/BrainHealthRead.mjs
     dbb5519544c6bdf7adb141d3eff45bef4c4caae1
 
 apps/agentos/util/CardControlStatus.mjs
-    f28925e85f25419ebfdb5f921a742e24fb85a256
+    500c503f61599c792ede56cb038b34202c10887b
 
 apps/agentos/util/ClosedShape.mjs
     1cb201ec5bb7b858b41a68f6abfba58824fb6ccf
@@ -285,10 +285,10 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     34a5f76d23060c5b41f6cde706a77932e6d0b87a
 
 apps/agentos/util/OpenWorkRead.mjs
-    1861a12605ed21bb718565e6cfa36290789df019
+    40ae9773d1fcd2329b8c7f1c17e5a5f4ebc7cf37
 
 apps/agentos/util/OpenWorkSeat.mjs
-    31d9be1077903365a128db0af1b29016d659d5d2
+    10531713d3b3fbd7d18202a36d0391b7748a6b14
 
 apps/agentos/util/OperatorInbox.mjs
     0c6e714f638623405a3c80ee73b014e1d16059a9
@@ -315,7 +315,7 @@ apps/agentos/util/RosterRow.mjs
     3861db725a11fbac4fac2d7ec5a15678f03b59e8
 
 apps/agentos/util/SeatCredential.mjs
-    e72495c38b98acbcdbc4159885f6ee25cd326711
+    06b5df76fe54a915182c0baf763ce1486f006add
 
 apps/agentos/util/SeatDependencies.mjs
     45f6624f0a0e8340c362b72399dcf9badba1e396
@@ -438,7 +438,7 @@ apps/agentos/view/fleet/detail/Container.mjs
     94aa7251818464f04754d72f3d9a137c4b0bf799
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    61656cf09ead1c390b3745ab4f4c67349764642d
+    a433025e5b8e3681c524ac7856d62d49bf743585
 
 apps/agentos/view/fleet/detail/ParticipationContainer.mjs
     fe9568eec6dfeab5b1d751f906fac5986be28dd7
@@ -456,7 +456,7 @@ apps/agentos/view/fleet/detail/RepositoryList.mjs
     12fffdccd768c34aefd928538fa7c8226cf54051
 
 apps/agentos/view/fleet/detail/SeatCredentialContainer.mjs
-    b6349eadc05e97e8d40ef8926f62ad08ff8f79bd
+    ca1118cda53c53e8cc519a5246ee8f4bf55544de
 
 apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
     75394bfe3f6850e8a2a51409766918888b2d3af1
@@ -468,7 +468,7 @@ apps/agentos/view/fleet/detail/SeatRenameContainer.mjs
     0f8b44b34a4e531fec2ee41db18547ac63b0671f
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
-    d6b2c9c04350c9a7147f79696b9be96c36fa0b55
+    62bd532390b271728a9d9ad32771fb8cf0988214
 
 apps/agentos/view/fleet/detail/ThoughtStreamBodyContainer.mjs
     dd4154d69698f389093890b20967879c97ecbcc4
@@ -615,7 +615,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     0f9fcc21fa8136e8bf79c7bfd0722aef1b4f0973
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    3e61f3e29a21c328a590ee7fdd76f6d38826dab4
+    616eee9624359118a8b0acd44bffa7a39a8f3fe5
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a

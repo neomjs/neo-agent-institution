@@ -363,7 +363,7 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
         try {
             host.admitOpenWork({
                 state        : 'unavailable',
-                observedAt   : null,
+                observedAt   : '2026-11-23T11:58:00.000Z',
                 coverage     : 'unavailable',
                 reason       : 'seat read refused',
                 seats        : {'@neo-fable-clio': {authored: [], reviewing: [], credentialRefusal: refusal, tokenExpiresAt: expiry}},
@@ -371,12 +371,14 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
             }, 'instance-a');
 
             expect(roster.get('clio').openWorkHeld).toBeNull();
+            expect(roster.get('clio').openWorkCredentialObservedAt).toBe('2026-11-23T11:58:00.000Z');
             expect(roster.get('clio').openWorkCredentialRefusal).toEqual(refusal);
             expect(roster.get('clio').tokenExpiresAt).toBe(expiry);
 
             setFleetBridge({profileId: 'instance-b', fleetOpenWork: () => new Promise(() => {})});
             host.loadOpenWork();
 
+            expect(roster.get('clio').openWorkCredentialObservedAt).toBeNull();
             expect(roster.get('clio').openWorkCredentialRefusal).toBeNull();
             expect(roster.get('clio').tokenExpiresAt).toBeNull()
         } finally {

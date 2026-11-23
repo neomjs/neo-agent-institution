@@ -146,22 +146,28 @@ class OpenWorkSeat extends Base {
     }
 
     /**
-     * @summary Per-seat forge credential refusal and token expiration from `fleetOpenWork.seats[seatIdentity]`,
-     * read regardless of envelope `state` so a first refused pulse (`state === 'unavailable'`) still surfaces
-     * `credentialRefusal` and `tokenExpiresAt`.
+     * @summary Per-seat forge credential refusal, token expiration, and observation instant from
+     * `fleetOpenWork.seats[seatIdentity]`, read regardless of envelope `state` so a first refused pulse
+     * (`state === 'unavailable'`) still surfaces `credentialRefusal` and `tokenExpiresAt`.
      * @param {Object|null} snapshot     One `fleetOpenWork` envelope, or `null` while unanswered.
      * @param {String|null} seatIdentity The seat's identity, e.g. `@neo-fable-clio`.
-     * @returns {{credentialRefusal: Object|null, tokenExpiresAt: String|null}}
+     * @returns {{credentialRefusal: Object|null, observedAt: String|null, tokenExpiresAt: String|null}}
      */
     static credential(snapshot, seatIdentity) {
         if (!seatIdentity || !snapshot || typeof snapshot !== 'object') {
-            return {credentialRefusal: null, tokenExpiresAt: null}
+            return {credentialRefusal: null, observedAt: null, tokenExpiresAt: null}
         }
 
         const
-            entry   = snapshot.seats?.[seatIdentity],
-            refusal = entry?.credentialRefusal,
-            validRefusal = refusal && typeof refusal === 'object' && !Array.isArray(refusal) &&
+            entry         = snapshot.seats?.[seatIdentity],
+            refusal       = entry?.credentialRefusal,
+            rawObservedAt = typeof entry?.observedAt === 'string' && entry.observedAt.trim()
+                ? entry.observedAt.trim()
+                : typeof snapshot.observedAt === 'string' && snapshot.observedAt.trim()
+                    ? snapshot.observedAt.trim()
+                    : null,
+            observedAt    = rawObservedAt && Number.isFinite(Date.parse(rawObservedAt)) ? rawObservedAt : null,
+            validRefusal  = refusal && typeof refusal === 'object' && !Array.isArray(refusal) &&
                 refusal.surface === 'forge' && refusal.verdict === 'refused'
                 ? {
                     surface: 'forge',
@@ -171,12 +177,12 @@ class OpenWorkSeat extends Base {
                     reason : typeof refusal.reason === 'string' && refusal.reason.trim() ? refusal.reason.trim() : null
                 }
                 : null,
-            expiresAt = typeof entry?.tokenExpiresAt === 'string' && entry.tokenExpiresAt.trim() &&
+            expiresAt     = typeof entry?.tokenExpiresAt === 'string' && entry.tokenExpiresAt.trim() &&
                 Number.isFinite(Date.parse(entry.tokenExpiresAt))
                 ? entry.tokenExpiresAt.trim()
                 : null;
 
-        return {credentialRefusal: validRefusal, tokenExpiresAt: expiresAt}
+        return {credentialRefusal: validRefusal, observedAt, tokenExpiresAt: expiresAt}
     }
 
     /**
