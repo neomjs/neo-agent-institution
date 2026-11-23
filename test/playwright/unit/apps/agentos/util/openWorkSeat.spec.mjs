@@ -236,4 +236,62 @@ test.describe('AgentOS.util.OpenWorkSeat', () => {
         expect(stale.title).toBe('3 pull requests on this seat · worst: red · stale · observed 7m ago');
         expect(stale.ariaLabel).toBe('Open work: 3 pull requests on this seat, worst: red, stale.')
     });
+
+    test('credential reads forge refusals and tokenExpiresAt across every envelope state, including unavailable (#902)', () => {
+        const
+            clio    = '@neo-fable-clio',
+            refusal = {
+                surface: 'forge',
+                cause  : 'insufficient-capability',
+                verdict: 'refused',
+                status : 403,
+                reason : 'token lacks read:org scope'
+            },
+            expiresAt   = '2026-11-28T12:00:00.000Z',
+            unavailable = {
+                state     : 'unavailable',
+                observedAt: null,
+                coverage  : 'unavailable',
+                reason    : 'first pulse refused',
+                seats     : {
+                    [clio]: {
+                        authored         : [],
+                        reviewing        : [],
+                        credentialRefusal: refusal,
+                        tokenExpiresAt   : expiresAt
+                    }
+                },
+                awaitingMerge: []
+            };
+
+        expect(OpenWorkSeat.held(unavailable, clio), 'PR rows stay gated when envelope is unavailable').toBeNull();
+        expect(OpenWorkSeat.credential(unavailable, clio)).toEqual({
+            credentialRefusal: refusal,
+            tokenExpiresAt   : expiresAt
+        });
+
+        // unanswered / non-forge / null fallbacks produce nothing
+        expect(OpenWorkSeat.credential({
+            state: 'ok',
+            seats: {
+                [clio]: {
+                    credentialRefusal: {surface: 'forge', verdict: 'unanswered', cause: 'transport-unavailable'},
+                    tokenExpiresAt   : null
+                }
+            }
+        }, clio)).toEqual({credentialRefusal: null, tokenExpiresAt: null});
+
+        expect(OpenWorkSeat.credential({
+            state: 'ok',
+            seats: {
+                [clio]: {
+                    credentialRefusal: {surface: 'plane', verdict: 'refused', reason: 'plane bearer invalid'},
+                    tokenExpiresAt   : 'not-a-date'
+                }
+            }
+        }, clio)).toEqual({credentialRefusal: null, tokenExpiresAt: null});
+
+        expect(OpenWorkSeat.credential(null, clio)).toEqual({credentialRefusal: null, tokenExpiresAt: null});
+        expect(OpenWorkSeat.credential(unavailable, null)).toEqual({credentialRefusal: null, tokenExpiresAt: null})
+    });
 });

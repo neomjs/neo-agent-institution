@@ -343,4 +343,45 @@ test.describe('Fleet cockpit — the open-work read (loadOpenWork)', () => {
             provider.destroy()
         }
     });
+
+    test('an unavailable first-refusal envelope still stamps openWorkCredentialRefusal and tokenExpiresAt onto the seat record and retires across profiles (#902)', async () => {
+        const
+            StateProvider      = (await import('../../../../../../../../node_modules/neo.mjs/src/state/Provider.mjs')).default,
+            FleetAwaitingMerge = (await import('../../../../../../../../apps/agentos/store/FleetAwaitingMerge.mjs')).default,
+            FleetRoster        = (await import('../../../../../../../../apps/agentos/store/FleetRoster.mjs')).default,
+            provider           = Neo.create(StateProvider, {
+                stores: {
+                    fleetAwaitingMerge: {module: FleetAwaitingMerge},
+                    fleetRoster       : {module: FleetRoster, data: [{agentId: 'clio', githubUsername: 'neo-fable-clio'}]}
+                }
+            }),
+            host    = Object.assign(makeHost(), {component: {getStateProvider: () => provider}}),
+            roster  = provider.getStore('fleetRoster'),
+            refusal = {surface: 'forge', cause: 'insufficient-capability', verdict: 'refused', status: 403, reason: 'missing read:org'},
+            expiry  = '2026-11-26T00:00:00.000Z';
+
+        try {
+            host.admitOpenWork({
+                state        : 'unavailable',
+                observedAt   : null,
+                coverage     : 'unavailable',
+                reason       : 'seat read refused',
+                seats        : {'@neo-fable-clio': {authored: [], reviewing: [], credentialRefusal: refusal, tokenExpiresAt: expiry}},
+                awaitingMerge: []
+            }, 'instance-a');
+
+            expect(roster.get('clio').openWorkHeld).toBeNull();
+            expect(roster.get('clio').openWorkCredentialRefusal).toEqual(refusal);
+            expect(roster.get('clio').tokenExpiresAt).toBe(expiry);
+
+            setFleetBridge({profileId: 'instance-b', fleetOpenWork: () => new Promise(() => {})});
+            host.loadOpenWork();
+
+            expect(roster.get('clio').openWorkCredentialRefusal).toBeNull();
+            expect(roster.get('clio').tokenExpiresAt).toBeNull()
+        } finally {
+            clearFleetBridge();
+            provider.destroy()
+        }
+    });
 });

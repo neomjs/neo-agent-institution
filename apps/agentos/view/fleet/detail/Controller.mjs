@@ -65,7 +65,15 @@ class Controller extends ComponentController {
             card = me.getReference('config-pane');
 
         card.on({configIntent: me.onConfigIntent, scope: me});
-        me.getReference('seat-runtime').on({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
+        me.getReference('seat-runtime').on({
+            lifecycleIntent   : me.onRuntimeLifecycleIntent,
+            replaceTokenIntent: me.onRuntimeReplaceTokenIntent,
+            scope             : me
+        });
+        me.getReference('seat-credential')?.on({
+            seatCredentialReplaced: me.onSeatCredentialReplaced,
+            scope                 : me
+        });
         me.getReference('seat-rename-section')?.on({
             requestSeatRenameApply: me.onRequestSeatRenameApply,
             requestSeatRenamePlan : me.onRequestSeatRenamePlan,
@@ -117,7 +125,15 @@ class Controller extends ComponentController {
             setPublishSwitch   : me.onSetPublishSwitch,
             scope              : me
         });
-        me.getReference('seat-runtime')?.un({lifecycleIntent: me.onRuntimeLifecycleIntent, scope: me});
+        me.getReference('seat-runtime')?.un({
+            lifecycleIntent   : me.onRuntimeLifecycleIntent,
+            replaceTokenIntent: me.onRuntimeReplaceTokenIntent,
+            scope             : me
+        });
+        me.getReference('seat-credential')?.un({
+            seatCredentialReplaced: me.onSeatCredentialReplaced,
+            scope                 : me
+        });
         me.getReference('identity-row')?.un({declareGitIdentity: me.onDeclareGitIdentity, readGitIdentity: me.readGitIdentity, scope: me});
         me.getReference('seat-model')?.un({declareSeatModel: me.onDeclareSeatModel, readSeatCatalog: me.readSeatCatalog, scope: me});
         me.getReference('seat-memory')?.un({declareSeatMemory: me.onDeclareSeatMemory, readSeatMemory: me.readSeatMemory, scope: me});
@@ -136,6 +152,31 @@ class Controller extends ComponentController {
         if (action === 'setupNativeWake' && expectedStartedAt !== record.nativeWakeSetup?.expectedStartedAt) return;
         if (!['restart', 'setupNativeWake'].includes(action)) return;
         this.component.fire('lifecycleIntent', {action, agentId, expectedRuntimeGeneration, expectedStartedAt});
+    }
+
+    /**
+     * @summary Switches to the Configuration tab and starts `"Replace token"` for the selected stopped seat.
+     * @param {Object} [data] `{agentId}`
+     * @returns {Promise<Object|null>|null}
+     */
+    onRuntimeReplaceTokenIntent({agentId} = {}) {
+        const record = this.component.record;
+
+        if (!agentId || agentId !== record?.agentId) {
+            return null
+        }
+
+        this.getReference('detail-tabs').activeIndex = 1;
+        return this.getReference('seat-credential')?.onReplaceClick() ?? null
+    }
+
+    /**
+     * @summary Repaint `AgentDetail` and notify any cockpit owner once a stopped seat's token is replaced.
+     * @param {Object} data `{agentId, receipt, scope}`
+     */
+    onSeatCredentialReplaced(data = {}) {
+        this.component.record && this.component.applyRecord();
+        this.component.fire('seatCredentialReplaced', data)
     }
 
     /**
@@ -441,16 +482,19 @@ class Controller extends ComponentController {
     }
 
     /**
-     * @summary Synchronizes the `Change id…` button, inline `SeatRenameContainer`, and `PublishSwitchContainer`
-     * when `record` changes.
+     * @summary Synchronizes the `Change id…` button, inline `SeatRenameContainer`, `SeatCredentialContainer`,
+     * and `PublishSwitchContainer` when `record` changes.
      * @param {Object|null} record
      */
     syncSeatRename(record) {
         const
             me              = this,
             section         = me.getReference('seat-rename-section'),
+            credential      = me.getReference('seat-credential'),
             button          = me.getReference('change-seat-id-button'),
             publishSwitches = me.getReference('publish-switches');
+
+        credential?.updateRecord(record, me.component.now);
 
         if (publishSwitches) {
             const prevPeer = publishSwitches.peerId;

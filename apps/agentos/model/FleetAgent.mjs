@@ -245,6 +245,16 @@ class FleetAgent extends Model {
             name        : 'openWorkHeld',
             defaultValue: null
         }, {
+            // per-seat forge credential refusal from `fleetOpenWork.seats[id].credentialRefusal`
+            // (`{surface: 'forge', verdict: 'refused', cause, status, reason}`), read regardless of envelope state
+            name        : 'openWorkCredentialRefusal',
+            defaultValue: null
+        }, {
+            // ISO-8601 GitHub PAT expiration timestamp from `fleetOpenWork.seats[id].tokenExpiresAt`,
+            // read regardless of envelope state; `null` when the token has no expiry or is unread
+            name        : 'tokenExpiresAt',
+            defaultValue: null
+        }, {
             // the newest attributable per-agent activity instant (ISO string), stamped Brain-side
             // by the cockpit DTO assembler (activity-event fold merged with the presence
             // producer's lastSeenAt) and passed through whole — the roster's recency sort axis.

@@ -74,17 +74,36 @@ class FleetLifecycleIntentAdapter extends Base {
     }
 
     /**
-     * @summary Build the terminal non-success control-reason payload.
+     * @summary Build the terminal non-success control-reason payload, preserving typed Start refusal
+     * metadata (`code`, `credentialRefusal`) when supplied by `FleetControlBridge`.
      * @param {String} action
      * @param {'rejected'|'unauthorized'|'timeout'} kind
      * @param {*} reason
-     * @returns {{action:String, kind:String, reason:String}}
+     * @param {Object|null} [extras=null]
+     * @returns {{action:String, kind:String, reason:String, code?:String, credentialRefusal?:Object}}
      */
-    static createControlReason(action, kind, reason) {
+    static createControlReason(action, kind, reason, extras = null) {
+        const
+            code              = typeof extras?.code === 'string' && extras.code ? extras.code : null,
+            rawRefusal        = extras?.credentialRefusal,
+            credentialRefusal = rawRefusal && typeof rawRefusal === 'object' && !Array.isArray(rawRefusal)
+                ? {
+                    surface: typeof rawRefusal.surface === 'string' ? rawRefusal.surface : null,
+                    cause  : typeof rawRefusal.cause === 'string' ? rawRefusal.cause : null,
+                    verdict: typeof rawRefusal.verdict === 'string' ? rawRefusal.verdict : null,
+                    status : Number.isInteger(rawRefusal.status) ? rawRefusal.status : null,
+                    reason : rawRefusal.reason
+                        ? FleetLifecycleIntentAdapter.sanitizeControlReason(rawRefusal.reason, '')
+                        : null
+                }
+                : null;
+
         return {
             action,
             kind,
-            reason: FleetLifecycleIntentAdapter.sanitizeControlReason(reason, `${action || 'lifecycle'} request ${kind}`)
+            reason: FleetLifecycleIntentAdapter.sanitizeControlReason(reason, `${action || 'lifecycle'} request ${kind}`),
+            ...(code ? {code} : {}),
+            ...(credentialRefusal ? {credentialRefusal} : {})
         }
     }
 
@@ -316,8 +335,8 @@ class FleetLifecycleIntentAdapter extends Base {
                 ? {agentId, expectedRuntimeGeneration: intent.expectedRuntimeGeneration} : agentId;
         const settlement = Promise.resolve().then(() => bridge[method](params)).then(
             result => answer = complete(result, result?.status === 'rejected'
-                ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason) : null),
-            error => answer = complete(null, FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', error?.message))
+                ? FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', result.reason, result) : null),
+            error => answer = complete(null, FleetLifecycleIntentAdapter.createControlReason(action, 'rejected', error?.message, error))
         );
 
         try {

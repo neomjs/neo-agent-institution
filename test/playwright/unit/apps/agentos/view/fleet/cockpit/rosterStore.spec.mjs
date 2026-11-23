@@ -354,9 +354,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             harnessType   : null,
             lastActivityAt: null,
             launchable    : null,
-            openLaneCount : null,   // roster-DTO-owned tri-state: un-stamped → honest null (no badge)
-            openWork      : null,   // no open-work answer held, and no login to claim it by → no chip
-            openWorkHeld  : null,   // the same: the detail's pane reads no answer, not an empty one
+            openLaneCount            : null,   // roster-DTO-owned tri-state: un-stamped → honest null (no badge)
+            openWork                 : null,   // no open-work answer held, and no login to claim it by → no chip
+            openWorkCredentialRefusal: null,   // same open-work answer: no forge credential refusal observed
+            openWorkHeld             : null,   // the same: the detail's pane reads no answer, not an empty one
+            tokenExpiresAt           : null,   // same open-work answer: no PAT expiry timestamp observed
             laneLine      : null,
             laneClaimedAt : null,
             // the authoritative participation fact: absent on the row → honest null, never guessed;
@@ -615,9 +617,11 @@ test.describe('Fleet cockpit — Store-backed roster (loadRoster)', () => {
             harnessType          : null,
             lastActivityAt       : null,
             launchable           : null,
-            openLaneCount        : null,
-            openWork             : null,
-            openWorkHeld         : null,
+            openLaneCount            : null,
+            openWork                 : null,
+            openWorkCredentialRefusal: null,
+            openWorkHeld             : null,
+            tokenExpiresAt           : null,
             laneLine             : null,
             laneClaimedAt        : null,
             launchRefusal        : null,

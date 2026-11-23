@@ -168,6 +168,40 @@ test.describe('harness/credentialPrompt — the shell\'s one credential window',
         }
     });
 
+    test('replaceSeatCredential renders distinct title and copy for forge vs forge-and-bound-plane scopes (#902)', () => {
+        const
+            forgeWin = openPrompt({
+                getPlane: () => 'http://127.0.0.1:3102',
+                intent  : {id: 'neo-fable-clio', scope: 'forge'},
+                method  : 'replaceSeatCredential'
+            }).win,
+            forgeDoc = decodeURIComponent(forgeWin.url.replace('data:text/html;charset=utf-8,', '')),
+            bothWin  = openPrompt({
+                getPlane: () => 'http://127.0.0.1:3102',
+                intent  : {id: 'neo-fable-clio', scope: 'forge-and-bound-plane'},
+                method  : 'replaceSeatCredential'
+            }).win,
+            bothDoc  = decodeURIComponent(bothWin.url.replace('data:text/html;charset=utf-8,', '')),
+            noPlaneDoc = decodeURIComponent(openPrompt({
+                intent: {scope: 'forge-and-bound-plane'},
+                method: 'replaceSeatCredential'
+            }).win.url.replace('data:text/html;charset=utf-8,', ''));
+
+        expect(forgeWin.options.title).toBe('Replace neo-fable-clio\'s repository token');
+        expect(forgeDoc).toContain('<h1>Replace neo-fable-clio\'s repository token</h1>');
+        expect(forgeDoc).toContain('<p>Use a new account token for this agent\'s repository access. Any bound Agent OS credential stays unchanged.</p>');
+        expect(forgeDoc).toContain('<button type="submit" class="primary" disabled>Replace token</button>');
+
+        expect(bothWin.options.title).toBe('Replace neo-fable-clio\'s repository and Agent OS token');
+        expect(bothWin.options.title).not.toBe(forgeWin.options.title);
+        expect(bothDoc).toContain('<h1>Replace neo-fable-clio\'s repository and Agent OS token</h1>');
+        expect(bothDoc).toContain('<p>Use a new account token for neo-fable-clio\'s repository access and Agent OS (127.0.0.1:3102).</p>');
+        expect(bothDoc).toContain('<button type="submit" class="primary" disabled>Replace token</button>');
+
+        expect(noPlaneDoc).toContain('<h1>Replace this agent\'s repository and Agent OS token</h1>');
+        expect(noPlaneDoc).toContain('<p>Use a new account token for this agent\'s repository access and the connected Agent OS.</p>')
+    });
+
     test('the window starts at a height its content fits, measured as content, not frame', () => {
         const {win} = openPrompt();
 
