@@ -27,14 +27,14 @@ import AgentCard                   from '../../../../../../../../apps/agentos/vi
 import AgentDetail                 from '../../../../../../../../apps/agentos/view/fleet/detail/Container.mjs';
 
 /**
- * @summary End-to-end component verification for `neomjs/neo-agent-institution#902` across `AgentDetail`
+ * @summary End-to-end component verification across `AgentDetail`
  * (`SeatCredentialContainer` + `SeatRuntimeContainer`) and `AgentCard` (`CardControlStatus`):
- * - AC-2: stopped-only `"Replace token"` offer + `seat-running` explanation on running seats
- * - AC-3: `planeCredential` (`same-as-forge`, `distinct`, `none`, `unreadable`, failed `getAgent`) with nothing pre-selected
- * - AC-4: Fix-3 next-step cases (Start `credentialRefusal`, `FLEET_SEAT_CREDENTIAL_REPLACEMENT_INCOMPLETE`,
+ * - stopped-only `"Replace token"` offer + `seat-running` explanation on running seats
+ * - `planeCredential` (`same-as-forge`, `distinct`, `none`, `unreadable`, failed `getAgent`) with nothing pre-selected
+ * - credential next-step cases (Start `credentialRefusal`, `FLEET_SEAT_CREDENTIAL_REPLACEMENT_INCOMPLETE`,
  *   open-work `credentialRefusal` including `'unavailable'` envelope, and `receipt.nextStep === 'replace-seat-credential'`
- *   re-running with `receipt.scope`) while non-matching refusals keep today's text
- * - AC-5: `tokenExpiresAt` shown in Detail and flagged within 7 days in the cockpit with `"Replace token"`, `null` shows nothing
+ *   re-running with `receipt.scope`) while non-matching refusals keep existing text
+ * - `tokenExpiresAt` shown in Detail and flagged within 7 days in the cockpit with `"Replace token"`, `null` shows nothing
  */
 test.describe('AgentDetail & AgentCard — replace a stopped seat\'s GitHub token (#902)', () => {
     const

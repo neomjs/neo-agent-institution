@@ -13,9 +13,9 @@ import * as core      from '../../../../../../node_modules/neo.mjs/src/core/_exp
 import SeatCredential from '../../../../../../apps/agentos/util/SeatCredential.mjs';
 
 /**
- * @summary Unit contract for `AgentOS.util.SeatCredential` (#902): stopped-vs-running gate,
+ * @summary Unit contract for `AgentOS.util.SeatCredential`: stopped-vs-running gate,
  * `getAgent(id).planeCredential` classification + failed-read fallback, shell-only replacement
- * round-trip, Fix-3 next-step rules, and 7-day `tokenExpiresAt` expiry evaluation.
+ * round-trip, credential next-step rules, and 7-day `tokenExpiresAt` expiry evaluation.
  */
 test.describe('AgentOS.util.SeatCredential (#902)', () => {
     const NOW = Date.parse('2026-11-23T12:00:00.000Z');
