@@ -76,7 +76,7 @@
         "@playwright/test": "^1.65.1",
         "acorn": "^8.19.0",
         "astring": "^1.9.0",
-        "autoprefixer": "^10.6.2",
+        "autoprefixer": "^10.7.0",
         "chalk": "^6.0.1",
         "commander": "^15.1.0",
         "cssnano": "^9.9.0",
@@ -95,7 +95,7 @@
         "parse5": "^8.1.1",
         "postcss": "^8.5.33",
         "url": "^0.11.4",
-        "webpack": "^5.112.2",
+        "webpack": "^5.113.0",
         "webpack-cli": "^7.3.1",
         "webpack-dev-server": "^6.1.0",
         "webpack-hook-plugin": "^1.0.7"
