@@ -403,6 +403,76 @@ test.describe('harness Fleet capability', () => {
         }
     });
 
+    test('replaceSeatCredential projects to {id, scope} alone and rejects smuggled credentials or unknown scopes (#902)', async () => {
+        for (const scope of ['forge', 'forge-and-bound-plane']) {
+            expect(projectPublicCredentialIntent('replaceSeatCredential', {
+                id        : ' neo-fable-clio ',
+                scope     : ` ${scope} `,
+                credential: 'renderer_smuggled_pat',
+                planeBase : 'https://elsewhere.example.com',
+                identity  : '@forged'
+            })).toEqual({id: 'neo-fable-clio', scope})
+        }
+
+        for (const params of [
+            {id: 'neo-fable-clio'},
+            {id: 'neo-fable-clio', scope: 'plane-only'},
+            {id: 'neo-fable-clio', scope: ''},
+            {id: 'neo-fable-clio', scope: 42},
+            {id: '  ', scope: 'forge'},
+            {scope: 'forge'},
+            {},
+            null,
+            ['neo-fable-clio', 'forge']
+        ]) {
+            expect(projectPublicCredentialIntent('replaceSeatCredential', params)).toBeNull()
+        }
+
+        const
+            event          = {sender: 'trusted'},
+            mainCredential = 'seat_replace_pat_main_owned',
+            calls          = {credential: [], fetch: []},
+            capability     = createCapability({
+                bearerToken,
+                credentialProvider: async input => { calls.credential.push(input); return mainCredential },
+                fetchImpl         : async (url, init) => {
+                    calls.fetch.push({init, url});
+                    return {
+                        json: async () => createFleetWireResponse(
+                            FLEET_WIRE_RESPONSE_STATES.ok,
+                            {result: {status: 'replaced', id: 'neo-fable-clio', scope: 'forge-and-bound-plane'}}
+                        )
+                    }
+                },
+                getBrain       : async () => ({fleetPort: 8083, up: true}),
+                isTrustedSender: candidate => candidate === event
+            }),
+            result = await capability.request(event, {
+                method: 'replaceSeatCredential',
+                params: {
+                    id        : ' neo-fable-clio ',
+                    scope     : ' forge-and-bound-plane ',
+                    credential: 'renderer_smuggled_pat'
+                }
+            });
+
+        expect(result).toMatchObject({
+            ok    : true,
+            result: {status: 'replaced', id: 'neo-fable-clio', scope: 'forge-and-bound-plane'},
+            state : FLEET_WIRE_RESPONSE_STATES.ok
+        });
+        expect(calls.credential).toEqual([{
+            event,
+            intent: {id: 'neo-fable-clio', scope: 'forge-and-bound-plane'},
+            method: 'replaceSeatCredential'
+        }]);
+        expect(JSON.parse(calls.fetch[0].init.body)).toEqual({
+            method  : 'replaceSeatCredential',
+            params  : {credential: mainCredential, id: 'neo-fable-clio', scope: 'forge-and-bound-plane'},
+            protocol: createFleetWireOffer()
+        })
+    });
+
     /**
      * The Brain contract that adds `setPlaneCredential`, which no pin carries yet: it is a wire verb
      * and a credential-bearing one, and its request has the shape `createFleetWireRequest` builds.

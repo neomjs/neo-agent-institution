@@ -57,21 +57,28 @@ export const CREDENTIAL_LABEL = 'GitHub or GitLab PAT';
  * @type {Object}
  */
 const SUBMIT_TEXT = {
-    connectTenant     : 'Admit',
-    defineAgent       : 'Add agent',
-    'plane-attach'    : 'Connect',
-    setPlaneCredential: 'Update token'
+    connectTenant        : 'Admit',
+    defineAgent          : 'Add agent',
+    'plane-attach'       : 'Connect',
+    replaceSeatCredential: 'Replace token',
+    setPlaneCredential   : 'Update token'
 };
 
 /**
  * The line under the heading, keyed like {@link SUBMIT_TEXT}. Add collects the account token once
- * for repositories and the connected Agent OS; the legacy plane prompt changes that binding only.
+ * for repositories and the connected Agent OS; the legacy plane prompt changes that binding only;
+ * seat token replacement carries distinct copy per operator-selected scope (`forge` vs
+ * `forge-and-bound-plane`).
  * @type {Object}
  */
 const HINT_TEXT = {
-    default           : 'Use the one your team\'s plane signs in with. Only this app\'s main process receives it.',
-    defineAgent       : 'Use this agent\'s account token for repository access and the connected Agent OS. Enter it once; Fleet reuses it at Start.',
-    setPlaneCredential: 'Use this agent\'s account token for the connected Agent OS.'
+    default              : 'Use the one your team\'s plane signs in with. Only this app\'s main process receives it.',
+    defineAgent          : 'Use this agent\'s account token for repository access and the connected Agent OS. Enter it once; Fleet reuses it at Start.',
+    replaceSeatCredential: {
+        forge                  : 'Use a new account token for this agent\'s repository access. Any bound Agent OS credential stays unchanged.',
+        'forge-and-bound-plane': 'Use a new account token for this agent\'s repository access and the connected Agent OS.'
+    },
+    setPlaneCredential   : 'Use this agent\'s account token for the connected Agent OS.'
 };
 
 /**
@@ -130,6 +137,30 @@ export function describeCredentialPrompt({intent = null, method = 'plane-attach'
             heading,
             hint : `Use ${subject} for repository access and ${target}. Enter it once; Fleet reuses it at Start.`,
             label,
+            submit,
+            title: heading
+        }
+    }
+
+    if (method === 'replaceSeatCredential') {
+        const
+            seatId    = typeof intent?.id === 'string' ? intent.id.trim() : '',
+            withPlane = intent?.scope === 'forge-and-bound-plane',
+            subject   = seatId ? `${seatId}'s` : 'this agent\'s',
+            target    = formatPlaneTarget(plane),
+            heading   = withPlane
+                ? `Replace ${subject} repository and Agent OS token`
+                : `Replace ${subject} repository token`,
+            hint      = withPlane
+                ? (plane
+                    ? `Use a new account token for ${subject} repository access and ${target}.`
+                    : HINT_TEXT.replaceSeatCredential['forge-and-bound-plane'])
+                : HINT_TEXT.replaceSeatCredential.forge;
+
+        return {
+            heading,
+            hint,
+            label: CREDENTIAL_LABEL,
             submit,
             title: heading
         }

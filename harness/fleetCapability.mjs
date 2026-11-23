@@ -70,6 +70,8 @@ export function projectPublicAgentIntent(intent) {
     }
 }
 
+const SEAT_CREDENTIAL_SCOPES = new Set(['forge', 'forge-and-bound-plane']);
+
 /**
  * @summary Projects a credential-bearing Fleet verb onto the public intent fields the Body may
  * author. Credential bytes are never read from this object; Electron main obtains them through its
@@ -94,6 +96,15 @@ export function projectPublicCredentialIntent(method, params) {
         const id = typeof params.id === 'string' ? params.id.trim() : '';
 
         return id ? {id} : null
+    }
+
+    // the seat and the operator-chosen replacement scope; credential bytes never enter here
+    if (method === 'replaceSeatCredential' && isRecord(params)) {
+        const
+            id    = typeof params.id === 'string' ? params.id.trim() : '',
+            scope = typeof params.scope === 'string' ? params.scope.trim() : '';
+
+        return id && SEAT_CREDENTIAL_SCOPES.has(scope) ? {id, scope} : null
     }
 
     return null

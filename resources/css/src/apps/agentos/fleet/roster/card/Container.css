@@ -553,8 +553,14 @@
        operator acts on: the attention token */
 }
 
-.fm-agent-card .fm-card-control-status.is-session-wrong, .fm-agent-card .fm-card-control-status.is-model-refused {
+.fm-agent-card .fm-card-control-status.is-session-wrong,
+.fm-agent-card .fm-card-control-status.is-model-refused,
+.fm-agent-card .fm-card-control-status.is-credential-refused {
     color: var(--fm-state-wedged);
+}
+
+.fm-agent-card .fm-card-control-status.is-credential-expiring {
+    color: var(--fm-state-idle);
 }
 
 .fm-agent-card {

@@ -68,16 +68,13 @@ const BEACON_PRESENT_GLYPH = '◉';
 const LANE_AGE_REFRESH_MS = 30_000;
 
 import AgentFreshness    from '../../../../util/AgentFreshness.mjs';
+import CardControlStatus from '../../../../util/CardControlStatus.mjs';
 import FamilyTokens      from '../../../../util/FamilyTokens.mjs';
 import NameSlot          from '../../../../util/NameSlot.mjs';
 import OpenWorkSeat      from '../../../../util/OpenWorkSeat.mjs';
 import Participation     from '../../../../util/Participation.mjs';
 import SeatDependencies  from '../../../../util/SeatDependencies.mjs';
 import SeatExitReason    from '../../../../util/SeatExitReason.mjs';
-import SeatGitIdentity   from '../../../../util/SeatGitIdentity.mjs';
-import SeatLaunchAdmission from '../../../../util/SeatLaunchAdmission.mjs';
-import SeatModel         from '../../../../util/SeatModel.mjs';
-import SeatSessionFolder from '../../../../util/SeatSessionFolder.mjs';
 import SessionRotation   from '../../../../util/SessionRotation.mjs';
 import SourceHealth      from '../../../../util/SourceHealth.mjs';
 import Telltale          from '../../../../util/Telltale.mjs';
@@ -902,89 +899,37 @@ class AgentCard extends Container {
                 : 'Cancel this Start: the Fleet stops its installs and does not launch the seat.'
             : refusal ?? (!runtimeWired || sources.runtime.confidence === 'inferred' ? sources.runtime.reason : null));
 
-        // The status row narrates the Start: the round-trip while it is live or refused, then whether
-        // the session it launched opened in the seat's own folder (a desktop seat cannot be launched
-        // into one), and last whether it prepared the working checkout. A confirmed wrong folder
-        // outranks even a live round-trip, because a live seat in the wrong folder is the failure
-        // itself; "not opened yet" and "unknown" sit below one, which a live seat contradicts.
         const
-            wrongFolder   = record.sessionFolder?.state === 'wrong',
-            sessionLine   = wrongFolder || !(pendingAction || controlReason || preparation) ? SeatSessionFolder.cardLine(record.sessionFolder) : null,
-            // a start the Fleet refused for the declared model says so in the design read's words: the
-            // recorded cause, shown only while this cockpit's own last outcome is that same refusal
-            modelRefusal  = !pendingAction && !preparation && !wrongFolder ? SeatModel.refusal(record.seatModel, controlReason) : null,
-            admissionLine = recordState !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal)
-                ? SeatLaunchAdmission.cardLine(record.launchAdmission, {
-                    now,
-                    canRestart : !disabled && recordState !== 'off',
-                    mcpSettings: record.mcpSettings,
-                    rosterState: me.rosterState,
-                    runtime    : sources.runtime
-                }) : null,
-            // the quietest exception: a running seat whose working checkout the last start did not prepare
-            // has no verified skills. Running is the state the card shows, so a seat it reads offline says
-            // nothing; opening the session folder is the first-launch step, so it speaks first
-            skillsLine    = resolved.state !== 'off' && !(pendingAction || controlReason || wrongFolder || modelRefusal || admissionLine || sessionLine)
-                ? SeatDependencies.cardLine(record.dependencyOutcomes, record.repoSlug) : null;
+            statusLine    = CardControlStatus.resolve({
+                record,
+                recordState,
+                resolved,
+                sources,
+                rosterState: me.rosterState,
+                disabled,
+                pendingAction,
+                controlReason,
+                preparation,
+                cancel,
+                exitLine,
+                now
+            }),
+            controlStatus = me.getReference('control-status');
 
         // admission words that change on their own name their instant; the card re-applies the record then
-        me.scheduleAdmissionAging(admissionLine?.until ?? null, now);
-
-        restart.changeVdomRootKey('title', admissionLine?.restart ? admissionLine.title : null);
-
+        me.scheduleAdmissionAging(statusLine.admissionUntil, now);
+        restart.changeVdomRootKey('title', statusLine.restartTitle);
         // While the status row shows, the second work line belongs to it: the lane clamps to ONE line
         // (CSS keys off this root cls), so a reason-carrying card still fits the roster's uniform
         // row height at every card width — the lane stays reachable via line one and the title.
-        me[(pendingAction || controlReason || preparation || sessionLine || modelRefusal || admissionLine || skillsLine || exitLine) ? 'addCls' : 'removeCls']('fm-control-live');
-
-        // the runtime-source gating is already shown by the disabled controls + the source strip
-        // ("RUN not nominal"), so the status line never duplicates it
-        const
-            controlStatus     = me.getReference('control-status'),
-            // pending takes visual priority over a prior reason, so a new attempt never shows a stale
-            // rejection; a timeout reads as an unfinished "…" (retry stays open), not a resolved "⚠".
-            // The Fleet's own report of a preparing Start refines both: it is an answer, not silence
-            controlStatusText = wrongFolder
-                ? sessionLine.text
-                : cancel
-                    ? cancel === 'sent' ? 'canceling start…' : 'canceling start… no answer yet'
-                    : preparation
-                        ? `${pendingAction === 'restart' ? 'restart' : 'start'}… ${preparation.text}`
-                        : pendingAction
-                            ? `${pendingAction}…`
-                            : modelRefusal
-                                ? modelRefusal.text
-                                : !controlReason
-                                    ? exitLine?.text ?? admissionLine?.text ?? sessionLine?.text ?? skillsLine?.text ?? ''
-                                    : controlReason.kind === 'timeout'
-                                        ? `${controlReason.action}… no answer yet`
-                                        : controlReason.kind === 'cleanup'
-                                            ? `⚠ cleanup: ${controlReason.reason} — Start re-checks it`
-                                            : `⚠ ${controlReason.kind}: ${controlReason.reason}`,
-            timeoutTitle      = !wrongFolder && !pendingAction && !preparation && !modelRefusal && controlReason?.kind === 'timeout'
-                ? `${controlStatusText}. The outcome is unknown until the Fleet answers.` : null,
-            // the last start's commit identity, when it needs repair, rides beside a refusal as its own
-            // observation: the wire carries no refusal code, so it never stands in as the cause
-            identityNote      = controlReason && !pendingAction && SeatGitIdentity.needsRepair(record.gitIdentity)
-                ? ` · The last start's commit identity: ${SeatGitIdentity.describe(record.gitIdentity)} Repair it in Detail › Configuration.`
-                : '';
+        me[statusLine.live ? 'addCls' : 'removeCls']('fm-control-live');
 
         controlStatus.set({
-            cls   : ['fm-card-control-status', ...(sessionLine ? [`is-session-${record.sessionFolder.state}`] : []), ...(modelRefusal ? ['is-model-refused'] : []), ...(exitLine && !controlReason && !wrongFolder && !modelRefusal ? [`is-exit-${exitLine.state}`] : [])],
-            hidden: !pendingAction && !controlReason && !preparation && !sessionLine && !modelRefusal && !admissionLine && !skillsLine && !exitLine,
-            text  : controlStatusText
+            cls   : statusLine.cls,
+            hidden: statusLine.hidden,
+            text  : statusLine.text
         });
-        // the one-line status ellipsizes (CSS); the title is the receipt carrying the full words; a preparing
-        // Start names each checkout's live row there
-        controlStatus.changeVdomRootKey('title', timeoutTitle || (cancel
-            ? cancel === 'sent'
-                ? 'Cancel requested: the Fleet stops the installs and does not launch the seat.'
-                : 'Cancel requested, and the Fleet has not answered yet while the Start still prepares. Its answer settles the card.'
-            : preparation
-                ? preparation.title
-                : modelRefusal
-                    ? modelRefusal.title + identityNote
-                    : (!controlReason ? exitLine?.title : null) ?? admissionLine?.title ?? sessionLine?.title ?? skillsLine?.title ?? (controlStatusText ? controlStatusText + identityNote : null)));
+        controlStatus.changeVdomRootKey('title', statusLine.title);
 
         me.update()
     }

@@ -78,7 +78,7 @@ apps/agentos/model/FleetActivityEvent.mjs
     9d66453c5b93d8228c9fc9c650a4e8ce58fa6236
 
 apps/agentos/model/FleetAgent.mjs
-    e420f510c402b704c4ae13d291925f083746dfec
+    98fd549629e8da2097a958c297e3bf6dc27222ee
 
 apps/agentos/model/FleetInstance.mjs
     a08a3ff947a378f717a41275464ce8526f6ae9d8
@@ -227,6 +227,9 @@ apps/agentos/util/AgentFreshness.mjs
 apps/agentos/util/BrainHealthRead.mjs
     dbb5519544c6bdf7adb141d3eff45bef4c4caae1
 
+apps/agentos/util/CardControlStatus.mjs
+    500c503f61599c792ede56cb038b34202c10887b
+
 apps/agentos/util/ClosedShape.mjs
     1cb201ec5bb7b858b41a68f6abfba58824fb6ccf
 
@@ -246,7 +249,7 @@ apps/agentos/util/FleetAdmission.mjs
     9191121d5ab6d2915ffdcab122a71d3cb1b0963a
 
 apps/agentos/util/FleetLifecycleIntentAdapter.mjs
-    300d70184d1e4c7b4490564ae8316a3514fdfcd3
+    4664fef8a3e1b577cad0bd2b3fc3c6989eb5fd07
 
 apps/agentos/util/FleetStartPlan.mjs
     35fe190e3be78f479f0da2a560421b3d3da5a5e6
@@ -282,10 +285,10 @@ apps/agentos/util/ObservatorySceneLayout.mjs
     34a5f76d23060c5b41f6cde706a77932e6d0b87a
 
 apps/agentos/util/OpenWorkRead.mjs
-    d4cb54459a861992edb65e8b8a95974bf9c87f90
+    40ae9773d1fcd2329b8c7f1c17e5a5f4ebc7cf37
 
 apps/agentos/util/OpenWorkSeat.mjs
-    c34af0eb19725aa8cb235896e45ca9e1f116a95f
+    10531713d3b3fbd7d18202a36d0391b7748a6b14
 
 apps/agentos/util/OperatorInbox.mjs
     0c6e714f638623405a3c80ee73b014e1d16059a9
@@ -310,6 +313,9 @@ apps/agentos/util/RecentTurnsRead.mjs
 
 apps/agentos/util/RosterRow.mjs
     3861db725a11fbac4fac2d7ec5a15678f03b59e8
+
+apps/agentos/util/SeatCredential.mjs
+    06b5df76fe54a915182c0baf763ce1486f006add
 
 apps/agentos/util/SeatDependencies.mjs
     45f6624f0a0e8340c362b72399dcf9badba1e396
@@ -429,10 +435,10 @@ apps/agentos/view/fleet/detail/AgentReposContainer.mjs
     ce7ebf7a5e861f453d5da6ec558bcfb147aac314
 
 apps/agentos/view/fleet/detail/Container.mjs
-    35a151008b393eb40b8a3cd4005c3eba1d43394a
+    94aa7251818464f04754d72f3d9a137c4b0bf799
 
 apps/agentos/view/fleet/detail/Controller.mjs
-    6904e067ee4838103fd74855f3e45777b335731f
+    a433025e5b8e3681c524ac7856d62d49bf743585
 
 apps/agentos/view/fleet/detail/ParticipationContainer.mjs
     fe9568eec6dfeab5b1d751f906fac5986be28dd7
@@ -449,6 +455,9 @@ apps/agentos/view/fleet/detail/RepositoryBodyContainer.mjs
 apps/agentos/view/fleet/detail/RepositoryList.mjs
     12fffdccd768c34aefd928538fa7c8226cf54051
 
+apps/agentos/view/fleet/detail/SeatCredentialContainer.mjs
+    ca1118cda53c53e8cc519a5246ee8f4bf55544de
+
 apps/agentos/view/fleet/detail/SeatMemoryContainer.mjs
     75394bfe3f6850e8a2a51409766918888b2d3af1
 
@@ -459,7 +468,7 @@ apps/agentos/view/fleet/detail/SeatRenameContainer.mjs
     0f8b44b34a4e531fec2ee41db18547ac63b0671f
 
 apps/agentos/view/fleet/detail/SeatRuntimeContainer.mjs
-    8d1bd79888aa11f7d359a59a2161832a674703e8
+    62bd532390b271728a9d9ad32771fb8cf0988214
 
 apps/agentos/view/fleet/detail/ThoughtStreamBodyContainer.mjs
     dd4154d69698f389093890b20967879c97ecbcc4
@@ -606,7 +615,7 @@ apps/agentos/view/fleet/roster/SelectionModel.mjs
     0f9fcc21fa8136e8bf79c7bfd0722aef1b4f0973
 
 apps/agentos/view/fleet/roster/card/Container.mjs
-    d5d669295dfdface60a7da0d5474c66abc944a5c
+    616eee9624359118a8b0acd44bffa7a39a8f3fe5
 
 apps/agentos/view/fleet/roster/card/Controller.mjs
     6be0a97126831188336d056730b994353b18fc3a
@@ -719,6 +728,9 @@ resources/css/src/apps/agentos/fleet/detail/PublishSwitchComponent.css
 resources/css/src/apps/agentos/fleet/detail/RepositoryList.css
     491ee7d1d3e5ea989a7b42ad63a66e2785c69e47
 
+resources/css/src/apps/agentos/fleet/detail/SeatCredentialContainer.css
+    c898d2fbd6d280c800532595e5550964153a5bfc
+
 resources/css/src/apps/agentos/fleet/detail/SeatMemoryContainer.css
     3e605dbae7eebc8f9c866c04f08ee83aaea115da
 
@@ -792,7 +804,7 @@ resources/css/src/apps/agentos/fleet/roster/Container.css
     a0cf9ed5d90795828dd23c8ed1d02e7f068c6d87
 
 resources/css/src/apps/agentos/fleet/roster/card/Container.css
-    c7eb158338aaed33277acf6191d2b843308690dc
+    177d2bc19f4efd9c7496452ca6d21ff83672278b
 
 resources/css/src/apps/agentos/fleet/shared/FamilyRailComponent.css
     e2f141eb5197898a3372695fb3488124f6ee0c81

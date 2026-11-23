@@ -1,5 +1,6 @@
 import Button         from '../../../../../node_modules/neo.mjs/src/button/Base.mjs';
 import Container      from '../../../../../node_modules/neo.mjs/src/container/Base.mjs';
+import SeatCredential from '../../../util/SeatCredential.mjs';
 import SeatExitReason from '../../../util/SeatExitReason.mjs';
 import SourceHealth   from '../../../util/SourceHealth.mjs';
 
@@ -19,6 +20,8 @@ class SeatRuntimeContainer extends Container {
         additionalThemeFiles: ['AgentOS.view.fleet.mailbox.Chips'],
         /** @member {Object|null} record_=null @reactive */
         record_: null,
+        /** @member {Number|null} now_=null @reactive */
+        now_: null,
         /** @member {Boolean} detailsVisible_=false @reactive */
         detailsVisible_: false,
         /** @member {Object} layout @reactive */
@@ -52,6 +55,9 @@ class SeatRuntimeContainer extends Container {
             ntype: 'component', reference: 'runtime-control-feedback', cls: ['fm-runtime-feedback'], flex: 'none', hidden: true,
             vdom : {'aria-live': 'polite'}
         }, {
+            module: Button, reference: 'runtime-replace-token', cls: ['fm-chip'], flex: 'none', hidden: true,
+            text  : SeatCredential.ACTION_LABEL, handler: 'up.onReplaceTokenClick'
+        }, {
             ntype : 'container', reference: 'runtime-identities', cls: ['fm-runtime-identities'], flex: 'none', hidden: true,
             layout: {ntype: 'vbox', align: 'stretch'},
             items : ['current', 'next', 'installed'].map(key => ({
@@ -77,8 +83,14 @@ class SeatRuntimeContainer extends Container {
         this.isConstructed && this.applyRecord();
     }
 
-    /** @summary Repaints same-record Store updates as well as selection changes. @param {Object|null} record */
-    updateRecord(record) {
+    /** @summary Re-evaluates time-relative token-expiry guidance when `now` advances. */
+    afterSetNow() {
+        this.isConstructed && this.applyRecord();
+    }
+
+    /** @summary Repaints same-record Store updates as well as selection changes. @param {Object|null} record @param {Number|null} [now=this.now] */
+    updateRecord(record, now = this.now) {
+        if (now !== this.now) this.now = now;
         if (this.record === record) this.applyRecord();
         else this.record = record;
     }
@@ -140,8 +152,26 @@ class SeatRuntimeContainer extends Container {
         this.getReference('native-wake-feedback').set({hidden: !feedbackText, text: feedbackText});
         const exitText = wired && record.state === 'off' && record.participationStatus !== 'operator_benched'
             ? SeatExitReason.detailText(record.exitReason) : null;
-        const feedback = record.pendingAction ? 'Lifecycle request in progress…' : record.controlReason?.reason || record.launchRefusal || exitText || '';
+        const clock = Number.isFinite(this.now) ? this.now : Date.now();
+        const expiry = !record.pendingAction && !record.controlReason && !record.launchRefusal
+            ? SeatCredential.recordExpiry(record, clock)
+            : null;
+        const credentialBlocking = !record.pendingAction && !record.controlReason && !record.launchRefusal
+            ? SeatCredential.nextStep(record) ?? (expiry?.expired ? {reason: expiry.detailText} : null)
+            : null;
+        const credentialExpiring = !record.pendingAction && !record.controlReason && !record.launchRefusal &&
+            !credentialBlocking && expiry?.expiringSoon
+            ? {reason: expiry.detailText}
+            : null;
+        const startCredentialRefusal = !record.pendingAction && SeatCredential.isStartCredentialRefusal(record.controlReason);
+        const showReplace = SeatCredential.availability(record).canReplace &&
+            (startCredentialRefusal || Boolean(credentialBlocking || credentialExpiring));
+        const stateOrExpiry = [exitText, credentialExpiring?.reason].filter(Boolean).join(' · ');
+        const feedback = record.pendingAction
+            ? 'Lifecycle request in progress…'
+            : record.controlReason?.reason || record.launchRefusal || credentialBlocking?.reason || stateOrExpiry || '';
         this.getReference('runtime-control-feedback').set({hidden: !feedback, text: feedback});
+        this.getReference('runtime-replace-token').set({hidden: !showReplace, disabled: Boolean(record.pendingAction)});
         const hasIdentities = Boolean(currentId || nextId || installedId);
         this.getReference('show-runtime-ids').set({hidden: !hasIdentities,
             text: this.detailsVisible ? 'Hide generation IDs' : 'Show generation IDs'});
@@ -175,6 +205,15 @@ class SeatRuntimeContainer extends Container {
         if (button.hidden || button.disabled) return;
         this.fire('lifecycleIntent', {action: 'restart', agentId: this.record.agentId,
             expectedRuntimeGeneration: this.record.nextRuntimeGeneration.id});
+    }
+
+    /** @summary Routes the Status-tab `"Replace token"` next step to Configuration's token group. */
+    onReplaceTokenClick() {
+        if (!this.record) return;
+        this.applyRecord();
+        const button = this.getReference('runtime-replace-token');
+        if (button.hidden || button.disabled) return;
+        this.fire('replaceTokenIntent', {agentId: this.record.agentId});
     }
 }
 

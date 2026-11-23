@@ -8,6 +8,7 @@ import ParticipationContainer               from './ParticipationContainer.mjs';
 import PublishSwitchComponent               from './PublishSwitchComponent.mjs';
 import PullRequestList                      from './PullRequestList.mjs';
 import RepositoryBodyContainer              from './RepositoryBodyContainer.mjs';
+import SeatCredentialContainer              from './SeatCredentialContainer.mjs';
 import SeatModelContainer                   from './SeatModelContainer.mjs';
 import SeatRenameContainer                  from './SeatRenameContainer.mjs';
 import SeatRuntimeContainer                 from './SeatRuntimeContainer.mjs';
@@ -411,6 +412,11 @@ class AgentDetail extends Container {
                     flex     : 'none',
                     reference: 'config-pane'
                 }, {
+                    module   : SeatCredentialContainer,
+                    flex     : 'none',
+                    hidden   : true,
+                    reference: 'seat-credential'
+                }, {
                     // the seat's commit identity with its one repair action, where Start's identity
                     // refusal points
                     module   : GitIdentityContainer,
@@ -538,7 +544,11 @@ class AgentDetail extends Container {
      * @protected
      */
     afterSetNow(value, oldValue) {
-        this.isConstructed && this.record && this.applyPaneFreshness()
+        if (this.isConstructed && this.record) {
+            this.getReference('seat-runtime').now = value;
+            this.getReference('seat-credential').now = value;
+            this.applyPaneFreshness()
+        }
     }
 
     /**
@@ -645,7 +655,7 @@ class AgentDetail extends Container {
         // the configuration tab joins on the Fleet Registry key; a roster resident with no stored
         // definition renders the card's honest no-definition line, never a fabricated config
         me.applyConfigRecord();
-        me.getReference('seat-runtime').updateRecord(record);
+        me.getReference('seat-runtime').updateRecord(record, me.now);
         me.controller.syncSeatRename(record);
 
         if (!record) {
