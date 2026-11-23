@@ -262,4 +262,44 @@ test.describe('Fleet cockpit AgentCard — the seat\'s session rotation line (#8
         expect(title).toContain('receipt MESSAGE:r1');
         expect(getActivityObjectTitle({type: 'session-rotation', payload: {state: 'none'}})).toBeNull()
     });
+        test('completed rotation omits "to unknown" when newSessionId is null or empty (#1023)', () => {
+        const
+            oldSessionId = 'd915466a-eeed-432b-bbd6-f294497a7bad',
+            rotation     = {state: 'completed', reason: null, receiptId: 'MESSAGE:r1', decidedAt, oldSessionId, newSessionId: null, nextEligibleAt: null},
+            described    = SessionRotation.describe(rotation, {now});
+
+        expect(described.text).toBe(`rotated ${at(decidedAt)} · from d915466a`);
+        expect(described.text).not.toContain('unknown');
+        expect(described.title).toContain(`from ${oldSessionId}`);
+        expect(described.title).toContain('receipt MESSAGE:r1');
+        expect(described.title).not.toContain('unknown');
+
+        // empty string newSessionId behaves the same way, and roster card renders cleanly
+        const card = createCard({...rotation, newSessionId: ''});
+
+        expect(line(card).text).toBe(`rotated ${at(decidedAt)} · from d915466a`);
+        expect(line(card).vdom.title).not.toContain('unknown');
+        expect(line(card).vdom.title).toContain('receipt MESSAGE:r1');
+
+        // when both session IDs are present, "from <old8> to <new8>" still renders unchanged
+        expect(SessionRotation.describe(completed, {now}).text).toBe(`rotated ${at(decidedAt)} · from 1a2b3c4d to 5e6f7a8b`);
+
+        card.destroy()
+    });
+
+    test('completed rotation falls back to bare "rotated <time>" or "rotated" when both session IDs are absent (#1023)', () => {
+        const
+            withTime    = SessionRotation.describe({state: 'completed', decidedAt, oldSessionId: null, newSessionId: null, receiptId: 'MESSAGE:r1'}, {now}),
+            withoutTime = SessionRotation.describe({state: 'completed', decidedAt: null, oldSessionId: '', newSessionId: '   ', receiptId: 'MESSAGE:r1'}, {now});
+
+        expect(withTime.text).toBe(`rotated ${at(decidedAt)}`);
+        expect(withTime.text).not.toContain('unknown');
+        expect(withTime.title).toContain('receipt MESSAGE:r1');
+        expect(withTime.title).not.toContain('unknown');
+
+        expect(withoutTime.text).toBe('rotated');
+        expect(withoutTime.text).not.toContain('unknown');
+        expect(withoutTime.title).toContain('receipt MESSAGE:r1');
+        expect(withoutTime.title).not.toContain('unknown')
+    });
 });

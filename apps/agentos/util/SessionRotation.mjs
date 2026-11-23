@@ -111,31 +111,46 @@ class SessionRotation extends Base {
     /**
      * @summary Words for one rotation decision, or `null` when it earns none.
      *
-     * - `completed`: the fresh session registered its wake route, so the old one is retired. The words
-     *   name both sessions and raise nothing: "rotated 21:17 · from 1a2b3c4d to 5e6f7a8b".
+     * - `completed`: the fresh session registered its wake route, so the old one is retired. When both
+     *   session ids are present, the words name both: "rotated 21:17 · from 1a2b3c4d to 5e6f7a8b". When
+     *   `newSessionId` is null or empty (e.g. plane-driven sunset successors carry no sender session id),
+     *   the "to ..." suffix is omitted: "rotated 21:17 · from 1a2b3c4d". When neither session id is
+     *   present, only the time is shown: "rotated 21:17" (or "rotated").
      * - `requested`: in flight; the old session still owns the seat: "rotating since 21:15".
      * - `refused`: the plane's reason and when the seat may rotate again:
      *   "rotation refused · minimum-interval · next 22:30".
      * - `incomplete`: no fresh session arrived. It is reported, and nothing is stopped:
      *   "rotation incomplete · no-fresh-session".
      *
-     * Times are viewer time. The title keeps the full session ids and the receipt.
+     * Times are viewer time. The title keeps any present full session ids and the receipt.
      * @param {Object|null} rotation `{state, reason, receiptId, decidedAt, oldSessionId, newSessionId, nextEligibleAt}`
      * @param {Object} [options={}] {@link AgentOS.util.ViewerTime#formatViewerTime} options (`now`, `locale`, `timeZone`)
      * @returns {{state: String, text: String, title: String}|null}
      */
     static describe(rotation, options = {}) {
         const
-            state   = rotation?.state,
-            decided = ViewerTime.formatViewerTime(rotation?.decidedAt, options),
-            short   = sessionId => typeof sessionId === 'string' && sessionId ? sessionId.slice(0, 8) : 'unknown';
+            state        = rotation?.state,
+            decided      = ViewerTime.formatViewerTime(rotation?.decidedAt, options),
+            normalizeId  = sessionId => typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : null,
+            oldSessionId = normalizeId(rotation?.oldSessionId),
+            newSessionId = normalizeId(rotation?.newSessionId);
 
         let text;
 
         switch (state) {
-            case 'completed':
-                text = `rotated${decided ? ` ${decided.text}` : ''} · from ${short(rotation.oldSessionId)} to ${short(rotation.newSessionId)}`;
+            case 'completed': {
+                const
+                    base     = `rotated${decided ? ` ${decided.text}` : ''}`,
+                    oldShort = oldSessionId?.slice(0, 8),
+                    newShort = newSessionId?.slice(0, 8),
+                    route    = oldShort && newShort ? `from ${oldShort} to ${newShort}`
+                             : oldShort             ? `from ${oldShort}`
+                             : newShort             ? `to ${newShort}`
+                             : null;
+
+                text = route ? `${base} · ${route}` : base;
                 break
+            }
             case 'requested':
                 text = decided ? `rotating since ${decided.text}` : 'rotating';
                 break
@@ -155,11 +170,10 @@ class SessionRotation extends Base {
         return {
             state,
             text,
-            title: [text, decided?.title, rotation.oldSessionId && `from ${rotation.oldSessionId}`,
-                rotation.newSessionId && `to ${rotation.newSessionId}`, rotation.receiptId && `receipt ${rotation.receiptId}`]
+            title: [text, decided?.title, oldSessionId && `from ${oldSessionId}`,
+                newSessionId && `to ${newSessionId}`, rotation.receiptId && `receipt ${rotation.receiptId}`]
                 .filter(Boolean).join(' · ')
         }
     }
 }
-
 export default Neo.setupClass(SessionRotation);
