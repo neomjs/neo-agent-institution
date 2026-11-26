@@ -239,7 +239,7 @@ protocol.registerSchemesAsPrivileged([
 
 /**
  * @summary Resolves the verified launcher runtime and Fleet contracts once, off the pre-window critical
- * path so packaged payload hashing (`15–27 s`) never delays showing the cockpit window (`#922`).
+ * path so packaged payload hashing never delays showing the cockpit window.
  * Diagnostic custody (`userData`) and the privileged `app://` scheme are already fixed before any caller
  * invokes this promise, and packaged child execution always uses the verified generation's executable.
  * @returns {Promise<{agentosRuntimeRoot: (String|null), fleetRuntimeContracts: (Object|null), launcherRuntime: Object}>}
@@ -565,7 +565,7 @@ const promptFleetCredential = createCredentialPrompt({
 
 /**
  * @summary Lazily initializes the single renderer→Fleet IPC capability once runtime verification settles,
- * keeping the window unblocked at launch (`#922`) and falling back to `createAbsentFleetCapability` when
+ * keeping the window unblocked at launch and falling back to `createAbsentFleetCapability` when
  * no Brain root is configured or runtime verification refuses.
  * @returns {Promise<{probe: Function, read: Function, request: Function}>}
  */
@@ -1466,8 +1466,8 @@ function logFleetStarting(ms) {
 
 /**
  * @summary Starts the spine's starting-transport fact and schedules the 15 s slow-boot notice from
- * `since` so packaged runtime verification (`15–27 s`) surfaces live elapsed progress on the spine
- * even before the Fleet child spawns (`#922`).
+ * `since` so packaged runtime verification surfaces live elapsed progress on the spine
+ * even before the Fleet child spawns.
  * @param {Object} [options]
  * @param {Number} [options.since=Date.now()]
  */
