@@ -618,8 +618,9 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         expect(calls).toHaveLength(1);
     });
 
-    test('actual packaged main selects diagnostic custody before publication and imports private contracts from that generation', async () => {
+    test('actual packaged main opens the cockpit window with starting transport before publication and imports private contracts from that generation', async () => {
         const main   = new URL('../../../../harness/main.mjs', import.meta.url).href;
+        await fs.mkdir(path.join(root, 'Neo Harness.app', 'Contents', 'Resources', 'organism'), {recursive: true});
         const script = `
             import {registerHooks} from 'node:module';
             import path from 'node:path';
@@ -629,8 +630,11 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
                 NEO_HARNESS_SMOKE: '1', NEO_HARNESS_BRAIN: '1', NEO_HARNESS_SMOKE_PLANE: '0',
                 NEO_HARNESS_SMOKE_HOLD: '0', NEO_HARNESS_BRAIN_ROOT: path.join(root, 'diagnostic')
             });
+            let finishWitness;
+            const witnessDone = new Promise(resolve => { finishWitness = resolve; });
             const state = globalThis.bootWitness = {
-                profile: path.join(root, 'installed-userData'), resourcesPath: process.resourcesPath, imports: [], scheme: false,
+                profile: path.join(root, 'installed-userData'), resourcesPath: process.resourcesPath,
+                imports: [], scheme: false, bootSteps: [], handlers: {}, windows: [],
                 generation: {id: 'verified-fixture', runtimeRoot: path.join(root, 'generation', 'organism'), executable: path.join(root, 'generation', 'host')}
             };
             const privateIdentity = '/ai/graph/normalizeAgentIdentityNodeId.mjs';
@@ -645,32 +649,74 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
                 },
                 load(url, context, next) {
                     let source;
-                    if (url === 'boot-witness:electron') source =
-                        'const state = globalThis.bootWitness; export const app = {isPackaged:true, getPath: name => name === "userData" ? state.profile : "/tmp", setPath:(name,value) => {if(name === "userData") state.profile=value;}, setAppLogsPath:() => {} };' +
-                        'export const protocol = {registerSchemesAsPrivileged:() => {state.scheme=true;}}; export const BrowserWindow={},ipcMain={},Menu={},nativeImage={},Notification={},safeStorage={},session={},shell={},Tray={};';
-                        else if (url.endsWith('/runtimeGeneration.mjs')) source =
-                                'export const classifyRuntimeGenerationRetention=()=>{},inspectRuntimeGenerationProcesses=()=>{},removeOwnedRuntimeTree=()=>{},loadRuntimeMaintenanceContracts=async()=>({}); export async function acquireHostRuntimeGeneration(options,{materialize}){return {generation:await materialize(options),release:async()=>{}};} export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme}; return state.generation;}';
-                    else if (url.endsWith('/mainLog.mjs')) source = 'export const carriesSecret=()=>false, createMainLog=()=>({install(){}});';
+                    if (url === 'boot-witness:electron') source = [
+                        'const state = globalThis.bootWitness;',
+                        'export class BrowserWindow {',
+                        '    constructor() {',
+                        '        const entry = {urls: []}; state.windows.push(entry); this.id = state.windows.length;',
+                        '        const mainFrame = {url: "app://neo/apps/agentos/index.html"};',
+                        '        this.webContents = {id: this.id, mainFrame, once(){}, on(){}};',
+                        '        this._entry = entry;',
+                        '    }',
+                        '    loadURL(u) {',
+                        '        this._entry.urls.push(u);',
+                        '        const mainFrame = this.webContents.mainFrame;',
+                        '        state.brainHealthAtWindowOpen = state.handlers["brain-health"]?.({sender: {mainFrame}, senderFrame: mainFrame}) ?? null;',
+                        '    }',
+                        '    once(){} on(){} isDestroyed(){ return false; }',
+                        '}',
+                        'BrowserWindow.getAllWindows = () => [];',
+                        'export const app = {',
+                        '    isPackaged: true,',
+                        '    getPath: name => name === "userData" ? state.profile : "/tmp",',
+                        '    setPath: (name, value) => { if (name === "userData") state.profile = value; },',
+                        '    setAppLogsPath: () => {}, on: () => {}, exit: () => {}, quit: () => {},',
+                        '    whenReady: () => ({then: fn => Promise.resolve().then(fn)})',
+                        '};',
+                        'export const protocol = {registerSchemesAsPrivileged: () => { state.scheme = true; }, handle: async () => {}};',
+                        'export const ipcMain = {on: () => {}, handle: (channel, fn) => { state.handlers[channel] = fn; }};',
+                        'export const session = {defaultSession: {setPermissionCheckHandler: () => {}, setPermissionRequestHandler: () => {}}};',
+                        'export const Menu={},nativeImage={},Notification={isSupported:()=>false},safeStorage={},shell={},Tray={};'
+                    ].join('\\n');
+                    else if (url.endsWith('/runtimeGeneration.mjs')) source =
+                        'export const classifyRuntimeGenerationRetention=()=>{},inspectRuntimeGenerationProcesses=()=>{},removeOwnedRuntimeTree=()=>{},loadRuntimeMaintenanceContracts=async()=>({}); export async function acquireHostRuntimeGeneration(options,{materialize}){return {generation:await materialize(options),release:async()=>{}};} export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration(input) {const state=globalThis.bootWitness; state.publication={input,profile:state.profile,scheme:state.scheme,windowsAtPublication:state.windows.map(w=>[...w.urls]),stepsBeforePublication:[...state.bootSteps]}; return state.generation;}';
+                    else if (url.endsWith('/mainLog.mjs')) source =
+                        'export const BOOT_TIMING_PREFIX="HARNESS_BOOT_TIMING",carriesSecret=()=>false,createMainLog=()=>({install(){}}),createBootTimer=()=>({step(s){globalThis.bootWitness.bootSteps.push(s);return {step:s};},span(s){return ()=>{globalThis.bootWitness.bootSteps.push(s);return {step:s};};}});';
                     else if (leaf(url)) {
                         state.imports.push(url);
                         if (url.endsWith(privateIdentity)) source = 'export const normalizeAgentIdentityNodeId=()=>{};';
-                        else if (url.endsWith(privateLaunch)) source = 'export const FLEET_CREDENTIAL_METHODS=[],probeExistingFleetServer=()=>{},resolveFleetBearer=()=>{throw Error("boot-witness-complete")};';
+                        else if (url.endsWith(privateLaunch)) source = 'export const FLEET_CREDENTIAL_METHODS=[],probeExistingFleetServer=()=>{},resolveFleetBearer=()=>{globalThis.bootWitnessDone();throw Error("boot-witness-complete")};';
                         else source = 'export const FLEET_WIRE_METHODS=[],FLEET_WIRE_RESPONSE_STATES=[],createFleetWireOffer=()=>{},createFleetWireRequest=()=>{},createFleetWireResponse=()=>{},inspectFleetWireResponse=()=>{};';
                     }
                     return source === undefined ? next(url, context) : {format:'module',source,shortCircuit:true};
                 }
             });
-            try { await import(${JSON.stringify(main)}); throw Error('boot witness did not stop'); }
-            catch (error) { if (error.message !== 'boot-witness-complete') throw error; }
-            console.log(JSON.stringify(state));
+            globalThis.bootWitnessDone = finishWitness;
+            await import(${JSON.stringify(main)});
+            await witnessDone;
+            console.log(JSON.stringify({
+                brainHealthAtWindowOpen: state.brainHealthAtWindowOpen,
+                bootSteps: state.bootSteps,
+                imports: state.imports,
+                publication: state.publication
+            }));
+            process.exit(0);
         `;
         const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root], {timeout: 10000});
-        const witness  = JSON.parse(stdout.trim());
+        const witness  = JSON.parse(stdout.trim().split('\n').at(-1));
         const profile  = path.join(root, 'diagnostic', 'userData');
         expect(witness.publication).toMatchObject({
-            profile, scheme: true,
-            input: {directory: path.join(profile, 'brain', 'runtime'), bundlePath: path.resolve(witness.resourcesPath, '..', '..')}
+            profile,
+            scheme                : true,
+            windowsAtPublication  : [['app://neo/apps/agentos/index.html']],
+            stepsBeforePublication: ['main-log-ready', 'app-ready', 'asset-protocol-ready', 'ipc-ready', 'window-created'],
+            input                 : {directory: path.join(profile, 'brain', 'runtime'), bundlePath: path.resolve(root, 'Neo Harness.app')}
         });
+        expect(witness.brainHealthAtWindowOpen).toMatchObject({
+            state    : 'degraded',
+            transport: {phase: 'starting'}
+        });
+        expect(witness.bootSteps).toContain('runtime-generation');
         expect(witness.imports.filter(url => !url.includes('/node_modules/'))).toEqual(expect.arrayContaining([
             pathToFileURL(path.join(root, 'generation/organism/ai/graph/normalizeAgentIdentityNodeId.mjs')).href,
             pathToFileURL(path.join(root, 'generation/organism/ai/services/fleet/fleetLaunchContract.mjs')).href

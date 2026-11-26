@@ -21,6 +21,11 @@ export const MAIN_LOG_FILE = 'main.log';
 /**
  * @type {String}
  */
+export const BOOT_TIMING_PREFIX = 'HARNESS_BOOT_TIMING';
+
+/**
+ * @type {String}
+ */
 export const REDACTED_LINE = '[secret-bearing line redacted]';
 
 /**
@@ -130,4 +135,57 @@ export function createMainLog({dir, secrets = () => [], maxBytes = 1024 * 1024, 
     }
 
     return {file, install, write}
+}
+
+/**
+ * @summary Records boot-step timings from process start into the shell log so a slow launch names the
+ * exact phase that took the time. `step` records sequential milestones (`deltaMs` since the prior step
+ * plus `uptimeMs` since process launch); `span` measures an asynchronous or parallel phase's own
+ * `durationMs` without perturbing sequential `step` deltas.
+ * @param {Object} [options]
+ * @param {Function} [options.log] Line sink; defaults to `console.log` so installed `main.log` captures and redacts it.
+ * @param {Function} [options.uptimeMs] Monotonic ms since process start; injectable for tests.
+ * @returns {{span: Function, step: Function}}
+ */
+export function createBootTimer({
+    log = line => console.log(line),
+    uptimeMs = () => Math.round(process.uptime() * 1000)
+} = {}) {
+    let lastMs = 0;
+
+    function emit(payload) {
+        log(`${BOOT_TIMING_PREFIX} ${JSON.stringify(payload)}`);
+        return payload
+    }
+
+    return {
+        span(step, initial = {}) {
+            const startedMs = Math.max(0, Math.round(uptimeMs()));
+
+            return (extra = {}) => {
+                const currentMs = Math.max(startedMs, Math.round(uptimeMs()));
+
+                return emit({
+                    step,
+                    durationMs: currentMs - startedMs,
+                    uptimeMs  : currentMs,
+                    ...initial,
+                    ...extra
+                })
+            }
+        },
+        step(step, extra = {}) {
+            const
+                currentMs = Math.max(lastMs, Math.round(uptimeMs())),
+                deltaMs   = currentMs - lastMs;
+
+            lastMs = currentMs;
+            return emit({
+                step,
+                deltaMs,
+                uptimeMs: currentMs,
+                ...extra
+            })
+        }
+    }
 }
