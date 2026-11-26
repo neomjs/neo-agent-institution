@@ -37,14 +37,25 @@ async function describe(payload, entries, verifier) {
     return verifier.describeCodexWakeArtifact({declaration:JSON.parse(data), entries})
 }
 
+/** @summary Checks the declaration formats supported by this publisher and the trusted verifier. */
+export function verifierReadsWakeVersion(verifier, version) {
+    return typeof verifier?.describeCodexWakeArtifact === 'function' &&
+        (version === 1 || (version === 2 && verifier.CODEX_WAKE_ARTIFACT_VERSION >= 2))
+}
+
 /**
- * @summary Whether a trusted verifier reads the wake-artifact declaration a bundle may carry. A bundle without one needs nothing.
+ * @summary Checks an installed or incoming bundle's declaration version before the install plan may quit it.
  * @param {String} bundle   Bundle root.
  * @param {Object} verifier The trusted runtime-generation module.
  * @returns {Boolean}
  */
 export function verifierReadsBundle(bundle, verifier) {
-    return typeof verifier.describeCodexWakeArtifact === 'function' || !nodeFs.existsSync(path.join(bundle, declarationPath))
+    try {
+        const declaration = JSON.parse(nodeFs.readFileSync(path.join(bundle, declarationPath), 'utf8'));
+        return verifierReadsWakeVersion(verifier, declaration?.version)
+    } catch (error) {
+        return error.code === 'ENOENT'
+    }
 }
 
 /** @summary Verifies a published address. An existing corrupt object cannot become a writable repair target. */
@@ -78,7 +89,8 @@ export async function publishCodexWakeArtifact({directory,payload,entries,verifi
             const destination = path.join(stage,relative);
             if (kind === 'directory') await fs.mkdir(destination,{mode:0o700});
             else if (kind === 'file') {
-                await fs.copyFile(path.join(payload,relative),destination,constants.COPYFILE_FICLONE);
+                const source = relative === 'Contents/Info.plist' && artifact.plistSource ? artifact.plistSource : relative;
+                await fs.copyFile(path.join(payload,source),destination,constants.COPYFILE_FICLONE);
                 await fs.chmod(destination,modeOrLink)
             } else if (kind === 'link') await fs.symlink(modeOrLink,destination);
             else throw Error('wake-artifact-entry-invalid')
