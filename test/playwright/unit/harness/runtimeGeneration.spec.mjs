@@ -8,11 +8,13 @@ import path                                              from 'node:path';
 import {pathToFileURL}                                   from 'node:url';
 import {promisify}                                       from 'node:util';
 import {createRequire}                                   from 'node:module';
+import plist                                             from 'plist';
 import * as runtimeVerifier                              from 'neo-agent-brain/runtime-generation';
 import * as runtimeReferences                            from 'neo-agent-brain/runtime-generation-lease';
 import {inspectPackageProtection, readPackageSlotRecord} from '../../../../harness/packageSlots.mjs';
 import {resolveLauncherRuntime}                          from '../../../../harness/brain.mjs';
 import {retireCodexWakeArtifacts, verifierReadsBundle}   from '../../../../harness/codexWakeArtifact.mjs';
+import {stageCodexWakeArtifact}                          from '../../../../harness/packCodexWake.mjs';
 import {
     executePlan as executePlanImpl, holdInstallTransaction, planInstall, prepareBundleProcessCensus,
     prepareInstallContinuity, readSlot, runningHarnessPaths
@@ -402,6 +404,47 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         expect(await fs.readFile(altered,'utf8')).toBe('changed outside');
     });
 
+    test('outer archive integrity changes the generation but not its verified v2 wake carrier', async () => {
+        const directory = path.join(root, 'runtime'), store = path.join(directory, 'wake-artifacts-v1');
+        const build = async (name, productRevision, archive, hookEdit = '') => {
+            const info = receipt();
+            info.owners.product.revision = productRevision.repeat(40);
+            const input = await fixture(path.join(root, name), info);
+            const contents = path.join(input.bundlePath, 'Contents');
+            const wake = path.join(input.runtimeRoot, 'ai/daemons/wake');
+            const source = plist.build({CFBundleExecutable: 'Neo Harness', ElectronAsarIntegrity: {
+                'Resources/app.asar': {algorithm: 'SHA256', hash: createHash('sha256').update(archive).digest('hex')}
+            }});
+            await fs.mkdir(path.join(contents, 'Frameworks'));
+            await fs.mkdir(wake, {recursive: true});
+            await fs.writeFile(path.join(contents, 'Info.plist'), source);
+            await fs.writeFile(path.join(contents, 'PkgInfo'), 'APPL????');
+            await fs.writeFile(path.join(contents, 'Resources/app.asar'), archive);
+            await fs.writeFile(path.join(wake, 'codexWakeProtocol.json'), '{"wire":"neo-codex-primary-wake-v1"}');
+            await fs.writeFile(path.join(wake, 'codexWakeHook.mjs'), "import './fleetPrimarySessionWake.mjs';\n" + hookEdit);
+            await fs.writeFile(path.join(wake, 'fleetPrimarySessionWake.mjs'), 'export {}');
+            if (name === 'first') {
+                const legacy = {...runtimeVerifier, CODEX_WAKE_ARTIFACT_VERSION: undefined};
+                await expect(stageCodexWakeArtifact(input.runtimeRoot, null, legacy)).rejects.toThrow(/cannot read it/);
+                await expect(fs.stat(path.join(input.runtimeRoot, 'codex-wake-artifact.json'))).rejects.toMatchObject({code: 'ENOENT'});
+            }
+            await stageCodexWakeArtifact(input.runtimeRoot, null, runtimeVerifier);
+            expect(await fs.readFile(path.join(contents, 'Info.plist'), 'utf8')).toBe(source);
+            return materializeRuntimeGeneration({...input, directory});
+        };
+        const first = await build('first', 'a', 'outer snapshot a');
+        const [id] = await fs.readdir(store), artifact = path.join(store, id);
+        const second = await build('second', 'b', 'outer snapshot b');
+        expect(second.id).not.toBe(first.id);
+        expect(await fs.readdir(store)).toEqual([id]);
+        expect((await runtimeVerifier.inventoryRuntimePayload(artifact)).digest).toBe(id);
+        const carrierPlist = plist.parse(await fs.readFile(path.join(artifact, 'Contents/Info.plist'), 'utf8'));
+        expect(carrierPlist).toEqual({CFBundleExecutable: 'Neo Harness'});
+        await expect(fs.stat(path.join(artifact, 'Contents/Resources/app.asar'))).rejects.toMatchObject({code: 'ENOENT'});
+        await build('third', 'c', 'outer snapshot b', 'export const changed = true;\n');
+        expect(await fs.readdir(store)).toHaveLength(2);
+    });
+
     test('a verifier without the wake reader and a malformed declaration stop under their own codes', async () => {
         const input    = await fixture(root), declaration = path.join(input.runtimeRoot, 'codex-wake-artifact.json');
         const outdated = {...runtimeVerifier, describeCodexWakeArtifact: undefined};
@@ -410,6 +453,9 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
         await fs.writeFile(declaration, JSON.stringify({version: 1}));
         expect(verifierReadsBundle(input.bundlePath, outdated)).toBe(false);
         expect(verifierReadsBundle(input.bundlePath, reader)).toBe(true);
+        await fs.writeFile(declaration, JSON.stringify({version: 2}));
+        expect(verifierReadsBundle(input.bundlePath, {...reader, CODEX_WAKE_ARTIFACT_VERSION: undefined})).toBe(false);
+        expect(verifierReadsBundle(input.bundlePath, {...reader, CODEX_WAKE_ARTIFACT_VERSION: 2})).toBe(true);
         await expect(materializeRuntimeGeneration({...input, verifier: outdated})).rejects.toThrow(/wake-artifact-verifier-outdated/);
         await fs.writeFile(declaration, '');
         await expect(materializeRuntimeGeneration({...input, verifier: reader})).rejects.toThrow(/wake-artifact-declaration-invalid/);

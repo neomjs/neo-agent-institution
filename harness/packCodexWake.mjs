@@ -26,9 +26,12 @@ export async function stageCodexWakeArtifact(root, signingIdentity, installer) {
     const verifier = createRequire(path.join(root, 'package.json'))('neo-agent-brain/runtime-generation');
     if (typeof verifier.describeCodexWakeArtifact !== 'function') return 'generation-bound (legacy Brain)';
     if (JSON.parse(fs.readFileSync(protocol, 'utf8')).wire !== 'neo-codex-primary-wake-v1') return 'generation-bound (unsupported hook wire)';
-    const {extractLiteralImportSpecifiers, installedRevisionOf} = await import('./pack.mjs');
+    const [{extractLiteralImportSpecifiers, installedRevisionOf}, {verifierReadsWakeVersion}] = await Promise.all([
+        import('./pack.mjs'), import('./codexWakeArtifact.mjs')
+    ]);
     installer ??= createRequire(import.meta.url)('neo-agent-brain/runtime-generation');
-    if (typeof installer.describeCodexWakeArtifact !== 'function') {
+    const version = verifierReadsWakeVersion(verifier, 2) ? 2 : 1;
+    if (!verifierReadsWakeVersion(installer, version)) {
         const short = revision => revision?.slice(0, 7) ?? 'unknown';
         let packed;
         try { packed = JSON.parse(fs.readFileSync(path.join(root, 'organism-build-info.json'), 'utf8')).owners?.brain?.revision } catch {}
@@ -37,6 +40,17 @@ export async function stageCodexWakeArtifact(root, signingIdentity, installer) {
             'to install the Brain at dev, or move the neo-agent-brain pin in package.json; then build again.')
     }
     const declaration = buildCodexWakeDeclaration(root, source => extractLiteralImportSpecifiers(source, true));
+    if (version === 2) {
+        const {default: plist} = await import('plist');
+        // The carrier omits app.asar. Keep the installed app's own integrity record on its original plist.
+        const info = plist.parse(fs.readFileSync(path.resolve(root, '../../Info.plist'), 'utf8'));
+        if (typeof info?.CFBundleExecutable !== 'string' || verifier.CODEX_WAKE_ARTIFACT_PLIST !== 'codex-wake-info.plist') {
+            throw Error('afterPack: invalid Codex wake carrier plist inputs')
+        }
+        delete info.ElectronAsarIntegrity;
+        fs.writeFileSync(path.join(root, verifier.CODEX_WAKE_ARTIFACT_PLIST), plist.build(info), {flag:'wx'});
+        declaration.version = version
+    }
     fs.writeFileSync(path.join(root, 'codex-wake-artifact.json'), JSON.stringify(declaration) + '\n', {flag:'wx'});
     return 'immutable hook artifact declared'
 }
