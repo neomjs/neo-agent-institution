@@ -725,6 +725,235 @@ test.describe('harness/runtimeGeneration — verified package copies', () => {
             .toContain('/Neo%20Harness.app/Contents/Resources/organism/node_modules/');
     });
 
+    test('quit during slow packaged runtime verification settles without seat moves or child spawns and logs the runtime phase', async () => {
+        const main = new URL('../../../../harness/main.mjs', import.meta.url).href;
+        await fs.mkdir(path.join(root, 'Neo Harness.app', 'Contents', 'Resources', 'organism'), {recursive: true});
+        const script = `
+            import {EventEmitter} from 'node:events';
+            import {registerHooks} from 'node:module';
+            import path from 'node:path';
+            const root = process.argv[1];
+            process.resourcesPath ??= path.join(root, 'Neo Harness.app', 'Contents', 'Resources');
+            process.uptime = () => 16;
+            Object.assign(process.env, {NEO_HARNESS_BRAIN: '1'});
+            delete process.env.NEO_HARNESS_SMOKE;
+            delete process.env.NEO_HARNESS_LIFECYCLE_WITNESS;
+            let releaseMaterialize, enteredMaterialize;
+            const materializeEntered = new Promise(resolve => { enteredMaterialize = resolve; });
+            const materializeGate = new Promise(resolve => { releaseMaterialize = resolve; });
+            const state = globalThis.quitWitness = {
+                profile: path.join(root, 'quit-userData'),
+                logs: [], released: 0, quitCalls: 0, exitCalls: [],
+                windows: [], handlers: {}, appEvents: new EventEmitter(),
+                generation: {id: 'verified-fixture', runtimeRoot: path.join(root, 'generation', 'organism'), executable: path.join(root, 'generation', 'host')}
+            };
+            const origLog = console.log;
+            console.log = (...args) => { state.logs.push(args.join(' ')); origLog(...args); };
+            const privateIdentity = '/ai/graph/normalizeAgentIdentityNodeId.mjs';
+            const privateLaunch = '/ai/services/fleet/fleetLaunchContract.mjs';
+            const publicWire = '/node_modules/neo-agent-brain/src/fleet/contract/index.mjs';
+            const leaf = url => [privateIdentity, privateLaunch, publicWire].find(suffix => url.endsWith(suffix));
+            registerHooks({
+                resolve(specifier, context, next) {
+                    if (specifier === 'electron') return {url: 'quit-witness:electron', shortCircuit: true};
+                    if (leaf(specifier)) return {url: specifier, shortCircuit: true};
+                    return next(specifier, context);
+                },
+                load(url, context, next) {
+                    let source;
+                    if (url === 'quit-witness:electron') source = [
+                        'const state = globalThis.quitWitness;',
+                        'export class BrowserWindow {',
+                        '    constructor() {',
+                        '        this.id = state.windows.length + 1;',
+                        '        const mainFrame = {url: "app://neo/apps/agentos/index.html"};',
+                        '        this.webContents = {id: this.id, mainFrame, once(){}, on(){}, setWindowOpenHandler(){}};',
+                        '        state.windows.push(this);',
+                        '    }',
+                        '    loadURL(u) { this.url = u; }',
+                        '    once(){} on(){} removeListener(){} isDestroyed(){ return false; } isVisible(){ return true; } isMinimized(){ return false; } hide(){} show(){} focus(){} restore(){}',
+                        '}',
+                        'BrowserWindow.getAllWindows = () => state.windows;',
+                        'BrowserWindow.getFocusedWindow = () => state.windows[0] ?? null;',
+                        'export const app = {',
+                        '    isPackaged: true,',
+                        '    getPath: name => name === "userData" ? state.profile : "/tmp",',
+                        '    setPath: (name, value) => { if (name === "userData") state.profile = value; },',
+                        '    setAppLogsPath: () => {},',
+                        '    on: (ev, fn) => state.appEvents.on(ev, fn),',
+                        '    exit: code => state.exitCalls.push(code),',
+                        '    quit: () => { state.quitCalls++; },',
+                        '    whenReady: () => ({then: fn => Promise.resolve().then(fn)})',
+                        '};',
+                        'export const protocol = {registerSchemesAsPrivileged: () => {}, handle: async () => {}};',
+                        'export const ipcMain = {on: () => {}, handle: (channel, fn) => { state.handlers[channel] = fn; }};',
+                        'export const session = {defaultSession: {setPermissionCheckHandler: () => {}, setPermissionRequestHandler: () => {}}};',
+                        'export const Menu = {buildFromTemplate: items => ({getMenuItemById: id => items.find(i => i.id === id)})};',
+                        'export const nativeImage = {createFromPath: () => ({isEmpty: () => false})};',
+                        'export class Tray { setContextMenu(){} setToolTip(){} destroy(){} }',
+                        'export const Notification = {isSupported: () => false}, safeStorage = {}, shell = {};'
+                    ].join('\\n');
+                    else if (url.endsWith('/runtimeGeneration.mjs')) source =
+                        'export const classifyRuntimeGenerationRetention=()=>{},inspectRuntimeGenerationProcesses=()=>{},removeOwnedRuntimeTree=()=>{},loadRuntimeMaintenanceContracts=async()=>({}); export async function acquireHostRuntimeGeneration(options,{materialize}){return {generation:await materialize(options),release:async()=>{globalThis.quitWitness.released++;}};} export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration() { return globalThis.onMaterialize(); }';
+                    else if (url.endsWith('/mainLog.mjs')) source =
+                        'export const BOOT_TIMING_PREFIX="HARNESS_BOOT_TIMING",carriesSecret=()=>false,createMainLog=()=>({install(){}}),createBootTimer=()=>({step(s){return {step:s};},span(s){return ()=>({step:s});}});';
+                    else if (leaf(url)) {
+                        if (url.endsWith(privateIdentity)) source = 'export const normalizeAgentIdentityNodeId=()=>{};';
+                        else if (url.endsWith(privateLaunch)) source = 'export const FLEET_CREDENTIAL_METHODS=[],probeExistingFleetServer=async()=>({serving:false}),resolveFleetBearer=()=>"fixture-bearer";';
+                        else source = 'export const FLEET_WIRE_METHODS=[],FLEET_WIRE_RESPONSE_STATES=[],createFleetWireOffer=()=>{},createFleetWireRequest=()=>{},createFleetWireResponse=()=>{},inspectFleetWireResponse=()=>{};';
+                    }
+                    return source === undefined ? next(url, context) : {format:'module',source,shortCircuit:true};
+                }
+            });
+            globalThis.onMaterialize = async () => { enteredMaterialize(); await materializeGate; return state.generation; };
+            await import(${JSON.stringify(main)});
+            await materializeEntered;
+            await new Promise(resolve => setTimeout(resolve, 20));
+            const willQuitEvent = {defaultPrevented: false, preventDefault(){ this.defaultPrevented = true; }};
+            state.appEvents.emit('will-quit', willQuitEvent);
+            releaseMaterialize();
+            for (let i = 0; i < 40 && state.released === 0; i++) await new Promise(r => setTimeout(r, 10));
+            await new Promise(r => setTimeout(r, 20));
+            console.log('QUIT_WITNESS=' + JSON.stringify({
+                defaultPrevented: willQuitEvent.defaultPrevented,
+                exitCalls: state.exitCalls,
+                logs: state.logs,
+                quitCalls: state.quitCalls,
+                released: state.released,
+                slowLogs: state.logs.filter(l => l.includes('HARNESS_BRAIN_FLEET_STARTING')),
+                windows: state.windows.length
+            }));
+            process.exit(0);
+        `;
+        const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root], {timeout: 10000});
+        const line     = stdout.trim().split('\n').find(row => row.startsWith('QUIT_WITNESS='));
+        const witness  = JSON.parse(line.slice('QUIT_WITNESS='.length));
+        expect(witness.windows).toBe(1);
+        expect(witness.defaultPrevented).toBe(true);
+        expect(await fs.stat(path.join(root, 'quit-userData', 'seat-root.json')).then(() => true, () => false)).toBe(false);
+        expect(witness.logs.filter(row => /HARNESS_(SEAT_MOVE|SEAT_ROOT|BRAIN_PLAN|BRAIN_MODE)/.test(row))).toEqual([]);
+        expect(witness.released).toBe(1);
+        expect(witness.exitCalls).toEqual([]);
+        expect(witness.quitCalls).toBeGreaterThanOrEqual(1);
+        expect(witness.slowLogs).toHaveLength(1);
+        expect(witness.slowLogs[0]).toContain('runtime verification is still running');
+        expect(witness.slowLogs[0]).not.toContain('Fleet child lives');
+    });
+
+    test('a refused packaged runtime leaves the cockpit window open, names the refusal on Fleet and setup channels, and spawns no child', async () => {
+        const main = new URL('../../../../harness/main.mjs', import.meta.url).href;
+        const {SETUP_CHANNELS} = await import('../../../../harness/setupBroker.mjs');
+        await fs.mkdir(path.join(root, 'Neo Harness.app', 'Contents', 'Resources', 'organism'), {recursive: true});
+        const script = `
+            import {EventEmitter} from 'node:events';
+            import {registerHooks} from 'node:module';
+            import path from 'node:path';
+            import {SETUP_CHANNELS} from ${JSON.stringify(new URL('../../../../harness/setupBroker.mjs', import.meta.url).href)};
+            const root = process.argv[1];
+            process.resourcesPath ??= path.join(root, 'Neo Harness.app', 'Contents', 'Resources');
+            Object.assign(process.env, {NEO_HARNESS_BRAIN: '1'});
+            delete process.env.NEO_HARNESS_SMOKE;
+            delete process.env.NEO_HARNESS_LIFECYCLE_WITNESS;
+            const state = globalThis.refusalWitness = {
+                profile: path.join(root, 'refusal-userData'),
+                logs: [], seatMoves: 0, exitCalls: [], quitCalls: 0,
+                windows: [], handlers: {}, appEvents: new EventEmitter()
+            };
+            const origLog = console.log;
+            console.log = (...args) => { state.logs.push(args.join(' ')); origLog(...args); };
+            registerHooks({
+                resolve(specifier, context, next) {
+                    if (specifier === 'electron') return {url: 'refusal-witness:electron', shortCircuit: true};
+                    return next(specifier, context);
+                },
+                load(url, context, next) {
+                    let source;
+                    if (url === 'refusal-witness:electron') source = [
+                        'const state = globalThis.refusalWitness;',
+                        'export class BrowserWindow {',
+                        '    constructor() {',
+                        '        this.id = state.windows.length + 1;',
+                        '        const mainFrame = {url: "app://neo/apps/agentos/index.html"};',
+                        '        this.webContents = {id: this.id, mainFrame, once(){}, on(){}, setWindowOpenHandler(){}};',
+                        '        state.windows.push(this);',
+                        '    }',
+                        '    loadURL(u) { this.url = u; }',
+                        '    once(){} on(){} removeListener(){} isDestroyed(){ return false; } isVisible(){ return true; } isMinimized(){ return false; } hide(){} show(){} focus(){} restore(){}',
+                        '}',
+                        'BrowserWindow.getAllWindows = () => state.windows;',
+                        'BrowserWindow.getFocusedWindow = () => state.windows[0] ?? null;',
+                        'export const app = {',
+                        '    isPackaged: true,',
+                        '    getPath: name => name === "userData" ? state.profile : "/tmp",',
+                        '    setPath: (name, value) => { if (name === "userData") state.profile = value; },',
+                        '    setAppLogsPath: () => {},',
+                        '    on: (ev, fn) => state.appEvents.on(ev, fn),',
+                        '    exit: code => state.exitCalls.push(code),',
+                        '    quit: () => { state.quitCalls++; },',
+                        '    whenReady: () => ({then: fn => Promise.resolve().then(fn)})',
+                        '};',
+                        'export const protocol = {registerSchemesAsPrivileged: () => {}, handle: async () => {}};',
+                        'export const ipcMain = {on: () => {}, handle: (channel, fn) => { state.handlers[channel] = fn; }};',
+                        'export const session = {defaultSession: {setPermissionCheckHandler: () => {}, setPermissionRequestHandler: () => {}}};',
+                        'export const Menu = {buildFromTemplate: items => ({getMenuItemById: id => items.find(i => i.id === id)})};',
+                        'export const nativeImage = {createFromPath: () => ({isEmpty: () => false})};',
+                        'export class Tray { setContextMenu(){} setToolTip(){} destroy(){} }',
+                        'export const Notification = {isSupported: () => false}, safeStorage = {}, shell = {};'
+                    ].join('\\n');
+                    else if (url.endsWith('/runtimeGeneration.mjs')) source =
+                        'export const classifyRuntimeGenerationRetention=()=>{},inspectRuntimeGenerationProcesses=()=>{},removeOwnedRuntimeTree=()=>{},loadRuntimeMaintenanceContracts=async()=>({}); export async function acquireHostRuntimeGeneration(){ throw Object.assign(new Error("tampered bundle"), {code: "runtime-integrity-failed"}); } export async function loadRuntimeGenerationReferences(){return {fixture:true};} export async function loadRuntimeGenerationVerifier(){return {fixture:true,runtimeGenerationArguments:()=>[]};} export async function materializeRuntimeGeneration() { throw Object.assign(new Error("tampered bundle"), {code: "runtime-integrity-failed"}); }';
+                    else if (url.endsWith('/mainLog.mjs')) source =
+                        'export const BOOT_TIMING_PREFIX="HARNESS_BOOT_TIMING",carriesSecret=()=>false,createMainLog=()=>({install(){}}),createBootTimer=()=>({step(s){return {step:s};},span(s){return ()=>({step:s});}});';
+                    return source === undefined ? next(url, context) : {format:'module',source,shortCircuit:true};
+                }
+            });
+            await import(${JSON.stringify(main)});
+            for (let i = 0; i < 40 && !state.logs.some(l => l.includes('HARNESS_BRAIN_BOOT_FAILED')); i++) {
+                await new Promise(r => setTimeout(r, 10));
+            }
+            const mainFrame = state.windows[0].webContents.mainFrame;
+            const trustedEvent = {sender: {mainFrame}, senderFrame: mainFrame};
+            const fleetError = await state.handlers['fleet-request'](trustedEvent, {method: 'fleetRoster', params: {}}).then(() => null, error => error.message);
+            const probeError = await state.handlers['shell-plane-probe'](trustedEvent).then(() => null, error => error.message);
+            const brainHealth = await state.handlers['brain-health'](trustedEvent);
+            const setupReplies = {};
+            for (const channel of Object.values(SETUP_CHANNELS)) {
+                setupReplies[channel] = await state.handlers[channel](trustedEvent, {});
+            }
+            console.log('REFUSAL_WITNESS=' + JSON.stringify({
+                brainHealth,
+                exitCalls: state.exitCalls,
+                fleetError,
+                logs: state.logs,
+                probeError,
+                quitCalls: state.quitCalls,
+                setupReplies,
+                windowUrls: state.windows.map(w => w.url)
+            }));
+            process.exit(0);
+        `;
+        const {stdout} = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root], {timeout: 10000});
+        const line     = stdout.trim().split('\n').find(row => row.startsWith('REFUSAL_WITNESS='));
+        const witness  = JSON.parse(line.slice('REFUSAL_WITNESS='.length));
+        expect(witness.windowUrls).toEqual(['app://neo/apps/agentos/index.html']);
+        expect(witness.exitCalls).toEqual([]);
+        expect(witness.quitCalls).toBe(0);
+        expect(await fs.stat(path.join(root, 'refusal-userData', 'seat-root.json')).then(() => true, () => false)).toBe(false);
+        expect(witness.logs.filter(row => /HARNESS_(SEAT_MOVE|SEAT_ROOT|BRAIN_PLAN|BRAIN_MODE)/.test(row))).toEqual([]);
+        expect(witness.fleetError).toBe('fleet: runtime verification failed (runtime-integrity-failed)');
+        expect(witness.probeError).toBe('fleet: runtime verification failed (runtime-integrity-failed)');
+        expect(witness.brainHealth).toMatchObject({
+            state    : 'degraded',
+            transport: {phase: 'settled', up: false}
+        });
+        for (const channel of Object.values(SETUP_CHANNELS)) {
+            expect(witness.setupReplies[channel], channel).toEqual({
+                ok    : false,
+                reason: 'runtime-refused: runtime verification failed (runtime-integrity-failed)'
+            });
+        }
+    });
+
     test('full receipt identity separates packages sharing the product revision', () => {
         const first = receipt(), changed = receipt();
         changed.owners.brain.revision = 'a'.repeat(40);

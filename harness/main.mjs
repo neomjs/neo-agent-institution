@@ -1216,6 +1216,9 @@ function registerBrainChild(entry) {
  */
 async function bootProductBrain() {
     await ensureLauncherRuntime();
+    if (fleetReadyAbort.signal.aborted) {
+        return {aborted: true, mode: null, up: false}
+    }
     // Packaged mode: the organism ships read-only(ish), so every mutable path moves to the
     // per-user data root, and Brain children (plus shebang grandchildren via the organism's node
     // shim) run on the verified generation's Electron runtime. A plane the
@@ -1455,13 +1458,20 @@ function logPlaneCredential(frame, answer) {
 }
 
 /**
- * @summary Names a Fleet still starting past its readiness window. The boot keeps waiting, and the transport and
- * roster attach when the child answers.
+ * @summary Names a launch or Fleet transport still starting past its readiness window, wording the
+ * `main.log` diagnostic by its actual phase (runtime verification still running, pre-spawn Brain
+ * preparation, or a live Fleet child not answering yet).
  * @param {Number} ms The window that passed.
  */
 function logFleetStarting(ms) {
+    const detail = !launcherRuntime
+        ? 'runtime verification is still running'
+        : brainState.children.some(entry => entry.label === 'fleet')
+            ? 'still waiting while the Fleet child lives'
+            : 'still waiting before the Fleet child starts';
+
     uiTransportFact = markTransportStarting(uiTransportFact, 'fleet-starting');
-    console.log(`HARNESS_BRAIN_FLEET_STARTING fleet transport not ready after ${ms}ms; still waiting while the Fleet child lives`)
+    console.log(`HARNESS_BRAIN_FLEET_STARTING fleet transport not ready after ${ms}ms; ${detail}`)
 }
 
 /**
@@ -1563,6 +1573,9 @@ function retryBoot({renewed = false} = {}) {
  */
 async function bootUiFleetTransport() {
     await ensureLauncherRuntime();
+    if (fleetReadyAbort.signal.aborted) {
+        return {aborted: true, fleetPort: Number(process.env.NEO_FLEET_PORT) || 8083, mode: 'aborted', up: false}
+    }
     // The three-outcome routing AND the ownership≠observation invariant live in the witnessable
     // composition (brain.mjs#resolveUiFleetTransport); this wrapper only binds the real
     // collaborators: env coordinates, the shell bearer, the child spawner, and the owner registry.
@@ -1648,6 +1661,9 @@ async function quiesceOwnedFleet(work) {
  */
 async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs = 15000} = {}) {
     await ensureLauncherRuntime();
+    if (fleetReadyAbort.signal.aborted) {
+        return {aborted: true, isolationRoot: smokeRoot, matrixViolations: [], up: false}
+    }
     const
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
@@ -2081,14 +2097,15 @@ app.whenReady().then(async () => {
     // calls never meet a missing channel; runtime modules resolve lazily once the generation is ready.
     let setupBrokerPromise = null;
     const getSetupBroker = () => setupBrokerPromise ??= (hasConfiguredBrainRoot
-        ? ensureLauncherRuntime().catch(() => null)
+        ? ensureLauncherRuntime().then(() => null, error => error)
         : Promise.resolve(null)
-    ).then(() => createSetupBroker({
+    ).then(runtimeError => createSetupBroker({
         configSourcePath: agentosRuntimeRoot ? path.join(agentosRuntimeRoot, CONFIG_SOURCE_PATH) : null,
         isTrustedSender : isTrustedIpcSender,
         loadModules     : agentosRuntimeRoot ? () => loadSetupModules({runtimeRoot: agentosRuntimeRoot}) : null,
         packaged        : packagedMode,
         promptCredential: promptFleetCredential,
+        refusalReason   : runtimeError ? `runtime-refused: runtime verification failed (${runtimeError.code ?? runtimeError.message})` : null,
         ...resolveSetupRoots({env: process.env})
     }));
 

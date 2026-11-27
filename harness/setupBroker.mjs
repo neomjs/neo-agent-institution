@@ -138,11 +138,12 @@ async function newestRecord({setupRoot, record, fsModule}) {
  * @param {String} options.stateRoot The host state root the recipe's layout derives from.
  * @param {String|null} [options.homeDir=null] Optional home directory override passed to `cli.hostLayout`.
  * @param {String|null} [options.configSourcePath=null] The Brain's `ai/configBase.mjs` under the runtime root; `null` without a Brain root.
+ * @param {String|null} [options.refusalReason=null] Explicit runtime-verification refusal reason when the packaged generation is rejected.
  * @param {Object} [options.fsModule=fs]
  * @param {Function} [options.now=Date.now]
  * @returns {Object} One handler per {@link SETUP_CHANNELS} key: `(event, request) => Promise<Object>`.
  */
-export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, homeDir = null, configSourcePath = null, fsModule = fs, now = Date.now}) {
+export function createSetupBroker({isTrustedSender, loadModules, packaged, promptCredential, setupRoot, stateRoot, homeDir = null, configSourcePath = null, refusalReason = null, fsModule = fs, now = Date.now}) {
     const
         refuse    = (reason, extra = {}) => ({ok: false, reason, ...extra}),
         layoutFor = cli => cli.hostLayout({stateRoot, ...(homeDir ? {homeDir} : {})});
@@ -185,6 +186,10 @@ export function createSetupBroker({isTrustedSender, loadModules, packaged, promp
 
         if (!packaged) {
             return refuse('not-packaged: the recipe runs on the host only from the installed Fleet Manager')
+        }
+
+        if (refusalReason) {
+            return refuse(refusalReason)
         }
 
         if (!loadModules) {
