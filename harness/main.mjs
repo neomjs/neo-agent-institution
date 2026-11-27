@@ -99,7 +99,7 @@ import {
     writeReceipt
 } from './rehearsal.mjs';
 import {resolveSmokeHold, watchPlaneControl, writeWalkManifest}      from './walkControl.mjs';
-import {carriesSecret, createMainLog}                                from './mainLog.mjs';
+import {carriesSecret, createBootTimer, createMainLog}               from './mainLog.mjs';
 import {
     createPlaneBroker,
     launchedPlaneRecord,
@@ -135,7 +135,10 @@ const
     // The Arm-B Brain leg: DEFAULT-ON when packaged (a Finder double-click supplies no env — the
     // product IS the supervised organism; NEO_HARNESS_BRAIN=0 is the explicit opt-out) and opt-in
     // on a checkout (dev machines carry a canonical Brain; see brain.mjs#resolveBrainMode).
-    brainMode             = resolveBrainMode({env: process.env, packaged: packagedMode}),
+    brainMode              = resolveBrainMode({env: process.env, packaged: packagedMode}),
+    hasConfiguredBrainRoot = packagedMode || brainMode || process.env.NEO_AGENTOS_RUNTIME_ROOT !== undefined,
+    bootEpochMs            = Date.now() - Math.round(process.uptime() * 1000),
+    FLEET_SLOW_BOOT_MS     = 15_000,
     // The fixture-plane arm: the Brain smoke attaches to a plane of its own, through a record whose
     // bearer only this run can decrypt, so the OS keychain is never touched.
     smokePlaneMode        = smokeMode && brainMode && process.env.NEO_HARNESS_SMOKE_PLANE === '1',
@@ -174,11 +177,20 @@ if (rehearsal.refusal) {
 smokeRoot && app.setPath('userData', path.join(smokeRoot, 'userData'));
 
 let
-    brainBootPromise   = Promise.resolve(null),
+    agentosRuntimeRoot     = null,
+    brainBootPromise       = Promise.resolve(null),
+    finishCockpitMounted   = null,
+    fleetCapabilityPromise = null,
     // Ends a boot still waiting for a slow Fleet, so quitting never waits on a child that never answers.
-    fleetReadyAbort    = new AbortController(),
-    runtimeMaintenance = null,
-    fleetBearerToken   = null,
+    fleetReadyAbort        = new AbortController(),
+    fleetRuntimeContracts  = null,
+    launcherRuntime        = null,
+    primaryCockpitLogged   = false,
+    primaryWebContentsId   = null,
+    runtimeBootstrapPromise = null,
+    runtimeMaintenance     = null,
+    slowBootTimer          = null,
+    fleetBearerToken       = null,
     resolveHarnessAsset,
     // The shell's transport-boot fact for the cockpit banner — attached to every brain-health
     // answer so the renderer can name WHICH shell case is live instead of guessing "offline".
@@ -217,27 +229,71 @@ try {
     console.error(`HARNESS_MAIN_LOG_UNAVAILABLE ${error?.message ?? error}`)
 }
 
+const bootTimer = createBootTimer();
+
+bootTimer.step('main-log-ready', {brainMode, diagnosticMode, packaged: packagedMode});
+
 protocol.registerSchemesAsPrivileged([
     {scheme: 'app', privileges: {standard: true, secure: true, supportFetchAPI: true}}
 ]);
 
-// Select the profile before publishing a runtime, and the runtime before importing private contracts.
-const launcherRuntime = await resolveLauncherRuntime({
-    brainMode, env: process.env, packaged: packagedMode, packagedOrganismRoot,
-    bundlePath: packagedMode ? path.resolve(process.resourcesPath, '..', '..') : undefined,
-    executable: process.execPath,
-    userData  : app.getPath('userData')
-}).catch(error => {
-    console.error(`HARNESS_RUNTIME_REFUSED ${error.code ?? error.name}: ${error.message}`);
-    app.exit(1);
-    // Keep module evaluation terminal until native exit; the later boot error boundary does not exist yet.
-    return new Promise(() => {})
-});
-const agentosRuntimeRoot = launcherRuntime.runtimeRoot;
-const fleetRuntimeContracts = agentosRuntimeRoot ? await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot}) : null;
+/**
+ * @summary Resolves the verified launcher runtime and Fleet contracts once, off the pre-window critical
+ * path so packaged payload hashing never delays showing the cockpit window.
+ * Diagnostic custody (`userData`) and the privileged `app://` scheme are already fixed before any caller
+ * invokes this promise, and packaged child execution always uses the verified generation's executable.
+ * @returns {Promise<{agentosRuntimeRoot: (String|null), fleetRuntimeContracts: (Object|null), launcherRuntime: Object}>}
+ */
+function ensureLauncherRuntime() {
+    if (!runtimeBootstrapPromise) {
+        runtimeBootstrapPromise = (async () => {
+            const finishRuntime = bootTimer.span('runtime-generation', {packaged: packagedMode});
 
-// This main-owned bearer crosses only into the Fleet child and authenticated main-process requests.
-fleetBearerToken = fleetRuntimeContracts ? fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER}) : null;
+            try {
+                launcherRuntime = await resolveLauncherRuntime({
+                    brainMode,
+                    bundlePath          : packagedMode ? path.resolve(process.resourcesPath, '..', '..') : undefined,
+                    env                 : process.env,
+                    executable          : process.execPath,
+                    packaged            : packagedMode,
+                    packagedOrganismRoot,
+                    signal              : fleetReadyAbort.signal,
+                    userData            : app.getPath('userData')
+                })
+            } catch (error) {
+                finishRuntime({code: error.code ?? error.name ?? 'error', ok: false});
+                console.error(`HARNESS_RUNTIME_REFUSED ${error.code ?? error.name}: ${error.message}`);
+                throw error
+            }
+
+            agentosRuntimeRoot = launcherRuntime.runtimeRoot;
+
+            // Packaged child execution always uses the verified generation, including the config resolver.
+            if (packagedMode) {
+                process.env.NEO_HARNESS_NODE_BIN = launcherRuntime.executable
+            }
+
+            finishRuntime({
+                generationId: launcherRuntime.generation?.id ?? null,
+                hasBrainRoot: Boolean(agentosRuntimeRoot),
+                ok          : true
+            });
+
+            if (agentosRuntimeRoot) {
+                const finishContracts = bootTimer.span('fleet-contracts');
+
+                fleetRuntimeContracts = await loadFleetRuntimeContracts({productRoot, runtimeRoot: agentosRuntimeRoot});
+                // This main-owned bearer crosses only into the Fleet child and authenticated main-process requests.
+                fleetBearerToken      = fleetRuntimeContracts.resolveFleetBearer({suppliedToken: process.env.NEO_FLEET_BEARER});
+                finishContracts({ok: true})
+            }
+
+            return {agentosRuntimeRoot, fleetRuntimeContracts, launcherRuntime}
+        })()
+    }
+
+    return runtimeBootstrapPromise
+}
 
 /**
  * @summary Normalizes a settled transport/Brain boot outcome into the wire-safe banner fact.
@@ -260,11 +316,6 @@ function normalizeTransportFact(boot) {
         reason   : boot.reason    ?? null,
         up       : boot.up === true
     }
-}
-
-// Packaged child execution always uses the verified generation, including the config resolver.
-if (packagedMode) {
-    process.env.NEO_HARNESS_NODE_BIN = launcherRuntime.executable
 }
 
 /**
@@ -512,29 +563,55 @@ const promptFleetCredential = createCredentialPrompt({
     preloadPath: path.join(harnessDir, 'credentialPrompt.preload.cjs')
 });
 
-// The handler closures own the only renderer→Fleet route in the packaged topology. The Brain
-// promise is read at call time so an early-rendering UI receives a named not-ready envelope while a
-// later call joins the exact boot the lifecycle owner retained. A boot without a Brain root keeps
-// the route registered and rejects every request with the named reason — never a missing handler.
-const fleetCapability = fleetRuntimeContracts
-    ? createFleetCapability({
-        bearerToken        : fleetBearerToken,
-        createWireOffer    : fleetRuntimeContracts.createFleetWireOffer,
-        createWireRequest  : fleetRuntimeContracts.createFleetWireRequest,
-        createWireResponse : fleetRuntimeContracts.createFleetWireResponse,
-        credentialMethods  : fleetRuntimeContracts.FLEET_CREDENTIAL_METHODS,
-        credentialProvider : promptFleetCredential,
-        getBrain           : () => brainBootPromise,
-        inspectWireResponse: fleetRuntimeContracts.inspectFleetWireResponse,
-        isTrustedSender    : isTrustedIpcSender,
-        onAdmitted         : ({method}) => diagnosticMode && smokeState.fleetMethods.push(method),
-        responseStates     : fleetRuntimeContracts.FLEET_WIRE_RESPONSE_STATES,
-        wireMethods        : fleetRuntimeContracts.FLEET_WIRE_METHODS
-    })
-    : createAbsentFleetCapability({
-        isTrustedSender: isTrustedIpcSender,
-        reason         : 'fleet: this shell boots without a Brain root (NEO_HARNESS_BRAIN is off and NEO_AGENTOS_RUNTIME_ROOT is unset) — no Fleet transport in this boot'
-    });
+/**
+ * @summary Lazily initializes the single renderer→Fleet IPC capability once runtime verification settles,
+ * keeping the window unblocked at launch and falling back to `createAbsentFleetCapability` when
+ * no Brain root is configured or runtime verification refuses.
+ * @returns {Promise<{probe: Function, read: Function, request: Function}>}
+ */
+function resolveFleetCapability() {
+    if (!fleetCapabilityPromise) {
+        const absentReason = 'fleet: this shell boots without a Brain root (NEO_HARNESS_BRAIN is off and NEO_AGENTOS_RUNTIME_ROOT is unset) — no Fleet transport in this boot';
+
+        fleetCapabilityPromise = hasConfiguredBrainRoot
+            ? ensureLauncherRuntime()
+                .then(() => fleetRuntimeContracts
+                    ? createFleetCapability({
+                        bearerToken        : fleetBearerToken,
+                        createWireOffer    : fleetRuntimeContracts.createFleetWireOffer,
+                        createWireRequest  : fleetRuntimeContracts.createFleetWireRequest,
+                        createWireResponse : fleetRuntimeContracts.createFleetWireResponse,
+                        credentialMethods  : fleetRuntimeContracts.FLEET_CREDENTIAL_METHODS,
+                        credentialProvider : promptFleetCredential,
+                        getBrain           : () => brainBootPromise,
+                        inspectWireResponse: fleetRuntimeContracts.inspectFleetWireResponse,
+                        isTrustedSender    : isTrustedIpcSender,
+                        onAdmitted         : ({method}) => diagnosticMode && smokeState.fleetMethods.push(method),
+                        responseStates     : fleetRuntimeContracts.FLEET_WIRE_RESPONSE_STATES,
+                        wireMethods        : fleetRuntimeContracts.FLEET_WIRE_METHODS
+                    })
+                    : createAbsentFleetCapability({
+                        isTrustedSender: isTrustedIpcSender,
+                        reason         : absentReason
+                    }))
+                .catch(error => createAbsentFleetCapability({
+                    isTrustedSender: isTrustedIpcSender,
+                    reason         : `fleet: runtime verification failed (${error.code ?? error.message})`
+                }))
+            : Promise.resolve(createAbsentFleetCapability({
+                isTrustedSender: isTrustedIpcSender,
+                reason         : absentReason
+            }))
+    }
+
+    return fleetCapabilityPromise
+}
+
+const fleetCapability = {
+    probe  : async event => (await resolveFleetCapability()).probe(event),
+    read   : async (method, params) => (await resolveFleetCapability()).read(method, params),
+    request: async (event, request) => (await resolveFleetCapability()).request(event, request)
+};
 
 /**
  * @summary Reduces an untrusted boot-report payload to its allowlisted primitive fields.
@@ -629,7 +706,20 @@ function onBootReport(event, report) {
         senderId = event.sender.id,
         waiter   = bootWaiters.get(senderId);
 
-    diagnosticMode && console.log('HARNESS_BOOT_REPORT ' + JSON.stringify(normalized));
+    if (senderId === primaryWebContentsId && !primaryCockpitLogged) {
+        primaryCockpitLogged = true;
+        finishCockpitMounted?.({
+            mounted       : normalized.mounted,
+            rendererBootMs: normalized.bootMs,
+            timedOut      : normalized.timedOut
+        })
+    }
+
+    if (!diagnosticMode) {
+        return
+    }
+
+    console.log('HARNESS_BOOT_REPORT ' + JSON.stringify(normalized));
 
     if (waiter) {
         clearTimeout(waiter.timer);
@@ -1085,12 +1175,15 @@ const appLifecycle = createAppLifecycle({
     // this join, an early will-quit can observe an empty owner and a late spawn becomes an orphan.
     teardownBrain: async () => {
         try {
+            clearTimeout(slowBootTimer);
+            slowBootTimer = null;
             fleetReadyAbort.abort();
             await brainBootPromise;
             await runtimeMaintenance?.close();
             return await teardownBrain()
         } finally {
-            await launcherRuntime.release?.()
+            const runtime = await runtimeBootstrapPromise?.catch(() => null);
+            await runtime?.launcherRuntime?.release?.()
         }
     }
 });
@@ -1122,6 +1215,10 @@ function registerBrainChild(entry) {
  * @returns {Promise<Object>}
  */
 async function bootProductBrain() {
+    await ensureLauncherRuntime();
+    if (fleetReadyAbort.signal.aborted) {
+        return {aborted: true, mode: null, up: false}
+    }
     // Packaged mode: the organism ships read-only(ish), so every mutable path moves to the
     // per-user data root, and Brain children (plus shebang grandchildren via the organism's node
     // shim) run on the verified generation's Electron runtime. A plane the
@@ -1361,13 +1458,38 @@ function logPlaneCredential(frame, answer) {
 }
 
 /**
- * @summary Names a Fleet still starting past its readiness window. The boot keeps waiting, and the transport and
- * roster attach when the child answers.
+ * @summary Names a launch or Fleet transport still starting past its readiness window, wording the
+ * `main.log` diagnostic by its actual phase (runtime verification still running, pre-spawn Brain
+ * preparation, or a live Fleet child not answering yet).
  * @param {Number} ms The window that passed.
  */
 function logFleetStarting(ms) {
+    const detail = !launcherRuntime
+        ? 'runtime verification is still running'
+        : brainState.children.some(entry => entry.label === 'fleet')
+            ? 'still waiting while the Fleet child lives'
+            : 'still waiting before the Fleet child starts';
+
     uiTransportFact = markTransportStarting(uiTransportFact, 'fleet-starting');
-    console.log(`HARNESS_BRAIN_FLEET_STARTING fleet transport not ready after ${ms}ms; still waiting while the Fleet child lives`)
+    console.log(`HARNESS_BRAIN_FLEET_STARTING fleet transport not ready after ${ms}ms; ${detail}`)
+}
+
+/**
+ * @summary Starts the spine's starting-transport fact and schedules the 15 s slow-boot notice from
+ * `since` so packaged runtime verification surfaces live elapsed progress on the spine
+ * even before the Fleet child spawns.
+ * @param {Object} [options]
+ * @param {Number} [options.since=Date.now()]
+ */
+function armStartingTransport({since = Date.now()} = {}) {
+    uiTransportFact = startTransportFact({since});
+    clearTimeout(slowBootTimer);
+    slowBootTimer = setTimeout(() => {
+        if (uiTransportFact?.phase === 'starting' && !uiTransportFact.reason) {
+            logFleetStarting(Math.max(FLEET_SLOW_BOOT_MS, Date.now() - since))
+        }
+    }, Math.max(0, FLEET_SLOW_BOOT_MS - (Date.now() - since)));
+    slowBootTimer.unref?.()
 }
 
 /**
@@ -1388,6 +1510,8 @@ function bootBrainSettled() {
             return {cause, error: error.message, up: false}
         })
         .then(boot => {
+            clearTimeout(slowBootTimer);
+            slowBootTimer = null;
             appLifecycle.settleBrainBoot(boot.up === true, boot.cause);
             uiTransportFact = normalizeTransportFact(boot);
             settledBoot     = boot;
@@ -1413,7 +1537,7 @@ function retryBoot({renewed = false} = {}) {
             lifecycle: appLifecycle,
             quitting : fleetReadyAbort.signal.aborted,
             start    : () => {
-                uiTransportFact = startTransportFact();
+                armStartingTransport();
                 return bootBrainSettled()
             }
         });
@@ -1448,6 +1572,10 @@ function retryBoot({renewed = false} = {}) {
  * @returns {Promise<Object>} `{fleetPort, mode: 'reuse'|'spawn'|'foreign-listener', up: Boolean}`
  */
 async function bootUiFleetTransport() {
+    await ensureLauncherRuntime();
+    if (fleetReadyAbort.signal.aborted) {
+        return {aborted: true, fleetPort: Number(process.env.NEO_FLEET_PORT) || 8083, mode: 'aborted', up: false}
+    }
     // The three-outcome routing AND the ownership≠observation invariant live in the witnessable
     // composition (brain.mjs#resolveUiFleetTransport); this wrapper only binds the real
     // collaborators: env coordinates, the shell bearer, the child spawner, and the owner registry.
@@ -1532,6 +1660,10 @@ async function quiesceOwnedFleet(work) {
  * @returns {Promise<Object>} The observables. The fleet child and its profile go to `brainState.smokeFleet`.
  */
 async function bootSmokeBrain({extraEnv = {}, beforeFleet = null, fleetReadyMs = 15000} = {}) {
+    await ensureLauncherRuntime();
+    if (fleetReadyAbort.signal.aborted) {
+        return {aborted: true, isolationRoot: smokeRoot, matrixViolations: [], up: false}
+    }
     const
         isolationRoot           = smokeRoot,
         sweptPgids              = sweepStaleRunState({isolationRoot}),
@@ -1760,6 +1892,8 @@ async function runRehearsalArm() {
     try {
         if (receiptPath.refusal) throw new Error(receiptPath.refusal);
 
+        await ensureLauncherRuntime();
+
         receipt.candidate = packagedMode
             ? {artifactPath, source: 'packaged', ...readOrganismIdentity(packagedOrganismRoot)}
             : readCheckoutIdentity(agentosRuntimeRoot);
@@ -1894,6 +2028,8 @@ async function runRehearsalArm() {
 app.whenReady().then(async () => {
     if (smokeHold.refusal || rehearsal.refusal) return;
 
+    bootTimer.step('app-ready');
+
     // The rehearsal needs no window, so it needs none of the renderer's protocol, policy or channels either.
     if (rehearsal.rehearsal) {
         await runRehearsalArm();
@@ -1902,16 +2038,18 @@ app.whenReady().then(async () => {
 
     resolveHarnessAsset = await createHarnessAssetResolver(productRoot);
     await protocol.handle('app', serveHarnessContent);
+    bootTimer.step('asset-protocol-ready');
 
     // §2.3.3 deny-by-default; Electron requires BOTH handlers for complete permission coverage.
     // Allowlist additions amend the shell ADR §2.3 first.
     session.defaultSession.setPermissionCheckHandler(() => false);
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback) => callback(false));
 
+    // One-shot primary-cockpit mount timing is logged on every launch; waiter/cache retention stays
+    // diagnostic-only inside `onBootReport` so normal operation retains zero per-window reports.
+    ipcMain.on('shell-boot-report', onBootReport);
+
     if (diagnosticMode) {
-        // Preload diagnostics are smoke-only. Registering these in normal operation would cache
-        // one unconsumed boot report per window even though no smoke waiter exists.
-        ipcMain.on('shell-boot-report', onBootReport);
         ipcMain.on('shell-first-paint-report', onFirstPaintReport);
         ipcMain.on('shell-runtime-error', onRuntimeError)
     }
@@ -1955,27 +2093,59 @@ app.whenReady().then(async () => {
     ipcMain.handle('shell-plane-retry', planeBroker.retry);
     ipcMain.handle('shell-plane-verify', planeBroker.verify);
 
-    // The first-run setup broker: the setup card's Create door projects the recipe's live evaluation,
-    // main runs the host effects through the Brain's host-effect module (one module, the CLI's), and
-    // a credential enters main's window and leaves as a kept file's path. A boot without a Brain root
-    // keeps every channel registered and answers each with the named reason.
-    const setupBroker = createSetupBroker({
+    // The first-run setup broker: registered synchronously before the window opens so early renderer
+    // calls never meet a missing channel; runtime modules resolve lazily once the generation is ready.
+    let setupBrokerPromise = null;
+    const getSetupBroker = () => setupBrokerPromise ??= (hasConfiguredBrainRoot
+        ? ensureLauncherRuntime().then(() => null, error => error)
+        : Promise.resolve(null)
+    ).then(runtimeError => createSetupBroker({
         configSourcePath: agentosRuntimeRoot ? path.join(agentosRuntimeRoot, CONFIG_SOURCE_PATH) : null,
         isTrustedSender : isTrustedIpcSender,
         loadModules     : agentosRuntimeRoot ? () => loadSetupModules({runtimeRoot: agentosRuntimeRoot}) : null,
         packaged        : packagedMode,
         promptCredential: promptFleetCredential,
+        refusalReason   : runtimeError ? `runtime-refused: runtime verification failed (${runtimeError.code ?? runtimeError.message})` : null,
         ...resolveSetupRoots({env: process.env})
-    });
+    }));
 
     for (const [name, channel] of Object.entries(SETUP_CHANNELS)) {
-        ipcMain.handle(channel, setupBroker[name])
+        ipcMain.handle(channel, async (event, request) => {
+            if (!isTrustedIpcSender(event)) {
+                throw new Error(`${channel}: untrusted sender`)
+            }
+
+            return (await getSetupBroker())[name](event, request)
+        })
     }
 
-    // Register before boot: a held transition must remain readable from System.
+    // Register before boot: `status` reads `userData` directly without waiting on runtime verification,
+    // so a held transition remains readable immediately from System while `plan`/`consent` join the runtime.
+    let seatRootRuntimePromise = null;
+    const getSeatRootRuntime = () => seatRootRuntimePromise ??= ensureLauncherRuntime().then(() =>
+        agentosRuntimeRoot
+            ? createSeatRootRuntime({
+                execPath: packagedMode ? launcherRuntime.executable : process.execPath,
+                repoRoot: agentosRuntimeRoot,
+                userData: app.getPath('userData')
+            })
+            : null
+    );
+
     const seatRootBroker = createSeatRootBroker({
-        ...(agentosRuntimeRoot
-            ? createSeatRootRuntime({repoRoot: agentosRuntimeRoot, userData: app.getPath('userData')})
+        ...(hasConfiguredBrainRoot
+            ? {
+                resolveDestination: async () => {
+                    const runtime = await getSeatRootRuntime();
+                    if (!runtime) throw new Error('no Brain runtime root is available');
+                    return runtime.resolveDestination()
+                },
+                runStep: async step => {
+                    const runtime = await getSeatRootRuntime();
+                    if (!runtime) throw new Error('no Brain runtime root is available');
+                    return runtime.runStep(step)
+                }
+            }
             : {resolveDestination: null}),
         dir            : app.getPath('userData'),
         getOutcome     : () => seatMoveOutcome,
@@ -1988,12 +2158,29 @@ app.whenReady().then(async () => {
         ipcMain.handle(channel, seatRootBroker[name])
     }
 
+    let seatRenameRuntimePromise = null;
+    const getSeatRenameRuntime = () => seatRenameRuntimePromise ??= ensureLauncherRuntime().then(() =>
+        agentosRuntimeRoot
+            ? createSeatRenameRuntime({
+                execPath: packagedMode ? launcherRuntime.executable : process.execPath,
+                repoRoot: agentosRuntimeRoot,
+                userData: app.getPath('userData')
+            })
+            : null
+    );
+
     const seatRenameBroker = createSeatRenameBroker({
-        ...(agentosRuntimeRoot
-            ? createSeatRenameRuntime({repoRoot: agentosRuntimeRoot, userData: app.getPath('userData')})
+        ...(hasConfiguredBrainRoot
+            ? {
+                runStep: async step => {
+                    const runtime = await getSeatRenameRuntime();
+                    if (!runtime) throw new Error('no Brain runtime root is configured');
+                    return runtime.runStep(step)
+                }
+            }
             : {runStep: null}),
         isTrustedSender: isTrustedIpcSender,
-        packaged       : packagedMode || Boolean(agentosRuntimeRoot),
+        packaged       : packagedMode || hasConfiguredBrainRoot,
         quiesceFleet   : quiesceOwnedFleet
     });
 
@@ -2001,29 +2188,42 @@ app.whenReady().then(async () => {
         ipcMain.handle(channel, seatRenameBroker[name])
     }
 
-    const win1 = createHarnessWindow(APP_URL);
+    bootTimer.step('ipc-ready');
 
-    appLifecycle.attachCockpitWindow(win1);
-
-    // The Brain boots in parallel with the window — the UI never blocks on the supervisor, and
-    // fail-closed surfaces render honestly until the transport is reachable. Boot rejection is
-    // deterministic (readiness contract) and lands as up:false, never as a hung promise.
+    // The Brain and runtime verification run in parallel with the window — the UI never blocks on
+    // packaged payload hashing or the supervisor, and the spine names the starting Fleet immediately.
     if (brainMode) {
         appLifecycle.setBrainState('degraded')
     }
 
-    // The banner fact enters 'starting' exactly when a transport boot is actually in flight —
-    // brain mode boots the organism's fleet leg, UI-only product self-supplies. Plain UI-only
-    // smoke spawns nothing by isolation contract and keeps `null`: no transport story to tell.
-    if (brainMode || (!diagnosticMode && agentosRuntimeRoot)) {
-        uiTransportFact = startTransportFact()
+    if (brainMode || (!diagnosticMode && hasConfiguredBrainRoot)) {
+        armStartingTransport({since: bootEpochMs})
     } else if (!diagnosticMode) {
         console.log('HARNESS_UI_FLEET none — no Brain root in this boot: the shell runs as the UI alone')
     }
 
+    const
+        finishWindowShown = bootTimer.span('window-ready-to-show'),
+        finishPageLoaded  = bootTimer.span('page-loaded');
+
+    finishCockpitMounted = bootTimer.span('cockpit-mounted');
+
+    const win1 = createHarnessWindow(APP_URL);
+
+    primaryWebContentsId = win1.webContents.id;
+    bootTimer.step('window-created');
+    win1.once('ready-to-show', () => finishWindowShown());
+    win1.webContents.once('did-finish-load', () => finishPageLoaded());
+
+    appLifecycle.attachCockpitWindow(win1);
+
+    const finishBrainBoot = (brainMode || (!diagnosticMode && hasConfiguredBrainRoot))
+        ? bootTimer.span('brain-boot', {brainMode})
+        : null;
+
     brainBootPromise = brainMode
         ? bootBrainSettled()
-        : (diagnosticMode || !agentosRuntimeRoot
+        : (diagnosticMode || !hasConfiguredBrainRoot
             // Plain smoke keeps its isolation contract: UI-only legs spawn nothing (a dev machine
             // may carry a live transport); the fleet leg's evidence lives in smoke:brain. A checkout
             // without a Brain root has nothing to self-supply from: the UI alone, no transport story.
@@ -2036,12 +2236,23 @@ app.whenReady().then(async () => {
                     return {error: error.message, up: false}
                 })
                 .then(boot => {
+                    clearTimeout(slowBootTimer);
+                    slowBootTimer   = null;
                     uiTransportFact = normalizeTransportFact(boot);
                     return boot
                 }));
 
+    if (finishBrainBoot) {
+        brainBootPromise = brainBootPromise.then(boot => {
+            finishBrainBoot({mode: boot?.mode ?? null, up: boot?.up === true});
+            return boot
+        })
+    }
+
     if (packagedMode && !diagnosticMode) {
         brainBootPromise = brainBootPromise.then(async boot => {
+            if (!launcherRuntime?.generation) return boot;
+
             try {
                 const source                            = {bundlePath: path.resolve(process.resourcesPath, '..', '..'), runtimeRoot: packagedOrganismRoot};
                 const [verifier, references, contracts] = await Promise.all([
@@ -2076,8 +2287,14 @@ app.whenReady().then(async () => {
     }
 
     // The operator's waiting merges and questions reach them through the OS while the cockpit is hidden.
-    if (!smokeMode && !diagnosticMode && fleetRuntimeContracts && Notification.isSupported()) {
-        startOperatorNotifier(win1)
+    if (!smokeMode && !diagnosticMode && hasConfiguredBrainRoot && Notification.isSupported()) {
+        ensureLauncherRuntime()
+            .then(() => {
+                if (fleetRuntimeContracts && !fleetReadyAbort.signal.aborted && !win1.isDestroyed()) {
+                    startOperatorNotifier(win1)
+                }
+            })
+            .catch(() => {})
     }
 
     if (lifecycleWitnessMode) {

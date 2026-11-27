@@ -4,7 +4,9 @@ import {existsSync, mkdtempSync, readFileSync} from 'node:fs';
 import {tmpdir}                           from 'node:os';
 import path                               from 'node:path';
 import {
+    BOOT_TIMING_PREFIX,
     carriesSecret,
+    createBootTimer,
     createMainLog,
     MAIN_LOG_FILE,
     REDACTED_LINE
@@ -136,5 +138,59 @@ test.describe('harness/mainLog — the shell\'s own log', () => {
             '2026-09-25T20:50:00.000Z HARNESS_TERMINAL_CLOSED EPIPE\n' +
             '2026-09-25T20:50:00.000Z HARNESS_BRAIN exit 1\n'
         )
+    });
+
+    test('createBootTimer records sequential pre-window steps and asynchronous spans into main.log (#922)', () => {
+        let clockMs = 140;
+
+        const
+            dir    = tempDir(),
+            target = {error: () => {}, log: () => {}, warn: () => {}};
+
+        createMainLog({dir, now: NOW, secrets: () => [PLANE_BEARER]}).install(target, []);
+
+        const
+            timer         = createBootTimer({log: line => target.log(line), uptimeMs: () => clockMs}),
+            finishRuntime = (() => {
+                const first = timer.step('main-log-ready', {packaged: true});
+                expect(first).toEqual({deltaMs: 140, packaged: true, step: 'main-log-ready', uptimeMs: 140});
+
+                clockMs = 265;
+                timer.step('app-ready');
+
+                clockMs = 310;
+                const finish = timer.span('runtime-generation', {packaged: true});
+
+                clockMs = 380;
+                timer.step('window-created');
+                return finish
+            })();
+
+        clockMs = 15_420;
+        const runtime = finishRuntime({ok: true});
+        expect(runtime).toEqual({
+            durationMs: 15_110,
+            ok        : true,
+            packaged  : true,
+            step      : 'runtime-generation',
+            uptimeMs  : 15_420
+        });
+
+        // Monotonic guard: a jittering clock never produces negative deltas or durations
+        clockMs = 100;
+        expect(timer.step('post-jitter')).toEqual({deltaMs: 0, step: 'post-jitter', uptimeMs: 380});
+
+        // Any secret accidentally passed into extra fields is still redacted at the main.log boundary
+        timer.step('secret-probe', {detail: PLANE_BEARER});
+
+        const lines = readFileSync(path.join(dir, MAIN_LOG_FILE), 'utf8').trim().split('\n');
+        expect(lines).toEqual([
+            `2026-09-25T20:50:00.000Z ${BOOT_TIMING_PREFIX} {"step":"main-log-ready","deltaMs":140,"uptimeMs":140,"packaged":true}`,
+            `2026-09-25T20:50:00.000Z ${BOOT_TIMING_PREFIX} {"step":"app-ready","deltaMs":125,"uptimeMs":265}`,
+            `2026-09-25T20:50:00.000Z ${BOOT_TIMING_PREFIX} {"step":"window-created","deltaMs":115,"uptimeMs":380}`,
+            `2026-09-25T20:50:00.000Z ${BOOT_TIMING_PREFIX} {"step":"runtime-generation","durationMs":15110,"uptimeMs":15420,"packaged":true,"ok":true}`,
+            `2026-09-25T20:50:00.000Z ${BOOT_TIMING_PREFIX} {"step":"post-jitter","deltaMs":0,"uptimeMs":380}`,
+            `2026-09-25T20:50:00.000Z ${REDACTED_LINE}`
+        ])
     })
 });

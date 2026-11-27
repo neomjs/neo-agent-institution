@@ -142,7 +142,7 @@ function fakeModules({evaluations = []} = {}) {
 
 const trusted = TRUSTED;
 
-function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), homeDir = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', fsModule} = {}) {
+function createBroker({modules, packaged = true, prompt = async () => null, setupRoot = tempDir(), stateRoot = tempDir(), homeDir = tempDir(), loadModules, configSourcePath = '/runtime/ai/configBase.mjs', refusalReason = null, fsModule} = {}) {
     return {
         setupRoot,
         stateRoot,
@@ -155,6 +155,7 @@ function createBroker({modules, packaged = true, prompt = async () => null, setu
             loadModules     : loadModules === undefined ? (modules ? async () => modules : null) : loadModules,
             packaged,
             promptCredential: prompt,
+            refusalReason,
             setupRoot,
             stateRoot,
             now             : () => 1_700_000_000_000
@@ -189,7 +190,9 @@ test.describe('harness/setupBroker — the main-process handlers behind the setu
         for (const name of Object.keys(SETUP_CHANNELS)) {
             await expect(createBroker({modules}).broker[name]({sender: 'other'}, {})).rejects.toThrow(`${SETUP_CHANNELS[name]}: untrusted sender`);
             expect((await createBroker({modules, packaged: false}).broker[name](trusted, {})).reason).toMatch(/^not-packaged/);
-            expect((await createBroker({loadModules: null}).broker[name](trusted, {})).reason).toMatch(/^no-brain-root/)
+            expect((await createBroker({loadModules: null}).broker[name](trusted, {})).reason).toMatch(/^no-brain-root/);
+            expect((await createBroker({loadModules: null, refusalReason: 'runtime-refused: runtime verification failed (runtime-integrity-failed)'}).broker[name](trusted, {})).reason)
+                .toBe('runtime-refused: runtime verification failed (runtime-integrity-failed)')
         }
     });
 

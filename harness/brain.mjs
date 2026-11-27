@@ -82,13 +82,14 @@ export function resolveAgentOsRuntimeRoot(env = process.env) {
  * @param {String|null} [options.packagedOrganismRoot=null]
  * @param {String} [options.bundlePath] Complete packaged execution closure.
  * @param {String} [options.executable] Packaged executable to copy and verify.
+ * @param {AbortSignal} [options.signal] Optional lifecycle cancellation while awaiting generation exclusion.
  * @param {String} [options.userData] Already-selected Electron profile root.
  * @param {Function} [options.materialize=materializeRuntimeGeneration] Runtime publisher.
  * @returns {Promise<{runtimeRoot: (String|null), executable: String, generation: (Object|null), launchArgs: String[], release: (Function|undefined)}>}
  */
 export async function resolveLauncherRuntime({
     brainMode, env = process.env, packaged, packagedOrganismRoot = null,
-    bundlePath, executable, userData, materialize = materializeRuntimeGeneration
+    bundlePath, executable, signal, userData, materialize = materializeRuntimeGeneration
 }) {
     if (packaged) {
         if (typeof userData !== 'string' || !path.isAbsolute(userData)) {
@@ -99,6 +100,7 @@ export async function resolveLauncherRuntime({
         const lease      = await acquireHostRuntimeGeneration({
             bundlePath, runtimeRoot: packagedOrganismRoot, executable,
             directory: path.join(userData, 'brain', 'runtime'),
+            ...(signal ? {signal} : {}),
             verifier, references
         }, {materialize});
         const {generation} = lease;
