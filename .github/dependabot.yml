@@ -10,9 +10,9 @@
 # EVERY DAY, by cron: `interval: daily` runs Monday to Friday, and our own packages also ship on weekends.
 # The hour is the one `daily` ran at, so the organization's Dependabot runs stay staggered.
 #
-# NOT FULL COVERAGE, deliberately recorded: `neo-agent-brain` and `neo.mjs` are `github:` refs
-# pinned to commits, and Dependabot's npm ecosystem cannot bump that form. Both stay manual moves; a
-# reader who mistakes this file for complete coverage stops checking them by hand.
+# NOT FULL COVERAGE, deliberately recorded: `neo-agent-brain` is a `github:` ref pinned to a commit,
+# and Dependabot's npm ecosystem cannot bump that form, so it stays a manual move. `neo.mjs` tracks
+# `#dev`, so its locked commit moves inside the all-deps group: a red member holds the engine back.
 version: 2
 
 updates:
@@ -37,6 +37,10 @@ updates:
         # the workflows every agent in this checkout obeys. Which rules an agent reads is a reviewed
         # fact or it is an accident.
         exclude-patterns: ["monaco-editor", "neo-agent-skills"]
+    # plist mirrors the version `app-builder-lib` resolves in `harness/package-lock.json`, so it
+    # moves with the harness's Electron tooling. One package, every update type.
+    ignore:
+      - dependency-name: "plist"
 
   - package-ecosystem: github-actions
     directory: "/"
