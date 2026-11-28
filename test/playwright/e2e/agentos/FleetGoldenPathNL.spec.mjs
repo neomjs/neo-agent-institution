@@ -131,6 +131,23 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
         const app = await neuralLink.connectToApp('AgentOS');
+
+        // the tab's first mount animates the cockpit workspace's split (909 → 988 px), apart from the tab
+        // header's own motion: a witness of the workspace's signal, armed before the click, gates the read
+        await expect(page.locator('.fm-fleet-cockpit.neo-dashboard-dock-animating')).toHaveCount(0);
+        await page.evaluate(() => {
+            const motion   = window.__goldenPathDockMotion = {started: false, settled: false},
+                  observer = new MutationObserver(() => {
+                      if (document.querySelector('.fm-fleet-cockpit.neo-dashboard-dock-animating')) {
+                          motion.started = true
+                      } else if (motion.started) {
+                          motion.settled = true;
+                          observer.disconnect()
+                      }
+                  });
+
+            observer.observe(document.documentElement, {attributeFilter: ['class'], childList: true, subtree: true})
+        });
         await page.getByRole('tab', {name: 'Golden Path', exact: true}).click();
 
         const
@@ -152,8 +169,7 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{...STATES[0][1], handoff: producerHandoff, route: route({provenance: {producer: 'GoldenPathSynthesizer', runId: null, algorithmVersion: 'golden-path.tri-vector.v1'}})}]);
         await expect(facts.locator('.fm-golden-path-provenance')).toHaveText(/^GoldenPathSynthesizer · run id not recorded by the synthesizer · golden-path\.tri-vector\.v1 · expires /);
         await page.evaluate(() => document.fonts.ready);
-        // the tab's first mount animates the dock's split (909 → 988 px); the default is the settled width
-        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() => window.__goldenPathDockMotion), {message: 'the tab\'s dock motion starts and settles before the width is read'}).toEqual({started: true, settled: true});
 
         const fold = await boxes();
 
