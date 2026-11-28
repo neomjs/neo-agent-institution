@@ -244,9 +244,8 @@
 .fm-awaiting-merge-menu,
 .fm-nightshift-menu {
     /* THE GHOST SKIN — one for the whole shell: dim ink on no surface, a soft field under the
-       pointer, and a pressed choice carried by ink plus a hairline. Disabled reads faint: the
-       engine's disabled ink (`--sem-color-text-neutral-disabled`) is declared by no theme sheet,
-       so without it a disabled verb inherits the stock near-white text. */
+       pointer, and a pressed choice carried by ink plus a hairline, never a fill. Disabled reads
+       faint, in the shell's ink rather than the theme's. */
 }
 .agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost),
 .fm-instance-menu :where(.neo-button.neo-button-ghost),
@@ -260,6 +259,7 @@
     --neo-button-ghost-background-color: transparent;
     --neo-button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, transparent);
     --neo-button-ghost-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    --neo-button-ghost-background-color-pressed: transparent;
     --neo-button-ghost-border: 1px solid transparent;
     --neo-button-ghost-border-active: 1px solid transparent;
     --neo-button-ghost-border-hover: 1px solid transparent;
@@ -267,16 +267,11 @@
     --neo-button-ghost-glyph-color: var(--fm-ink-dim);
     --neo-button-ghost-glyph-color-active: var(--fm-ink);
     --neo-button-ghost-glyph-color-hover: var(--fm-ink);
+    --neo-button-ghost-glyph-color-pressed: var(--fm-ink);
     --neo-button-ghost-color: var(--fm-ink-dim);
     --neo-button-ghost-color-active: var(--fm-ink);
     --neo-button-ghost-color-hover: var(--fm-ink);
-}
-.agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost).pressed,
-.fm-instance-menu :where(.neo-button.neo-button-ghost).pressed,
-.fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost).pressed,
-.fm-nightshift-menu :where(.neo-button.neo-button-ghost).pressed {
-    --neo-button-ghost-glyph-color: var(--fm-ink);
-    --neo-button-ghost-color: var(--fm-ink);
+    --neo-button-ghost-color-pressed: var(--fm-ink);
 }
 .agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost):focus-visible,
 .fm-instance-menu :where(.neo-button.neo-button-ghost):focus-visible,
