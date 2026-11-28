@@ -156,12 +156,12 @@
        border still costs its pixel in the row lattice, and the cell padding ate 4 px of the
        height-normed card). The engine's RowModel selection paint is re-bound the same way: the
        selected CARD carries the mark (below), never a cell wash behind it. */
-    --grid-container-border-color                 : transparent;
-    --grid-container-cell-background-color        : transparent;
-    --grid-container-cell-background-color-even   : transparent;
-    --grid-cell-background-color-hover            : transparent;
-    --grid-rowmodel-selected-cell-background-color: transparent;
-    --grid-rowmodel-selected-cell-color           : inherit;
+    --neo-grid-container-border-color                 : transparent;
+    --neo-grid-container-cell-background-color        : transparent;
+    --neo-grid-container-cell-background-color-even   : transparent;
+    --neo-grid-cell-background-color-hover            : transparent;
+    --neo-grid-rowmodel-cell-background-color-selected: transparent;
+    --neo-grid-rowmodel-cell-color-selected           : inherit;
 
     .neo-grid-row {
         cursor: pointer;   /* the whole row reads: a click selects it into the reading surface */

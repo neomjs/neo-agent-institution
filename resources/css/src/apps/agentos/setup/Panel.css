@@ -13,7 +13,7 @@
     margin-left: var(--fm-space-3);
 }
 .agent-plane-setup.neo-panel .fm-setup-doors .neo-button.fm-setup-door-button {
-    --button-height: 22px;
+    --neo-button-height: 22px;
     border: 1px solid var(--fm-line);
     background: var(--fm-panel-2);
     color: var(--fm-ink-dim);
@@ -49,17 +49,20 @@
     background: var(--fm-panel);
     color: var(--fm-ink);
     /* the engine reads these four at the button element; the label's ROLE is set at its reader,
-       .neo-button-text, where the engine sets the size from --button-text-font-size */
-    --button-height: 32px;
-    --button-min-width: 32px;
-    --button-padding: 0 var(--fm-space-3);
-    --button-border-radius: 6px;
+       .neo-button-text, where the engine sets the size from --neo-button-text-font-size */
+    --neo-button-height: 32px;
+    --neo-button-min-width: 32px;
+    --neo-button-padding: 0 var(--fm-space-3);
+    --neo-button-border-radius: 6px;
     /* the field: the FM font in the body role instead of the theme's Arial, on the same control
        scale and radius as the button beside it, so the row reads as one line of controls */
-    --textfield-input-font: var(--fm-text-body);
-    --textfield-input-height: var(--button-height);
-    --textfield-border-radius: var(--button-border-radius);
-    --textfield-label-color: var(--fm-ink-dim);
+    --neo-textfield-input-font-family: var(--fm-font-sans);
+    --neo-textfield-input-font-size: var(--fm-text-body-size);
+    --neo-textfield-input-font-weight: normal;
+    --neo-textfield-input-line-height: var(--fm-text-body-line-height);
+    --neo-textfield-input-height: var(--neo-button-height);
+    --neo-textfield-border-radius: var(--neo-button-border-radius);
+    --neo-textfield-label-color: var(--fm-ink-dim);
 }
 .agent-plane-setup.neo-panel .neo-toolbar {
     background: transparent;

@@ -7,7 +7,7 @@ import SharedCanvas from '../../../../node_modules/neo.mjs/src/app/SharedCanvas.
  * field answers the pointer over the hero's lines too. Both inputs are reactive configs, and each crosses to the
  * worker alone; a canvas that becomes ready receives both.
  *
- * Stillness is the motion vocabulary's own verdict: `--motion-base` collapses to `0ms` under
+ * Stillness is the motion vocabulary's own verdict: `--neo-duration-base` collapses to `0ms` under
  * `prefers-reduced-motion: reduce` (the engine's `resources/css/src/Global.css`), and the canvas reads it from its node each time
  * it mounts. Every mount starts still, and a read that fails or answers nothing keeps it still.
  *
@@ -193,7 +193,7 @@ class Canvas extends SharedCanvas {
     }
 
     /**
-     * @summary Reads `--motion-base` from the canvas's node through its own window: `0ms`, the reduced-motion
+     * @summary Reads `--neo-duration-base` from the canvas's node through its own window: `0ms`, the reduced-motion
      * collapse, keeps the field still, and so does a read that fails or answers nothing. Only the latest read of the
      * current mount answers: a newer read or an unmount outdates it, so a late answer never moves a later mount.
      * @returns {Promise<void>}
@@ -204,9 +204,9 @@ class Canvas extends SharedCanvas {
         let value = '';
 
         try {
-            const styles = await Neo.main.DomAccess.getComputedStyle({id: me.id, style: '--motion-base', windowId: me.windowId});
+            const styles = await Neo.main.DomAccess.getComputedStyle({id: me.id, style: '--neo-duration-base', windowId: me.windowId});
 
-            value = styles?.['--motion-base']?.trim() ?? ''
+            value = styles?.['--neo-duration-base']?.trim() ?? ''
         } catch {}
 
         if (read === me.motionRead && me.mounted && !me.isDestroyed) {

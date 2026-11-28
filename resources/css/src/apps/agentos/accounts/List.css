@@ -2,9 +2,9 @@
    stock surface — the theme's item grey never reaches a row, in any state. Selection pairs the
    signal tint with the name's weight, so it never reads by colour alone. */
 .fm-accounts-list.neo-list {
-    --list-item-background-color       : transparent;
-    --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
-    --list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    --neo-list-item-background-color       : transparent;
+    --neo-list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    --neo-list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
 
     background: transparent;
     gap       : 2px;

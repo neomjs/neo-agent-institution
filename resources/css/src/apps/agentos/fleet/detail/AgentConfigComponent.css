@@ -131,11 +131,11 @@
     /* Harness chips: selectable pills on the quiet base, the selected one reaches for the
        signal pair (the chrome's submit-button treatment) — never plain inline text.
        Geometry + type come from the Chips.css affordance family; this block owns only the
-       state classes and the state-transition motion (vocabulary read — --motion-base has no
+       state classes and the state-transition motion (vocabulary read — --neo-duration-base has no
        FM alias by contract). */
     .fm-chip {
         cursor    : pointer;
-        transition: background var(--motion-base) var(--ease-out-soft), border-color var(--motion-base) var(--ease-out-soft), color var(--motion-base) var(--ease-out-soft);
+        transition: background var(--neo-duration-base) var(--neo-ease-out), border-color var(--neo-duration-base) var(--neo-ease-out), color var(--neo-duration-base) var(--neo-ease-out);
 
         &.is-selectable {
             background: var(--fm-panel-2);

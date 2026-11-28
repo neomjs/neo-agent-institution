@@ -936,6 +936,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             const
                 wrapper = paneEl.querySelector('.fm-observatory-nodes-filter .neo-input-wrapper'),
                 field   = paneEl.querySelector('.fm-observatory-nodes-filter .neo-textfield'),
+                input   = paneEl.querySelector('.fm-observatory-nodes-filter .neo-textfield-input'),
                 select  = paneEl.querySelector('.fm-observatory-nodes-filter .neo-selectfield-input'),
                 signal  = getComputedStyle(paneEl).getPropertyValue('--fm-signal').trim(),
                 probe   = document.createElement('span');
@@ -945,6 +946,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             probe.remove();
             return {
                 fieldHeight  : Math.round(field.getBoundingClientRect().height),
+                fieldType    : ['fontSize', 'lineHeight', 'fontWeight'].map(name => getComputedStyle(input)[name]),
                 selectHeight : Math.round(select.getBoundingClientRect().height),
                 selectFontPx : getComputedStyle(select).fontSize,
                 focusBorder  : getComputedStyle(wrapper).borderTopColor,
@@ -952,6 +954,7 @@ test.describe('Agent OS — the Observatory keeper-view (NL)', () => {
             };
         });
         expect(styleFacts.fieldHeight).toBe(26);
+        expect(styleFacts.fieldType, 'the filter in the body role: 12px/1.45, regular weight').toEqual(['12px', '17.4px', '400']);
         expect(styleFacts.selectHeight).toBe(26);
         expect(styleFacts.selectFontPx).toBe('12px');
         expect(styleFacts.focusBorder).toBe(styleFacts.signalRgb);

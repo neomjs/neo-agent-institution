@@ -29,11 +29,11 @@
 /* scroll-fade: end */
 
 .fm-memory-candidates.neo-list {
-    --list-item-background-color: transparent;
-    --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
-    --list-item-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
-    --list-item-focus-outline: none;
-    --list-item-focus-outline-offset: -1px;
+    --neo-list-item-background-color: transparent;
+    --neo-list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+    --neo-list-item-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    --neo-list-item-outline-focus: none;
+    --neo-list-item-outline-offset-focus: -1px;
     background: transparent;
     border: 1px solid var(--fm-line-soft);
     border-radius: 6px;

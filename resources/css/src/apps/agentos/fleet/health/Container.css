@@ -35,7 +35,7 @@
 
     @media (prefers-reduced-motion: no-preference) {
         &.fm-animate-counts .fm-sw-count {
-            transition: color var(--motion-base) var(--ease-out-soft), opacity var(--motion-base) var(--ease-out-soft);
+            transition: color var(--neo-duration-base) var(--neo-ease-out), opacity var(--neo-duration-base) var(--neo-ease-out);
         }
     }
 }

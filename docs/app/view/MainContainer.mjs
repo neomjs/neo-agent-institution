@@ -96,8 +96,8 @@ class MainContainer extends Viewport {
                 size        : 5,
 
                 style: {
-                    borderTop: 'var(--tab-strip-height) solid var(--tab-strip-background-color)',
-                    marginTop: 'var(--tab-button-height)'
+                    borderTop: 'var(--neo-tab-strip-height) solid var(--neo-tab-strip-background-color)',
+                    marginTop: 'var(--neo-tab-button-height)'
                 }
             }, {
                 module   : ContentTabContainer,
@@ -122,7 +122,7 @@ class MainContainer extends Viewport {
             })
         }
 
-        // Disable the examples Tab for dist versions until the webpack builds can handle this (see: #140)
+        // The examples tab runs only in development: the webpack dist builds cannot load the examples
         me.items[1].items[0].items[1].header.disabled = Neo.config.environment !== 'development'
     }
 

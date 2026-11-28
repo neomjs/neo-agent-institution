@@ -1386,7 +1386,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 active = await dock.evaluate(el => {
                     const probe = el.appendChild(document.createElement('div'));
 
-                    probe.style.backgroundColor = 'var(--dock-splitter-background-active)';
+                    probe.style.backgroundColor = 'var(--neo-dock-splitter-background-color-active)';
 
                     const value = getComputedStyle(probe).backgroundColor;
 
@@ -2015,6 +2015,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
             dismissWeight: cs(dismiss.querySelector('.neo-button-text')).fontWeight,
             labelWeight  : cs(label).fontWeight,
             inputFont    : cs(input).fontFamily,
+            inputType    : [cs(input).fontSize, cs(input).lineHeight, cs(input).fontWeight],
             row          : rect(row),
             connect      : rect(connect),
             input        : rect(input)
@@ -2035,6 +2036,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         expect(paint.dismissWeight, 'the quiet action keeps 500').toBe('500');
         expect(paint.labelWeight, 'the card title at 600').toBe('600');
         expect(paint.inputFont, 'the field in the FM font, not the theme\'s Arial').not.toMatch(/Arial/);
+        expect(paint.inputType, 'the field in the body role: 12px/1.45, regular weight').toEqual(['12px', '17.4px', '400']);
         // what shows, not what the element claims: the row holds both controls whole, on one line
         for (const control of ['connect', 'input']) {
             expect(paint[control].top, `${control} starts inside the row ${JSON.stringify(paint.row)}`).toBeGreaterThanOrEqual(paint.row.top);

@@ -48,16 +48,16 @@
 }
 
 .fm-instance-menu.neo-menu-list {
-    --menu-list-background-color              : var(--fm-panel-2);
-    --menu-list-border-color                  : var(--fm-line);
-    --menu-list-item-background-color         : transparent;
-    --menu-list-item-background-color-hover   : var(--fm-panel);
-    --menu-list-item-background-color-selected: var(--fm-panel);
-    --menu-list-item-color                    : var(--fm-ink-dim);
-    --menu-list-item-height                   : auto;
-    --menu-list-item-line-height              : normal;
-    --menu-list-item-outline-focus            : 1px solid var(--fm-signal);
-    --menu-list-item-padding                  : var(--fm-space-2);
+    --neo-menu-list-background-color              : var(--fm-panel-2);
+    --neo-menu-list-border-color                  : var(--fm-line);
+    --neo-menu-list-item-background-color         : transparent;
+    --neo-menu-list-item-background-color-hover   : var(--fm-panel);
+    --neo-menu-list-item-background-color-selected: var(--fm-panel);
+    --neo-menu-list-item-color                    : var(--fm-ink-dim);
+    --neo-menu-list-item-height                   : auto;
+    --neo-menu-list-item-line-height              : normal;
+    --neo-menu-list-item-outline-focus            : 1px solid var(--fm-signal);
+    --neo-menu-list-item-padding                  : var(--fm-space-2);
 
     border-radius: 6px;
     box-shadow   : var(--fm-shadow-overlay);

@@ -73,9 +73,9 @@
         /* the fold chip carries the honest idle count while the density preset is armed: a dashed
            hairline in every state, so it reads as a count, not a choice */
         .fm-roster-fold {
-            --button-ghost-border        : 1px dashed var(--fm-line-soft);
-            --button-ghost-border-hover  : 1px dashed var(--fm-line-soft);
-            --button-ghost-border-pressed: 1px dashed var(--fm-line-soft);
+            --neo-button-ghost-border        : 1px dashed var(--fm-line-soft);
+            --neo-button-ghost-border-hover  : 1px dashed var(--fm-line-soft);
+            --neo-button-ghost-border-pressed: 1px dashed var(--fm-line-soft);
         }
     }
 
@@ -89,14 +89,14 @@
            complete item-state token set at the consumer root so stock default / hover / active /
            selected paint, focus chrome and five-pixel padding cannot bleed through in either
            theme. The AgentCard below owns the visible surface and interaction treatment. */
-        --list-item-background-color         : transparent;
-        --list-item-background-color-hover   : transparent;
-        --list-item-background-color-active  : transparent;
-        --list-item-background-color-selected: transparent;
-        --list-item-color-selected           : var(--fm-ink);
-        --list-item-focus-outline            : none;
-        --list-item-focus-outline-offset     : 0;
-        --list-item-padding                  : 0;
+        --neo-list-item-background-color         : transparent;
+        --neo-list-item-background-color-hover   : transparent;
+        --neo-list-item-background-color-active  : transparent;
+        --neo-list-item-background-color-selected: transparent;
+        --neo-list-item-color-selected           : var(--fm-ink);
+        --neo-list-item-outline-focus            : none;
+        --neo-list-item-outline-offset-focus     : 0;
+        --neo-list-item-padding                  : 0;
 
         list-style: none;
         margin    : 0;
@@ -115,9 +115,9 @@
                 height: 100%;
 
                 @media (prefers-reduced-motion: no-preference) {
-                    transition: background-color var(--fm-motion-fast) var(--ease-out-soft),
-                                border-color var(--fm-motion-fast) var(--ease-out-soft),
-                                box-shadow var(--fm-motion-fast) var(--ease-out-soft);
+                    transition: background-color var(--fm-motion-fast) var(--neo-ease-out),
+                                border-color var(--fm-motion-fast) var(--neo-ease-out),
+                                box-shadow var(--fm-motion-fast) var(--neo-ease-out);
                 }
             }
 
@@ -158,20 +158,20 @@
    defaults are the reversed ink and the primary surface of a filled button — the #69 defect. The
    plate deepens one step per state (12 → 16 → 20 % signal) so the press reads as a press. */
 .fm-fleet-empty-cta {
-    --button-background-color        : color-mix(in srgb, var(--fm-signal) 12%, transparent);
-    --button-background-color-hover  : color-mix(in srgb, var(--fm-signal) 16%, transparent);
-    --button-background-color-active : color-mix(in srgb, var(--fm-signal) 20%, transparent);
-    --button-background-image        : none;
-    --button-border                  : 1px dashed var(--fm-signal);
-    --button-border-hover            : 1px dashed var(--fm-signal);
-    --button-border-active           : 1px dashed var(--fm-signal);
-    --button-border-radius           : 8px;
-    --button-text-color              : var(--fm-ink);
-    --button-text-color-hover        : var(--fm-ink);
-    --button-text-color-active       : var(--fm-ink);
-    --button-glyph-color             : var(--fm-ink);
-    --button-glyph-color-hover       : var(--fm-ink);
-    --button-glyph-color-active      : var(--fm-ink);
+    --neo-button-background-color        : color-mix(in srgb, var(--fm-signal) 12%, transparent);
+    --neo-button-background-color-hover  : color-mix(in srgb, var(--fm-signal) 16%, transparent);
+    --neo-button-background-color-active : color-mix(in srgb, var(--fm-signal) 20%, transparent);
+    --neo-button-background-image        : none;
+    --neo-button-border                  : 1px dashed var(--fm-signal);
+    --neo-button-border-hover            : 1px dashed var(--fm-signal);
+    --neo-button-border-active           : 1px dashed var(--fm-signal);
+    --neo-button-border-radius           : 8px;
+    --neo-button-color                   : var(--fm-ink);
+    --neo-button-color-hover             : var(--fm-ink);
+    --neo-button-color-active            : var(--fm-ink);
+    --neo-button-glyph-color             : var(--fm-ink);
+    --neo-button-glyph-color-hover       : var(--fm-ink);
+    --neo-button-glyph-color-active      : var(--fm-ink);
 
     font-weight: 600;
     height     : fit-content;

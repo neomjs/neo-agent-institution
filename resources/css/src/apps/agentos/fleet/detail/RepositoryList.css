@@ -3,9 +3,9 @@
    slug is monospace and elides, and its full clone URL rides the title. An outcome's reason wraps
    onto its own line, since a git or npm error can carry a long URL; only a failure's takes the alert ink. */
 .fm-repository-list.neo-list {
-    --list-item-background-color       : transparent;
-    --list-item-background-color-active: transparent;
-    --list-item-background-color-hover : transparent;
+    --neo-list-item-background-color       : transparent;
+    --neo-list-item-background-color-active: transparent;
+    --neo-list-item-background-color-hover : transparent;
 
     background: transparent;
 
