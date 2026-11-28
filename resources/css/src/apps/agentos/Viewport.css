@@ -726,12 +726,8 @@
        chrome tier's designed density, down from the stock xlarge. The vertical keeper bar
        deliberately keeps its intrinsic sizing — a rotated label owns its main axis.
 
-       The Engine projects its dock tab containers with `ui: 'inline'`, and every theme states the
-       inline header's paint in full — ground, image and the bottom hairline — because a fallback is
-       not a reset (neomjs/neo#18141). The cockpit's strips are flat panel surfaces in the
-       cockpit's OWN palette (the design gate's goldens): all three paint tokens are declared here,
-       so the theme's neutral-highlighted band (a green-grey on this blue-black surface, #92) and
-       its top-lit gradient never reach a strip; the family's geometry is kept. */
+       The shared inline header provides the cockpit's flat panel and inset hairline (#92).
+       Fleet keeps its own hover fill and pressed glyph ink on both strips. */
 }
 .agent-os-viewport.neo-viewport .neo-tab-header-toolbar.neo-dock-top,
 .fm-instance-menu .neo-tab-header-toolbar.neo-dock-top,
@@ -741,14 +737,8 @@
     --neo-tab-button-height-pressed: 30px;
     --neo-tab-button-padding: 0 var(--fm-space-3);
     --neo-tab-button-gap: var(--fm-space-2);
-    --neo-tab-button-color: var(--fm-ink-dim);
-    --neo-tab-button-glyph-color: var(--fm-ink-dim);
     --neo-tab-button-glyph-color-pressed: var(--fm-ink);
-    --neo-tab-button-background-color: transparent;
     --neo-tab-button-background-color-hover: var(--fm-panel);
-    --neo-tab-header-inline-background-color: var(--fm-panel);
-    --neo-tab-header-inline-background-image: none;
-    --neo-tab-header-inline-box-shadow: inset 0 -1px 0 var(--fm-line);
 }
 .agent-os-viewport.neo-viewport,
 .fm-instance-menu,
@@ -802,10 +792,7 @@
 .fm-instance-menu .agent-shell > .neo-tab-header-toolbar,
 .fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar,
 .fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar {
-    --neo-tab-button-color: var(--fm-ink-dim);
-    --neo-tab-button-glyph-color: var(--fm-ink-dim);
     --neo-tab-button-glyph-color-pressed: var(--fm-ink);
-    --neo-tab-button-background-color: transparent;
     --neo-tab-button-background-color-hover: var(--fm-panel);
     background: var(--fm-rail);
     border-right: 1px solid var(--fm-line);
