@@ -36,54 +36,53 @@
        higher" (rail < ground < panel-2 < panel, verified monotonic), structure carried by lines not
        luminance steps. Computed WCAG-2.1 contrast (vs --fm-panel / vs --fm-ground) is recorded on the PR.
        Structure lives in src/apps/agentos/fleet/*.css. */
-    --fm-ground        : #f2f5f9;
-    --fm-panel         : #ffffff;
-    --fm-panel-2       : #f7f9fc;
-    --fm-rail          : #e9edf3;
-    --fm-line          : #d3dae4;
-    --fm-line-soft     : #e4e9f0;
+    --fm-ground        : var(--neo-color-background-canvas);
+    --fm-panel         : var(--neo-color-background-surface-raised);
+    --fm-panel-2       : var(--neo-color-background-surface);
+    --fm-rail          : color-mix(in srgb, var(--neo-color-text-strong) 2%, var(--neo-color-background-canvas));
+    --fm-line          : var(--neo-color-border-default);
+    --fm-line-soft     : color-mix(in srgb, var(--neo-color-border-default) 33%, var(--neo-color-background-canvas));
     /* Elevation for FLOATING surfaces only (the switcher menu, the manage drawer) — the cockpit's
        in-flow panels stay border-carried. Light-native rather than the dark value reused: on a
        white panel the same alpha reads as dirt, so the shadow is shallower and softer while
        carrying the identical "this floats above" message. */
-    --fm-shadow-overlay: 0 8px 24px rgba(15, 23, 35, .18);
+    --fm-shadow-overlay: 0 8px 24px var(--neo-color-shadow);
     /* Persistent roster selection is the one in-flow elevation exception: shallower than an
        overlay and paint-only (no transform), so it reads as current context, never a popup. */
     --fm-shadow-selection: 0 6px 16px rgba(15, 23, 35, .12);
-    --fm-ink           : #1f2733;
-    --fm-ink-dim       : #5a6b80;
-    --fm-ink-faint     : #8494a7;
-    --fm-signal        : #0f766e;
+    --fm-ink           : var(--neo-color-text-default);
+    --fm-ink-dim       : var(--neo-color-text-muted);
+    --fm-ink-faint     : var(--neo-color-text-subtle);
+    --fm-signal        : var(--neo-color-text-accent);
     /* the Golden Path's own ink: its route in the Observatory, gold and nowhere else */
     --fm-route         : #a16207;
     /* a peer's ink is its hue (`--fm-peer-hue`, drawn from the identity) at this lightness; the Observatory's canvas
        inks its communities and peers at the same one (`communityTones`), and the two change together */
     --fm-peer-lightness: 42%;
 
-    --fm-state-ok      : #047857;
-    --fm-state-idle    : #b45309;
-    --fm-state-wedged  : #be123c;
-    --fm-state-limited : #6d28d9;
+    --fm-state-ok      : var(--neo-color-text-success);
+    --fm-state-idle    : var(--neo-color-text-warning);
+    --fm-state-wedged  : var(--neo-color-text-danger);
+    --fm-state-limited : oklch(from var(--neo-color-text-info) l c 295);
     /* transitional (a lifecycle intent is in flight): sky = activating, slate = winding down.
        Distinct from the five resolved states; exact palette is design-owner-tunable. */
-    --fm-state-starting: #0369a1;
-    --fm-state-stopping: #64748b;
-    /* participation-active with no session observation: slate-blue "signal pending", distinct
-       from off's dead grey (#7c889a) — ≥3:1 against card surfaces (non-text floor). */
-    --fm-state-unobserved: #5f6d7c;
-    --fm-state-off     : #7c889a;
+    --fm-state-starting: var(--neo-color-text-info);
+    --fm-state-stopping: var(--neo-color-text-muted);
+    /* Offline and pending observation share subtle ink and retain separate state labels. */
+    --fm-state-unobserved: var(--neo-color-text-subtle);
+    --fm-state-off     : var(--neo-color-text-subtle);
 
-    --fm-family-claude : #a8621f;
-    --fm-family-gpt    : #2a7d57;
-    --fm-family-gemini : #2b64ab;
-    --fm-family-human  : #4d5866;
-    --fm-family-kimi   : #6d3fc0;
+    --fm-family-claude : oklch(from var(--neo-color-text-info) l c 60);
+    --fm-family-gpt    : oklch(from var(--neo-color-text-info) l c 160);
+    --fm-family-gemini : oklch(from var(--neo-color-text-info) l c 255);
+    --fm-family-human  : var(--neo-color-text-default);
+    --fm-family-kimi   : oklch(from var(--neo-color-text-info) l c 295);
 
-    --fm-kind-pr       : #3b5bdb;
-    --fm-kind-a2a      : #0e7490;
-    --fm-kind-review   : #7e22ce;
-    --fm-kind-alert    : #b91c1c;
-    --fm-kind-neutral  : #5b6285;
+    --fm-kind-pr       : oklch(from var(--neo-color-text-info) l c 265);
+    --fm-kind-a2a      : oklch(from var(--neo-color-text-info) l c 215);
+    --fm-kind-review   : oklch(from var(--neo-color-text-info) l c 305);
+    --fm-kind-alert    : var(--neo-color-text-danger);
+    --fm-kind-neutral  : var(--neo-color-text-muted);
 
     --fm-font-mono     : ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     --fm-font-sans     : system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -96,14 +95,14 @@
    and reject to the artifact's light signal/hot column without pre-empting #14681's global FM
    light-native token system. */
 :root .neo-theme-neo-light {
-    --neo-dock-preview-accept-color            : #0d9488;
-    --neo-dock-preview-accept-background-color : rgba(13, 148, 136, 0.14);
-    --neo-dock-preview-reject-color            : #be123c;
-    --neo-dock-preview-reject-background-color : rgba(190, 18, 60, 0.12);
+    --neo-dock-preview-accept-color            : var(--neo-color-text-accent);
+    --neo-dock-preview-accept-background-color : color-mix(in srgb, var(--neo-color-text-accent) 14%, transparent);
+    --neo-dock-preview-reject-color            : var(--neo-color-border-danger);
+    --neo-dock-preview-reject-background-color : color-mix(in srgb, var(--neo-color-border-danger) 12%, transparent);
 
     /* The Signal-glow candidate's language: the deep-pigment daylight signal, a paper-safe
        14% flood, and a near-white chip ground (light chips float, they don't glow). */
-    --neo-dock-preview-signal-color            : #0f766e;
-    --neo-dock-preview-signal-background-color : rgba(15, 118, 110, 0.14);
-    --neo-dock-preview-signal-background       : rgba(255, 255, 255, 0.94);
+    --neo-dock-preview-signal-color            : var(--neo-color-text-accent);
+    --neo-dock-preview-signal-background-color : color-mix(in srgb, var(--neo-color-text-accent) 14%, transparent);
+    --neo-dock-preview-signal-background       : color-mix(in srgb, var(--neo-color-background-surface-raised) 94%, transparent);
 }

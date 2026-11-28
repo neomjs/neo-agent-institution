@@ -849,6 +849,7 @@ class ViewportController extends Controller {
             iconCls = theme === 'neo-theme-neo-dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
 
         me.component.theme = theme;
+        me.getReference('fleet-cockpit')?.syncVesselTheme(theme);
 
         if (btn) {
             btn.iconCls = iconCls

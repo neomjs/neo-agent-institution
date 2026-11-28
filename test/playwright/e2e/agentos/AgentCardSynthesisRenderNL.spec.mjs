@@ -274,7 +274,19 @@ test.describe('AgentOS fleet cockpit — AgentCard evolved-D synthesis render at
                           strip = card.querySelector('.fm-card-strip'),
                           name  = card.querySelector('.fm-card-name'),
                           sRect = strip?.getBoundingClientRect(),
-                          lum   = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return 0.299 * r + 0.587 * g + 0.114 * b };
+                          canvas = document.createElement('canvas');
+
+                    canvas.width = canvas.height = 1;
+
+                    const context = canvas.getContext('2d'),
+                          lum     = color => {
+                              context.clearRect(0, 0, 1, 1);
+                              context.fillStyle = color;
+                              context.fillRect(0, 0, 1, 1);
+
+                              const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+                              return 0.299 * r + 0.587 * g + 0.114 * b
+                          };
                     return {
                         clipped   : card.scrollHeight - card.clientHeight,
                         stripBelow: sRect ? sRect.bottom - rect.bottom : -1,

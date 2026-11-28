@@ -1,0 +1,48 @@
+.neo-theme-neo-light, .neo-theme-neo-dark {
+    --neo-palette-neutral-50      : oklch(0.985 0.005 258);
+    --neo-palette-neutral-100     : oklch(0.960 0.006 258);
+    --neo-palette-neutral-200     : oklch(0.875 0.016 258);
+    --neo-palette-neutral-300     : oklch(0.790 0.021 258);
+    --neo-palette-neutral-400     : oklch(0.700 0.029 258);
+    --neo-palette-neutral-500     : oklch(0.610 0.034 258);
+    --neo-palette-neutral-600     : oklch(0.520 0.040 258);
+    --neo-palette-neutral-700     : oklch(0.470 0.039 258);
+    --neo-palette-neutral-800     : oklch(0.303 0.028 258);
+    --neo-palette-neutral-900     : oklch(0.216 0.020 258);
+    --neo-palette-neutral-950     : oklch(0.168 0.012 258);
+    --neo-palette-accent-50       : oklch(0.985 0.007 183);
+    --neo-palette-accent-100      : oklch(0.960 0.018 183);
+    --neo-palette-accent-200      : oklch(0.875 0.061 183);
+    --neo-palette-accent-300      : oklch(0.790 0.120 183);
+    --neo-palette-accent-400      : oklch(0.700 0.115 183);
+    --neo-palette-accent-500      : oklch(0.610 0.098 183);
+    --neo-palette-accent-600      : oklch(0.520 0.087 183);
+    --neo-palette-accent-700      : oklch(0.470 0.060 183);
+    --neo-palette-accent-800      : oklch(0.303 0.060 183);
+    --neo-palette-accent-900      : oklch(0.216 0.040 183);
+    --neo-palette-accent-950      : oklch(0.168 0.025 183);
+    --neo-palette-brand-600       : oklch(0.520 0.121 161.0);
+    --neo-palette-brand-800       : oklch(0.303 0.087 161.0);
+    --neo-palette-brand-900       : oklch(0.216 0.060 161.0);
+    --neo-palette-danger-600      : oklch(0.520 0.200 26.0);
+    --neo-palette-danger-800      : oklch(0.303 0.140 26.0);
+    --neo-palette-danger-900      : oklch(0.216 0.090 26.0);
+    --neo-palette-warning-600     : oklch(0.520 0.118 70.0);
+    --neo-palette-warning-800     : oklch(0.303 0.085 70.0);
+    --neo-palette-warning-900     : oklch(0.216 0.061 70.0);
+    --neo-palette-success-600     : oklch(0.520 0.150 150.0);
+    --neo-palette-success-800     : oklch(0.303 0.105 150.0);
+    --neo-palette-success-900     : oklch(0.216 0.070 150.0);
+    --neo-palette-info-600        : oklch(0.520 0.125 240.0);
+    --neo-palette-info-800        : oklch(0.303 0.090 240.0);
+    --neo-palette-info-900        : oklch(0.216 0.064 240.0);
+
+    --neo-color-background-canvas : light-dark(var(--neo-palette-neutral-100), var(--neo-palette-neutral-950));
+    --neo-color-background-surface: light-dark(var(--neo-palette-neutral-50), var(--neo-palette-neutral-950));
+    --neo-color-text-default      : light-dark(var(--neo-palette-neutral-800), var(--neo-palette-neutral-200));
+    --neo-color-text-muted        : light-dark(var(--neo-palette-neutral-700), var(--neo-palette-neutral-400));
+    --neo-color-text-subtle       : light-dark(var(--neo-palette-neutral-600), var(--neo-palette-neutral-500));
+    --neo-color-text-disabled     : light-dark(var(--neo-palette-neutral-400), var(--neo-palette-neutral-600));
+    --neo-color-text-accent       : light-dark(var(--neo-palette-accent-600), var(--neo-palette-accent-300));
+    --neo-color-focus-ring        : light-dark(var(--neo-palette-accent-600), var(--neo-palette-accent-300));
+}

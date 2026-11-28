@@ -303,12 +303,35 @@ class VesselContainer extends Workspace {
     }
 
     /**
-     * Titles a newly admitted Fleet tear-out window by the pane it holds.
+     * @summary Applies the owning Fleet theme and pane title to a newly connected tear-out window.
      * @param {Object} data
      * @protected
      */
     afterTearOutWindowConnect({connection, itemId}) {
+        this.syncVesselTheme(this.getTheme(), connection.windowId);
         this.pushVesselTitle(itemId, connection.windowId)
+    }
+
+    /**
+     * @summary Carries the cockpit theme into its detached render targets.
+     * @param {String} theme
+     * @param {String|null} [windowId=null] Selects a newly connected vessel.
+     */
+    syncVesselTheme(theme, windowId=null) {
+        const registry = this.nativeWindows;
+        const owners   = registry?.ownerEntries(this.id) ?? [];
+        const links    = registry?.connectionEntries(this.id) ?? [];
+        const targets  = windowId === null
+            ? new Set([...owners, ...links].map(([, entry]) => entry.windowId))
+            : [windowId];
+
+        for (const id of targets) {
+            const app = Neo.apps[id];
+
+            if (app?.name === 'AgentOSWidget' && app.mainView && !app.mainView.isDestroyed) {
+                app.mainView.theme = theme
+            }
+        }
     }
 
     /**

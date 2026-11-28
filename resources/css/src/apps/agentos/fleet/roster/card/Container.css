@@ -88,7 +88,7 @@
     text-transform: uppercase;
     user-select: none;
     color: var(--fm-rail, var(--fm-state-off));
-    background: color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 18%, transparent);
+    background: light-dark(color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 8%, transparent), color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 18%, transparent));
     border: 1px solid color-mix(in srgb, var(--fm-rail, var(--fm-state-off)) 35%, transparent);
     /* the initials paint from the attribute, never as a text node: a text node runs into the
        name for every text reader ("ADAda"); the aria-label carries the resident's name */

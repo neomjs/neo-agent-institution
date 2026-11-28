@@ -807,16 +807,34 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
         await bootSettledCockpit(page);
 
         const readContrast = () => page.evaluate(() => {
-            const title = document.querySelector('.agent-shell-title'),
-                  band  = document.querySelector('.agent-top-toolbar'),
-                  lum   = color => {
-                      const [r, g, b] = color.match(/[\d.]+/g).map(Number),
-                            f         = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 };
+            const title  = document.querySelector('.agent-shell-title'),
+                  band   = document.querySelector('.agent-top-toolbar'),
+                  canvas = document.createElement('canvas');
 
-                      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b)
+            canvas.width = canvas.height = 1;
+
+            const context = canvas.getContext('2d'),
+                  paint   = color => {
+                      context.fillStyle = color;
+                      context.fillRect(0, 0, 1, 1);
+                      return context.getImageData(0, 0, 1, 1).data
                   },
-                  a = lum(getComputedStyle(title).color),
-                  b = lum(getComputedStyle(band).backgroundColor);
+                  lum = ([r, g, b]) => {
+                      const linear = byte => {
+                          const value = byte / 255;
+                          return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+                      };
+
+                      return 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+                  },
+                  ground = paint(getComputedStyle(band).backgroundColor);
+
+            if (ground[3] !== 255) {
+                throw new Error('The wordmark contrast probe requires an opaque toolbar band')
+            }
+
+            const b = lum(ground),
+                  a = lum(paint(getComputedStyle(title).color));
 
             return {
                 theme   : [...document.querySelector('.agent-os-viewport').classList].find(cls => cls.startsWith('neo-theme-')) || 'config-default',

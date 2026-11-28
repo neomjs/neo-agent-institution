@@ -7,12 +7,36 @@
  */
 
 /**
- * The ink tiers per theme, as the stylesheets bind them.
+ * Opaque sRGB values measured from the Fleet viewport in each scheme.
+ * - ink, inkDim and signal mirror text-default, text-muted and text-accent.
+ * - line, ground and panel mirror border-default, background-canvas and background-surface-raised.
+ * - route mirrors the product's reserved Observatory gold in --fm-route.
+ * - lineSoft and panel2 mirror the local --fm-line-soft and --fm-panel-2 surface blends.
  * @type {Object}
  */
 export const PALETTES = {
-    dark : {ink: '#d6dce6', inkDim: '#8b97a8', signal: '#5eead4', route: '#f5c451', line: '#262f3d', lineSoft: '#1c242f', ground: '#0b0e13', panel: '#141a23', panel2: '#1a212c'},
-    light: {ink: '#1f2733', inkDim: '#5a6b80', signal: '#0f766e', route: '#a16207', line: '#d3dae4', lineSoft: '#e4e9f0', ground: '#f2f5f9', panel: '#ffffff', panel2: '#f7f9fc'}
+    dark: {
+        ink     : '#cfd6e1',
+        inkDim  : '#939fb1',
+        signal  : '#4ad3c2',
+        route   : '#f5c451',
+        line    : '#262f3d',
+        lineSoft: '#1d242f',
+        ground  : '#0c0f14',
+        panel   : '#141a23',
+        panel2  : '#1b212a'
+    },
+    light: {
+        ink     : '#262f3d',
+        inkDim  : '#4d5c71',
+        signal  : '#16796e',
+        route   : '#a16207',
+        line    : '#cfd6e1',
+        lineSoft: '#e5e9ef',
+        ground  : '#eff2f6',
+        panel   : '#ffffff',
+        panel2  : '#f8fafe'
+    }
 };
 
 /**

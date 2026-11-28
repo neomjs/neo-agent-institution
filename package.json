@@ -95,6 +95,7 @@
         "parse5": "^8.1.1",
         "plist": "3.1.0",
         "postcss": "^8.5.33",
+        "postcss-selector-parser": "^7.2.1",
         "url": "^0.11.4",
         "webpack": "^5.113.0",
         "webpack-cli": "^7.3.1",

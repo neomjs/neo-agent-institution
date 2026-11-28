@@ -1,4 +1,147 @@
-import {test, expect, landFleetSample} from '../../fixtures.mjs';
+import {PALETTES} from '../../../../apps/agentos/canvas/fmPalette.mjs';
+import {readFileSync}                          from 'node:fs';
+import {sampleRoster}                          from '../../fixture/fleetSample.mjs';
+import {expect, landFleetRoster, landFleetSample, test} from '../../fixtures.mjs';
+
+const
+    engineGlobal  = '/dist/development/css/theme-neo/Global.css',
+    fleetGlobal   = '/dist/development/css/theme-neo/apps/agentos/Global.css',
+    paintRoles    = {
+        backgroundColor: '--neo-color-background-accent',
+        color          : '--neo-color-text-on-accent'
+    };
+
+/**
+ * @summary Resolves the expected tooltip colors from the installed Engine and Fleet source sheets.
+ * @param {String} scheme
+ * @returns {Promise<Object>}
+ */
+async function resolveFleetTooltipPaint(scheme) {
+    const {readThemeDeclarations, resolveValue} = await import('../../../../node_modules/neo.mjs/buildScripts/util/check-theme-palette.mjs');
+    const theme = `neo-theme-neo-${scheme}`;
+    const read = path => readThemeDeclarations(readFileSync(new URL(path, import.meta.url), 'utf8')).get(theme);
+    const declarations = new Map([
+        ...read('../../../../node_modules/neo.mjs/resources/css/theme-neo/Global.css'),
+        ...read('../../../../resources/css/theme-neo/apps/agentos/Global.css')
+    ]);
+
+    return Object.fromEntries(Object.entries(paintRoles).map(([property, role]) => {
+        const value = resolveValue(`var(${role})`, declarations, scheme);
+
+        expect(value, `${theme} declares ${role}`).toBeTruthy();
+        return [property, value]
+    }))
+}
+
+/**
+ * @summary Reads the nine live Fleet tokens as the opaque sRGB bytes a canvas can draw.
+ * @param {Object} page
+ * @returns {Promise<Object>}
+ */
+function readFleetCanvasPaint(page) {
+    return page.locator('.agent-os-viewport').first().evaluate(scope => {
+        const probe  = document.createElement('span'),
+              canvas = document.createElement('canvas'),
+              tokens = {
+                  ink: 'ink', inkDim: 'ink-dim', signal: 'signal', route: 'route',
+                  line: 'line', lineSoft: 'line-soft', ground: 'ground', panel: 'panel', panel2: 'panel-2'
+              };
+
+        canvas.width = canvas.height = 1;
+        const context = canvas.getContext('2d');
+
+        probe.style.position = 'absolute';
+        scope.append(probe);
+
+        try {
+            return Object.fromEntries(Object.entries(tokens).map(([key, token]) => {
+                const name = '--fm-' + token;
+
+                if (!getComputedStyle(probe).getPropertyValue(name).trim()) {
+                    throw new Error('Missing Fleet canvas token ' + name)
+                }
+
+                probe.style.color = 'var(' + name + ')';
+                context.clearRect(0, 0, 1, 1);
+                context.fillStyle = getComputedStyle(probe).color;
+                context.fillRect(0, 0, 1, 1);
+
+                const [red, green, blue, alpha] = context.getImageData(0, 0, 1, 1).data;
+
+                if (alpha !== 255) {
+                    throw new Error('Non-opaque Fleet canvas token ' + name)
+                }
+
+                return [key, '#' + [red, green, blue].map(channel => channel.toString(16).padStart(2, '0')).join('')]
+            }))
+        } finally {
+            probe.remove()
+        }
+    })
+}
+
+/**
+ * @summary Checks the loaded stylesheets, resolved roles, and painted colors of a built-in tooltip.
+ * @param {Object} page
+ * @param {Object} trigger
+ * @param {String} text
+ * @param {String} surface
+ * @param {Object} proof
+ * @returns {Promise<void>}
+ */
+async function expectFleetTooltipPaint(page, trigger, text, surface, proof) {
+    const paths = [engineGlobal, fleetGlobal];
+    const links = await page.evaluate(() => Array.from(document.styleSheets, sheet => sheet.href && new URL(sheet.href).pathname));
+    const requests = proof.responses.get(page);
+
+    expect(links, `${surface} loaded both palette stylesheets`).toEqual(expect.arrayContaining(paths));
+
+    for (const path of paths) {
+        expect([200, 304], `${surface} stylesheet response for ${path}`).toContain(requests?.get(path))
+    }
+
+    await test.info().attach(`${surface}-palette-stylesheets`, {
+        contentType: 'application/json',
+        body       : JSON.stringify(Object.fromEntries(requests))
+    });
+
+    await trigger.hover();
+    const tooltip = page.locator('.neo-tooltip:visible').filter({hasText: text});
+
+    await expect(tooltip).toBeVisible();
+
+    const result = await tooltip.evaluate((node, {expected, roles}) => {
+        const probe = document.createElement('span');
+
+        probe.style.position = 'absolute';
+        node.append(probe);
+
+        try {
+            const style = getComputedStyle(node);
+            const normalize = (backgroundColor, color) => {
+                probe.style.backgroundColor = backgroundColor;
+                probe.style.color = color;
+
+                const computed = getComputedStyle(probe);
+                return {backgroundColor: computed.backgroundColor, color: computed.color}
+            };
+
+            return {
+                paint    : {backgroundColor: style.backgroundColor, color: style.color},
+                roles    : normalize(`var(${roles.backgroundColor})`, `var(${roles.color})`),
+                expected : normalize(expected.backgroundColor, expected.color),
+                floating : !node.closest('.agent-os-viewport')
+            }
+        } finally {
+            probe.remove()
+        }
+    }, {expected: proof.expected, roles: paintRoles});
+
+    expect(result.floating, `${surface} uses the built-in floating tooltip`).toBe(true);
+    expect(result.roles, `${surface} tooltip resolves Fleet's palette roles`).toEqual(result.expected);
+    expect(result.paint, `${surface} tooltip paints Fleet's foreground and background`).toEqual(result.expected);
+    await page.mouse.move(0, 0)
+}
 
 /**
  * Whitebox-e2e for the cockpit's click pop-out: the agent-detail inspector detaches to a REAL
@@ -26,7 +169,7 @@ import {test, expect, landFleetSample} from '../../fixtures.mjs';
 test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural Link)', () => {
     test.setTimeout(120000);
 
-    const runRoundTrip = async (page, neuralLink, scheme) => {
+    const runRoundTrip = async (page, neuralLink, scheme, paletteProof) => {
         const pageErrors = [];
 
         page.on('pageerror', error => {
@@ -51,6 +194,11 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         await expect(page.locator('body')).toHaveClass(themePattern);
         await expect.poll(() => effectiveTheme(page.locator('.neo-viewport').first())).toBe(theme);
 
+        if (paletteProof) {
+            await expectFleetTooltipPaint(page, page.locator('.agent-theme-button'), 'Switch theme', 'Shell', paletteProof);
+            expect(await readFleetCanvasPaint(page), 'the canvas worker mirrors the live Fleet colors').toEqual(PALETTES[scheme])
+        }
+
         // 1) drill through the REAL controller seam (onAgentSelect: owner-held record + the
         // setItemAutoHidden reveal through the commit loop). Driven via callMethod because the
         // card-click → agentSelect DOM chain is regressed on dev (own bug ticket; the full
@@ -58,7 +206,10 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         // the production path. The tests' sample fleet lands as the fleet's answer first — nothing
         // is seeded any more.
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
-        await landFleetSample(page);
+        await landFleetSample(page, {roster: !paletteProof});
+        if (paletteProof) {
+            await landFleetRoster(page, sampleRoster.map(row => ({...row, repoPath: '/fixture/fleet-palette'})))
+        }
         await expect(page.locator('.fm-agent-card').first()).toBeVisible({timeout: 30000});
 
         const app   = await neuralLink.connectToApp('AgentOS'),
@@ -146,6 +297,28 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         await expect.poll(() => effectiveTheme(popup.locator('.fm-agent-detail'))).toBe(theme);
         expect(new URL(popup.url()).searchParams.get('theme')).toBe(theme);
 
+        if (paletteProof) {
+            await expectFleetTooltipPaint(popup, popup.locator('.fm-detail-repo-copy'), 'Copy the clone path', 'Detached Detail', paletteProof);
+
+            if (scheme === 'dark') {
+                await page.locator('.agent-theme-button').click();
+                await expect(page.locator('body')).toHaveClass(/\bneo-theme-neo-light\b/);
+                await expect(popup.locator('body')).toHaveClass(/\bneo-theme-neo-light\b/);
+                await expect.poll(() => effectiveTheme(popup.locator('.fm-agent-detail'))).toBe('neo-theme-neo-light');
+
+                const lightProof = {...paletteProof, expected: await resolveFleetTooltipPaint('light')};
+
+                await expectFleetTooltipPaint(page, page.locator('.agent-theme-button'), 'Switch theme', 'Shell after switch', lightProof);
+                await expectFleetTooltipPaint(popup, popup.locator('.fm-detail-repo-copy'), 'Copy the clone path', 'Detached Detail after switch', lightProof);
+                expect(await readFleetCanvasPaint(page), 'the canvas mirror follows the Light switch').toEqual(PALETTES.light);
+
+                await page.locator('.agent-theme-button').click();
+                await expect(page.locator('body')).toHaveClass(themePattern);
+                await expect(popup.locator('body')).toHaveClass(themePattern);
+                await expect.poll(() => effectiveTheme(popup.locator('.fm-agent-detail'))).toBe(theme)
+            }
+        }
+
         // the SAME live instance renders in the popup; the main window no longer shows it
         await expect(popup.locator('.fm-agent-detail')).toBeVisible({timeout: 30000});
         await expect(page.locator('.fm-agent-detail')).toHaveCount(0);
@@ -225,5 +398,30 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
     test('detaches, follows live selection and returns on the same heap in Light', ({page, neuralLink}) =>
         runRoundTrip(page, neuralLink, 'light'));
     test('detaches, follows live selection and returns on the same heap in Dark', ({page, neuralLink}) =>
-        runRoundTrip(page, neuralLink, 'dark'))
+        runRoundTrip(page, neuralLink, 'dark'));
+
+    for (const scheme of ['dark', 'light']) {
+        test(`Fleet palette styles and paints floating tooltips in both windows in ${scheme}`, async ({page, neuralLink}) => {
+            const context   = page.context();
+            const responses = new Map();
+            const track     = response => {
+                const path = new URL(response.url()).pathname;
+
+                if (path === engineGlobal || path === fleetGlobal) {
+                    const window = response.frame().page();
+                    const sheets = responses.get(window) ?? new Map();
+
+                    sheets.set(path, response.status());
+                    responses.set(window, sheets)
+                }
+            };
+
+            context.on('response', track);
+            try {
+                await runRoundTrip(page, neuralLink, scheme, {expected: await resolveFleetTooltipPaint(scheme), responses})
+            } finally {
+                context.off('response', track)
+            }
+        })
+    }
 });

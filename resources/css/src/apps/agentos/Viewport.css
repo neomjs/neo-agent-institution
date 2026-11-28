@@ -254,8 +254,8 @@
     --neo-button-background-color-disabled: transparent;
     --neo-button-border-disabled: 1px solid transparent;
     --neo-button-border-radius: 999px;
-    --neo-button-glyph-color-disabled: var(--fm-ink-faint);
-    --neo-button-color-disabled: var(--fm-ink-faint);
+    --neo-button-glyph-color-disabled: var(--neo-color-text-disabled);
+    --neo-button-color-disabled: var(--neo-color-text-disabled);
     --neo-button-ghost-background-color: transparent;
     --neo-button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, transparent);
     --neo-button-ghost-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
