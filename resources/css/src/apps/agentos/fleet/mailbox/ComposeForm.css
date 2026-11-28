@@ -92,9 +92,9 @@
         /* at the cockpit's field scale (the SSOT's search field: the body role, a 4/8 inset), and on
            no stock surface — the theme's item grey never reaches a row, in any state */
         .fm-operator-compose-recipients-list {
-            --list-item-background-color       : transparent;
-            --list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
-            --list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+            --neo-list-item-background-color       : transparent;
+            --neo-list-item-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 20%, transparent);
+            --neo-list-item-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
 
             border       : 1px solid var(--fm-line-soft);
             border-radius: 6px;

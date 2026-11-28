@@ -35,12 +35,12 @@
        beside it (`all mail` · `for you · 3 open`) are the same chip, pressed for the list in view. */
     .fm-pane-actions .fm-compose-affordance,
     .fm-pane-actions .fm-mailbox-view-chip {
-        --button-background-color      : transparent;
-        --button-background-color-hover: transparent;
-        --button-border                : 1px solid var(--fm-line-soft);
-        --button-border-hover          : 1px solid var(--fm-ink-dim);
-        --button-border-pressed        : 1px solid var(--fm-ink-dim);
-        --button-border-radius         : 6px;
+        --neo-button-background-color      : transparent;
+        --neo-button-background-color-hover: transparent;
+        --neo-button-border                : 1px solid var(--fm-line-soft);
+        --neo-button-border-hover          : 1px solid var(--fm-ink-dim);
+        --neo-button-border-pressed        : 1px solid var(--fm-ink-dim);
+        --neo-button-border-radius         : 6px;
 
         .neo-button-text {
             color: var(--fm-ink-dim);

@@ -101,7 +101,7 @@ test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neur
         // and could not resize the strip its labels sit in.
         const railSizeToken = await page.evaluate(() => {
             const rail = document.querySelector('.neo-dashboard-dock-edge-rail');
-            return rail ? getComputedStyle(rail).getPropertyValue('--dock-edge-rail-size').trim() : ''
+            return rail ? getComputedStyle(rail).getPropertyValue('--neo-dock-edge-rail-size').trim() : ''
         });
 
         expect(railSizeToken, 'the strip\'s extent must be an overridable token, not a constant').not.toBe('');
@@ -241,7 +241,7 @@ test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neur
             if (!rail || !zone) return null;
 
             const probe = value => {
-                zone.style.setProperty('--dock-edge-rail-size', value);
+                zone.style.setProperty('--neo-dock-edge-rail-size', value);
                 const r = rail.getBoundingClientRect(),
                       o = document.querySelector('.neo-dashboard-dock-reveal-overlay').getBoundingClientRect();
                 return {rail: Math.round(r.width), gap: Math.round(r.left - o.right)}
@@ -250,7 +250,7 @@ test.describe('AgentOS Fleet cockpit — rail measure + drawer content fit (Neur
             const before = probe('20px'),
                   after  = probe('48px');
 
-            zone.style.removeProperty('--dock-edge-rail-size');
+            zone.style.removeProperty('--neo-dock-edge-rail-size');
 
             return {before, after}
         });

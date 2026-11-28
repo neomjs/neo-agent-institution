@@ -96,9 +96,9 @@
 
     /* the quiet links: Change, Other choices, Details — text, underlined, on the detail role */
     .neo-button.fm-setup-link {
-        --button-height   : 20px;
-        --button-min-width: 0;
-        --button-padding  : 0;
+        --neo-button-height   : 20px;
+        --neo-button-min-width: 0;
+        --neo-button-padding  : 0;
 
         border     : 0;
         background : transparent;
@@ -170,7 +170,7 @@
     }
 
     .neo-button.fm-setup-preset-choose {
-        --button-height: 24px;
+        --neo-button-height: 24px;
 
         margin-top : var(--fm-space-2);
         align-self : start;

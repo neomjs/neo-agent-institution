@@ -52,10 +52,10 @@ let domAccess, originalGetComputedStyle;
 
 /**
  * @param {Number} index
- * @param {String} value `--motion-base` as the host's window would answer it
+ * @param {String} value `--neo-duration-base` as the host's window would answer it
  */
 function answer(index, value) {
-    reads[index]({'--motion-base': value})
+    reads[index]({'--neo-duration-base': value})
 }
 
 /**

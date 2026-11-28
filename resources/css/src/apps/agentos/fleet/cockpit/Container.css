@@ -24,7 +24,7 @@
     }
 
     /* §04 proportion record (#17211 finding 2). The engine exposes the strip's extent as
-       `--dock-edge-rail-size`; this is the cockpit's deliberate proportion decision.
+       `--neo-dock-edge-rail-size`; this is the cockpit's deliberate proportion decision.
 
        Grounded in a live measurement of the label's own box, NOT in the historical "18px label"
        figure carried by the engine comment — that number predates the 11px/1 metric floor and is
@@ -50,7 +50,7 @@
        The number itself lives in `--fm-frame-gutter` (Viewport.css): every full-width chrome row
        ends its last control on the rail's line, so the rail and the rows read one token. */
     .neo-dashboard {
-        --dock-edge-rail-size: var(--fm-frame-gutter);
+        --neo-dock-edge-rail-size: var(--fm-frame-gutter);
     }
 
     /* The dock projection's tab zones are NAVIGATION vessels inside the FM tonal stack — the generic
@@ -83,16 +83,16 @@
            resting panel ground makes that gap read as cockpit ground between chips, and each state
            takes its own ground (panel, panel-2, line), so "under the pointer" and "open" never
            share a picture. The rail's job is answering which pane is showing. */
-        --dock-rail-tab-background      : var(--fm-panel);
-        --dock-rail-tab-background-hover: var(--fm-panel-2);
-        --dock-rail-tab-color           : var(--fm-ink-dim);
-        --dock-rail-tab-color-hover     : var(--fm-ink);
-        --dock-transition-duration-fast : var(--fm-motion-fast);
+        --neo-dock-rail-tab-background      : var(--fm-panel);
+        --neo-dock-rail-tab-background-hover: var(--fm-panel-2);
+        --neo-dock-rail-tab-color           : var(--fm-ink-dim);
+        --neo-dock-rail-tab-color-hover     : var(--fm-ink);
+        --neo-dock-transition-duration-fast : var(--fm-motion-fast);
 
         /* The REVEALED tab: the strongest ground plus the SIGNAL ink, FM's existing vocabulary for
            "this is the one", structural and never hue-alone, and never a primary slab. */
-        --dock-rail-tab-background-active: var(--fm-line);
-        --dock-rail-tab-color-active     : var(--fm-signal);
+        --neo-dock-rail-tab-background-active: var(--fm-line);
+        --neo-dock-rail-tab-color-active     : var(--fm-signal);
 
         /* Voice stays app-side: mono, tracking and case are the FM chrome role, not dock
            capability. The engine owns the 11px/1 metric floor; this speaks the role on top. */
@@ -116,11 +116,11 @@
            every button in it — the presets, the state remedies, the toggles, Start fleet — without
            a per-selector rule each. 32 = 2 × 16 on the spacing rhythm. The label takes the body
            ROLE at its reader (.neo-button-text, where the engine sets the size from
-           --button-text-font-size): a role, never a pixel (§04). */
-        --button-height       : 32px;
-        --button-min-width    : 32px;
-        --button-padding      : 0 var(--fm-space-3);
-        --button-border-radius: 6px;
+           --neo-button-text-font-size): a role, never a pixel (§04). */
+        --neo-button-height       : 32px;
+        --neo-button-min-width    : 32px;
+        --neo-button-padding      : 0 var(--fm-space-3);
+        --neo-button-border-radius: 6px;
 
         .neo-button-text {
             font       : var(--fm-text-body);
@@ -168,7 +168,7 @@
             color     : var(--fm-ink-dim);
             box-shadow   : none;
             font-weight  : 500;
-            transition   : background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+            transition   : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 
             &:hover {
                 border-color: var(--fm-ink-dim);
@@ -188,7 +188,7 @@
             color      : var(--fm-ink-dim);
             box-shadow : none;
             font-weight: 500;
-            transition : background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+            transition : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 
             &:hover {
                 border-color: color-mix(in srgb, var(--fm-state-wedged) 55%, var(--fm-line));
@@ -221,7 +221,7 @@
             color     : var(--fm-signal);
             box-shadow   : none;
             font-weight  : 600;
-            transition   : background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+            transition   : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 
             &:hover {
                 border-color: var(--fm-signal);
@@ -249,11 +249,11 @@
        on the overlay itself, the element that reads them, so no projected-scope re-declaration can
        shadow the values. */
     .neo-dashboard-dock-reveal-overlay {
-        --dock-reveal-background     : var(--fm-rail);
-        --dock-reveal-border         : 1px solid var(--fm-line);
-        --dock-reveal-min-inline-size: 15rem;
-        --dock-reveal-radius         : 0;
-        --dock-reveal-shadow         : 0 12px 32px color-mix(in srgb, var(--fm-ground) 72%, transparent);
+        --neo-dock-reveal-background     : var(--fm-rail);
+        --neo-dock-reveal-border         : 1px solid var(--fm-line);
+        --neo-dock-reveal-min-inline-size: 15rem;
+        --neo-dock-reveal-border-radius         : 0;
+        --neo-dock-reveal-box-shadow         : 0 12px 32px color-mix(in srgb, var(--fm-ground) 72%, transparent);
     }
 
     /* The shell-owned header row is the engine's inline tab-header primitive now (an active title
@@ -316,12 +316,12 @@
        an engine one. */
     .neo-dashboard-dock-splitter,
     .neo-splitter {
-        --dock-splitter-background       : color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
-        --dock-splitter-background-hover : color-mix(in srgb, var(--fm-signal) 45%, transparent);
-        --dock-splitter-background-active: color-mix(in srgb, var(--fm-signal) 45%, transparent);
-        --dock-splitter-handle-size      : 0;
-        --dock-splitter-radius           : 0;
-        --dock-transition-duration-fast  : var(--fm-motion-fast);
+        --neo-dock-splitter-background-color       : color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
+        --neo-dock-splitter-background-color-hover : color-mix(in srgb, var(--fm-signal) 45%, transparent);
+        --neo-dock-splitter-background-color-active: color-mix(in srgb, var(--fm-signal) 45%, transparent);
+        --neo-dock-splitter-handle-size      : 0;
+        --neo-dock-splitter-border-radius           : 0;
+        --neo-dock-transition-duration-fast  : var(--fm-motion-fast);
     }
 
     /* One splitter language: the engine Splitter a hosted pane composes (Memories, the Activity
@@ -329,12 +329,12 @@
        itself because they are declared on the reading element and no pane inherits them. The frame
        maps them since no pane owns splitter paint; the drag proxy mounts on document.body, outside. */
     .neo-splitter {
-        --splitter-background-color : var(--dock-splitter-background);
-        --splitter-border           : none;
-        --splitter-border-radius    : var(--dock-splitter-radius);
-        --splitter-hover-color      : var(--dock-splitter-background-hover);
-        --splitter-margin-horizontal: 0;
-        --splitter-margin-vertical  : 0;
+        --neo-splitter-background-color : var(--neo-dock-splitter-background-color);
+        --neo-splitter-border           : none;
+        --neo-splitter-border-radius    : var(--neo-dock-splitter-border-radius);
+        --neo-splitter-background-color-hover      : var(--neo-dock-splitter-background-color-hover);
+        --neo-splitter-margin-horizontal: 0;
+        --neo-splitter-margin-vertical  : 0;
     }
 
     /* ── the declared collapse order — two designed forms, no pill or button ever cut mid-word:

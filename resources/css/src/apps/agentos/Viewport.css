@@ -58,8 +58,8 @@
        vocabulary — pointing at the standards tiers, never at dock-scoped aliases. The
        vocabulary-layer reduced-motion collapse (the engine's src/Global.css) flows through the alias by
        construction, so the accessibility contract is inherited, not re-implemented. */
-    --fm-motion-panel: var(--motion-panel, 280ms);
-    --fm-motion-fast: var(--motion-fast, 120ms);
+    --fm-motion-panel: var(--neo-duration-panel, 280ms);
+    --fm-motion-fast: var(--neo-duration-fast, 120ms);
     /* The liveness pulse period (motion ladder): decoration only — the hue + word carry the
        fact, and the animation exists only under no-preference (the StateDot inclusion-gate). */
     --fm-motion-pulse: 2400ms;
@@ -98,7 +98,7 @@
        on the flush line the pane boxes and ledger pills end on — fields align by ink, boxes
        by border (measured: without this the glyph reads ~6px shy of the content edge) */
     margin-right: -6px;
-    transition: background var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+    transition: background var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 }
 .agent-os-viewport.neo-viewport .neo-tab-header-toolbar .neo-button.neo-toolbar-action:hover,
 .fm-instance-menu .neo-tab-header-toolbar .neo-button.neo-toolbar-action:hover,
@@ -170,7 +170,7 @@
     color: var(--fm-ink-dim);
     box-shadow: none;
     font-weight: 500;
-    transition: background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+    transition: background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 }
 .agent-os-viewport.neo-viewport .neo-button.fm-detail-window-toggle:hover,
 .agent-os-viewport.neo-viewport .neo-button.fm-memories-window-toggle:hover,
@@ -220,10 +220,10 @@
 .fm-awaiting-merge-menu .fm-pane-actions :where(.neo-button),
 .fm-nightshift-menu :where(.neo-button.neo-button-ghost),
 .fm-nightshift-menu .fm-pane-actions :where(.neo-button) {
-    --button-glyph-margin: 0 var(--fm-space-1) 0 0;
-    --button-height: auto;
-    --button-min-width: 0;
-    --button-padding: var(--fm-chip-pad-y) var(--fm-space-2);
+    --neo-button-glyph-margin: 0 var(--fm-space-1) 0 0;
+    --neo-button-height: auto;
+    --neo-button-min-width: 0;
+    --neo-button-padding: var(--fm-chip-pad-y) var(--fm-space-2);
 }
 .agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost) .neo-button-text,
 .agent-os-viewport.neo-viewport .fm-pane-actions :where(.neo-button) .neo-button-text,
@@ -248,31 +248,31 @@
 .fm-instance-menu :where(.neo-button.neo-button-ghost),
 .fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost),
 .fm-nightshift-menu :where(.neo-button.neo-button-ghost) {
-    --button-background-color-disabled: transparent;
-    --button-border-disabled: 1px solid transparent;
-    --button-border-radius: 999px;
-    --button-glyph-color-disabled: var(--fm-ink-faint);
-    --button-text-color-disabled: var(--fm-ink-faint);
-    --button-ghost-background-color: transparent;
-    --button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, transparent);
-    --button-ghost-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
-    --button-ghost-border: 1px solid transparent;
-    --button-ghost-border-active: 1px solid transparent;
-    --button-ghost-border-hover: 1px solid transparent;
-    --button-ghost-border-pressed: 1px solid var(--fm-line-soft);
-    --button-ghost-glyph-color: var(--fm-ink-dim);
-    --button-ghost-glyph-color-active: var(--fm-ink);
-    --button-ghost-glyph-color-hover: var(--fm-ink);
-    --button-ghost-text-color: var(--fm-ink-dim);
-    --button-ghost-text-color-active: var(--fm-ink);
-    --button-ghost-text-color-hover: var(--fm-ink);
+    --neo-button-background-color-disabled: transparent;
+    --neo-button-border-disabled: 1px solid transparent;
+    --neo-button-border-radius: 999px;
+    --neo-button-glyph-color-disabled: var(--fm-ink-faint);
+    --neo-button-color-disabled: var(--fm-ink-faint);
+    --neo-button-ghost-background-color: transparent;
+    --neo-button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, transparent);
+    --neo-button-ghost-background-color-hover: color-mix(in srgb, var(--fm-ink-dim) 14%, transparent);
+    --neo-button-ghost-border: 1px solid transparent;
+    --neo-button-ghost-border-active: 1px solid transparent;
+    --neo-button-ghost-border-hover: 1px solid transparent;
+    --neo-button-ghost-border-pressed: 1px solid var(--fm-line-soft);
+    --neo-button-ghost-glyph-color: var(--fm-ink-dim);
+    --neo-button-ghost-glyph-color-active: var(--fm-ink);
+    --neo-button-ghost-glyph-color-hover: var(--fm-ink);
+    --neo-button-ghost-color: var(--fm-ink-dim);
+    --neo-button-ghost-color-active: var(--fm-ink);
+    --neo-button-ghost-color-hover: var(--fm-ink);
 }
 .agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost).pressed,
 .fm-instance-menu :where(.neo-button.neo-button-ghost).pressed,
 .fm-awaiting-merge-menu :where(.neo-button.neo-button-ghost).pressed,
 .fm-nightshift-menu :where(.neo-button.neo-button-ghost).pressed {
-    --button-ghost-glyph-color: var(--fm-ink);
-    --button-ghost-text-color: var(--fm-ink);
+    --neo-button-ghost-glyph-color: var(--fm-ink);
+    --neo-button-ghost-color: var(--fm-ink);
 }
 .agent-os-viewport.neo-viewport :where(.neo-button.neo-button-ghost):focus-visible,
 .fm-instance-menu :where(.neo-button.neo-button-ghost):focus-visible,
@@ -454,10 +454,10 @@
        reads these four at the element (button/Base.css: height, min-width, padding,
        border-radius), so the theme switch becomes a 32px square centered in the 50px band
        instead of a 48px tile filling it. The instance switcher keeps its own chip geometry. */
-    --button-height: 32px;
-    --button-min-width: 32px;
-    --button-padding: 0;
-    --button-border-radius: 6px;
+    --neo-button-height: 32px;
+    --neo-button-min-width: 32px;
+    --neo-button-padding: 0;
+    --neo-button-border-radius: 6px;
 }
 @media (max-width: 560px) {
     .agent-os-viewport.neo-viewport .agent-top-toolbar,
@@ -547,7 +547,7 @@
     box-shadow: none;
     font-family: var(--fm-font-sans);
     font-weight: 500;
-    transition: background var(--fm-motion-fast) var(--ease-out-soft), border-color var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+    transition: background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 }
 .agent-os-viewport.neo-viewport .neo-button.agent-button:hover,
 .fm-instance-menu .neo-button.agent-button:hover,
@@ -597,8 +597,8 @@
 .fm-instance-menu .neo-button.agent-nightshift-button,
 .fm-awaiting-merge-menu .neo-button.agent-nightshift-button,
 .fm-nightshift-menu .neo-button.agent-nightshift-button {
-    --button-glyph-margin: 0 var(--fm-space-1) 0 0;
-    --button-padding: 0 var(--fm-space-2);
+    --neo-button-glyph-margin: 0 var(--fm-space-1) 0 0;
+    --neo-button-padding: 0 var(--fm-space-2);
 }
 .agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button .neo-button-text,
 .fm-instance-menu .neo-button.agent-nightshift-button .neo-button-text,
@@ -639,8 +639,8 @@
     .fm-instance-menu .neo-button.agent-nightshift-button,
     .fm-awaiting-merge-menu .neo-button.agent-nightshift-button,
     .fm-nightshift-menu .neo-button.agent-nightshift-button {
-        --button-glyph-margin: 0;
-        --button-padding: 0;
+        --neo-button-glyph-margin: 0;
+        --neo-button-padding: 0;
     }
     .agent-os-viewport.neo-viewport .neo-button.agent-nightshift-button .neo-button-text,
     .fm-instance-menu .neo-button.agent-nightshift-button .neo-button-text,
@@ -738,18 +738,18 @@
 .fm-instance-menu .neo-tab-header-toolbar.neo-dock-top,
 .fm-awaiting-merge-menu .neo-tab-header-toolbar.neo-dock-top,
 .fm-nightshift-menu .neo-tab-header-toolbar.neo-dock-top {
-    --tab-button-height: 30px;
-    --tab-button-height-pressed: 30px;
-    --tab-button-padding: 0 var(--fm-space-3);
-    --tab-button-gap: var(--fm-space-2);
-    --tab-button-text-color: var(--fm-ink-dim);
-    --tab-button-glyph-color: var(--fm-ink-dim);
-    --tab-button-glyph-color-pressed: var(--fm-ink);
-    --tab-button-background-color: transparent;
-    --tab-button-background-color-hover: var(--fm-panel);
-    --tab-header-inline-background-color: var(--fm-panel);
-    --tab-header-inline-background-image: none;
-    --tab-header-inline-box-shadow: inset 0 -1px 0 var(--fm-line);
+    --neo-tab-button-height: 30px;
+    --neo-tab-button-height-pressed: 30px;
+    --neo-tab-button-padding: 0 var(--fm-space-3);
+    --neo-tab-button-gap: var(--fm-space-2);
+    --neo-tab-button-color: var(--fm-ink-dim);
+    --neo-tab-button-glyph-color: var(--fm-ink-dim);
+    --neo-tab-button-glyph-color-pressed: var(--fm-ink);
+    --neo-tab-button-background-color: transparent;
+    --neo-tab-button-background-color-hover: var(--fm-panel);
+    --neo-tab-header-inline-background-color: var(--fm-panel);
+    --neo-tab-header-inline-background-image: none;
+    --neo-tab-header-inline-box-shadow: inset 0 -1px 0 var(--fm-line);
 }
 .agent-os-viewport.neo-viewport,
 .fm-instance-menu,
@@ -771,8 +771,8 @@
 .fm-awaiting-merge-menu .neo-tab-strip,
 .fm-nightshift-menu .neo-tab-header-toolbar,
 .fm-nightshift-menu .neo-tab-strip {
-    --tab-indicator-background-color-active: var(--fm-signal);
-    --tab-strip-height: 2px;
+    --neo-tab-indicator-background-color-active: var(--fm-signal);
+    --neo-tab-strip-height: 2px;
 }
 .agent-os-viewport.neo-viewport,
 .fm-instance-menu,
@@ -803,11 +803,11 @@
 .fm-instance-menu .agent-shell > .neo-tab-header-toolbar,
 .fm-awaiting-merge-menu .agent-shell > .neo-tab-header-toolbar,
 .fm-nightshift-menu .agent-shell > .neo-tab-header-toolbar {
-    --tab-button-text-color: var(--fm-ink-dim);
-    --tab-button-glyph-color: var(--fm-ink-dim);
-    --tab-button-glyph-color-pressed: var(--fm-ink);
-    --tab-button-background-color: transparent;
-    --tab-button-background-color-hover: var(--fm-panel);
+    --neo-tab-button-color: var(--fm-ink-dim);
+    --neo-tab-button-glyph-color: var(--fm-ink-dim);
+    --neo-tab-button-glyph-color-pressed: var(--fm-ink);
+    --neo-tab-button-background-color: transparent;
+    --neo-tab-button-background-color-hover: var(--fm-panel);
     background: var(--fm-rail);
     border-right: 1px solid var(--fm-line);
     /* An icon rail (#267): six rotated labels made the nav a column of text competing with the
@@ -936,7 +936,7 @@
        rgb(14,15,13) boxes inside it — read as a box grid, it was a leak). Declared on the
        container, nearest to itself, so the theme-root declaration cannot tie. */
     .neo-container {
-        --container-background-color: transparent;
+        --neo-container-background-color: transparent;
     }
 }
 
@@ -944,9 +944,9 @@
    splitter mapping: it wears the dock splitter's active formula (cockpit/Container.css) on the FM
    signal its own theme class declares, and the dock's flat, borderless geometry. */
 .neo-dragproxy.neo-splitter {
-    --splitter-border           : none;
-    --splitter-border-radius    : 0;
-    --splitter-hover-color      : color-mix(in srgb, var(--fm-signal) 45%, transparent);
-    --splitter-margin-horizontal: 0;
-    --splitter-margin-vertical  : 0;
+    --neo-splitter-border           : none;
+    --neo-splitter-border-radius    : 0;
+    --neo-splitter-background-color-hover      : color-mix(in srgb, var(--fm-signal) 45%, transparent);
+    --neo-splitter-margin-horizontal: 0;
+    --neo-splitter-margin-vertical  : 0;
 }

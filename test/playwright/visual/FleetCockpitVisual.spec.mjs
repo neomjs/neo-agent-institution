@@ -1386,7 +1386,7 @@ test.describe('FM cockpit — visual baselines (the design-gate scope floor)', (
                 active = await dock.evaluate(el => {
                     const probe = el.appendChild(document.createElement('div'));
 
-                    probe.style.backgroundColor = 'var(--dock-splitter-background-active)';
+                    probe.style.backgroundColor = 'var(--neo-dock-splitter-background-color-active)';
 
                     const value = getComputedStyle(probe).backgroundColor;
 

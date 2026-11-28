@@ -224,12 +224,12 @@ test.describe('AgentOS fleet roster — semantic list selection + stable animate
                         gap                : listStyle.gap,
                         gridTemplateColumns: listStyle.gridTemplateColumns,
                         tokens             : {
-                            active  : listStyle.getPropertyValue('--list-item-background-color-active').trim(),
-                            base    : listStyle.getPropertyValue('--list-item-background-color').trim(),
-                            focus   : listStyle.getPropertyValue('--list-item-focus-outline').trim(),
-                            hover   : listStyle.getPropertyValue('--list-item-background-color-hover').trim(),
-                            padding : listStyle.getPropertyValue('--list-item-padding').trim(),
-                            selected: listStyle.getPropertyValue('--list-item-background-color-selected').trim()
+                            active  : listStyle.getPropertyValue('--neo-list-item-background-color-active').trim(),
+                            base    : listStyle.getPropertyValue('--neo-list-item-background-color').trim(),
+                            focus   : listStyle.getPropertyValue('--neo-list-item-outline-focus').trim(),
+                            hover   : listStyle.getPropertyValue('--neo-list-item-background-color-hover').trim(),
+                            padding : listStyle.getPropertyValue('--neo-list-item-padding').trim(),
+                            selected: listStyle.getPropertyValue('--neo-list-item-background-color-selected').trim()
                         }
                     },
                     selected: {

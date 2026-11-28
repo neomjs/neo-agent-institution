@@ -46,10 +46,10 @@
         color        : var(--fm-ink-dim);
         font-weight  : 500;
         height       : 32px;   /* the cockpit bar's action height, not the stock slab */
-        transition   : background var(--motion-fast) var(--ease-out-soft), border-color var(--motion-fast) var(--ease-out-soft), color var(--motion-fast) var(--ease-out-soft);
+        transition   : background var(--neo-duration-fast) var(--neo-ease-out), border-color var(--neo-duration-fast) var(--neo-ease-out), color var(--neo-duration-fast) var(--neo-ease-out);
 
         /* the label takes the body role at its reader: the engine sizes .neo-button-text from
-           --button-text-font-size, so a size on the button never reached the text */
+           --neo-button-text-font-size, so a size on the button never reached the text */
         .neo-button-text {
             font       : var(--fm-text-body);
             font-weight: inherit;   /* the 500 above is the button's, the shorthand must not reset it */

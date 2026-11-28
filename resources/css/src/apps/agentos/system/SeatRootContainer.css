@@ -72,11 +72,11 @@
 /* the engine's list paints its rows through these tokens (and colors a hovered row through the
    container color); bound here, every state stays on the panel */
 .fm-seat-move-list.neo-list {
-    --list-container-list-color        : var(--fm-ink);
-    --list-item-background-color       : var(--fm-panel);
-    --list-item-background-color-active: var(--fm-panel);
-    --list-item-background-color-hover : var(--fm-panel);
-    --list-item-padding                : var(--fm-space-2);
+    --neo-list-container-list-color        : var(--fm-ink);
+    --neo-list-item-background-color       : var(--fm-panel);
+    --neo-list-item-background-color-active: var(--fm-panel);
+    --neo-list-item-background-color-hover : var(--fm-panel);
+    --neo-list-item-padding                : var(--fm-space-2);
 
     background    : transparent;
     display       : flex;

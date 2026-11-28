@@ -6,9 +6,9 @@ import {test, expect} from '../../fixtures.mjs';
  * `no-preference`. The ratified motion audit rejects source inference as motion evidence — this reads
  * the browser's COMPUTED values on the mounted surface, across both vocabulary tiers the cleanup touches:
  *
- * - `--motion-fast` (the `.agent-button` / `.fm-reconnect-button` / `.fm-fleet-start` hover pairs), proven
+ * - `--neo-duration-fast` (the `.agent-button` / `.fm-reconnect-button` / `.fm-fleet-start` hover pairs), proven
  *   on a real rendered cockpit-bar button's computed `transition-duration`;
- * - `--motion-fast` AND `--motion-base` (the `--motion-base` tier carries the `DemoAWorkspace` pip +
+ * - `--neo-duration-fast` AND `--neo-duration-base` (the `--neo-duration-base` tier carries the `DemoAWorkspace` pip +
  *   the `HealthBar` count fade), proven by the document-root computed token values — the live cascade
  *   resolution of the engine `src/Global.css`'s `prefers-reduced-motion` override, not a source read.
  *
@@ -18,7 +18,7 @@ import {test, expect} from '../../fixtures.mjs';
  * Run: NEO_E2E_PORT=8121 npx playwright test agentos/FmReducedMotionCollapse -c test/playwright/playwright.config.e2e.mjs --workers=1
  *
  * @see the engine's resources/css/src/Global.css (the vocabulary + the reduced-motion collapse this witnesses)
- * @see apps/agentos/view/fleet/cockpit/Container.mjs (the cockpit-bar buttons carrying --motion-fast)
+ * @see apps/agentos/view/fleet/cockpit/Container.mjs (the cockpit-bar buttons carrying --neo-duration-fast)
  */
 test.describe('AgentOS FM motion vocabulary — reduced-motion collapse witness (#15509)', () => {
     test.setTimeout(90000);
@@ -27,7 +27,7 @@ test.describe('AgentOS FM motion vocabulary — reduced-motion collapse witness 
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.fm-fleet-cockpit')).toBeVisible({timeout: 60000});
 
-        // a real cockpit-bar button carries the --motion-fast hover transition (ungated)
+        // a real cockpit-bar button carries the --neo-duration-fast hover transition (ungated)
         const button = page.locator('.fm-cockpit-bar .neo-button').first();
 
         await expect(button).toBeVisible({timeout: 30000});
@@ -36,7 +36,7 @@ test.describe('AgentOS FM motion vocabulary — reduced-motion collapse witness 
         // read them where they resolve, not at :root (the FM tokens are scoped to an app/theme ancestor)
         const readTokens = () => button.evaluate(el => {
             const s = getComputedStyle(el);
-            return {fast: s.getPropertyValue('--motion-fast').trim(), base: s.getPropertyValue('--motion-base').trim()}
+            return {fast: s.getPropertyValue('--neo-duration-fast').trim(), base: s.getPropertyValue('--neo-duration-base').trim()}
         });
 
         // ── reduced motion: the tokens collapse, so the rendered transition is 0s ────────────────
@@ -49,8 +49,8 @@ test.describe('AgentOS FM motion vocabulary — reduced-motion collapse witness 
 
         const reducedTokens = await readTokens();
 
-        expect(reducedTokens.fast, '--motion-fast collapses to 0ms under reduced motion (the .agent-button / cockpit-bar tier)').toBe('0ms');
-        expect(reducedTokens.base, '--motion-base collapses to 0ms under reduced motion (the pip + health-bar tier)').toBe('0ms');
+        expect(reducedTokens.fast, '--neo-duration-fast collapses to 0ms under reduced motion (the .agent-button / cockpit-bar tier)').toBe('0ms');
+        expect(reducedTokens.base, '--neo-duration-base collapses to 0ms under reduced motion (the pip + health-bar tier)').toBe('0ms');
 
         // ── no preference: the transition is real (non-zero), so motion still exists when allowed ─
         await page.emulateMedia({reducedMotion: 'no-preference'});
@@ -61,8 +61,8 @@ test.describe('AgentOS FM motion vocabulary — reduced-motion collapse witness 
 
         const preferenceTokens = await readTokens();
 
-        expect(preferenceTokens.fast, '--motion-fast is non-zero under no-preference').not.toBe('0ms');
-        expect(preferenceTokens.base, '--motion-base is non-zero under no-preference').not.toBe('0ms')
+        expect(preferenceTokens.fast, '--neo-duration-fast is non-zero under no-preference').not.toBe('0ms');
+        expect(preferenceTokens.base, '--neo-duration-base is non-zero under no-preference').not.toBe('0ms')
     });
 
     /**

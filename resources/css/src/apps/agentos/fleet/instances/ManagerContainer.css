@@ -17,7 +17,7 @@
     z-index      : 60;
 
     /* reveal class (§06 T4): chrome enters from its edge, settles toward it */
-    animation: fm-im-reveal var(--fm-motion-panel) var(--ease-out-soft);
+    animation: fm-im-reveal var(--fm-motion-panel) var(--neo-ease-out);
 
     .fm-im-head {
         border-bottom : 1px solid var(--fm-line-soft);

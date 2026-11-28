@@ -162,8 +162,8 @@ test.describe('AgentOS fleet roster — the empty fleet\'s first-run CTA (#69)',
 
                     return {
                         ink               : probe('--fm-ink'),
-                        themeHoverSurface : probe('--button-background-color-hover'),
-                        themeActiveSurface: probe('--button-background-color-active'),
+                        themeHoverSurface : probe('--neo-button-background-color-hover'),
+                        themeActiveSurface: probe('--neo-button-background-color-active'),
                         background        : style.backgroundColor,
                         borderStyle       : style.borderTopStyle,
                         text              : getComputedStyle(cta.querySelector('.neo-button-text')).color,

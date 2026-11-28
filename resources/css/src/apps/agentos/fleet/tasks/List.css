@@ -10,10 +10,10 @@
        state (a glance list: `disableSelection`), so only the task plates carry a surface. Opaque,
        not transparent: the section heads are the engine's sticky list headers, and rows scroll
        beneath them. The pane lives in the strip and the vessel, both on the ground. */
-    --list-item-background-color         : var(--fm-ground);
-    --list-item-background-color-active  : var(--fm-ground);
-    --list-item-background-color-hover   : var(--fm-ground);
-    --list-item-background-color-selected: var(--fm-ground);
+    --neo-list-item-background-color         : var(--fm-ground);
+    --neo-list-item-background-color-active  : var(--fm-ground);
+    --neo-list-item-background-color-hover   : var(--fm-ground);
+    --neo-list-item-background-color-selected: var(--fm-ground);
 
     overflow  : auto;
     min-height: 0;
@@ -138,10 +138,10 @@
         }
 
         /* width updates are state transitions (the chip precedent); the vocabulary layer's
-           reduced-motion collapse flows through var(--motion-base) by construction */
+           reduced-motion collapse flows through var(--neo-duration-base) by construction */
         @media (prefers-reduced-motion: no-preference) {
             &::-webkit-progress-value {
-                transition: width var(--motion-base) var(--ease-out-soft);
+                transition: width var(--neo-duration-base) var(--neo-ease-out);
             }
         }
     }
@@ -274,7 +274,7 @@
        watchdog stamp, and the row runs the card's one state-change pass — reduced motion removes it */
     @media (prefers-reduced-motion: no-preference) {
         .fm-task-row.is-changed {
-            animation: fm-task-changed var(--fm-motion-panel) var(--ease-out-soft) 1;
+            animation: fm-task-changed var(--fm-motion-panel) var(--neo-ease-out) 1;
         }
     }
 

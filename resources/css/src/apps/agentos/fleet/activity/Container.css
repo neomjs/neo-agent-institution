@@ -97,9 +97,9 @@
     .fm-activity-list {
         /* the list is the row pool and the selection target, not the surface: its stock selected paint
            and navigator outline stay off, and the row below owns every visible pixel */
-        --list-item-background-color-selected: transparent;
-        --list-item-color-selected           : var(--list-container-list-color);
-        --list-item-focus-outline            : none;
+        --neo-list-item-background-color-selected: transparent;
+        --neo-list-item-color-selected           : var(--neo-list-container-list-color);
+        --neo-list-item-outline-focus            : none;
 
         background: transparent;
         min-height: 0;
@@ -137,14 +137,14 @@
     /* The shell's ghost skin on an opaque surface: the pill floats over rows, so it keeps a field
        and a hairline in every state, pressed included, where an in-line ghost verb has none. */
     .fm-stream-new-events {
-        --button-ghost-background-color       : var(--fm-panel-2);
-        --button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, var(--fm-panel-2));
-        --button-ghost-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, var(--fm-panel-2));
-        --button-ghost-border                 : 1px solid var(--fm-line);
-        --button-ghost-border-active          : 1px solid var(--fm-line);
-        --button-ghost-border-hover           : 1px solid var(--fm-line);
-        --button-ghost-glyph-color            : var(--fm-ink);
-        --button-ghost-text-color             : var(--fm-ink);
+        --neo-button-ghost-background-color       : var(--fm-panel-2);
+        --neo-button-ghost-background-color-active: color-mix(in srgb, var(--fm-ink-dim) 22%, var(--fm-panel-2));
+        --neo-button-ghost-background-color-hover : color-mix(in srgb, var(--fm-ink-dim) 14%, var(--fm-panel-2));
+        --neo-button-ghost-border                 : 1px solid var(--fm-line);
+        --neo-button-ghost-border-active          : 1px solid var(--fm-line);
+        --neo-button-ghost-border-hover           : 1px solid var(--fm-line);
+        --neo-button-ghost-glyph-color            : var(--fm-ink);
+        --neo-button-ghost-color             : var(--fm-ink);
 
         bottom    : var(--fm-space-3);
         box-shadow: var(--fm-shadow-overlay);

@@ -425,7 +425,7 @@
 
 @media (prefers-reduced-motion: no-preference) {
     .fm-agent-card .fm-card-action {
-        transition: background var(--fm-motion-fast) var(--ease-out-soft), color var(--fm-motion-fast) var(--ease-out-soft);
+        transition: background var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
     }
 }
 

@@ -237,7 +237,7 @@
     }
 
     .fm-detail-pane-repo .fm-repository-list.neo-list {
-        --list-container-list-color: var(--fm-ink-dim);
+        --neo-list-container-list-color: var(--fm-ink-dim);
 
         /* a list scrolls its own box; here the pane grows with its rows instead */
         display : grid;
@@ -317,10 +317,10 @@
        The thought stream pane's list shares the skin: one row per recent turn, the same rules. */
     .fm-detail-pr-list.neo-list,
     .fm-detail-turn-list.neo-list {
-        --list-container-list-color        : var(--fm-ink-dim);
-        --list-item-background-color       : transparent;
-        --list-item-background-color-active: transparent;
-        --list-item-background-color-hover : transparent;
+        --neo-list-container-list-color        : var(--fm-ink-dim);
+        --neo-list-item-background-color       : transparent;
+        --neo-list-item-background-color-active: transparent;
+        --neo-list-item-background-color-hover : transparent;
 
         background: transparent;
         display   : grid;
@@ -475,7 +475,7 @@
            tune stays local. The former `.neo-tab-button` rule here matched nothing — the live
            classes are `neo-tab-header-button neo-button` (src/tab/header/Button.mjs baseCls). */
         .neo-tab-header-button.neo-button {
-            --tab-button-padding: 0 var(--fm-space-2);
+            --neo-tab-button-padding: 0 var(--fm-space-2);
         }
     }
 

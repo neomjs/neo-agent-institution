@@ -37,7 +37,7 @@
     --fm-line-soft     : #1c242f;
     /* Elevation for FLOATING surfaces only (the switcher menu, the manage drawer) — the cockpit's
        in-flow panels stay border-carried. Follows the framework's per-component overlay-shadow
-       precedent (--pickerfield-container-box-shadow, --neo-app-content-sidenav-shadow): the value
+       precedent (--neo-pickerfield-container-box-shadow, --neo-app-content-sidenav-box-shadow): the value
        is skin-native, the structure files consume the token only. */
     --fm-shadow-overlay: 0 8px 24px rgba(0, 0, 0, .55);
     /* Persistent roster selection is the one in-flow elevation exception: shallower than an
@@ -89,14 +89,14 @@
    and reject to the artifact's dark signal/hot column. Global FM light-native tokens remain
    #14681's authority; this layer does not mint a parallel --fm-* vocabulary. */
 :root .neo-theme-neo-dark {
-    --agent-dock-preview-accept      : #5eead4;
-    --agent-dock-preview-accept-fill : rgba(94, 234, 212, 0.20);
-    --agent-dock-preview-reject      : #f4718b;
-    --agent-dock-preview-reject-fill : rgba(244, 113, 139, 0.16);
+    --neo-dock-preview-accept-color      : #5eead4;
+    --neo-dock-preview-accept-background-color : rgba(94, 234, 212, 0.20);
+    --neo-dock-preview-reject-color      : #f4718b;
+    --neo-dock-preview-reject-background-color : rgba(244, 113, 139, 0.16);
 
     /* The Signal-glow candidate's language (the preview design-language exploration): the
        dark signal column as chroma, an 18% flood, and the deep chip ground. */
-    --agent-dock-preview-signal        : #5eead4;
-    --agent-dock-preview-signal-fill   : rgba(94, 234, 212, 0.18);
-    --agent-dock-preview-signal-ground : rgba(11, 14, 19, 0.92);
+    --neo-dock-preview-signal-color        : #5eead4;
+    --neo-dock-preview-signal-background-color   : rgba(94, 234, 212, 0.18);
+    --neo-dock-preview-signal-background : rgba(11, 14, 19, 0.92);
 }
