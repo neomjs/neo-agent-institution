@@ -681,7 +681,7 @@ resources/css/src/apps/agentos/NightshiftButton.css
     3198096d08673b6d92b296f6486df3b59cb9828d
 
 resources/css/src/apps/agentos/Viewport.css
-    1f49ebe519b8eea17751d18fa725845eb0c74d9f
+    ff45bc58263135a2ac84251ab9c2c017bb059941
 
 resources/css/src/apps/agentos/accounts/List.css
     332909126c83b0a9e90897d0a7f28d8bd45fb893
