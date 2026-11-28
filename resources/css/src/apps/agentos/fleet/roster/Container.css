@@ -166,9 +166,9 @@
     --neo-button-border-hover            : 1px dashed var(--fm-signal);
     --neo-button-border-active           : 1px dashed var(--fm-signal);
     --neo-button-border-radius           : 8px;
-    --neo-button-color              : var(--fm-ink);
-    --neo-button-color-hover        : var(--fm-ink);
-    --neo-button-color-active       : var(--fm-ink);
+    --neo-button-color                   : var(--fm-ink);
+    --neo-button-color-hover             : var(--fm-ink);
+    --neo-button-color-active            : var(--fm-ink);
     --neo-button-glyph-color             : var(--fm-ink);
     --neo-button-glyph-color-hover       : var(--fm-ink);
     --neo-button-glyph-color-active      : var(--fm-ink);

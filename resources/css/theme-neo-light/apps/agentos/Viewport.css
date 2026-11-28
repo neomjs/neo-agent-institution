@@ -96,14 +96,14 @@
    and reject to the artifact's light signal/hot column without pre-empting #14681's global FM
    light-native token system. */
 :root .neo-theme-neo-light {
-    --neo-dock-preview-accept-color      : #0d9488;
+    --neo-dock-preview-accept-color            : #0d9488;
     --neo-dock-preview-accept-background-color : rgba(13, 148, 136, 0.14);
-    --neo-dock-preview-reject-color      : #be123c;
+    --neo-dock-preview-reject-color            : #be123c;
     --neo-dock-preview-reject-background-color : rgba(190, 18, 60, 0.12);
 
     /* The Signal-glow candidate's language: the deep-pigment daylight signal, a paper-safe
        14% flood, and a near-white chip ground (light chips float, they don't glow). */
-    --neo-dock-preview-signal-color        : #0f766e;
-    --neo-dock-preview-signal-background-color   : rgba(15, 118, 110, 0.14);
-    --neo-dock-preview-signal-background : rgba(255, 255, 255, 0.94);
+    --neo-dock-preview-signal-color            : #0f766e;
+    --neo-dock-preview-signal-background-color : rgba(15, 118, 110, 0.14);
+    --neo-dock-preview-signal-background       : rgba(255, 255, 255, 0.94);
 }

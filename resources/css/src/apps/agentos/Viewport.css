@@ -944,9 +944,9 @@
    splitter mapping: it wears the dock splitter's active formula (cockpit/Container.css) on the FM
    signal its own theme class declares, and the dock's flat, borderless geometry. */
 .neo-dragproxy.neo-splitter {
-    --neo-splitter-border           : none;
-    --neo-splitter-border-radius    : 0;
-    --neo-splitter-background-color-hover      : color-mix(in srgb, var(--fm-signal) 45%, transparent);
-    --neo-splitter-margin-horizontal: 0;
-    --neo-splitter-margin-vertical  : 0;
+    --neo-splitter-border                : none;
+    --neo-splitter-border-radius         : 0;
+    --neo-splitter-background-color-hover: color-mix(in srgb, var(--fm-signal) 45%, transparent);
+    --neo-splitter-margin-horizontal     : 0;
+    --neo-splitter-margin-vertical       : 0;
 }

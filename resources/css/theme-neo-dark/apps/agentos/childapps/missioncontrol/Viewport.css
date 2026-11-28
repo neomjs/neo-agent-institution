@@ -5,14 +5,14 @@
    and reject to the artifact's dark signal/hot column. Global FM light-native tokens remain
    #14681's authority; this layer does not mint a parallel --fm-* vocabulary. */
 :root .neo-theme-neo-dark {
-    --neo-dock-preview-accept-color      : #5eead4;
+    --neo-dock-preview-accept-color            : #5eead4;
     --neo-dock-preview-accept-background-color : rgba(94, 234, 212, 0.20);
-    --neo-dock-preview-reject-color      : #f4718b;
+    --neo-dock-preview-reject-color            : #f4718b;
     --neo-dock-preview-reject-background-color : rgba(244, 113, 139, 0.16);
 
     /* The Signal-glow candidate's language (the preview design-language exploration): the
        dark signal column as chroma, an 18% flood, and the deep chip ground. */
-    --neo-dock-preview-signal-color        : #5eead4;
-    --neo-dock-preview-signal-background-color   : rgba(94, 234, 212, 0.18);
-    --neo-dock-preview-signal-background : rgba(11, 14, 19, 0.92);
+    --neo-dock-preview-signal-color            : #5eead4;
+    --neo-dock-preview-signal-background-color : rgba(94, 234, 212, 0.18);
+    --neo-dock-preview-signal-background       : rgba(11, 14, 19, 0.92);
 }

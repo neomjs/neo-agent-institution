@@ -41,18 +41,18 @@
         .neo-textfield {
             --neo-textfield-border-color             : var(--fm-line);
             --neo-textfield-border-color-active      : var(--fm-signal);
-            --neo-textfield-border-color-hover     : var(--fm-ink-dim);
+            --neo-textfield-border-color-hover       : var(--fm-ink-dim);
             --neo-textfield-border-radius            : var(--fm-chip-radius);
             --neo-textfield-border-width             : 1px;
             --neo-textfield-input-background-color   : var(--fm-panel-2);
             --neo-textfield-input-color              : var(--fm-ink);
-            --textfield-input-font               : var(--fm-text-body);
+            --textfield-input-font                   : var(--fm-text-body);
             --neo-textfield-input-height             : 24px;
             --neo-textfield-input-padding            : 0 var(--fm-space-2);
             --neo-textfield-input-placeholder-color  : var(--fm-ink-dim);
             --neo-textfield-input-placeholder-opacity: 1;
             --neo-textfield-outline-active           : none;
-            --neo-textfield-outline-hover          : none;
+            --neo-textfield-outline-hover            : none;
             --neo-trigger-background-color-hover     : transparent;
             --neo-trigger-border-width               : 0px;
             --neo-trigger-color                      : var(--fm-ink-dim);
@@ -244,10 +244,10 @@
        line at rest, the signal under the pointer, square, no margin; it is the panel's edge, so the panel
        draws no second one */
     .fm-observatory-splitter {
-        --neo-splitter-background-color: color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
-        --neo-splitter-border-radius   : 0;
-        --neo-splitter-background-color-hover     : color-mix(in srgb, var(--fm-signal) 45%, transparent);
-        --neo-splitter-margin-vertical : 0;
+        --neo-splitter-background-color      : color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
+        --neo-splitter-border-radius         : 0;
+        --neo-splitter-background-color-hover: color-mix(in srgb, var(--fm-signal) 45%, transparent);
+        --neo-splitter-margin-vertical       : 0;
     }
 
     /* beside the surface the panel stops at half the body; without one it is the whole body */
@@ -278,8 +278,8 @@
         --neo-button-ghost-border                : none;
         --neo-button-ghost-border-active         : none;
         --neo-button-ghost-border-pressed        : none;
-        --neo-button-ghost-color            : var(--fm-ink-dim);
-        --neo-button-ghost-color-active     : var(--fm-ink);
+        --neo-button-ghost-color                 : var(--fm-ink-dim);
+        --neo-button-ghost-color-active          : var(--fm-ink);
 
         border-radius  : 0;
         justify-content: flex-start;

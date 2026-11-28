@@ -163,12 +163,12 @@
            banner speaks (exception-only chrome), and a recovery affordance must read as calm, not
            as a second alarm beside the line that already carries the severity. */
         .neo-button.fm-reconnect-button {
-            border       : 1px solid var(--fm-line);
-            background: var(--fm-panel-2);
-            color     : var(--fm-ink-dim);
-            box-shadow   : none;
-            font-weight  : 500;
-            transition   : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
+            border     : 1px solid var(--fm-line);
+            background : var(--fm-panel-2);
+            color      : var(--fm-ink-dim);
+            box-shadow : none;
+            font-weight: 500;
+            transition : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 
             &:hover {
                 border-color: var(--fm-ink-dim);
@@ -216,12 +216,12 @@
         }
 
         .neo-button.fm-fleet-start {
-            border       : 1px solid color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
-            background: color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
-            color     : var(--fm-signal);
-            box-shadow   : none;
-            font-weight  : 600;
-            transition   : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
+            border     : 1px solid color-mix(in srgb, var(--fm-signal) 55%, var(--fm-line));
+            background : color-mix(in srgb, var(--fm-signal) 14%, var(--fm-panel-2));
+            color      : var(--fm-signal);
+            box-shadow : none;
+            font-weight: 600;
+            transition : background var(--fm-motion-fast) var(--neo-ease-out), border-color var(--fm-motion-fast) var(--neo-ease-out), color var(--fm-motion-fast) var(--neo-ease-out);
 
             &:hover {
                 border-color: var(--fm-signal);
@@ -252,8 +252,8 @@
         --neo-dock-reveal-background     : var(--fm-rail);
         --neo-dock-reveal-border         : 1px solid var(--fm-line);
         --neo-dock-reveal-min-inline-size: 15rem;
-        --neo-dock-reveal-border-radius         : 0;
-        --neo-dock-reveal-box-shadow         : 0 12px 32px color-mix(in srgb, var(--fm-ground) 72%, transparent);
+        --neo-dock-reveal-border-radius  : 0;
+        --neo-dock-reveal-box-shadow     : 0 12px 32px color-mix(in srgb, var(--fm-ground) 72%, transparent);
     }
 
     /* The shell-owned header row is the engine's inline tab-header primitive now (an active title
@@ -319,9 +319,9 @@
         --neo-dock-splitter-background-color       : color-mix(in srgb, var(--fm-line-soft) 55%, transparent);
         --neo-dock-splitter-background-color-hover : color-mix(in srgb, var(--fm-signal) 45%, transparent);
         --neo-dock-splitter-background-color-active: color-mix(in srgb, var(--fm-signal) 45%, transparent);
-        --neo-dock-splitter-handle-size      : 0;
-        --neo-dock-splitter-border-radius           : 0;
-        --neo-dock-transition-duration-fast  : var(--fm-motion-fast);
+        --neo-dock-splitter-handle-size            : 0;
+        --neo-dock-splitter-border-radius          : 0;
+        --neo-dock-transition-duration-fast        : var(--fm-motion-fast);
     }
 
     /* One splitter language: the engine Splitter a hosted pane composes (Memories, the Activity
@@ -329,12 +329,12 @@
        itself because they are declared on the reading element and no pane inherits them. The frame
        maps them since no pane owns splitter paint; the drag proxy mounts on document.body, outside. */
     .neo-splitter {
-        --neo-splitter-background-color : var(--neo-dock-splitter-background-color);
-        --neo-splitter-border           : none;
-        --neo-splitter-border-radius    : var(--neo-dock-splitter-border-radius);
-        --neo-splitter-background-color-hover      : var(--neo-dock-splitter-background-color-hover);
-        --neo-splitter-margin-horizontal: 0;
-        --neo-splitter-margin-vertical  : 0;
+        --neo-splitter-background-color      : var(--neo-dock-splitter-background-color);
+        --neo-splitter-border                : none;
+        --neo-splitter-border-radius         : var(--neo-dock-splitter-border-radius);
+        --neo-splitter-background-color-hover: var(--neo-dock-splitter-background-color-hover);
+        --neo-splitter-margin-horizontal     : 0;
+        --neo-splitter-margin-vertical       : 0;
     }
 
     /* ── the declared collapse order — two designed forms, no pill or button ever cut mid-word:
