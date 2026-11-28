@@ -152,6 +152,8 @@ test.describe('Fleet cockpit — the Golden Path pane (NL)', () => {
         await app.callMethod(cockpitState.controller.id, 'writeGoldenPath', [{...STATES[0][1], handoff: producerHandoff, route: route({provenance: {producer: 'GoldenPathSynthesizer', runId: null, algorithmVersion: 'golden-path.tri-vector.v1'}})}]);
         await expect(facts.locator('.fm-golden-path-provenance')).toHaveText(/^GoldenPathSynthesizer · run id not recorded by the synthesizer · golden-path\.tri-vector\.v1 · expires /);
         await page.evaluate(() => document.fonts.ready);
+        // the tab's first mount animates the dock's split (909 → 988 px); the default is the settled width
+        await expect(page.locator('.neo-dashboard-dock-animating')).toHaveCount(0);
 
         const fold = await boxes();
 
