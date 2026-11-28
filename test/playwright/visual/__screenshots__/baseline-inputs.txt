@@ -918,7 +918,7 @@ test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs-snapshots/agen
     3fb91f5d212b0f0a67914ea042af58ef878fcfb4
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs
-    0a137eb3e25bdddb32681e09ec68cf241cedaa81
+    40c0845633efd8c22b130e845053e4e6698e366c
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-current-dark-chromium-darwin.png
     ca2aa52f64a51de5c9899bb904fa5b60c452f6ea
