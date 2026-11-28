@@ -30,7 +30,7 @@ apps/agentos/canvas/fmPalette.mjs
     6ad4864c779ccd98ea9afb408403b841e0ff4c7a
 
 apps/agentos/childapps/widget/app.mjs
-    6195224ee25fbf67221c47a2d53589e614d962d6
+    6f0c1afcd57e46a2ff21ab15fbfb65b932885903
 
 apps/agentos/childapps/widget/index.html
     d6925eb1bbc126bc6a4e52ba4eebcf4d859f77c8
@@ -423,7 +423,7 @@ apps/agentos/view/fleet/cockpit/StateProvider.mjs
     d0a2486866d3ed404cce2519def4cc6e05ac9db8
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
-    f4050775d813e70fd4d17b29514297279f9357ec
+    2f0e311f2c2c1593e064d78cdab2056f70ae541c
 
 apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs
     ace8b3c5b0f6e52d4c3faafd738263e543ecfed3
