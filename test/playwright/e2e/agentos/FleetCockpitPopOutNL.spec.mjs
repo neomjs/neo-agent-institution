@@ -26,7 +26,7 @@ import {test, expect, landFleetSample} from '../../fixtures.mjs';
 test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural Link)', () => {
     test.setTimeout(120000);
 
-    test('detach → own OS window on the shared heap → live update while windowed → return home', async ({page, neuralLink}) => {
+    const runRoundTrip = async (page, neuralLink, scheme) => {
         const pageErrors = [];
 
         page.on('pageerror', error => {
@@ -36,6 +36,20 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
 
         await page.goto('/apps/agentos/index.html');
         await expect(page.locator('.agent-shell')).toBeVisible({timeout: 60000});
+
+        const theme = `neo-theme-neo-${scheme}`,
+              themePattern = new RegExp(`\\b${theme}\\b`),
+              effectiveTheme = locator => locator.evaluate(node => {
+                  for (let current = node; current; current = current.parentElement) {
+                      const value = [...current.classList].find(name => /^neo-theme-neo-(light|dark)$/.test(name));
+                      if (value) return value;
+                  }
+                  return null
+              });
+
+        if (scheme === 'light') await page.locator('.agent-theme-button').click();
+        await expect(page.locator('body')).toHaveClass(themePattern);
+        await expect.poll(() => effectiveTheme(page.locator('.neo-viewport').first())).toBe(theme);
 
         // 1) drill through the REAL controller seam (onAgentSelect: owner-held record + the
         // setItemAutoHidden reveal through the commit loop). Driven via callMethod because the
@@ -111,7 +125,13 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
 
         await popOutAction.click();
 
-        const popup = await popupPromise;
+        const popup       = await popupPromise,
+              popupErrors = [];
+
+        popup.on('pageerror', error => {
+            const value = error == null ? '' : String(error.stack || error.message || error);
+            value && value !== 'undefined' && popupErrors.push(value)
+        });
 
         // assert the URL only after the vessel's content proves navigation happened: right after
         // the popup event, `domcontentloaded` can belong to the initial about:blank document and
@@ -121,13 +141,10 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         await expect(popup.locator('.fm-agent-detail')).toBeVisible({timeout: 30000});
         expect(popup.url()).toContain('childapps/widget/index.html');
         expect(popup.url()).toContain('tearout=detail');
-
-        const popupErrors = [];
-
-        popup.on('pageerror', error => {
-            const value = error == null ? '' : String(error.stack || error.message || error);
-            value && value !== 'undefined' && popupErrors.push(value)
-        });
+        await expect(popup.locator('body'), 'the detached window follows the opener').toHaveClass(themePattern);
+        await expect.poll(() => effectiveTheme(popup.locator('.neo-viewport').first())).toBe(theme);
+        await expect.poll(() => effectiveTheme(popup.locator('.fm-agent-detail'))).toBe(theme);
+        expect(new URL(popup.url()).searchParams.get('theme')).toBe(theme);
 
         // the SAME live instance renders in the popup; the main window no longer shows it
         await expect(popup.locator('.fm-agent-detail')).toBeVisible({timeout: 30000});
@@ -201,6 +218,12 @@ test.describe('AgentOS Fleet cockpit — agent-detail pop-out round-trip (Neural
         expect(homeState?.properties?.record?.agentId, 'the windowed-phase selection came home with the instance').toBe(reseatedAgentId);
 
         expect(pageErrors, 'zero main-window page errors').toEqual([]);
+        await expect(page.locator('body')).toHaveClass(themePattern);
         expect(popupErrors, 'zero popup page errors').toEqual([])
-    })
+    };
+
+    test('detaches, follows live selection and returns on the same heap in Light', ({page, neuralLink}) =>
+        runRoundTrip(page, neuralLink, 'light'));
+    test('detaches, follows live selection and returns on the same heap in Dark', ({page, neuralLink}) =>
+        runRoundTrip(page, neuralLink, 'dark'))
 });

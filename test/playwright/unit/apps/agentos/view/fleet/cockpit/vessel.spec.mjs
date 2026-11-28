@@ -239,6 +239,9 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
     test('openTearOutVessel opens the widget-childapp vessel carrying the Group\'s reserved slot, sized from the pane with the floors; closeTearOutVessel retires by window name', async () => {
         vessel = installWindowVessel();
 
+        const theme = 'neo-theme-neo-dark';
+        cockpit.theme = theme;
+
         const identity = {groupId: 'g1', workspaceKey: 'popup:stream', generationToken: 7},
               opened   = await cockpit.openTearOutVessel({
                   itemId: 'stream', proxyRect: {x: 40, y: 50, width: 100, height: 25},
@@ -250,7 +253,8 @@ test.describe.serial('AgentOS.view.fleet.cockpit.VesselContainer — the vessel 
 
         const call = vessel.openCalls[0];
 
-        expect(call.url, 'the vessel is the widget childapp, named by its item and nothing else').toBe('./apps/agentos/childapps/widget/index.html?tearout=stream');
+        expect(call.url, 'the widget URL includes the item and its opener theme')
+            .toBe(`./apps/agentos/childapps/widget/index.html?tearout=stream&theme=${theme}`);
         expect(call.topologyIdentity, 'the reserved slot rides the window — that is how the vessel binds to its admission').toBe(identity);
         expect(call.nativeCapabilities).toEqual({close: true, position: true, resize: true});
         expect(call.windowName).toBe(`fm-tearout-stream-${cockpit.id}`);

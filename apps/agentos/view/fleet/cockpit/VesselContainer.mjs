@@ -597,7 +597,7 @@ class VesselContainer extends Workspace {
                 opened          = await Neo.Main.windowOpen({
                     nativeCapabilities: {close: true, position: true, resize: true},
                     topologyIdentity,
-                    url               : `${basePath}apps/agentos/childapps/widget/index.html?tearout=${itemId}`,
+                    url               : `${basePath}apps/agentos/childapps/widget/index.html?tearout=${itemId}&theme=${encodeURIComponent(me.getTheme())}`,
                     windowFeatures    : `height=${height},left=${left},top=${top},width=${width}`,
                     windowId          : me.windowId,
                     windowName
