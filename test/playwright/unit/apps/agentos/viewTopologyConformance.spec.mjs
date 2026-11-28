@@ -1,4 +1,5 @@
 import {test, expect}  from '@playwright/test';
+import {getThemeNamespace} from '../../../../../node_modules/neo.mjs/src/util/Theme.mjs';
 import fs              from 'fs';
 import path            from 'path';
 import {fileURLToPath} from 'url';
@@ -150,31 +151,42 @@ test.describe('AgentOS view topology conformance (#17559 laws 1 + 3)', () => {
     });
 
     test('every additionalThemeFiles entry resolves to a real stylesheet', () => {
-        // The worker maps an app namespace to its sheet path by dropping the `view` segment
-        // (src/worker/App.mjs insertThemeFiles): `AgentOS.view.fleet.cockpit.SpineBanner` →
-        // resources/css/src/apps/agentos/fleet/cockpit/SpineBanner.css. A moved chunk whose
-        // consumers still request the old namespace is built and never loaded — the runtime
-        // styling regression this witness exists to catch.
-        const offenders = [];
+        // The worker resolves app aliases and searches the theme map across source and theme roots.
+        const appFiles = [...walk(path.join(ROOT, 'apps/agentos'))].map(file => [file, fs.readFileSync(file, 'utf8')]),
+              cssDir   = path.join(ROOT, 'resources/css'),
+              cssRoots = fs.readdirSync(cssDir, {withFileTypes: true})
+                  .filter(entry => entry.isDirectory() && (entry.name === 'src' || entry.name.startsWith('theme-')))
+                  .map(entry => path.join(cssDir, entry.name)),
+              appThemeFolders = new Map(),
+              offenders = [];
 
-        for (const file of walk(path.join(ROOT, 'apps/agentos'))) {
-            const src = fs.readFileSync(file, 'utf8');
+        for (const [file, source] of appFiles) {
+            if (path.basename(file) !== 'app.mjs') continue;
 
-            for (const match of src.matchAll(/additionalThemeFiles\s*:\s*\[([^\]]+)\]/g)) {
+            const folder = source.match(/\bappThemeFolder\s*:\s*'([^']+)'/)?.[1];
+
+            if (folder) {
+                const appName = source.match(/\bname\s*:\s*'([^']+)'/)?.[1];
+
+                appName
+                    ? appThemeFolders.set(appName, folder)
+                    : offenders.push(`${path.relative(ROOT, file)} — appThemeFolder requires a named app`)
+            }
+        }
+
+        for (const [file, source] of appFiles) {
+            for (const match of source.matchAll(/additionalThemeFiles\s*:\s*\[([^\]]+)\]/g)) {
                 for (const nsMatch of match[1].matchAll(/'([^']+)'/g)) {
-                    const ns = nsMatch[1];
+                    const namespace = nsMatch[1];
 
-                    if (ns.startsWith('Neo.')) continue; // engine themes resolve in src/ scope
+                    if (namespace.startsWith('Neo.')) continue; // Engine stylesheets are checked in their package.
 
-                    const segments = ns.split('.'),
-                          root     = segments.shift().toLowerCase();
+                    const appName = namespace.split('.')[0],
+                          mapped  = getThemeNamespace(namespace, appThemeFolders.get(appName)),
+                          cssFile = mapped.split('.').join(path.sep) + '.css';
 
-                    segments[0] === 'view' && segments.shift();
-
-                    const cssPath = path.join(ROOT, 'resources/css/src/apps', root, ...segments) + '.css';
-
-                    fs.existsSync(cssPath) ||
-                        offenders.push(`${path.relative(ROOT, file)} — '${ns}' → missing ${path.relative(ROOT, cssPath)}`)
+                    cssRoots.some(root => fs.statSync(path.join(root, cssFile), {throwIfNoEntry: false})?.isFile()) ||
+                        offenders.push(`${path.relative(ROOT, file)} — '${namespace}' → missing ${cssFile}`)
                 }
             }
         }
