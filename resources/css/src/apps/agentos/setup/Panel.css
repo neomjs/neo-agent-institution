@@ -56,7 +56,10 @@
     --neo-button-border-radius: 6px;
     /* the field: the FM font in the body role instead of the theme's Arial, on the same control
        scale and radius as the button beside it, so the row reads as one line of controls */
-    --textfield-input-font: var(--fm-text-body);
+    --neo-textfield-input-font-family: var(--fm-font-sans);
+    --neo-textfield-input-font-size: var(--fm-text-body-size);
+    --neo-textfield-input-font-weight: normal;
+    --neo-textfield-input-line-height: var(--fm-text-body-line-height);
     --neo-textfield-input-height: var(--neo-button-height);
     --neo-textfield-border-radius: var(--neo-button-border-radius);
     --neo-textfield-label-color: var(--fm-ink-dim);

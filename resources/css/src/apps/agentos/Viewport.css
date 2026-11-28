@@ -33,12 +33,16 @@
        600); a site needing a different weight re-declares font-weight AFTER consuming the role,
        so every deviation is visible at the site. The chrome role's non-font half (tracking) has
        its own bindable slot because the shorthand cannot carry it; uppercase stays a declaration
-       at the site (binary, self-documenting). Mode-invariant by construction — the stacks
+       at the site (binary, self-documenting). The body role's size and line-height have slots
+       too, which the shorthand composes from: the engine's text field reads font longhands, never
+       a shorthand. Mode-invariant by construction — the stacks
        resolve from the skin twins at use time, in both viewports this sheet reaches. A type
        literal outside the ladder (a glyph's scale, prose above the ladder) is a recorded
        exception at its site — never silent, the rhythm's own rule applied to type. */
     --fm-text-display: 600 14px/1.3 var(--fm-font-sans);
-    --fm-text-body: 12px/1.45 var(--fm-font-sans);
+    --fm-text-body-size: 12px;
+    --fm-text-body-line-height: 1.45;
+    --fm-text-body: var(--fm-text-body-size)/var(--fm-text-body-line-height) var(--fm-font-sans);
     --fm-text-detail: 11px/1.4 var(--fm-font-mono);
     --fm-text-micro: 10px/1.3 var(--fm-font-mono);
     --fm-text-chrome: 11px/1 var(--fm-font-mono);

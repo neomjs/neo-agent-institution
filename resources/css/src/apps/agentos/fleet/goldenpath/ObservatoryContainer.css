@@ -46,7 +46,10 @@
             --neo-textfield-border-width             : 1px;
             --neo-textfield-input-background-color   : var(--fm-panel-2);
             --neo-textfield-input-color              : var(--fm-ink);
-            --textfield-input-font                   : var(--fm-text-body);
+            --neo-textfield-input-font-family        : var(--fm-font-sans);
+            --neo-textfield-input-font-size          : var(--fm-text-body-size);
+            --neo-textfield-input-font-weight        : normal;
+            --neo-textfield-input-line-height        : var(--fm-text-body-line-height);
             --neo-textfield-input-height             : 24px;
             --neo-textfield-input-padding            : 0 var(--fm-space-2);
             --neo-textfield-input-placeholder-color  : var(--fm-ink-dim);
