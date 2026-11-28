@@ -13,7 +13,7 @@
     letter-spacing: var(--fm-text-chrome-tracking);   /* the one uppercase-tracking constant — the kind word shares the chrome tier's voice */
     text-transform: uppercase;
     color         : var(--fm-chip, var(--fm-state-off));
-    background    : color-mix(in srgb, var(--fm-chip, var(--fm-state-off)) 14%, transparent);
+    background    : light-dark(color-mix(in srgb, var(--fm-chip, var(--fm-state-off)) 8%, transparent), color-mix(in srgb, var(--fm-chip, var(--fm-state-off)) 14%, transparent));
     border        : 1px solid color-mix(in srgb, var(--fm-chip, var(--fm-state-off)) 34%, transparent);
 
     /* kind class → color token: the closed --fm-kind-* target set from kindRegistry */

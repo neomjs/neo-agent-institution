@@ -6,7 +6,7 @@
 # golden may have been captured at an earlier one.
 
 engine
-    0e9fa32f2c5d1f4793b0566aed0966909c467ff7
+    7cb531044d98d63bce72a8747d53ff3fa429e15a
 
 apps/agentos/CARD-CONTRACT.md
     4e061c3dabbf424a7698929cae52b1d6e7af709d
@@ -27,7 +27,7 @@ apps/agentos/canvas/Observatory.mjs
     eda3e7c5ef8114c1424a6c169c7dd663b6c3b12e
 
 apps/agentos/canvas/fmPalette.mjs
-    6ad4864c779ccd98ea9afb408403b841e0ff4c7a
+    3aae1abd90d029c2335349ffbf509e5da3723023
 
 apps/agentos/childapps/widget/app.mjs
     6f0c1afcd57e46a2ff21ab15fbfb65b932885903
@@ -39,7 +39,7 @@ apps/agentos/childapps/widget/neo-config.json
     52ba4e01a07d58ea0ee6043f3df05a7a183b9be3
 
 apps/agentos/childapps/widget/view/Viewport.mjs
-    af1be4296173a1158569490db0b66987df0fe7e7
+    cd42255157af6ffe5bc6539492afcd01a5d26a0b
 
 apps/agentos/config/deploymentServiceLabels.mjs
     ca835ee2fed7789f7f49c7ba7e3f34acd3570a44
@@ -366,10 +366,10 @@ apps/agentos/view/NightshiftButton.mjs
     bf4efe1fbf237b925e49a555162e29d5b6e46f61
 
 apps/agentos/view/Viewport.mjs
-    760aaf9fb54cb91b40febf52d755b950d125ae0f
+    65e398409c29dd765ab0a0d70d06202abc1bb4b5
 
 apps/agentos/view/ViewportController.mjs
-    46b21f9ba6ae7705f2eaf1eec1bb2d5fdad8d322
+    d4fabc263f16992b9dda5ed4d08c22c1c376bb21
 
 apps/agentos/view/accounts/Controller.mjs
     05c14bcda560d8f32b9495556ff99f8f3e4842bc
@@ -423,7 +423,7 @@ apps/agentos/view/fleet/cockpit/StateProvider.mjs
     d0a2486866d3ed404cce2519def4cc6e05ac9db8
 
 apps/agentos/view/fleet/cockpit/VesselContainer.mjs
-    2f0e311f2c2c1593e064d78cdab2056f70ae541c
+    8e4c52545f569fc171ee7be59c9c9d5b4503b3be
 
 apps/agentos/view/fleet/cockpit/ViewerWakeController.mjs
     ace8b3c5b0f6e52d4c3faafd738263e543ecfed3
@@ -681,7 +681,7 @@ resources/css/src/apps/agentos/NightshiftButton.css
     3198096d08673b6d92b296f6486df3b59cb9828d
 
 resources/css/src/apps/agentos/Viewport.css
-    3e60047eeb850013e36b9bc5bc556c063c1ed52d
+    1f49ebe519b8eea17751d18fa725845eb0c74d9f
 
 resources/css/src/apps/agentos/accounts/List.css
     332909126c83b0a9e90897d0a7f28d8bd45fb893
@@ -696,7 +696,7 @@ resources/css/src/apps/agentos/fleet/activity/Container.css
     9f80c220d3c8196c7c9e277bafbc7ca8d5d49c08
 
 resources/css/src/apps/agentos/fleet/activity/EventChipComponent.css
-    1d6122fabf9eee414c3fbf96c5c3214fd299418f
+    bfc768646f85be2dbf2842723eed2f2fdd6a1713
 
 resources/css/src/apps/agentos/fleet/activity/RowContainer.css
     b268c7947339b364fcec4ca6477ec0755e963a74
@@ -804,7 +804,7 @@ resources/css/src/apps/agentos/fleet/roster/Container.css
     eceaeba8a1084905d699cc3cf560a3c58846f595
 
 resources/css/src/apps/agentos/fleet/roster/card/Container.css
-    ba66dda1e708b978fa0db995e8d8758f249def05
+    f9fddbbc9c3f447aed44ddd04953cf13a98aebee
 
 resources/css/src/apps/agentos/fleet/shared/FamilyRailComponent.css
     e2f141eb5197898a3372695fb3488124f6ee0c81
@@ -846,660 +846,663 @@ resources/css/src/apps/agentos/system/SeatRootContainer.css
     d0d5ec939a1e4024fadaeea71b8d7b6932e463a8
 
 resources/css/theme-neo-dark/apps/agentos/Viewport.css
-    fc15976abf4d2b0fbb1b139021f42e8ea1e06a98
+    434680115311e7c12fdc2113be686bf450a8b7c0
 
 resources/css/theme-neo-dark/apps/agentos/childapps/missioncontrol/Viewport.css
     3da8c6889ba5d223fb6e2c5bd0f6e0426bbf5985
 
 resources/css/theme-neo-light/apps/agentos/Viewport.css
-    5b07fcb1fee5aa3630247fccf416d04629ce400a
+    ea0b1aefa7dc37c75bad5b373bcae4b4e198d4b6
 
 resources/css/theme-neo-light/apps/agentos/childapps/missioncontrol/Viewport.css
     ac2d8baaf54f1fe3abb5733b79aeebb980745236
 
+resources/css/theme-neo/apps/agentos/Global.css
+    5ed662d126821993b5c84570c1af11ab1c0fc291
+
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs
-    b9af4ad73dab4c86bfa9ab287eea3de5a9af88c9
+    65d6a09bb57f87a20d912a273b23be73c8319bca
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-319-chromium-darwin.png
-    3a588d182c23e5de53bb26f01cf6b5a26e0e0a4b
+    94406775128918f5ae07219a2eafa9edd74b224a
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-320-chromium-darwin.png
-    cfd661225e764960c3ac0e994c6c8a68a5f701c1
+    ba09e7b90b7aa9f6480ef6b362ef54a4a053cddc
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-boundary-328-chromium-darwin.png
-    a75862fa4938bb40327a67c78eab08b2553f1dd7
+    df3692dff47f611c15fc277ea3226536947e64b1
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-narrow-294-chromium-darwin.png
-    5a6d7f00592af6752591b04775ad73f47592ae83
+    4409676703c65e4d8f59c4b773468ad91f2a5999
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-regular-360-chromium-darwin.png
-    5a8020f3f9d51e64cf16ac8e05822b24a90fe073
+    101b2fbcb1bd83d9c27535eaf2c474fb6db0f0a6
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-dark-roomy-720-chromium-darwin.png
-    bf63cf02fff2604c2a19b17c38e2a9b3d4ada065
+    b3316315001112d1c6b038bd13b3ccd2b459d187
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-319-chromium-darwin.png
-    08a0f40288b01bc26e9c0ef7a845b99abede609b
+    a5d698b91e2edbc99ba90ccb32a68ea6b67a6dc6
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-320-chromium-darwin.png
-    dd109a8554fc771d03e09a1ab81c2b6f2607ae6b
+    379f2cdb8a06f575361036c821aa1b0c53400394
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-boundary-328-chromium-darwin.png
-    f3245d697e1495c12a7d48d3a3367477d5732dce
+    5a419768bb2d66c92b8bc1689c90be5052908242
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-narrow-294-chromium-darwin.png
-    ac5f12078d8183023f34f529edab54b8b61871d0
+    9fd0438314b971f0664fb450ac623c23c69bea2c
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-regular-360-chromium-darwin.png
-    6a88a5f2ae0ad30b16afcec713525fac375ff2d1
+    a7937a8e0880741ec56acf841f082276405f6fbc
 
 test/playwright/e2e/agentos/AgentCardSynthesisRenderNL.spec.mjs-snapshots/agentcard-synthesis-light-roomy-720-chromium-darwin.png
-    2f1c1a50b131705b0f043c553ddc52a8ebf62f5e
+    c31252e0a79f110076bacfdcbc8769ea5aeb213d
 
 test/playwright/e2e/agentos/FleetCockpitBarCompositionNL.spec.mjs
     f8502c12838cf0e2c9bd61dbf628a1cd8a2c5f16
 
 test/playwright/e2e/agentos/FleetCockpitBarCompositionNL.spec.mjs-snapshots/cockpit-bar-contract-800-chromium-darwin.png
-    a672423d15aab4ba4e09c8cb54f8970d15905e43
+    af64361a7cb8add07175cb5d51477fe75b50a441
 
 test/playwright/e2e/agentos/FleetCockpitBarCompositionNL.spec.mjs-snapshots/cockpit-bar-vessel-narrow-520-chromium-darwin.png
-    a555a710456e9ec670c6f95c955616951b259bbf
+    a6f6b78b41cbbade73a6f1cfecf47d750b210747
 
 test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs
     864fb0444c99d147c7072aa2326d1937f0bb8a67
 
 test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs-snapshots/agent-detail-dark-narrow-271-chromium-darwin.png
-    be3bd7c7f32ae4f3e9b7ae3eff94a313d36a7ded
+    0867103643bea0d4af7aed2d34e310ad2f0ebc37
 
 test/playwright/e2e/agentos/FleetCockpitDrillRoundTripNL.spec.mjs-snapshots/agent-detail-light-narrow-271-chromium-darwin.png
-    eb7409d809b7dfe09527323a3e4a68ba111e45f4
+    3fb91f5d212b0f0a67914ea042af58ef878fcfb4
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs
     0a137eb3e25bdddb32681e09ec68cf241cedaa81
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-current-dark-chromium-darwin.png
-    be0e77f94e8e142b6f0e4ec41ea6bcd880df635e
+    ca2aa52f64a51de5c9899bb904fa5b60c452f6ea
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-current-light-chromium-darwin.png
-    a02e9f2cfcb51e13e9f0b7b8629aefb3df62697a
+    0a86f573e1cc1265c0afd5e56c1ebbb0053bccd3
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-current-narrow-bottom-chromium-darwin.png
-    fca909b7761c4937ed9190ae441e1e4298573cf6
+    e96835155e4273d62a9b2066e54ad2ae4aa46bc1
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-current-narrow-chromium-darwin.png
-    848c2c5810cf015f534951fc6919b1d80724fd56
+    eddc1db19ec2fb25c5777ae9df0d8bbbe952e40d
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-degraded-dark-chromium-darwin.png
-    e4c54eaf2cbfff479913b644979b4ffef63d4e6d
+    b0da54f3a78304d5cf9bce364cf749fb3fc139cf
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-degraded-light-chromium-darwin.png
-    f31d04504af39a9969f3c5e0782c51ebf3a71c5b
+    d25f2f436b975a59c49e642739d4eaebf7d9f50f
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-unavailable-dark-chromium-darwin.png
-    f1fe225ddfdf2ca7f5159442933aae9486238ac0
+    126b93d423be299ae7b023c2fa1861b263263ac4
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-unavailable-light-chromium-darwin.png
-    4b53c3c42fa995b6d2e803beeb614ec17d17610d
+    aa22a8ff8bda24e6bf8286ad9c8b14a06119715b
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-withheld-dark-chromium-darwin.png
-    c9e17a201a1e2f3c2c03067a8ae2bcf8747c06a4
+    04a65f3d32f40e9bd7dcfd053b4857ee9cbfd0da
 
 test/playwright/e2e/agentos/FleetGoldenPathNL.spec.mjs-snapshots/golden-path-withheld-light-chromium-darwin.png
-    48d5e2cfa45676649d1560c8edc5d72a2a0f026b
+    d76e7684a80e1a845e3a1a5ad7511cbd65d33dea
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs
     ec6288116c4ebef783286678ac31db60495d3d8e
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots/memories-summary-dark-chromium-darwin.png
-    c11c98ff180b2940e1417c8676ccf6394624441b
+    6046347e602989cfa2a4839d797900b3575c949f
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots/memories-summary-light-chromium-darwin.png
-    1f3781209b9314d05cd592266a1fc6789fe37866
+    c2a6dd72c15d8ad48c549ede603df92ea2c2a8d0
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots/memories-turns-dark-chromium-darwin.png
-    9f480b4f370dc5f18de866a9d2a5c7ef7ac7ae2a
+    bc26f479d3060373863a5d26008af4dcd6d1b840
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots/memories-turns-light-chromium-darwin.png
-    745da3c78fdfbf4abb844fe5f209aa315dfd4f24
+    dbea2babdcf9b0c5d240b9ab48d3695f23e69ba1
 
 test/playwright/e2e/agentos/FleetMemoriesNL.spec.mjs-snapshots/memories-turns-narrow-dark-chromium-darwin.png
-    eba4426f270450eb804409556f987af283e1678c
+    346ba30244a9251b25e0017c593212198436cd24
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs
     e3e5e4ed7d1c7b3e8229cbaf686684f429c292bd
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-dark-keeper-chromium-darwin.png
-    e818d8ec5e1a995ddb4cd084c55f8aa4f8c024e4
+    7cb34b2788a8ca9b8ef78f58f470518b5a7447c3
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-dark-rail-chromium-darwin.png
-    b60848bd5b25d8ecaa80f23cbc1286ff325f1278
+    4b29b7815f132029ff7ea5b26baaa1afc4c45be4
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-dark-south-chromium-darwin.png
-    f9e4539a4c33485e64c385528fbe7e6131d66c7d
+    d99fc7edc3a0add5c28be897f2e648fbdb893d5d
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-light-keeper-chromium-darwin.png
-    e30eaf69bc425f7967b4c43831dfff2bfc0dcc03
+    c0fea33882ae513452f28084fe5c4ca404d3b4d1
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-light-rail-chromium-darwin.png
-    e11f05d1a8fa6942a6bed23a69db09a6a0a0665f
+    8a158515442e25b700253a7e5ef6976442eb3eca
 
 test/playwright/e2e/agentos/FleetNavFamilyPin.spec.mjs-snapshots/nav-family-light-south-chromium-darwin.png
-    0b0558d78d9280939f768069047dbf72cd21f849
+    7efe9494bcba4891a28cf8b803a139a20479d0df
 
 test/playwright/visual/FleetCockpitVisual.spec.mjs
-    8409bd9736c35cf05a5662f0b400e3557230e590
+    0d56024acea472f56d2486707a72cb001a6d030c
 
 test/playwright/visual/SystemViewVisual.spec.mjs
     a4ff9bcf49ccb1e4fac425d421d5fdea8412f089
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1000x640.png
-    cf5f6a41a8ee0fdad0b0adf324f5925be481a8d8
+    ea2503b8f1b9854863d1fa12589bb78f3cb740e0
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-1280x800.png
-    2756e919fc5cf9ee1b216868dd94a23fc60c0a5b
+    02d61f0c449ec09e755f4241f9334a0ea57571dd
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1000x640.png
-    0cb8b6fa30fef8717b906947abec685bfc50b094
+    192ad76d850cfe4cebecccdccf5b851e10fcb694
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-1280x800.png
-    eca75ec0d764038b99a363565c3569c45ebfd2c4
+    342f70cf73532d53e93b7a7bb8b6e6fdfcfb43c8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-gitlab-1000x640.png
-    b75d0bf662acb7ef7ced9b41ec995f5ec8b69f97
+    7ebc2996ad180b6b08bee90444009bd42d614a53
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-adding-gitlab-1280x800.png
-    88aa50a145bb82fb61d34ecb784e295be57758fd
+    3d3101c49b05952fb54e8ca0bb6b4a263c2d71a6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/accounts-config-surface.png
-    8cc806d73b6decdb9b675bd032972c2f7d69b491
+    2e7b7c79f23a1265921b275bc0ca1a2a6dc713c4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/activity-stream-chips.png
-    c95853408e4dafc65b9bf668c8f85a8d37679a7e
+    107325227f1e7ca7caef8b1cafda0f19a4ba7fad
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-11-candidates-light.png
-    f433a0e750439db0136c998b3f88a06a8bb7e19d
+    08316455e0715d6ddc9e16c32cada170b132801c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-11-candidates.png
-    4b126ccc1e1d8fc3eda656e9efb9c3be2c612060
+    3276e6344af82b32ad0fc98d0638d9107529c3de
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-candidates.png
-    f9f61cf1c6124a0e62d1c688b3f68fc45d3b2698
+    aa1052a34b1be72860ae49f77e3109abc20864af
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/add-agent-memory-unavailable.png
-    244da736447aad849bcdd503351e91bd4fd8a31e
+    8b84647732ddbec7b8c49547d036440a48bd94bd
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-account-changed.png
-    a3da70c700978a982a5586d445407b60fe9bb80b
+    0aae7f7fbe8f8eff19f5f70ab4413024dcfb8e4b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-not-a-plane.png
-    e8a432a4bcd3a5f0fc76b4237ba07641a8fdfbbd
+    d212ba3e09d42cbef72a86741ce88d6c4522c45f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light-720.png
-    a8123b0e477e2595e0e5691deb2b9f5fe92dbbaa
+    1ef9f96e75e7167595e69ab1c2b9b09ae227084f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused-light.png
-    935312c7bd1a313c2bbd1a76cec4b117daacc2f9
+    aa4d0fe561cb6a2e54f310251200f9e4d6a7d09e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-pat-refused.png
-    73d64fb350d097622f29074244d9a20648a71ada
+    db231032096143251a524b4843a76b0c780b4237
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/banner-plane-unreachable.png
-    9f55acfb15a1a882d4ad79bcadeb5224b1d9d917
+    1df56149a4e0810e23941f28c773c23ee54f6cb1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-cold.png
-    e073119be44fb2d6e7df6be391708320f34d117d
+    ff08161f3a5d87beab80be62cfcd78b41a20e8bb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-default-shell.png
-    6ef03800341e5bccc7a2fe6ca9c65d8d5bea2fb7
+    93b671a202173d694dd4ad8c91564566e967428c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty-light.png
-    9a7df56c28060d06209a3cd92d95f8bcfa3c2a15
+    2316cfbaf3eb10c2e664c36a9aa76f288d3424a4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-empty.png
-    f6677c2e7ab449d24329fd13e25f2e13d82576c5
+    e37d96d43370b9e17ff7bea608a6c01437edb760
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-intermediate-720.png
-    daed4e8417905da30b06c15df8f3e26c7a9638b7
+    50084ff0077470fefb07579c74dbd769cc0c4c07
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-review-1280.png
-    209c374f8b5c5ff89e921e0bd84a207afde7e228
+    af17d52cb87acb4734a8ec391cb2ae333cabb699
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/cockpit-vessel-314.png
-    c948f7898791917c96a1c5bc6a03bf6971df0626
+    952bf903cf4e6898e3af99977159c9da6f64dace
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-light.png
-    775282b2c8e2dcbfba41c0fd4a7c95df6a1acd99
+    c698f514fde5a86554e36d1fa44b9082cdbdef39
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation-live.png
-    0078a1d4e79e35150716fb0162fa3f572818f770
+    b6d745ace74bb8a1efeedd6cb04d4a0b53ce1476
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-preparation.png
-    8ccaf13d8965de8059cd6dad0ee3efc3a6ec01d1
+    330eb6a791ad534866b4fe25ff96e7081e4941da
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-skip-light.png
-    6e685827295a60507d6ee2903488eeb3a9b88373
+    0a0e585c871b8c3dc879d04fe4a06bd863c7f8f0
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-repo-skip.png
-    fd32b071bb678e36bd164e483d2a30324fc5aa3a
+    2694c5f16d58911bd4e422580193d815131b3842
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-thought-stream-light.png
-    ba95baea45d84a5104a282608104d6e9aba3420c
+    ecfbc03c144b97c00a83399452a0ad6da8f1f163
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/detail-thought-stream.png
-    3b168dbb91b8b6db3c6f8bb8ab5a805d589e3b8a
+    943e3c772185a0f987397162c1959fa855f2dc50
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-start-4.png
-    7d49449e1cc86513cee0784d55ad4bf5e3a06edf
+    a329f24aabae5d703593eb9ec94c200c35681a1e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-stop-8.png
-    a027bfadef4bce17bcc0aa81f035d935840cf078
+    3a38ca88da8c719c4b4560dc630fc691c62a7af6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-stop-armed.png
-    aa5f15d6b2cbde403f2003440fe22980de163743
+    873cdee1718ca9eaf906f12416aa182a1029dbbb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-button-stop-plan.png
-    751f2e8979db237a6f7a68522c2d09c81c813e68
+    7c5432970a931c8385cb9666335073c7300b59d1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-cleanup-unresolved-light.png
-    330b230e50a99a63ea5e091c6657601dd7de6e33
+    2f8f645eb657f2daeb077f45a29e1f4b60479735
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-cleanup-unresolved.png
-    cbdb69a9a4fd4a7b23ac3daabc3aa0913704cee2
+    0f9082322803968eb73bab2eac3f9a1fe34f8caf
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-claim.png
-    11355582ea1024427595d991a7b3b30508bf06ae
+    d3d9a3bce9e44ffe0cd4a6136f3309868a415725
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-lane-empty.png
-    b5341af9b49b4ec14a9815cae1821d0233716ae4
+    d9f16fc13227dce1b1498d14a97a954aff0ee8b4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-model-refused-light.png
-    784a9276a3cc4c5360627e68f17fe7c76dcc1401
+    98df4f6aea9c2f40a920e274651fd2337ed659a8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-model-refused.png
-    f09a355bf1dcab7b45a53f1ac70c75f7be5a1230
+    ca50e796a385a40fb7214c2d99b75a83149d0ed7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-open-work-light.png
-    cf2170208ec0690f9b90b20302869547ac2cec04
+    c5d87f584dfff4b8936972879a15367ecd9d5cda
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-open-work.png
-    dcddaf362272085cc7332df080bde0ea47d677e7
+    8456a79d07e77b380b23d09b78b389d6af20d8dc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-preparing-light.png
-    df67ca6505b37835fc37c2e7125a05e4b0cdfc02
+    d953b5639ae64298229f11c402f8319629f23a5a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-preparing.png
-    dbe7f5f3ff3cf91d23e8c1991cef55d3361a3861
+    c9dbb224834dd75d778d73e0c61071862b476823
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-rotation-completed.png
-    510f6f1770e246ce7d7ff80983d32b8ae8cbcfe0
+    df04446349bb947032a1e83996226cb12cc3e153
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-rotation-refused.png
-    8bb55de2bc31b9e266b4ec82b18264787d7ae536
+    6e5d33ac0870ff2d31c304297360615d7e6e7944
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-skills-unverified-light.png
-    bf65466d1e0cec380bf5eb2dfe16b595f8131ebc
+    8677e6f3800c0e21711124c170ee6f83ec950664
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-card-skills-unverified.png
-    2b292b37697becca2c36cfef4ad39d0f97801ebb
+    e7bf43ca10fb7f98a68d2b78ead3a2cfb0a06ed3
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-grid-cards.png
-    2945315fc9364281b0952d6b55654ec1499a84b6
+    5cf6ddbf5c33e64513c06a361df411deb277f3c8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-awaiting-merge-light.png
-    fc821e50c0d13aa81cdb0467f6b9f9fcb4ad4ab5
+    b66ecc38891d793f4cc4be40de5429a60b1a2388
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-awaiting-merge.png
-    2f3e17b74f4c4fa42f837e6b437b000efad4077c
+    459983b7e489e303a971563afba9df4747eb778c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-open.png
-    7c5738951dd3d5f6b0f4d85e9020719522658a1d
+    18d5e08aa8b07053d4fa212cf441c23ed5eb71b1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled-light.png
-    5d7dca78310ecea2c18fa014c54cb59bce87801a
+    c8fc71f57d60ebf303c6a5c8531ec18263e9cd03
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-merge-queue-stage-enabled.png
-    15fb05c811529cc0991bb4a0641195075609404b
+    127b1b6a0f3d3915bd93401a2c748b2e6ec85c3a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-plane-unresolved-light.png
-    d84c03bf65204f1cbfa28d34eb99cf3ca31444ce
+    14e6de6877cfcfb23a50838b67f7321436e63721
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/fleet-head-plane-unresolved.png
-    31d14fce0c33f7794378ee16e2e85b8ef735d279
+    8b676d1b1d9179430d405feb5cd794d9881f05a2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run-light.png
-    f4ae668be226e789c4c4c464ce1bbec817d9f283
+    4969f158783ee0e0ebfb4b85a96004b733427ee9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-first-run.png
-    3f71d41b0a92df1ba5c7310636d1c22dbee00d52
+    e358163d7dba2d25770602e464cafca866ab0166
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-both-light.png
-    5b4b984d98ac87aef7e080a063a314e9d9a1004b
+    28b9107e23a179da412698d0493c670bcc5f2aee
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-both.png
-    602d2c967e8c84849c581d23de9f5a5c383b9a52
+    a2f93559816a9bb1a00ba7e1e43b0e8aa7cad17f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-light.png
-    a424354fd120e4e251c12b1604fbd5286c62a737
+    998f660fbc615f8aa2d7da369aab4f9473d90eda
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-none.png
-    b266ea00dd5068fc21bcae97f2b3cb731a9f8a65
+    6a68fd4d53f9d8b624343bd19ac375886c870c53
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-nothing-light.png
-    5bd053ff76452b14d5bc2b380beff5d3fef01bb2
+    4f87dd296ab2b5d43548b2a1efb391d24c5a0856
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired-nothing.png
-    a8042d1f68b4575a638ba25e941cddae61a64a2b
+    56172b5d257f6cc3be77e8f7f9f74901d679cbfa
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-expired.png
-    fea4a9a7abca8549dde6e8bd2f8b5b07210c9088
+    e33d983222e4cf8a6d317d8e096506ac875c75d1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-nothing.png
-    9a4f8efd63541d722a2530ca95c397595096250f
+    c8cc984d103fec020bdf632914dd7564efb4a6e8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-stale.png
-    39b34c2663d2241e1e8b7941eacb2495f0feb81d
+    4096f651ca4c70e934314359107fef73a3dec954
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-operator-unreadable.png
-    4645a89f7884ecdba3cf421989ce260fb5d50f1d
+    3a68dbc78b7b5349d0b82bc374ef50d681686bf4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-cold.png
-    d6a45f9058914c0ad5284ae85e866135e63b98c8
+    b7f973e0a93bf9168ed84f928f6c9b7b11200da4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning-light.png
-    d2c95259e024a0610fc7202c98887400936dfc64
+    2330adb9dad6d1f9f551d6868f115e543bf92e39
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/home-returning.png
-    dd1f7116b8c1e90cc1d2648753080b48c9b2e780
+    d01a50318eac0f2e7870eeca3f9d67b6b99bc2de
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720-light.png
-    2b9b2b43a104879c745bffa8b4dcb2dee8d633a6
+    d29bdb47fd99ad6494a5d5383073398cc10d2891
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-720.png
-    1bd2a7fec0963e2281803a14d6df5e88b7797fcc
+    7b6fcf7ab303233b239a76eee8247710247539db
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280-light.png
-    0ee3fb82cc21e6558a2e5cfc4a6d8629aea60261
+    70dd7136e4e4e9538a26d5461603b921da23d27c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-pane-reading-1280.png
-    6c9c228b275e39e87d0d3fa1ba1a1a83a48c9a69
+    611e4c3621a16b021c15f75c2973fe71feddeeb0
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-row-selected-1280-light.png
-    f29b1604adc6e42ed60e9e4434cedc54f8205fb9
+    22ec726b5b43802fb65122b8bd621aeb4400d16b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/memories-row-selected-1280.png
-    46bae7c59420ba3a291fab386ac8d82ad162e8c5
+    2301ce67723015fd63bf4a9b1af17f390e9298e2
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-current.png
-    71f53ecf031428dd92cebfc8bd37425f6a4e4e54
+    04c860c4e5a4a4c05fcaef2f211b19a5912335ff
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-degraded-light.png
-    22f9ef8054c37d2e997bd6e3ea1ce9e5ccf5ad34
+    b4864defb303d58dc606db0e02821ce9b14171b9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-heat-light.png
-    22124944218084a62a0bbd5ef8b1b3cd66a14965
+    97038fed636f21c189ab1fd6f4ac801e487b409f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-heat.png
-    d5b58bd62cdb29a93a8246cce93bfa54b4267e1f
+    39fefc38a35060d5e65a81d808aebc9062256ac1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-lens-light.png
-    14edceb7839055012444fcad54ce013d588dac1e
+    fc33381af643a1f6b5e9b121ffe64ae2167c1f40
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-lens.png
-    d05196c54c0c3d55a603a9330581386549f4d7cb
+    a9a88d600d0c5cd90cccc31a515ac0e2fa16f28a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-route-off.png
-    b29d744597574e17b30e40b36355ca6d6d623b58
+    3ffc64337351ae4bed0fb8508b191edb05e91eff
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-routeless-light.png
-    75d79066de07d39b87292df8563d93ad26b4570c
+    982a44108917eb4d66b0078e2bdde5c2da206050
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-selected-source-light.png
-    e8bf23130908f41ad6a425ba7d15567b4204d7c1
+    63afc53178ce54227b6419a9efd5d2e1162f38b5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-selected.png
-    8329d7d1a73dd2e964f7079e6ec9fbc0ddb94d37
+    02398d5119ce6644ab32eda53884c60fb8378509
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-truncated-light.png
-    0c1f3a1a14b26f2a90e891cf6c5871352019feac
+    270a36deeb37e46afab461b53d34ea7e7362d837
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-truncated.png
-    3f39ef1aa9ac4dea202800fae1e962a458032b5d
+    b50db94f47ff4486a55ec4f5ef7c497781bb9717
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-unavailable-light.png
-    3b1e77494e5b5fbe9cf8c4df2b1bd60a918638f6
+    5f3ed8907cca04dddb692cb5547b08d325b3f1e7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-widened-light.png
-    3ef6dc7e8e9400717f3e948d92ded6424884e424
+    bb84012f50d4b9d5eca7e7c742afe6cabcab239b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-widened.png
-    5a0d06e16f21e4b31053f92ffff2f0c56019078a
+    1f5d7beb2ae0b08c32e1e4d27f35f2c83402c34e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/observatory-pane-withheld-light.png
-    f9fd6262d308bf4cba6089aae2cbc7fd7bd8f2c7
+    893ac03b589ba253c668fa01bdaeb4fe129bf5c1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-activity.png
-    14219ff526dd3e143221f8c17cfd4807449c0b45
+    5dcaa16acbeb3826afcfad63c61fe4dbc87dee46
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-add-agent.png
-    6bd08ac8eb411a972eb261b305bff8d69c73255d
+    08cc154d85150fa16157f26ab2ed377ce152fd6c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-agent-detail.png
-    7673b30c29b8b29bbf03d00eb7db412d3d3d25ab
+    7e0a28f2c59be06d1f191ef10acfa995f3cecaa7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-catch-up.png
-    2ba41477f2f7e9959f085805877952ea79e12110
+    0a0067db3e872862230fb927784761043dbd953b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-golden-path.png
-    f5dc23b1febf9063488454223d52ae4d8e2c1350
+    c737c6259828944873189a0ca78e84b38349e453
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-expired-light.png
-    ab23f8c89f747b49d2fe8903069c7b2096207969
+    4016cfa73c0f9ee587b451108e25205d8e70e892
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-expired.png
-    8d477410ad58d7db20a9b253d758b3c405400340
+    9cecce646162a451d938335b491ebb59997b8dd6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox-open-questions.png
-    19c496fee17a598deb8dc1c6894de4634823ec35
+    68c40d13a63432721974400c6add31a89aef0d0a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-mailbox.png
-    b98d1df743c044c0e200aab7ef07d23e41d4968d
+    fbaa7404eeb4508d87b4eab302a02a9fa7d5ee12
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-memories.png
-    e63c39186043ccd4c9ee811b9b85de78dd86aab9
+    37e49d55ad05c537c058c2c7a48a601176f4dee8
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-perspectives.png
-    76fb35db77a0adf75a62c3bdd408c05b018ef4a6
+    59b4bc2f1544f380a83c97865e38635894e6a47b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-tasks.png
-    abd4147f21256a5a84efd43b9343a9deb2202fb5
+    1d4c377f810e8bd22cdb923e2fbc374f91574560
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/pane-wake-routes.png
-    7b26babcfe4dcbd242d6f5d909da7cfcf2808a48
+    e61edadf313b776841bd479d548173cfe03495ff
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-active.png
-    67e446970b959db23b198ac14be8b3c9317620e0
+    e57a71e1d3e2f6943677b86a666328f33561ec5e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-benched-light.png
-    4015461bc55a639dc9c7662f4d898656f8a59e7c
+    9d740f4c0d0ede20d6b74ba2666d684cbd9a27ca
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-benched.png
-    b163626fb2c226135a81b2568160c808c08b627f
+    8f5f62b0992b2e0e374e004e8ca3dbe50719914b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-card-benched.png
-    09dbf444be2e9d1f6951c405708af48fdb4556c3
+    f433c5258a6fb3f56c7e117f970e6d0f06afec32
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-own-plan.png
-    1f487bbd3e320aab8a17ecb119cac383f9adc3d7
+    53e3f0611ffe2a6e44d79404a66e72272037d5e6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/participation-unobserved.png
-    e29cd04a24d8325f55437d7f4c40e48adfa38684
+    66389912543f51e45f464bdd7cf38ecaf511b727
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card-light.png
-    311439fb05d4eb25422787b99dbbaf0ced32ff76
+    71d716cbe2fab14ff69f16507a5e43dd8080e58c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/plane-setup-card.png
-    588b88869ae3d29c65a773e525fb7d050f7ec40b
+    4d931146c62a79dcb1d728f226fb9f3659288bd6
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-1280-light.png
-    bf63fe5e1b20e57c845713e61da085151480e1c5
+    e3d236f265387e427523c0d0e451c414b249cd44
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-1280.png
-    c7dcbb0e7f0826998ed393ca400c533ac4beafc2
+    d9b065dfb13e93669c2f6297c5c8b359ae102a98
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-314-light.png
-    a3ef13b2ed483c659cd37122f3258cc3ece584f9
+    86111a38beb390ae5bc52b0a1f481701d79328fa
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-314.png
-    4ff5a62a7cfb7e0b41fd5ce7f83b532a7760c714
+    ce66282ea1366708e7d001be7fbc9f4daa148557
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-720-light.png
-    bbbc7a6171351fe458d0961a9fd17bd1c5872538
+    2a1877cfa960133105997c8fb3f2581319a12499
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-720.png
-    1be749f7522bd9b5d1120860b709aac91134b97b
+    f6faa02024645d2360fdc60f2eb1f37e5e2274c1
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-published-light.png
-    7d1c220292de0bc0d36f947b8140562490d7ba82
+    ba4a2abf0681d06322b9c99824df4408e2621686
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-published.png
-    2ec3c4c0db622dd0e0524f8194ff6dfa49520922
+    0e50328e54ec01b220baa6cf0034bc1d43e0ce86
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-request-card-publishing.png
-    c418371fc6cd70f1af73c152e9d9a30c6d060877
+    73a6f23e3f9fe5196438eede27a6f57cc9fc2795
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-switch-group-1280-light.png
-    d630393849a03887733a26140edf61325b7c7c6d
+    a426bb98b32641207b8366c36e54de89efcc19d4
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-switch-group-1280.png
-    0aca435be692ee15921e6c28c2696e6d54797857
+    2e5710804b8404d41bb177e10df7f2a9396979b7
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-switch-group-314-light.png
-    5484dfce985eabd80766699b3947f21b80d3ff2a
+    5af0ed3d65c8f2fcfb8dbb685f6aa4a6e34f368b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-switch-group-314.png
-    5e69a40625d2969dde1547ca704f69edac9453c1
+    7cfa3f92299723ac6c11faccba875bd5d1536604
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-switch-group-720-light.png
-    4968cab94e9eb04c31f5789138750c31625a8a0a
+    e6a7dc8117f4ecb8963ccdc21223438b3721e35d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/publish-switch-group-720.png
-    11ea3216fe17d01d389fb5d413b0662b9c8259a0
+    1e14882d56a827490a2463c8cd4a202bd5d735b5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-choice-light.png
-    075975803209b9b8382bc5023f46818d922ee814
+    6706faf16a1d6e109400d3554cb90a3ab8f0805b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-choice.png
-    2f7d8e87450f4c2ab27e5a171f3a91a69a691510
+    9460ca1ace01f868de66c1c409109230bf78c65a
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-memory-recorded.png
-    db7fa5c83ebe502528ed6cc0dd39cd4a555f838b
+    c12a67f7d99629ffeddbfd1c671bdd938449d5bc
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app-effort-light.png
-    0d8b50e2111b190c2fd008316aae465138c1e540
+    4957bead36b045f450469842704514e187ad6630
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app-effort.png
-    a5ca081bd283249c8806befc7e6b02c2bcf9b7b9
+    28ca1e33cad722b7d7b15274953895c4a559fdbb
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-app.png
-    8694ff8aa31f8adfd45c30fa2c0836fbdc767520
+    9953170fa1ad098ff81a3b784e78006e0d4bc09c
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-declared.png
-    8e41da4275c8cae52256c7eb0e845644c6adbadd
+    a6c75f091d92c35547fa1b2b8be96759f8673878
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-derived.png
-    f9d690058c211c27aa3bc0bcc6265206eca1ed8b
+    5ffd6b0b6589edf05cbdd46fb77d0ee222a6adf5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-differs-stopped-light.png
-    e08456161b4bd3bbc12a505c37edd6dce9d1f798
+    59bafe5f79faad7b3ebb80b7b2450de817d22e4b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-differs-stopped.png
-    58680aa0a8832a6737dad46d0d4a5d3bcbf4a1d3
+    f84859e98fb0158a94743e7b81b28945c67848a5
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/seat-model-refused.png
-    6e33af39c62a23d68d2b5c9268eb0a6ea0ae8736
+    6d77fbd50af485e40cd343e7302960c06cbe8d26
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-720.png
-    1084961aa7e7cf05a372cedc318df71eecbb2e7e
+    8e0d088c5f374850ac7c41adf07facdc64f0fc7d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-details.png
-    a70eca1ab9332387e5ff13968aba8a35721546c5
+    bca90c65948b103d65644bcf37c8f920a29be88b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create-light.png
-    35d762d077e6afd779f7ff741cd88bdda9820367
+    1984c7eba676573f5322873a0b8c1b6e22676a32
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-create.png
-    dc6fe844606be4bcda504e189f4de5ad46339130
+    e216f6a97f5df1c6ba1c7ae6b745e953284f394d
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-fresh-run-offer-light.png
-    6411a10c86e3e0d7cce5705476a1bc2024af2cc3
+    b6f36b1299a5c9c1cb23bab1ceee00703e03d443
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-card-fresh-run-offer.png
-    d5c6f8f3d04fcdb20fbd84f7b2942924b22d617f
+    298f58956a90e9c84e7950201a7d729fd07c986e
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run-confirming.png
-    4fa043ace76fac5083d0ac9190d44c9b86f4a2f9
+    d225723f5cca4b42ef2ff4d88fe314addd6b2363
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run-light.png
-    e7aa290d5a2d7c73f6daa45c8ce02017519a167e
+    e0a6d820514355cfa57004a3a8a61791b1139821
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-fresh-run.png
-    ebf9ff63b0debae2c0e88e4608e74ec6d2124002
+    133860fc2c92d8a1682eee7dc51719ba8de02c88
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-last-unfaded-light.png
-    c6fcf92f3472e7651db45006f83ce1982f44ec35
+    b466ca6063baac5ff955213f0c67d29140b57345
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-last-unfaded.png
-    edff7b7e356a58fe2c525abba3d1c60ae3f87eb1
+    ffa1ac08248c75df0b270b8121a6040fd42bd9b9
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-confirming.png
-    9815516c47cfc445bb8c2044de2ce2b987844648
+    8a201f35390259e3bc06f1249dde4ad35bea45ad
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits-light.png
-    a968eaedfde8c4765049aeee1b6724c6f08586eb
+    6d3b72fadf8dcfae28a60fb3d843680f8c5a174f
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/setup-row-two-exits.png
-    21c1b3d850a0bc1060c63b98a4b09bc36da09dd0
+    26bcea3dd77b176b444e4e9dd3a2df75592b86ef
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-240-light.png
-    df1db7c66814a3102f5803069963ca9b06c5cef4
+    5895c48294e45b559f1d542dba6a208f7a543626
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-240.png
-    485e53d7a456e51c3abcd9b474d7b308c1907fbc
+    c29f541b3f69607704175720e899e19904f3b300
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-720-light.png
-    f3fc7163ca13643f3197e6f2d4b5938a8530e87d
+    a0ef3b117dbebdc6aca68ce71220ab592b48e4c3
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-720.png
-    8236bd37190168113797c975fcac11ee0aeeb394
+    7ab7c88ef089dc9fb23831483724cd487c07b188
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-cold-light.png
-    1a6f6a0211afefcd383e8dd6b6d34c2c2e2e9381
+    733b59b7322a201b5a7eeae9db64b3ba29e5583b
 
 test/playwright/visual/__screenshots__/FleetCockpitVisual.spec.mjs/tasks-pane-cold.png
-    f46bf636f01699c4b75024d1a75b10e276517a2c
+    92e2d8300a254c6904f99617468044e4d1447ea1
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-seat-move-review-1552-light.png
-    4e356900ed62defe193ac2d27141811c66ca5f69
+    44a725805a226696104a20218b03460656abc48b
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-seat-move-review-1552.png
-    7cce42f83bc9922093b1446c0bc7a813895df523
+    da23aed914fa175462632e3373fd9190cbf91a57
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-seat-move-review-560.png
-    db7706e18be741067ae042ff6106611a3d2f3c79
+    12a5f83f56c96761c4045fa8bbfbfea975f8683e
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-view-cold.png
-    b46107cb5e4e0faa9b9e6c5b60d89dd4784498ac
+    ec4b0bcb7063a9a4bc26d668413cdd6d02bb42b0
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-view-populated-1504.png
-    a09d7a45e735c20526babcda4b7fcee2117b2e62
+    95118b1e66262cddb1d4152ccdddcc292928025c
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-view-populated-700.png
-    706bf22c48fb265472bac129c6e4ae67686caabd
+    435ff936def94a1fa9823fb269f75be43893e2d8
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-view-seat-move-committed.png
-    aa7817f0be3d693c5d492a1ca0fb887ce11fa203
+    4a3f3c09508900081fd9a7aa4f8cdba41219f058
 
 test/playwright/visual/__screenshots__/SystemViewVisual.spec.mjs/system-view-seat-move-pending.png
-    0be3520f5c2d75d15bfda8e03c658c52678bca77
+    18b3693bbe4cbf6cd2a15d3075190c2a2cfdefc9
 
 # end of stamp
